@@ -1,0 +1,47 @@
+gnosis_dbt:
+  target: trino_dev  # Setting Trino as the default target for development
+  outputs:
+    trino_dev:
+      type: trino
+      user: "{{ env_var('TRINO_USER') }}"
+      password: "{{ env_var('TRINO_PASSWORD') }}"
+      host: trino
+      port: 8080
+      schema: dbt  # New schema for dbt models
+      catalog: clickhouse  # New catalog specifically for dbt
+      threads: 80
+
+    clickhouse_dev:  # ClickHouse configuration for additional data sourcing
+      type: clickhouse
+      schema: dbt
+      verify: False
+      host: "{{ env_var('DBT_HOST', 'clickhouse-01') }}"
+      port: "{{ env_var('DBT_PORT', '8123') | int }}"
+      secure: "{{ (env_var('DBT_SECURE', 'False') | lower) == 'true' }}"
+      cluster: '{cluster}'
+      cluster_mode: True
+      user: "{{ env_var('CLICKHOUSE_USER') }}"
+      password: "{{ env_var('CLICKHOUSE_PASSWORD') }}"
+      threads: 40
+      connect_timeout: 60  # Increase the connect timeout (in seconds)
+      read_timeout: 3000    # Increase the read timeout (in seconds)
+
+    chaind_dev:  # PostgreSQL configuration for the 'gnosis_chaind' database
+      type: postgres
+      host: postgres
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      port: 5432
+      dbname: gnosis_chaind
+      schema: dbt
+      threads: 80
+
+    xatu_dev:  # PostgreSQL configuration for the 'gnosis_xatu' database
+      type: postgres
+      host: postgres
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      port: 5432
+      dbname: gnosis_xatu
+      schema: dbt
+      threads: 80
