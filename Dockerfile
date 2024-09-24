@@ -11,7 +11,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy the Python requirements and install them
-COPY /dbt/docker/requirements.txt /app/requirements.txt
+COPY /requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 
 # Set environment variable to specify the DBT project path
