@@ -1,0 +1,34 @@
+services:
+  dbt:
+    container_name: dbt
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    command: > 
+      /bin/bash -c "exec python -m http.server 8000 --directory logs & tail -f /dev/null"
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL}
+      CLICKHOUSE_PORT: ${CLICKHOUSE_PORT}
+      CLICKHOUSE_SECURE: ${CLICKHOUSE_SECURE}
+    volumes:
+      - type: bind
+        source: ./
+        target: /app
+        consistency: cached
+      - ./profiles.yml:/home/appuser/.dbt/profiles.yml
+    working_dir: /app
+    user: appuser
+    networks:
+      - dbt_net
+
+
+networks:
+  dbt_net:
