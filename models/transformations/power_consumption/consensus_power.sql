@@ -1,22 +1,14 @@
 WITH consensus_power AS (
-    SELECT * FROM (
-        VALUES 
-            (4, 'Lighthouse', 2.75),
-            (5, 'Lighthouse', 3.14),
-            (6, 'Lighthouse', 18.84),
-            (4, 'Teku', 3.71),
-            (5, 'Teku', 3.32),
-            (6, 'Teku', 27.46),
-            (4, 'Lodestar', 3.14),
-            (5, 'Lodestar', 3.89),
-            (6, 'Lodestar', 33.55),
-            (4, 'Nimbus', 1.67),
-            (5, 'Nimbus', 2.08),
-            (6, 'Nimbus', 17.11),
-            (4, 'Prysm', 3.51),
-            (5, 'Prysm', 2.87),
-            (6, 'Prysm', 24.33)
-    ) AS t(type, client, mean)
+    SELECT
+        type,
+        client,
+        mean
+    FROM (
+        SELECT
+            arrayJoin([4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6]) AS type,
+            arrayJoin(['Lighthouse', 'Lighthouse', 'Lighthouse', 'Teku', 'Teku', 'Teku', 'Lodestar', 'Lodestar', 'Lodestar', 'Nimbus', 'Nimbus', 'Nimbus', 'Prysm', 'Prysm', 'Prysm']) AS client,
+            arrayJoin([2.75, 3.14, 18.84, 3.71, 3.32, 27.46, 3.14, 3.89, 33.55, 1.67, 2.08, 17.11, 3.51, 2.87, 24.33]) AS mean
+    )
 )
 
 SELECT * FROM consensus_power
