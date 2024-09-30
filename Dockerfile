@@ -24,6 +24,14 @@ USER appuser
 COPY requirements.txt /app/requirements.txt
 RUN pip install --user -r /app/requirements.txt
 
+# Copy dbt project
+COPY dbt_project.yml /app/dbt_project.yml
+
+# Copy macros, models and seeds
+COPY /macros /app/macros
+COPY /models /app/models
+COPY /seeds /app/seeds
+
 # Set environment variable to specify the DBT project path
 ENV DBT_PROJECT_PATH /app/src
 
