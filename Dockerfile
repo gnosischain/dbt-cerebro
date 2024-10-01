@@ -32,10 +32,7 @@ COPY /macros /app/macros
 COPY /models /app/models
 COPY /seeds /app/seeds
 
-RUN chmod +x cron.sh
 COPY cron.sh /app/cron.sh
-
-RUN chmod +x forever.sh
 COPY forever.sh /app/forever.sh
 
 # Set environment variable to specify the DBT project path
