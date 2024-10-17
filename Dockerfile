@@ -27,6 +27,9 @@ RUN pip install --user -r /app/requirements.txt
 # Copy dbt project
 COPY dbt_project.yml /app/dbt_project.yml
 
+# Copy profiles.yml to the .dbt directory in the user's home
+COPY profiles.yml /home/appuser/.dbt/profiles.yml
+
 # Copy macros, models and seeds
 COPY /macros /app/macros
 COPY /models /app/models
