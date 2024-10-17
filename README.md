@@ -21,6 +21,9 @@ This dbt project is designed to facilitate the transformation and analysis of Gn
 docker exec -it dbt /bin/bash 
 ```
 
+```
+{{ flexible_source('valtrack', 'peer_discovered_events') }}
+```
 
 ## Contributing
 
