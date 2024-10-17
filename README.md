@@ -17,6 +17,9 @@ This dbt project is designed to facilitate the transformation and analysis of Gn
 - `seeds/`: Seed files that contain static data used as inputs for models.
 
 
+```
+docker exec -it dbt /bin/bash 
+```
 
 
 ## Contributing

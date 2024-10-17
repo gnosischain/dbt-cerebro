@@ -1,0 +1,1 @@
+{{ valtack_nodes_activity(resolution='day', aggregation_column='country') }}

@@ -77,17 +77,16 @@ best_guess_per_client AS (
 ),
 
 configuration_distribution AS (
-    SELECT * FROM (
-        VALUES 
-            ('Erigon', 'Lighthouse', 0.340),
-            ('Erigon', 'Teku', 0.114),
-            ('Erigon', 'Lodestar', 0.044),
-            ('Erigon', 'Nimbus', 0.002),
-            ('Nethermind', 'Lighthouse', 0.340),
-            ('Nethermind', 'Teku', 0.114),
-            ('Nethermind', 'Lodestar', 0.044),
-            ('Nethermind', 'Nimbus', 0.002)
-    ) AS t(execution_client, consensus_client, frac)
+    SELECT 
+        execution_client
+        ,consensus_client
+        ,frac
+    FROM (
+        SELECT
+            arrayJoin(['Erigon', 'Erigon', 'Erigon', 'Erigon', 'Nethermind', 'Nethermind', 'Nethermind', 'Nethermind']) AS execution_client,
+            arrayJoin(['Lighthouse', 'Teku', 'Lodestar', 'Nimbus', 'Lighthouse', 'Teku', 'Lodestar', 'Nimbus']) AS consensus_client,
+            arrayJoin([0.340, 0.114, 0.044, 0.002, 0.340, 0.114, 0.044, 0.002]) AS frac
+    )
 ),
 
 power_best_guess AS (
