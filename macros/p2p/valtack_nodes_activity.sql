@@ -27,7 +27,7 @@ combined_events AS (
         pe.ip,
         me.timestamp AS timestamp
     FROM 
-        {{ source('valtrack','peer_discovered_events') }} pe
+        {{ source('valtrack', 'peer_discovered_events') }} pe
     INNER JOIN
         {{ source('valtrack','metadata_received_events') }} me
         ON pe.enr = me.enr
