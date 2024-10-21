@@ -1,7 +1,8 @@
 {{ 
     config(
-        materialized='table',
-        engine='MergeTree()',
+        materialized='incremental',
+        incremental_strategy='delete+insert',
+        engine='ReplacingMergeTree()',
         order_by='(f_inclusion_slot, inc_dist_cohort)',
         primary_key='(f_inclusion_slot, inc_dist_cohort)'
     ) 
@@ -14,7 +15,9 @@ total_slots AS (
         f_slot
     FROM
         {{ get_postgres('gnosis_chaind', 't_proposer_duties') }}
-	LIMIT 100
+    {% if is_incremental() %}
+    WHERE f_slot > (SELECT max(f_inclusion_slot) FROM {{ this }})
+    {% endif %}
 ),
 
 proposed_slots AS (
@@ -22,7 +25,9 @@ proposed_slots AS (
         f_slot
     FROM
         {{ get_postgres('gnosis_chaind', 't_blocks') }}
-	LIMIT 100
+    {% if is_incremental() %}
+    WHERE f_slot > (SELECT max(f_inclusion_slot) FROM {{ this }})
+    {% endif %}
 ),
 
 attestations AS (
@@ -32,7 +37,9 @@ attestations AS (
         f_inclusion_index
     FROM
         {{ get_postgres('gnosis_chaind', 't_attestations') }}
-	LIMIT 100
+    {% if is_incremental() %}
+    WHERE f_inclusion_slot > (SELECT max(f_inclusion_slot) FROM {{ this }})
+    {% endif %}
 ),
 
 inclusion_distance AS (
@@ -55,5 +62,5 @@ SELECT
     inc_dist_cohort,
     COUNT(*) AS cnt
 FROM
-    inclusion_distance 
+    inclusion_distance
 GROUP BY 1, 2

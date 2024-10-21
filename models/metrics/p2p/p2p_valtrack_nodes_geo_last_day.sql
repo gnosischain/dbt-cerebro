@@ -21,6 +21,6 @@ INNER JOIN
     {{ source('valtrack','ip_metadata') }} t2
     ON t2.ip = t3.ip
 WHERE
-    t1.timestamp >= date_trunc('day', now() - INTERVAL 5 DAY)
+    t1.timestamp >= date_trunc('day', now() - INTERVAL 14 DAY)
     AND
-    t1.timestamp < date_trunc('day', now()- INTERVAL 4 DAY)
+    t1.timestamp < date_trunc('day', now()- INTERVAL 13 DAY)
