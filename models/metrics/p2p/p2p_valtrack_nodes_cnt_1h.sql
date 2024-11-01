@@ -1,1 +1,0 @@
-{{ valtack_nodes_activity(resolution='hour') }}
