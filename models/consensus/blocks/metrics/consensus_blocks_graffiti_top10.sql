@@ -4,7 +4,7 @@
        incremental_strategy='delete+insert',
        engine='ReplacingMergeTree()',
        order_by='(day, graffiti_top10)',
-       primary_key='(day, graffiti_top10)',
+       unique_key='(day, graffiti_top10)',
        partition_by='partition_month',
        settings={
            "allow_nullable_key": 1

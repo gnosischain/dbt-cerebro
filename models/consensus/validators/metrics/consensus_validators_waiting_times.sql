@@ -42,12 +42,13 @@ WITH final AS (
 {% for delay in delay_fields %}
     {% for agg in aggregations %}
         {% set query %}
-SELECT 
-    toDate(eth1_block_timestamp) AS day, 
-    COALESCE(toFloat64({{ agg.func }}({{ delay.field }})), 0) / 3600 AS value, 
-    '{{ agg.label }} {{ delay.label }}' AS label 
-FROM final 
-GROUP BY day
+            SELECT 
+                toDate(eth1_block_timestamp) AS day, 
+                COALESCE(toFloat64({{ agg.func }}({{ delay.field }})), 0) / 3600 AS value, 
+                '{{ agg.label }} {{ delay.label }}' AS label 
+            FROM final 
+            WHERE toDate(eth1_block_timestamp) < (SELECT MAX(toDate(eth1_block_timestamp)) FROM final)
+            GROUP BY day
         {% endset %}
         {% do union_queries.append(query) %}
     {% endfor %}

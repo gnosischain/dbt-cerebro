@@ -1,53 +1,66 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
-        partition_by='toYYYYMM(coalesce(month, toDate(\'1970-01-01\')))'
+        incremental_strategy='delete+insert',
+        partition_by='partition_month',
+        order_by='(day, label)',
+        unique_key='(day, label)',
+        settings={
+            "allow_nullable_key": 1
+        }
     ) 
 }}
 
-WITH validators_activations AS (
+WITH 
+
+{{ get_incremental_filter() }}
+
+validators_activations AS (
     SELECT 
-        toDate(activation_time) AS day,
-        toStartOfMonth(toDate(activation_time)) AS month,
-        CAST(COUNT(*) AS Int64) AS cnt,
-        'activations' AS label
+        toDate(activation_time) AS day
+        ,CAST(COUNT(*) AS Int64) AS cnt
+        ,'activations' AS label
     FROM {{ ref('consensus_validators_queue') }}
-    {% if is_incremental() %}
-    WHERE toDate(activation_time) >= (SELECT max(day) FROM {{ this }})
-    {% endif %}
-    GROUP BY 1, 2
+    {{ apply_incremental_filter('f_eth1_block_timestamp') }}
+    GROUP BY 1, 3
 ),
 
 validators_exits AS (
     SELECT 
-        toDate(exit_time) AS day,
-        toStartOfMonth(toDate(exit_time)) AS month,
-        -CAST(COUNT(*) AS Int64) AS cnt,
-        'exits' AS label
+        toDate(exit_time) AS day
+        ,-CAST(COUNT(*) AS Int64) AS cnt
+        ,'exits' AS label
     FROM {{ ref('consensus_validators_queue') }}
     WHERE
         exit_time IS NOT NULL
-    {% if is_incremental() %}
-        AND toDate(exit_time) >= (SELECT max(day) FROM {{ this }})
-    {% endif %}
-    GROUP BY 1, 2
+        {{ apply_incremental_filter('f_eth1_block_timestamp', add_and=true) }}
+    GROUP BY 1, 3
+),
+
+final AS (
+    SELECT 
+        day,
+        cnt,
+        label
+    FROM validators_activations
+    WHERE day IS NOT NULL
+
+    UNION ALL
+
+    SELECT 
+        day,
+        cnt,
+        label
+    FROM validators_exits
+    WHERE day IS NOT NULL
 )
 
-SELECT 
-    day,
-    coalesce(month, toDate('1970-01-01')) AS month,
-    cnt,
-    label
-FROM validators_activations
-
-UNION ALL
-
-SELECT 
-    day,
-    coalesce(month, toDate('1970-01-01')) AS month,
-    cnt,
-    label
-FROM validators_exits
-
-ORDER BY day, label
+SELECT
+    toStartOfMonth(day) AS partition_month
+    ,day
+    ,cnt
+    ,label
+FROM 
+    final
+WHERE
+    day < (SELECT MAX(day) FROM final)
