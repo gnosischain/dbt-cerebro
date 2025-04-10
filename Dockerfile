@@ -1,49 +1,44 @@
 FROM python:3.11-slim
 
-# Update and install system dependencies
+# Install essential dependencies
 RUN apt-get update && \
     apt-get install --no-install-recommends --yes \
     gcc libpq-dev python3-dev git curl iputils-ping && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user
+# Create non-root user
 ARG USER_ID=1000
 ARG GROUP_ID=1000
-RUN addgroup --gid $GROUP_ID appgroup && \
-    adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
 
-# Setup the working directory
+RUN groupadd -g ${GROUP_ID} appgroup && \
+    useradd -m -u ${USER_ID} -g appgroup appuser
+
+# Setup working directory
 WORKDIR /app
-RUN chown -R appuser:appgroup /app && chmod -R 755 /app
 
-# Switch to non-root user
+# Copy and install Python requirements first (better caching)
+COPY requirements.txt /app/
+RUN pip install -r /app/requirements.txt
+
+# Copy remaining files
+COPY --chown=appuser:appgroup . /app/
+
+# Permissions for DBT directories
+RUN mkdir -p /app/dbt_packages /app/logs /app/target && \
+    chown -R appuser:appgroup /app && \
+    chmod -R 755 /app
+
+# Setup .dbt profiles directory
+RUN mkdir -p /home/appuser/.dbt && \
+    cp /app/profiles.yml /home/appuser/.dbt/profiles.yml && \
+    chown -R appuser:appgroup /home/appuser/.dbt
+
+# DBT project path
+ENV DBT_PROJECT_PATH /app
+
+EXPOSE 8000
+
 USER appuser
 
-# Copy the Python requirements and install them
-COPY requirements.txt /app/requirements.txt
-RUN pip install --user -r /app/requirements.txt
-
-# Copy dbt project
-COPY dbt_project.yml /app/dbt_project.yml
-
-# Copy profiles.yml to the .dbt directory in the user's home
-COPY profiles.yml /home/appuser/.dbt/profiles.yml
-
-# Copy macros, models and seeds
-COPY /macros /app/macros
-COPY /models /app/models
-COPY /seeds /app/seeds
-
-COPY cron.sh /app/cron.sh
-COPY cron_preview.sh /app/cron_preview.sh
-COPY forever.sh /app/forever.sh
-
-# Set environment variable to specify the DBT project path
-ENV DBT_PROJECT_PATH /app/src
-
-# Optionally expose a port for dbt docs if needed
-EXPOSE 8080
-
-# Set PATH to include user-level binaries
-ENV PATH=/home/appuser/.local/bin:$PATH
+CMD ["/bin/bash", "-c", "exec python -m http.server 8000 --directory logs & tail -f /dev/null"]
