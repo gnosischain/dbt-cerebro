@@ -20,7 +20,7 @@ peers_ip AS (
 SELECT
     splitByString(',',loc)[1] AS lat
     ,splitByString(',',loc)[2] AS long
-    ,country
+    ,IF(country='','Unknown', country) AS country
     ,cnt
 FROM (
     SELECT

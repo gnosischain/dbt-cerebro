@@ -25,7 +25,7 @@ peers_ip AS (
 
 SELECT
     t1.date
-    ,COALESCE(t2.country,'Unknown') AS country
+    ,IF(t2.country='','Unknown', t2.country) AS country
     ,COUNT(*) AS cnt
 FROM peers_ip t1
 LEFT JOIN
