@@ -17,7 +17,7 @@ blocks_clients AS (
         ,{{ decode_hex_split('extra_data') }} AS decoded_extra_data
         ,COUNT(*) AS cnt
     FROM {{ ref('execution_blocks_production') }}
-    {{ apply_monthly_incremental_filter('date') }}
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date') }}
     GROUP BY 1, 2
 )
 

@@ -71,7 +71,7 @@ gnosis_peers AS (
             AND
             peer_properties.next_fork_version LIKE '%064'
         )
-    {{ apply_monthly_incremental_filter('visit_ended_at','true') }}
+    {{ apply_monthly_incremental_filter('visit_ended_at',add_and='true') }}
      SETTINGS
         join_use_nulls=1
 )
@@ -79,6 +79,7 @@ gnosis_peers AS (
 SELECT
     *
 FROM gnosis_peers
+WHERE visit_ended_at < today()
 
 
         

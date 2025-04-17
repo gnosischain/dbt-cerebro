@@ -19,7 +19,7 @@ peers AS (
     FROM {{ ref('p2p_peers_info') }}
     WHERE
         empty(dial_errors) = 1 AND crawl_error IS NULL
-        {{ apply_monthly_incremental_filter('date','true') }}
+        {{ apply_monthly_incremental_filter('visit_ended_at','date','true') }}
     GROUP BY 1, 2
 )
 
@@ -28,5 +28,4 @@ SELECT
     ,fork
     ,COUNT(*) AS cnt
 FROM peers
-WHERE date < today()
 GROUP BY 1, 2

@@ -21,12 +21,12 @@ blocks_extra_data AS (
         {{ source('execution','blocks') }}
     WHERE 
         block_timestamp > '1970-01-01' -- remove genesis
-    {{ apply_monthly_incremental_filter('block_timestamp','true') }}
+    {{ apply_monthly_incremental_filter('block_timestamp',add_and='true') }}
 )
 
 SELECT
     *
 FROM blocks_extra_data
-
+WHERE block_timestamp < today()
 
         
