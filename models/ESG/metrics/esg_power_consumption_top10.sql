@@ -10,7 +10,7 @@ WITH
 gnosis_power_consumption AS (
     SELECT
         t1.date
-        ,IF(t1.country='','Unknown', t2.name) AS country
+        ,IF(t1.country='' OR t1.country='Unknown', 'Unknown', t2.name) AS country
         ,t1.power
         ,ROW_NUMBER() OVER (PARTITION BY t1.date ORDER BY t1.power DESC) AS rank
     FROM
