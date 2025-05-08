@@ -47,7 +47,7 @@ except Exception as e:
 # --- Web3 Initialization ---
 w3 = Web3()
 
-# --- Fetch ABIs from contract_abis Table ---
+# --- Fetch ABIs from contracts_abi Table ---
 # Modified query to fetch all ABIs including proxy implementations
 query = """
 SELECT
@@ -55,18 +55,18 @@ SELECT
     implementation_address,
     abi_json,
     contract_name
-FROM contract_abis
+FROM contracts_abi
 WHERE abi_json IS NOT NULL AND abi_json != '[]' AND abi_json != '{}'
 """
 
-logger.info("Fetching ABIs from contract_abis table...")
+logger.info("Fetching ABIs from contracts_abi table...")
 try:
     result = client.query(query)
     abi_rows = result.result_rows # Store rows
     row_count = len(abi_rows) # Get count before loop
     logger.info(f"Fetched {row_count} rows with non-empty ABIs.")
 except Exception as e:
-    logger.error(f"Failed to fetch ABIs from contract_abis: {e}", exc_info=True)
+    logger.error(f"Failed to fetch ABIs from contracts_abi: {e}", exc_info=True)
     sys.exit(1)
 
 # --- Process ABIs and Generate Signatures ---

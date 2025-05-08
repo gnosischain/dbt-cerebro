@@ -1,11 +1,9 @@
-{{
-    config(
-        materialized='table',
-        engine='ReplacingMergeTree()',
-        order_by=['contract_address', 'implementation_address'],
-        unique_key=['contract_address', 'implementation_address']
-    )
-}}
+{{ config(
+    materialized='incremental',
+    engine='ReplacingMergeTree()',
+    order_by=['contract_address','implementation_address'],
+    unique_key=['contract_address','implementation_address']
+) }}
 
 SELECT 
     '' AS contract_address,          -- The contract address (proxy or regular)

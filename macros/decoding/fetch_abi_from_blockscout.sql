@@ -36,7 +36,6 @@
         SELECT 
             JSONExtractRaw(body, 'abi') AS abi_json,
             JSONExtractString(body, 'name') AS contract_name,
-            JSONHas(body, 'implementations') AS has_implementations,
             JSONExtractArrayRaw(body, 'implementations') AS implementations
         FROM src
         LIMIT 1
@@ -48,13 +47,12 @@
         {% set result = {
             'abi_json': abi_result[0][0],
             'contract_name': abi_result[0][1],
-            'has_implementations': abi_result[0][2],
             'implementations': abi_result[0][3]
         } %}
         
         {{ return(result) }}
     {% else %}
         {{ log("Failed to fetch ABI for contract " ~ contract_address, info=true) }}
-        {{ return({'abi_json': '[]', 'contract_name': '', 'has_implementations': 0, 'implementations': '[]'}) }}
+        {{ return({'abi_json': '[]', 'contract_name': '', 'implementations': '[]'}) }}
     {% endif %}
 {% endmacro %}

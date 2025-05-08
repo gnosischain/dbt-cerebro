@@ -2,19 +2,19 @@
    fetch_and_insert_abi.sql - Fetch and Store Contract ABI
    
    This macro retrieves a contract ABI from Blockscout and stores it
-   in the contract_abis table.
+   in the contracts_abi table.
    
    Purpose:
    - Calls fetch_abi_from_blockscout to get the ABI JSON
    - Escapes and formats the JSON for database storage
-   - Inserts or replaces the ABI in the contract_abis table
+   - Inserts or replaces the ABI in the contracts_abi table
    - Provides logging for success/failure
    
    Parameters:
    - address: Ethereum address of the contract
    
    Requirements:
-   - Requires contract_abis table to exist with ReplacingMergeTree engine
+   - Requires contracts_abi table to exist with ReplacingMergeTree engine
    - Should be called via dbt operation:
      dbt run-operation fetch_and_insert_abi --args '{"address": "0xAddress"}'
    
@@ -29,11 +29,9 @@
     {% set contract_data = fetch_abi_from_blockscout(address) %}
     {% set abi_json = contract_data['abi_json'] %}
     {% set contract_name = contract_data['contract_name'] %}
-    {% set has_implementations = contract_data['has_implementations'] %}
     {% set implementations_array = contract_data['implementations'] %}
     
     {{ log("Contract " ~ address ~ " has name: " ~ contract_name, info=true) }}
-    {{ log("Contract " ~ address ~ " has_implementations flag: " ~ has_implementations, info=true) }}
     {{ log("Contract " ~ address ~ " implementations array: " ~ implementations_array, info=true) }}
     
     -- First insert the contract ABI
@@ -44,7 +42,7 @@
         -- Check if this contract entry already exists
         {% set check_existing_sql %}
             SELECT count(*) as cnt
-            FROM contract_abis
+            FROM contracts_abi
             WHERE contract_address = '{{ address }}'
               AND implementation_address = ''
         {% endset %}
@@ -55,7 +53,7 @@
         {% if exists %}
             -- If exists, first delete the existing entry
             {% set delete_sql %}
-                ALTER TABLE contract_abis 
+                ALTER TABLE contracts_abi 
                 DELETE WHERE contract_address = '{{ address }}' AND implementation_address = ''
             {% endset %}
             
@@ -65,7 +63,7 @@
         
         -- Insert the contract ABI
         {% set insert_sql %}
-            INSERT INTO contract_abis (
+            INSERT INTO contracts_abi (
                 contract_address, 
                 implementation_address,
                 abi_json, 
@@ -145,7 +143,7 @@
                 -- Check if this implementation entry already exists
                 {% set check_impl_sql %}
                     SELECT count(*) as cnt
-                    FROM contract_abis
+                    FROM contracts_abi
                     WHERE contract_address = '{{ address }}'
                       AND implementation_address = '{{ impl_address }}'
                 {% endset %}
@@ -156,7 +154,7 @@
                 {% if impl_exists %}
                     -- If exists, first delete the existing entry
                     {% set delete_impl_sql %}
-                        ALTER TABLE contract_abis 
+                        ALTER TABLE contracts_abi 
                         DELETE WHERE contract_address = '{{ address }}' AND implementation_address = '{{ impl_address }}'
                     {% endset %}
                     
@@ -166,7 +164,7 @@
                 
                 -- Insert the implementation ABI associated with the proxy
                 {% set insert_impl_sql %}
-                    INSERT INTO contract_abis (
+                    INSERT INTO contracts_abi (
                         contract_address, 
                         implementation_address,
                         abi_json, 
