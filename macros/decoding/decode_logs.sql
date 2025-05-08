@@ -44,6 +44,8 @@
             toString(reinterpretAsUInt8(unhex({{ hex_exp }})) != 0),
         {{ type_exp }} = 'bytes32',
             lower({{ hex_exp }}),
+        {{ type_exp }} = 'bytes',
+            lower({{ hex_exp }}),
         NULL
     )
 {%- endmacro %}

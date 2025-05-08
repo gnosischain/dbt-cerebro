@@ -44,17 +44,17 @@ except Exception as e:
     logger.error(f"Failed to connect to ClickHouse: {e}", exc_info=True)
     sys.exit(1)
 
-
 # --- Web3 Initialization ---
 w3 = Web3()
 
 # --- Fetch ABIs from contract_abis Table ---
-# This query assumes 'contract_abis' table exists and is populated
-# (e.g., by 'dbt run --select contract_abis')
+# Modified query to fetch all ABIs including proxy implementations
 query = """
 SELECT
     contract_address,
-    abi_json
+    implementation_address,
+    abi_json,
+    contract_name
 FROM contract_abis
 WHERE abi_json IS NOT NULL AND abi_json != '[]' AND abi_json != '{}'
 """
@@ -69,14 +69,13 @@ except Exception as e:
     logger.error(f"Failed to fetch ABIs from contract_abis: {e}", exc_info=True)
     sys.exit(1)
 
-
 # --- Process ABIs and Generate Signatures ---
 event_signatures = []
 function_signatures = []
 
 if row_count > 0:
     logger.info("Processing ABIs...")
-    for contract_address, abi_json in abi_rows:
+    for contract_address, implementation_address, abi_json, contract_name in abi_rows:
         try:
             abi = json.loads(abi_json)
 
@@ -112,11 +111,14 @@ if row_count > 0:
                             else:
                                 non_indexed_params.append(param_info)
 
+                        # All event signatures for this contract address, regardless of implementation
                         event_signatures.append({
                             'contract_address': contract_address,
+                            'implementation_address': implementation_address,
+                            'contract_name': contract_name,
                             'event_name': event_name,
                             'signature': signature_hash,
-                            'anonymous': anonymous, # Keep as bool for now, convert before insert
+                            'anonymous': anonymous,
                             'params': json.dumps(params),
                             'indexed_params': json.dumps(indexed_params),
                             'non_indexed_params': json.dumps(non_indexed_params)
@@ -153,8 +155,11 @@ if row_count > 0:
                                 'position': i + 1
                             })
 
+                        # All function signatures for this contract address, regardless of implementation
                         function_signatures.append({
                             'contract_address': contract_address,
+                            'implementation_address': implementation_address,
+                            'contract_name': contract_name,
                             'function_name': function_name,
                             'signature': signature_hash,
                             'state_mutability': state_mutability,
@@ -171,7 +176,6 @@ if row_count > 0:
 logger.info(f"Generated {len(event_signatures)} event signatures.")
 logger.info(f"Generated {len(function_signatures)} function signatures.")
 
-
 # --- Define CREATE TABLE IF NOT EXISTS statements ---
 
 # Define schema for event_signatures matching the insert columns
@@ -179,6 +183,8 @@ logger.info(f"Generated {len(function_signatures)} function signatures.")
 create_event_table_sql = f"""
 CREATE TABLE IF NOT EXISTS {database}.event_signatures (
     contract_address String,
+    implementation_address String,
+    contract_name String,
     event_name String,
     signature String,
     anonymous UInt8,
@@ -194,6 +200,8 @@ ORDER BY (contract_address, signature, event_name)
 create_function_table_sql = f"""
 CREATE TABLE IF NOT EXISTS {database}.function_signatures (
     contract_address String,
+    implementation_address String,
+    contract_name String,
     function_name String,
     signature String,
     state_mutability String,
@@ -226,6 +234,8 @@ try:
         for es in event_signatures:
             event_data.append([
                 es['contract_address'],
+                es['implementation_address'],
+                es['contract_name'],
                 es['event_name'],
                 es['signature'],
                 1 if es['anonymous'] else 0, # Conversion here
@@ -237,9 +247,9 @@ try:
         logger.info("Inserting event signatures...")
         client.insert(f"{database}.event_signatures", event_data,
                       column_names=[
-                          'contract_address', 'event_name', 'signature',
-                          'anonymous', 'params', 'indexed_params',
-                          'non_indexed_params'
+                          'contract_address', 'implementation_address', 'contract_name',
+                          'event_name', 'signature', 'anonymous', 'params', 
+                          'indexed_params', 'non_indexed_params'
                       ])
         logger.info(f"Successfully inserted {len(event_data)} event signatures.")
     else:
@@ -252,6 +262,8 @@ try:
         for fs in function_signatures:
             function_data.append([
                 fs['contract_address'],
+                fs['implementation_address'],
+                fs['contract_name'],
                 fs['function_name'],
                 fs['signature'],
                 fs['state_mutability'],
@@ -262,8 +274,9 @@ try:
         logger.info("Inserting function signatures...")
         client.insert(f"{database}.function_signatures", function_data,
                       column_names=[
-                          'contract_address', 'function_name', 'signature',
-                          'state_mutability', 'input_params', 'output_params'
+                          'contract_address', 'implementation_address', 'contract_name',
+                          'function_name', 'signature', 'state_mutability', 
+                          'input_params', 'output_params'
                       ])
         logger.info(f"Successfully inserted {len(function_data)} function signatures.")
     else:

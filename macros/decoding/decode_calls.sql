@@ -45,6 +45,8 @@ multiIf(
         toString(reinterpretAsUInt8(unhex({{ hex_exp }})) != 0),
     startsWith({{ t }}, 'bytes32'),
         lower({{ hex_exp }}),
+    startsWith({{ t }}, 'bytes'),
+        lower({{ hex_exp }}),
     NULL -- Default for unknown or unhandled types, or if hex_exp is NULL
 )
 {%- endmacro %}
