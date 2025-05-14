@@ -8,6 +8,7 @@
         partition_by='toStartOfMonth(visit_ended_at)',
         pre_hook=[
         "SET allow_experimental_json_type = 1"
+        ,"SET enable_dynamic_type = 1"
         ]
     )
 }}
@@ -18,15 +19,16 @@ WITH
 fork_digests AS (
     SELECT 
         tupleElement(tup, 1) AS fork_digest,
-        tupleElement(tup, 2) AS el_fork_name
+        tupleElement(tup, 2) AS cl_fork_name
     FROM (
         SELECT arrayJoin([
-            ('0x56fdb5e0','Istanbul'),
-            ('0x824be431','Berlin'),
-            ('0x21a6f836','London'),
-            ('0x3ebfd484','Merge/Paris'),
-            ('0x7d5aab40','Shapella'),
-            ('0xf9ab5f85','Dencun')
+            ('0xbc9a6864','Phase0'),
+            ('0x56fdb5e0','Altair'),
+            ('0x824be431','Bellatrix'),
+            ('0x21a6f836','Capella'),
+            ('0x3ebfd484','Deneb'),
+            ('0x7d5aab40','Electra'),
+            ('0xf9ab5f85','Fulu')
         ]) AS tup
     )
 ),
@@ -42,7 +44,8 @@ fork_version AS (
             ('0x02000064','Bellatrix'),
             ('0x03000064','Capella'),
             ('0x04000064','Deneb'),
-            ('0x05000064','Pectra')
+            ('0x05000064','Electra'),
+            ('0x06000064','Fulu')
         ]) AS tup
     )
 ),
@@ -53,8 +56,8 @@ gnosis_peers AS (
         ,peer_id
         ,agent_version
         ,CAST(peer_properties.fork_digest AS String) AS fork_digest
-        ,t2.el_fork_name 
-        ,t3.cl_fork_name 
+        ,t2.cl_fork_name AS cl_fork_name
+        ,COALESCE(t3.cl_fork_name,peer_properties.next_fork_version) AS cl_next_fork_name
         ,peer_properties
         ,crawl_error
         ,dial_errors
@@ -68,7 +71,7 @@ gnosis_peers AS (
         ON t1.peer_properties.next_fork_version = t3.fork_version
     WHERE
         (   peer_properties.fork_digest IN (SELECT fork_digest FROM fork_digests) 
-            AND
+            OR
             peer_properties.next_fork_version LIKE '%064'
         )
     {{ apply_monthly_incremental_filter('visit_ended_at',add_and='true') }}
