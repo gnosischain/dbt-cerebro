@@ -184,7 +184,7 @@ process AS (
       if(
         param_flags[i+1],
         -- indexed: decode topic value
-        if(
+        multiIf(
           param_types[i+1] = 'address',
           concat(
             '0x',
@@ -194,6 +194,12 @@ process AS (
               40
             )
           ),
+          startsWith(param_types[i+1],'uint'),
+          toString(
+                  reinterpretAsUInt256(
+                    reverse(unhex(data_words[i+1]))
+                  )
+                ),
           concat('0x', substring(replaceAll(raw_topics[i+1],'0x',''),1,64))
         ),
 
