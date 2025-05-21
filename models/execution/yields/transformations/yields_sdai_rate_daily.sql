@@ -15,11 +15,12 @@ WITH
 sdai_rate_sparse_daily AS (
     SELECT
         toStartOfDay(block_timestamp) AS date
-        ,AVG(toUInt256OrNull(decoded_params['assets']) / toUInt256OrNull(decoded_params['shares']))  AS sdai_conversion
+        ,median(toUInt256OrNull(decoded_params['assets']) / toUInt256OrNull(decoded_params['shares']))  AS sdai_conversion
     FROM 
         {{ ref('contracts_sdai_events') }}
     WHERE 
-        toUInt256OrNull(decoded_params['shares']) != 0
+        event_name = 'Deposit'
+        AND toUInt256OrNull(decoded_params['shares']) != 0
         AND block_timestamp < today()
         {{ apply_monthly_incremental_filter('block_timestamp','date','true') }}
     GROUP BY 1
@@ -77,7 +78,7 @@ sdai_daily_rate AS (
                 )
             {% endif %}
             )
-      ,4) AS rate
+      ,12) AS rate
   FROM (
     SELECT 
       t1.date
