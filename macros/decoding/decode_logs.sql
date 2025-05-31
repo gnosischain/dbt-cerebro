@@ -163,7 +163,7 @@ process AS (
                   substring(data_words[j+1], 25, 40)
                 ),
 
-              startsWith(ni_types[j+1],'uint'),
+              startsWith(ni_types[j+1],'uint') OR startsWith(ni_types[j+1],'int'),
                 toString(
                   reinterpretAsUInt256(
                     reverse(unhex(data_words[j+1]))
@@ -194,10 +194,10 @@ process AS (
               40
             )
           ),
-          startsWith(param_types[i+1],'uint'),
+          startsWith(param_types[i+1],'uint') OR startsWith(param_types[i+1],'int'),
           toString(
                   reinterpretAsUInt256(
-                    reverse(unhex(data_words[i+1]))
+                    reverse(unhex(raw_topics[i+1]))
                   )
                 ),
           concat('0x', substring(replaceAll(raw_topics[i+1],'0x',''),1,64))
