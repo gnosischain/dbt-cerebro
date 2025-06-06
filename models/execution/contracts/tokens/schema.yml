@@ -1,38 +1,115 @@
 version: 2
 models:
-- name: contracts_wxdai_events
-  description: 'TODO: Add description for contracts_wxdai_events'
-  meta:
-    sector: execution
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - execution
-    - contracts
-    - tokens
-  columns: []
-- name: contracts_wxdai_calls
-  description: 'TODO: Add description for contracts_wxdai_calls'
-  meta:
-    sector: execution
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - execution
-    - contracts
-    - tokens
-  columns: []
 - name: contracts_sdai_events
-  description: 'TODO: Add description for contracts_sdai_events'
-  meta:
-    sector: execution
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - execution
-    - contracts
-    - tokens
-  columns: []
+  description: This model contains events from the contracts_sdai contract.  It uses the `decode_logs` macro to parse event logs from the `execution.logs` table.
+  columns:
+  - name: block_number
+    description: The block number where the event occurred.
+    data_type: INTEGER
+  - name: block_hash
+    description: The hash of the block where the event occurred.
+    data_type: STRING
+  - name: block_timestamp
+    description: The timestamp of the block where the event occurred.
+    data_type: TIMESTAMP
+  - name: log_index
+    description: The index of the log within the block.
+    data_type: INTEGER
+  - name: transaction_hash
+    description: The hash of the transaction that emitted the event.
+    data_type: STRING
+  - name: transaction_index
+    description: The index of the transaction within the block.
+    data_type: INTEGER
+  - name: address
+    description: The address that emitted the event.
+    data_type: STRING
+  - name: data
+    description: The decoded event data.
+    data_type: JSON
+  - name: event_name
+    description: The name of the event.
+    data_type: STRING
+  tags:
+  - contracts
+  - sdai
+  - events
+  refs:
+  - source('execution', 'logs')
+- name: contracts_wxdai_calls
+  description: This model contains all calls made to the contracts_wxdai contract.  It's materialized incrementally using a delete+insert strategy for efficient updates.
+  columns:
+  - name: block_number
+    description: Number of the block where the call was made.
+    data_type: INTEGER
+  - name: block_hash
+    description: Hash of the block where the call was made.
+    data_type: STRING
+  - name: block_timestamp
+    description: Timestamp of the block where the call was made.
+    data_type: TIMESTAMP
+  - name: transaction_hash
+    description: Hash of the transaction containing the call.
+    data_type: STRING
+  - name: transaction_index
+    description: Index of the call within the transaction.
+    data_type: INTEGER
+  - name: from_address
+    description: Address that initiated the call.
+    data_type: STRING
+  - name: to_address
+    description: Address of the contract being called.
+    data_type: STRING
+  - name: function_signature
+    description: Signature of the function called.
+    data_type: STRING
+  - name: function_name
+    description: Name of the function called.
+    data_type: STRING
+  - name: inputs
+    description: Inputs to the function call.
+    data_type: JSON
+  - name: outputs
+    description: Outputs of the function call.
+    data_type: JSON
+  - name: call_data
+    description: Raw call data.
+    data_type: STRING
+  tags:
+  - contracts
+  - wxdai
+  - calls
+  refs:
+  - source('execution', 'transactions')
+- name: contracts_wxdai_events
+  description: WXDAI contract events decoded from logs.  This model uses the `decode_logs` macro to parse event logs from the `execution.logs` table for the WXDAI contract (0xe91d153e0b41518a2ce8dd3d7944fa863463a97d).  Data is incrementally updated using `delete+insert` strategy.
+  columns:
+  - name: block_number
+    description: Number of the block where the event occurred.
+    data_type: INTEGER
+  - name: block_timestamp
+    description: Timestamp of the block where the event occurred.
+    data_type: TIMESTAMP
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: INTEGER
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: STRING
+  - name: contract_address
+    description: Address of the contract that emitted the event.
+    data_type: STRING
+  - name: event_name
+    description: Name of the event.
+    data_type: STRING
+  - name: event_data
+    description: Parsed JSON data from the event.
+    data_type: JSON
+  - name: data
+    description: Raw event data.
+    data_type: STRING
+  tags:
+  - contracts
+  - wxdai
+  - events
+  - execution

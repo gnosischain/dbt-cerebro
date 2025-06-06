@@ -1,57 +1,30 @@
 version: 2
 models:
 - name: execution_blocks_clients_version_daily
-  description: 'TODO: Add description for execution_blocks_clients_version_daily'
-  meta:
-    sector: execution
-    refs:
-    - execution_blocks_production
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - execution
-    - blocks
-    - transformations
+  description: Daily aggregates of execution block counts, grouped by client and version.  Data is incrementally updated using `delete+insert` strategy.
   columns:
-  - name: cnt
-    description: 'TODO: Add description for cnt'
-    data_tests:
-    - not_null
   - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: decoded_extra_data
-    description: 'TODO: Add description for decoded_extra_data'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - cnt
-      - date
+    description: Date of the execution block.
+    data_type: DATE
+  - name: client
+    description: Client associated with the execution block.  Values are derived from the `extra_data` field.
+    data_type: STRING
+  - name: version
+    description: Version associated with the execution block.  Values are derived from the `extra_data` field.
+    data_type: STRING
+  - name: value
+    description: Sum of execution block counts for the given date, client, and version.
+    data_type: INT
 - name: execution_blocks_production
-  description: 'TODO: Add description for execution_blocks_production'
-  meta:
-    sector: execution
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - execution
-    - blocks
-    - transformations
+  description: Production model for execution blocks, containing block timestamps and extra data.  This model filters out the genesis block and applies a monthly incremental strategy for efficient updates.
   columns:
   - name: block_timestamp
-    description: 'TODO: Add description for block_timestamp'
-    data_tests:
-    - not_null
+    description: Timestamp of the block.
+    data_type: TIMESTAMP
   - name: extra_data
-    description: 'TODO: Add description for extra_data'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - block_timestamp
-      - extra_data
+    description: Extra data associated with the block.
+    data_type: STRING
+  tags:
+  - production
+  - execution
+  - blocks

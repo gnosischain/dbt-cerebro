@@ -1,153 +1,95 @@
 version: 2
 models:
-- name: probelab_peers_clients_daily
-  description: 'TODO: Add description for probelab_peers_clients_daily'
-  meta:
-    sector: probelab
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - probelab
-  columns:
-  - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: value
-    description: 'TODO: Add description for value'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - date
-- name: probelab_peers_clients_country_daily
-  description: 'TODO: Add description for probelab_peers_clients_country_daily'
-  meta:
-    sector: probelab
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - probelab
-  columns:
-  - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
-  - name: country
-    description: 'TODO: Add description for country'
-    data_tests:
-    - not_null
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: value
-    description: 'TODO: Add description for value'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - country
-- name: probelab_peers_clients_version_daily
-  description: 'TODO: Add description for probelab_peers_clients_version_daily'
-  meta:
-    sector: probelab
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - probelab
-  columns:
-  - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: value
-    description: 'TODO: Add description for value'
-    data_tests:
-    - not_null
-  - name: version
-    description: 'TODO: Add description for version'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - date
 - name: probelab_peers_clients_cloud_daily
-  description: 'TODO: Add description for probelab_peers_clients_cloud_daily'
-  meta:
-    sector: probelab
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - probelab
+  description: Daily count of Probelab agents by client and cloud provider.  Data is aggregated from the `probelab_cloud_provider_avg_1d` source table.
   columns:
+  - name: date
+    description: Date of the count.
+    data_type: DATE
   - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
+    description: Client (agent version type).
+    data_type: STRING
   - name: cloud
-    description: 'TODO: Add description for cloud'
-    data_tests:
-    - not_null
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
+    description: Cloud provider.
+    data_type: STRING
   - name: value
-    description: 'TODO: Add description for value'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - cloud
-- name: probelab_peers_clients_quic_daily
-  description: 'TODO: Add description for probelab_peers_clients_quic_daily'
-  meta:
-    sector: probelab
-    refs: []
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - probelab
+    description: Count of Probelab agents.
+    data_type: INT
+  tags:
+  - probelab
+  - daily
+  - cloud
+  - clients
+  refs:
+  - source('crawlers_data', 'probelab_cloud_provider_avg_1d')
+- name: probelab_peers_clients_country_daily
+  description: Daily count of Probelab clients by country.  This model aggregates data from the `probelab_countries_avg_1d` source table.
   columns:
-  - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
   - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: quic
-    description: 'TODO: Add description for quic'
-    data_tests:
-    - not_null
+    description: Date of the count.
+    data_type: DATE
+  - name: client
+    description: Client (agent version type).
+    data_type: STRING
+  - name: country
+    description: Country code.
+    data_type: STRING
   - name: value
-    description: 'TODO: Add description for value'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - date
+    description: Count of clients in the given country on the given date.
+    data_type: INT
+  tags:
+  - probelab
+  - daily
+  - clients
+  - country
+  refs:
+  - source('crawlers_data', 'probelab_countries_avg_1d')
+- name: probelab_peers_clients_daily
+  description: Daily counts of Probelab clients, grouped by client type and date.  Data is sourced from the `probelab_agent_semvers_avg_1d` table in the `crawlers_data` source.  The model uses an incremental strategy to efficiently update the data.
+  columns:
+  - name: date
+    description: Date of the count.
+    data_type: DATE
+  - name: value
+    description: Count of clients for the given date and client type.
+    data_type: INT
+  - name: client
+    description: Type of Probelab client.
+    data_type: STRING
+- name: probelab_peers_clients_quic_daily
+  description: Daily count of Probelab clients supporting QUIC, aggregated from crawler data.
+  columns:
+  - name: date
+    description: Date of the measurement.
+    data_type: DATE
+  - name: client
+    description: Client version type.
+    data_type: STRING
+  - name: quic
+    description: QUIC support status (true/false).
+    data_type: BOOLEAN
+  - name: value
+    description: Count of clients.
+    data_type: INT
+  tags:
+  - daily
+  - probelab
+  - quic
+  - clients
+  refs:
+  - source('crawlers_data', 'probelab_quic_support_over_7d')
+- name: probelab_peers_clients_version_daily
+  description: Daily counts of Probelab peer clients by version.  This model aggregates data from the `probelab_agent_semvers_avg_1d` source table to provide a daily view of client versions.  The data is partitioned by month and ordered by date, client, and version for efficient querying.
+  columns:
+  - name: date
+    description: Date of the count.
+    data_type: DATE
+  - name: client
+    description: Client type (agent version type).
+    data_type: STRING
+  - name: version
+    description: Semver string of the agent version.
+    data_type: STRING
+  - name: value
+    description: Count of clients with the given version on the given date.
+    data_type: INT

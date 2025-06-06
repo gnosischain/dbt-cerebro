@@ -2,7 +2,7 @@
    decode_logs.sql - Decode EVM Contract Event Logs
 
    This macro decodes raw blockchain event logs into human-readable event
-   parameters based on the contract’s ABI event signatures.
+   parameters based on the contracts ABI event signatures.
 
    Purpose:
    - Filters logs by contract address and topic0 signature
@@ -10,6 +10,7 @@
    - Separates indexed (topics) vs non-indexed (data) parameters
    - Applies head-/tail-style decoding only over the packed non-indexed data
    - Handles address extraction from topics, plus static/dynamic types
+   - Converts string types from hex to readable text
    - Assembles a Map or JSON string mapping parameter names to values
 
    Parameters:
@@ -127,23 +128,22 @@ process AS (
           if(
             toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) IS NOT NULL
             AND (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32 + 1) * 64 < length(data_hex),
-            concat(
-              '0x',
-              substring(
-                data_hex,
-                1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32 + 1) * 64,
-                toUInt32(
-                  reinterpretAsUInt256(
-                    reverse(unhex(
-                      substring(
-                        data_hex,
-                        1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32) * 64,
-                        64
-                      )
-                    ))
-                  )
-                ) * 2
-              )
+            
+            -- Extract the raw hex data first
+            substring(
+              data_hex,
+              1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32 + 1) * 64,
+              toUInt32(
+                reinterpretAsUInt256(
+                  reverse(unhex(
+                    substring(
+                      data_hex,
+                      1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32) * 64,
+                      64
+                    )
+                  ))
+                )
+              ) * 2
             ),
             NULL
           )
@@ -174,6 +174,27 @@ process AS (
             ),
             NULL
           )
+        )
+      ),
+      range(length(ni_types))
+    ) AS raw_decoded_values,
+
+    -- Convert string types from hex to text
+    arrayMap(j ->
+      if(
+        ni_types[j+1] = 'string' AND raw_decoded_values[j+1] IS NOT NULL,
+        -- Convert hex to UTF-8 string, removing null bytes
+        replaceRegexpAll(
+          reinterpretAsString(unhex(raw_decoded_values[j+1])),
+          '\0',
+          ''
+        ),
+        -- For non-string types, keep the original value but add 0x prefix for bytes
+        if(
+          (ni_types[j+1] = 'bytes' OR (startsWith(ni_types[j+1],'bytes') AND ni_types[j+1] != 'bytes32'))
+          AND raw_decoded_values[j+1] IS NOT NULL,
+          concat('0x', raw_decoded_values[j+1]),
+          raw_decoded_values[j+1]
         )
       ),
       range(length(ni_types))

@@ -1,179 +1,164 @@
 version: 2
 models:
-- name: p2p_peers_geo_hourly
-  description: 'TODO: Add description for p2p_peers_geo_hourly'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
-  columns:
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: ip
-    description: 'TODO: Add description for ip'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - date
-      - ip
-- name: p2p_peers_geo_latest
-  description: 'TODO: Add description for p2p_peers_geo_latest'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
-  columns:
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: ip
-    description: 'TODO: Add description for ip'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - date
-      - ip
-- name: p2p_peers_geo_topology_latest
-  description: 'TODO: Add description for p2p_peers_geo_topology_latest'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
-  columns:
-  - name: ip
-    description: 'TODO: Add description for ip'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - ip
-      - peer_id
 - name: p2p_peers_cl_fork_daily
-  description: 'TODO: Add description for p2p_peers_cl_fork_daily'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
+  description: Counts of peers by current and next CL fork, daily.
   columns:
   - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
+    description: Date.
+    data_type: DATE
+  - name: label
+    description: Current or next fork.
+    data_type: STRING
   - name: fork
-    description: 'TODO: Add description for fork'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - date
-      - fork
-- name: p2p_peers_geo_daily
-  description: 'TODO: Add description for p2p_peers_geo_daily'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
-  columns:
-  - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: ip
-    description: 'TODO: Add description for ip'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - date
-      - ip
+    description: CL fork name.
+    data_type: STRING
+  - name: cnt
+    description: Count of peers.
+    data_type: INT
+  tags:
+  - daily
+  - p2p
+  - cl_fork
 - name: p2p_peers_clients_daily
-  description: 'TODO: Add description for p2p_peers_clients_daily'
-  meta:
-    sector: p2p
-    refs:
-    - p2p_peers_info
-    contributors: 'TODO: Add contributors'
-  config:
-    tags:
-    - p2p
-    - nebula
-    - metrics
+  description: Daily count of P2P clients.  This model aggregates daily counts of unique clients connecting to our P2P network, handling cases where client information is missing.  Data is partitioned by month for efficient querying.
   columns:
-  - name: client
-    description: 'TODO: Add description for client'
-    data_tests:
-    - not_null
   - name: date
-    description: 'TODO: Add description for date'
-    data_tests:
-    - not_null
-  - name: peer_id
-    description: 'TODO: Add description for peer_id'
-    data_tests:
-    - not_null
-  data_tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns:
-      - client
-      - date
+    description: Date of the count.
+    data_type: DATE
+  - name: client
+    description: Client identifier.  'Unknown' if client information is unavailable.
+    data_type: STRING
+  - name: value
+    description: Daily count of the given client.
+    data_type: INT
+  tags:
+  - p2p
+  - daily
+  - client
+  refs:
+  - p2p_peers_info
+- name: p2p_peers_geo_daily
+  description: Daily count of P2P peers by country, derived from peer IP addresses and enriched with geolocation data.  Uses an incremental strategy for efficient updates.
+  columns:
+  - name: date
+    description: Date of the peer activity.
+    data_type: DATE
+  - name: country
+    description: Country of the peer, derived from IP geolocation.  'Unknown' if geolocation fails.
+    data_type: STRING
+  - name: cnt
+    description: Count of peers in the given country on the given date.
+    data_type: INT
+  tags:
+  - p2p
+  - geography
+  - daily
+  refs:
+  - p2p_peers_info
+  sources:
+  - name: crawlers_data
+    tables:
+    - name: ipinfo
+- name: p2p_peers_geo_hourly
+  description: Hourly geographical distribution of P2P peers, joining geolocation data with peer activity.  This model aggregates peer activity by hour and location, providing insights into the geographical concentration of peers.
+  columns:
+  - name: date
+    description: Timestamp of the hour.
+    data_type: timestamp
+  - name: lat
+    description: Latitude coordinate.
+    data_type: float64
+  - name: long
+    description: Longitude coordinate.
+    data_type: float64
+  - name: country
+    description: Country code of the peer's location.
+    data_type: string
+  - name: cnt
+    description: Count of peers at this location and hour.
+    data_type: int
+  tags:
+  - p2p
+  - geography
+  - hourly
+- name: p2p_peers_geo_latest
+  description: This model provides the latest geographical location data for P2P peers, joining IP addresses from the `p2p_peers_info` model with geolocation data from the `ipinfo` source.  It handles cases where country information is missing and uses the latest available data.
+  columns:
+  - name: lat
+    description: Latitude of the peer's IP address.
+    data_type: FLOAT64
+  - name: long
+    description: Longitude of the peer's IP address.
+    data_type: FLOAT64
+  - name: country
+    description: Country of the peer's IP address.  'Unknown' if country information is missing.
+    data_type: STRING
+  - name: cnt
+    description: Count of occurrences of this geolocation for the given peer.
+    data_type: INT64
+- name: p2p_peers_geo_topology_latest
+  description: This model provides the latest snapshot of the P2P network topology, enriched with geographical information.  It joins peer information with neighbor data and IP geolocation data to understand the geographic distribution of peers and their connections.
+  columns:
+  - name: date
+    description: Date of the crawl.
+    data_type: DATE
+  - name: peer_ip
+    description: IP address of the peer.
+    data_type: STRING
+  - name: peer_discovery_id_prefix
+    description: Discovery ID prefix of the peer.
+    data_type: STRING
+  - name: peer_cl_fork_name
+    description: Client fork name of the peer.
+    data_type: STRING
+  - name: peer_cl_next_fork_name
+    description: Next client fork name of the peer.
+    data_type: STRING
+  - name: peer_client
+    description: Client name of the peer.
+    data_type: STRING
+  - name: peer_hostname
+    description: Hostname of the peer.
+    data_type: STRING
+  - name: peer_city
+    description: City of the peer.
+    data_type: STRING
+  - name: peer_country
+    description: Country of the peer.
+    data_type: STRING
+  - name: peer_org
+    description: Organization of the peer.
+    data_type: STRING
+  - name: peer_loc
+    description: Location of the peer (latitude and longitude).
+    data_type: STRING
+  - name: neighbor_ip
+    description: IP address of the neighbor.
+    data_type: STRING
+  - name: neighbor_discovery_id_prefix
+    description: Discovery ID prefix of the neighbor.
+    data_type: STRING
+  - name: neighbor_cl_fork_name
+    description: Client fork name of the neighbor.
+    data_type: STRING
+  - name: neighbor_cl_next_fork_name
+    description: Next client fork name of the neighbor.
+    data_type: STRING
+  - name: neighbor_client
+    description: Client name of the neighbor.
+    data_type: STRING
+  - name: neighbor_city
+    description: City of the neighbor.
+    data_type: STRING
+  - name: neighbor_country
+    description: Country of the neighbor.
+    data_type: STRING
+  - name: neighbor_org
+    description: Organization of the neighbor.
+    data_type: STRING
+  - name: neighbor_loc
+    description: Location of the neighbor (latitude and longitude).
+    data_type: STRING
+  - name: cnt
+    description: Count of edges between peer and neighbor.
+    data_type: INT

@@ -3,7 +3,7 @@
         materialized='incremental',
         incremental_strategy='delete+insert',
         engine='ReplacingMergeTree()',
-        order_by='(visit_ended_at)',
+        order_by='(visit_ended_at,peer_id)',
         unique_key='(visit_ended_at,peer_id)',
         partition_by='toStartOfMonth(visit_ended_at)',
         pre_hook=[

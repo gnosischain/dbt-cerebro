@@ -3,9 +3,12 @@
         materialized='incremental',
         incremental_strategy='delete+insert',
         engine='ReplacingMergeTree()',
-        order_by='(date, fork)',
-        unique_key='(date, fork)',
-        partition_by='toStartOfMonth(date)'
+        order_by='(date, label, fork)',
+        unique_key='(date, label, fork)',
+        partition_by='toStartOfMonth(date)',
+        settings={
+            'allow_nullable_key': 1
+        }
     ) 
 }}
 
@@ -15,7 +18,8 @@ peers AS (
     SELECT
         toStartOfDay(visit_ended_at) AS date
         ,peer_id
-        ,COALESCE(any(cl_fork_name),'Unknown') AS fork
+        ,toString(any(cl_fork_name)) AS fork
+        ,toString(any(cl_next_fork_name)) AS next_fork
     FROM {{ ref('p2p_peers_info') }}
     WHERE
         empty(dial_errors) = 1 AND crawl_error IS NULL
@@ -25,7 +29,18 @@ peers AS (
 
 SELECT
     date
-    ,fork
+    ,'Current Fork' AS label
+    ,fork AS fork
     ,COUNT(*) AS cnt
 FROM peers
-GROUP BY 1, 2
+GROUP BY 1, 2, 3
+
+UNION ALL
+
+SELECT
+    date
+    ,'Next Fork' AS label
+    ,next_fork AS fork
+    ,COUNT(*) AS cnt
+FROM peers
+GROUP BY 1, 2, 3

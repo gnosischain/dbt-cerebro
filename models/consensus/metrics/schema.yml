@@ -1,0 +1,56 @@
+version: 2
+models:
+- name: consensus_validators_balances_dist_daily
+  description: Daily distribution of validator balances, showing quantiles.  Data is calculated from the `consensus.validators` source table and includes quantiles (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95) of validator balances (in billions).
+  columns:
+  - name: date
+    description: Date of the balance distribution.
+    data_type: DATE
+  - name: q05
+    description: 5th percentile of validator balances (in billions).
+    data_type: FLOAT
+  - name: q10
+    description: 10th percentile of validator balances (in billions).
+    data_type: FLOAT
+  - name: q25
+    description: 25th percentile of validator balances (in billions).
+    data_type: FLOAT
+  - name: q50
+    description: 50th percentile (median) of validator balances (in billions).
+    data_type: FLOAT
+  - name: q75
+    description: 75th percentile of validator balances (in billions).
+    data_type: FLOAT
+  - name: q90
+    description: 90th percentile of validator balances (in billions).
+    data_type: FLOAT
+  - name: q95
+    description: 95th percentile of validator balances (in billions).
+    data_type: FLOAT
+  tags:
+  - daily
+  - distribution
+  - validators
+  - consensus
+- name: consensus_validators_status_daily
+  description: Daily count of validators by status.
+  columns:
+  - name: date
+    description: Date of the count.
+    data_type: DATE
+  - name: status
+    description: Status of the validator.
+    data_type: VARCHAR
+  - name: cnt
+    description: Count of validators with the given status on the given date.
+    data_type: INT
+  tags:
+  - daily
+  - consensus
+  - validators
+  materialized: incremental
+  incremental_strategy: delete+insert
+  engine: ReplacingMergeTree()
+  order_by: (date, status)
+  unique_key: (date, status)
+  partition_by: toStartOfMonth(date)

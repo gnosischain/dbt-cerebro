@@ -1,9 +1,9 @@
 name: Build & Release DBT Cerebro
 
 on:
-    push:
-      branches:
-        - main
+  push:
+    branches:
+      - main
 
 concurrency:
   group: gnosis-dbt-${{ github.ref }}
@@ -11,11 +11,8 @@ concurrency:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-      
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -23,7 +20,6 @@ jobs:
         id: org_name
         run: |
           org_name=$(echo "${{ github.repository_owner }}")
-          echo "Organization Name: $org_name"
           echo "org_name=$org_name" >> $GITHUB_OUTPUT
 
       - name: Extract commit
@@ -45,9 +41,46 @@ jobs:
           docker buildx build --platform linux/amd64,linux/arm64 \
             --tag ghcr.io/${{ steps.org_name.outputs.org_name }}/gc-gnosis-dbt:latest \
             --push .
-    
+
       - name: Push Versioned
         run: |
           docker buildx build --platform linux/amd64,linux/arm64 \
             --tag ghcr.io/${{ steps.org_name.outputs.org_name }}/gc-gnosis-dbt:${{ steps.commit.outputs.short }} \
             --push .
+
+  deploy-docs:
+    # Wait for build to finish (so that `main` branch is fully up to date)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # Must fetch full history so we can push to gh-pages
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dbt (ClickHouse adapter)
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.9.4 dbt-clickhouse==1.9.1
+
+      - name: Install dbt dependencies
+        run: |
+          dbt deps
+
+      - name: Generate dbt docs
+        run: |
+          dbt docs generate
+
+      - name: Deploy docs to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target      # dbt writes its static site into target/
+          publish_branch: gh-pages   # push into gh-pages branch
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
