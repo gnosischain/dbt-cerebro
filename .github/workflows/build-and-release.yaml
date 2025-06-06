@@ -11,7 +11,9 @@ concurrency:
 
 jobs:
   build:
+    name: Build & Push Docker Images
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,14 +51,23 @@ jobs:
             --push .
 
   deploy-docs:
-    # Wait for build to finish (so that `main` branch is fully up to date)
+    name: Generate & Deploy dbt Docs
     needs: build
     runs-on: ubuntu-latest
+
+    # Provide the ClickHouse connection details as environment variables
+    env:
+      CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
+      CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+      CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+      CLICKHOUSE_DATABASE: ${{ secrets.CLICKHOUSE_DATABASE }}
+      CLICKHOUSE_SCHEMA: ${{ secrets.CLICKHOUSE_SCHEMA }}
+
     steps:
       - name: Checkout (with full history)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0       # Must fetch full history so we can push to gh-pages
+          fetch-depth: 0     # Required so that gh-pages can be updated correctly
 
       - name: Setup Python 3.9
         uses: actions/setup-python@v4
@@ -68,7 +79,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install dbt-core==1.9.4 dbt-clickhouse==1.9.1
 
-      - name: Install dbt dependencies
+      - name: Install dbt package dependencies
         run: |
           dbt deps
 
@@ -80,7 +91,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./target      # dbt writes its static site into target/
-          publish_branch: gh-pages   # push into gh-pages branch
+          publish_dir: ./target        # Path where dbt puts generated docs
+          publish_branch: gh-pages     # Branch to push the static site to
           user_name: "github-actions[bot]"
           user_email: "github-actions[bot]@users.noreply.github.com"
