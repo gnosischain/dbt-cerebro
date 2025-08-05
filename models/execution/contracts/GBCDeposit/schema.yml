@@ -1,70 +1,134 @@
 version: 2
 models:
+
 - name: contracts_GBCDeposit_calls
-  description: This model contains decoded call data for the GBCDeposit contract (0x0B98057eA310F4d31F2a452B414647007d1645d9) extracted from the `transactions` table.  It uses the `decode_calls` macro to parse the call data.
+  description: Business-facing model capturing GBCDeposit call data, including transaction details, contract creation, logs, native transfers, and related metadata for analysis.
   columns:
   - name: block_number
-    description: The block number where the transaction was included.
-    data_type: INTEGER
-  - name: block_hash
-    description: The hash of the block where the transaction was included.
-    data_type: STRING
-  - name: block_timestamp
-    description: The timestamp of the block where the transaction was included.
-    data_type: TIMESTAMP
+    description: Block height containing the transaction.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: transaction_hash
-    description: The hash of the transaction.
-    data_type: STRING
+    description: Unique hash identifying the transaction.
+    data_type: String
+    tests:
+    - not_null
+    - unique
   - name: transaction_index
-    description: The index of the transaction within the block.
-    data_type: INTEGER
-  - name: from_address
-    description: The address that initiated the transaction.
-    data_type: STRING
-  - name: to_address
-    description: The address the transaction was sent to.
-    data_type: STRING
-  - name: gas_used
-    description: The amount of gas used by the transaction.
-    data_type: INTEGER
-  - name: trace_address
-    description: The trace address of the call.
-    data_type: STRING
-  - name: call_data
-    description: The decoded call data.
-    data_type: JSON
-  - name: success
-    description: Whether the call was successful.
-    data_type: BOOLEAN
-  tags:
-  - contracts
-  - calls
-  - gbcdeposit
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: block_timestamp
+    description: UTC timestamp of the block (materialized from `block_timestamp`).
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: contract_address
+    description: Address of the deployed contract.
+    data_type: String
+    tests:
+    - not_null
+  - name: deployer
+    description: Address that initiated the contract deployment.
+    data_type: String
+  - name: init_code
+    description: Constructor byte-code executed during deployment.
+    data_type: String
+  - name: code
+    description: Runtime byte-code stored at the contract address.
+    data_type: String
+  - name: init_code_hash
+    description: Keccak-256 hash of `init_code`.
+    data_type: String
+  - name: code_hash
+    description: Keccak-256 hash of runtime code.
+    data_type: String
+  - name: n_init_code_bytes
+    description: Size of `init_code` in bytes.
+    data_type: UInt32
+  - name: n_code_bytes
+    description: Size of `code` in bytes.
+    data_type: UInt32
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: create_index
+    description: Index of contract creation within the transaction.
+    data_type: UInt32
+  - name: block_hash
+    description: Hash of the block containing the transaction.
+    data_type: String
+  - name: insert_version
+    description: Monotonic ingestion version (nanoseconds).
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - contracts
+    - GBCDeposit
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: contracts_GBCDeposit_events
-  description: This model contains events emitted by the GBCDeposit contract (0x0B98057eA310F4d31F2a452B414647007d1645d9).  It's materialized incrementally using a delete+insert strategy for efficient updates.  The data is partitioned by month for improved query performance.
+  description: Business-facing model capturing GBC deposit events, including transaction details, logs, contract creation, and associated metadata for analysis and reporting.
   columns:
   - name: block_number
-    description: The block number where the event occurred.
-    data_type: INTEGER
-  - name: block_timestamp
-    description: The timestamp of the block where the event occurred.
-    data_type: TIMESTAMP
+    description: Block height containing the event.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: block_hash
+    description: Hash of the block containing the event.
+    data_type: String
   - name: log_index
-    description: The index of the log within the block.
-    data_type: INTEGER
+    description: Index of the log within the block.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: STRING
-  - name: contract_address
-    description: The address of the contract that emitted the event.
-    data_type: STRING
-  - name: event_name
-    description: The name of the event.
-    data_type: STRING
-  - name: event_data
-    description: The data associated with the event.  This will be a JSON object containing the event parameters.
-    data_type: JSON
-  tags:
-  - contracts
-  - events
-  - gbcdeposit
+    description: Hash of the transaction emitting the event.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: address
+    description: Contract address emitting the event.
+    data_type: String
+  - name: event_type
+    description: Type of deposit event (e.g., 'GBCDeposit').
+    data_type: String
+  - name: deposit_amount
+    description: Amount deposited in wei.
+    data_type: String
+  - name: depositor
+    description: Address of the depositor.
+    data_type: String
+  - name: deposit_timestamp
+    description: UTC timestamp when deposit was recorded.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: transaction_index
+    description: Transaction index within the block.
+    data_type: UInt64
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: insert_version
+    description: Ingestion version timestamp.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - gbc
+    - deposit
+    - events
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer

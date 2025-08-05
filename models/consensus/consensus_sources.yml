@@ -2,6 +2,626 @@ version: 2
 
 sources:
   - name: consensus
+    description: "Consensus-layer (Beacon chain) data captured from Gnosis Chain beacon nodes. Authoritative state from crawler-transformed beacon API responses."
     schema: consensus
+    loaded_at_field: slot_timestamp
+    tags: ["gnosis", "consensus", "beacon", "authoritative"]
+
     tables:
+
+      - name: blocks
+        description: "Beacon blocks with execution payload fields when applicable."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+            description: "Slot number."
+          - name: proposer_index
+            data_type: UInt64
+            description: "Index of the proposing validator."
+          - name: parent_root
+            data_type: String
+            description: "Parent block root."
+          - name: state_root
+            data_type: String
+            description: "State root."
+          - name: signature
+            data_type: String
+            description: "Block signature."
+          - name: version
+            data_type: String
+            description: "Fork version label for this block (e.g., bellatrix, capella)."
+          - name: randao_reveal
+            data_type: String
+            description: "RANDAO reveal for randomness."
+          - name: graffiti
+            data_type: String
+            description: "Graffiti field."
+          - name: eth1_deposit_root
+            data_type: String
+            description: "Eth1 deposit root."
+          - name: eth1_deposit_count
+            data_type: UInt64
+            description: "Eth1 deposit count."
+          - name: eth1_block_hash
+            data_type: String
+            description: "Eth1 block hash."
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp materialized from slot."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+          - name: sync_aggregate_participation
+            data_type: UInt64
+            description: "Number of sync committee participants."
+          - name: sync_aggregate_signature
+            data_type: String
+            description: "Signature for sync aggregate."
+          - name: execution_payload_block_hash
+            data_type: String
+            description: "Execution payload block hash."
+          - name: execution_payload_parent_hash
+            data_type: String
+            description: "Execution payload parent hash."
+          - name: execution_payload_fee_recipient
+            data_type: String
+            description: "Fee recipient (coinbase) for execution payload."
+          - name: execution_payload_state_root
+            data_type: String
+            description: "Execution payload state root."
+          - name: execution_payload_receipts_root
+            data_type: String
+            description: "Execution payload receipts root."
+          - name: execution_payload_logs_bloom
+            data_type: String
+            description: "Execution payload logs bloom."
+          - name: execution_payload_prev_randao
+            data_type: String
+            description: "Execution payload prev randao."
+          - name: execution_payload_block_number
+            data_type: UInt64
+            description: "Execution payload block number."
+          - name: execution_payload_gas_limit
+            data_type: UInt64
+            description: "Execution payload gas limit."
+          - name: execution_payload_gas_used
+            data_type: UInt64
+            description: "Execution payload gas used."
+          - name: execution_payload_timestamp
+            data_type: UInt64
+            description: "Execution payload timestamp (seconds)."
+          - name: execution_payload_extra_data
+            data_type: String
+            description: "Execution payload extra data."
+          - name: execution_payload_base_fee_per_gas
+            data_type: String
+            description: "Execution payload base fee per gas."
+          - name: withdrawals_root
+            data_type: String
+            description: "Root of withdrawals."
+          - name: withdrawals_count
+            data_type: UInt32
+            description: "Count of withdrawals in block."
+          - name: blob_kzg_commitments_count
+            data_type: UInt32
+            description: "Blob KZG commitments count (Deneb+)."
+          - name: blob_kzg_commitments_root
+            data_type: String
+            description: "Root of blob KZG commitments."
+          - name: execution_requests_count
+            data_type: UInt32
+            description: "Count of execution requests."
+
+      - name: attestations
+        description: "Attestation records included in blocks."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+            description: "Enclosing block slot."
+          - name: attestation_index
+            data_type: UInt64
+            description: "Index within the block."
+          - name: aggregation_bits
+            data_type: String
+            description: "Aggregation bitfield."
+          - name: signature
+            data_type: String
+            description: "BLS signature."
+          - name: attestation_slot
+            data_type: UInt64
+            description: "Attested slot."
+          - name: committee_index
+            data_type: UInt64
+            description: "Committee index."
+          - name: beacon_block_root
+            data_type: String
+            description: "Beacon block root."
+          - name: source_epoch
+            data_type: UInt64
+            description: "Source epoch."
+          - name: source_root
+            data_type: String
+            description: "Source root."
+          - name: target_epoch
+            data_type: UInt64
+            description: "Target epoch."
+          - name: target_root
+            data_type: String
+            description: "Target root."
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp from slot."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version."
+
+      - name: attester_slashings
+        description: "Attester slashing events."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: slashing_index
+            data_type: UInt64
+          - name: att_1_slot
+            data_type: UInt64
+          - name: att_1_committee_index
+            data_type: UInt64
+          - name: att_1_beacon_block_root
+            data_type: String
+          - name: att_1_source_epoch
+            data_type: UInt64
+          - name: att_1_source_root
+            data_type: String
+          - name: att_1_target_epoch
+            data_type: UInt64
+          - name: att_1_target_root
+            data_type: String
+          - name: att_1_signature
+            data_type: String
+          - name: att_1_attesting_indices
+            data_type: Array(UInt64)
+          - name: att_1_validator_count
+            data_type: UInt32
+          - name: att_2_slot
+            data_type: UInt64
+          - name: att_2_committee_index
+            data_type: UInt64
+          - name: att_2_beacon_block_root
+            data_type: String
+          - name: att_2_source_epoch
+            data_type: UInt64
+          - name: att_2_source_root
+            data_type: String
+          - name: att_2_target_epoch
+            data_type: UInt64
+          - name: att_2_target_root
+            data_type: String
+          - name: att_2_signature
+            data_type: String
+          - name: att_2_attesting_indices
+            data_type: Array(UInt64)
+          - name: att_2_validator_count
+            data_type: UInt32
+          - name: total_slashed_validators
+            data_type: UInt32
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: blob_commitments
+        description: "KZG blob commitments per slot."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: commitment_index
+            data_type: UInt64
+          - name: commitment
+            data_type: String
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: blob_sidecars
+        description: "Blob sidecars accompanying Deneb blocks."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: blob_index
+            data_type: UInt64
+          - name: kzg_commitment
+            data_type: String
+          - name: kzg_proof
+            data_type: String
+          - name: blob_size
+            data_type: UInt64
+          - name: blob_hash
+            data_type: String
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: bls_changes
+        description: "BLS-to-execution address change operations."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: change_index
+            data_type: UInt64
+          - name: signature
+            data_type: String
+          - name: validator_index
+            data_type: UInt64
+          - name: from_bls_pubkey
+            data_type: String
+          - name: to_execution_address
+            data_type: String
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: deposits
+        description: "Eth1 deposits included in the beacon chain."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: deposit_index
+            data_type: UInt64
+          - name: pubkey
+            data_type: String
+          - name: withdrawal_credentials
+            data_type: String
+          - name: amount
+            data_type: UInt64
+          - name: signature
+            data_type: String
+          - name: proof
+            data_type: Array(String)
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: execution_payloads
+        description: "Execution payloads embedded in beacon blocks."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: parent_hash
+            data_type: String
+          - name: fee_recipient
+            data_type: String
+          - name: state_root
+            data_type: String
+          - name: receipts_root
+            data_type: String
+          - name: logs_bloom
+            data_type: String
+          - name: prev_randao
+            data_type: String
+          - name: block_number
+            data_type: UInt64
+          - name: gas_limit
+            data_type: UInt64
+          - name: gas_used
+            data_type: UInt64
+          - name: base_fee_per_gas
+            data_type: String
+          - name: block_hash
+            data_type: String
+          - name: blob_gas_used
+            data_type: UInt64
+          - name: excess_blob_gas
+            data_type: UInt64
+          - name: extra_data
+            data_type: String
+          - name: transactions_count
+            data_type: UInt64
+          - name: withdrawals_count
+            data_type: UInt64
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: execution_requests
+        description: "Execution requests (deposits/withdrawals/consolidations) payload counts per slot."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: payload
+            data_type: String
+          - name: deposits_count
+            data_type: UInt32
+          - name: withdrawals_count
+            data_type: UInt32
+          - name: consolidations_count
+            data_type: UInt32
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: genesis
+        description: "Genesis information for the beacon chain."
+        columns:
+          - name: genesis_time
+            data_type: DateTime64(0, 'UTC')
+          - name: genesis_validators_root
+            data_type: String
+          - name: genesis_fork_version
+            data_type: String
+
+      - name: raw_blocks
+        description: "Raw JSON payloads of beacon blocks as retrieved."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: block_root
+            data_type: String
+          - name: payload
+            data_type: String
+          - name: payload_hash
+            data_type: String
+          - name: retrieved_at
+            data_type: DateTime
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+
+      - name: raw_genesis
+        description: "Raw JSON payload of beacon genesis endpoint."
+        columns:
+          - name: payload
+            data_type: JSON
+          - name: retrieved_at
+            data_type: DateTime
+
+      - name: raw_rewards
+        description: "Raw rewards API snapshots."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: payload
+            data_type: String
+          - name: payload_hash
+            data_type: String
+          - name: retrieved_at
+            data_type: DateTime
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+
+      - name: raw_specs
+        description: "Raw network spec parameters as JSON."
+        columns:
+          - name: payload
+            data_type: JSON
+          - name: retrieved_at
+            data_type: DateTime
+
+      - name: raw_validators
+        description: "Raw validators API snapshots."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: payload
+            data_type: String
+          - name: payload_hash
+            data_type: String
+          - name: retrieved_at
+            data_type: DateTime
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+
+      - name: rewards
+        description: "Per-slot proposer reward breakdowns."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: proposer_index
+            data_type: UInt64
+          - name: total
+            data_type: UInt64
+          - name: attestations
+            data_type: UInt64
+          - name: sync_aggregate
+            data_type: UInt64
+          - name: proposer_slashings
+            data_type: UInt64
+          - name: attester_slashings
+            data_type: UInt64
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: specs
+        description: "Flattened network spec parameters."
+        columns:
+          - name: parameter_name
+            data_type: String
+          - name: parameter_value
+            data_type: String
+          - name: updated_at
+            data_type: DateTime64(0, 'UTC')
+
+      - name: sync_aggregates
+        description: "Sync committee aggregates per slot."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: sync_committee_bits
+            data_type: String
+          - name: sync_committee_signature
+            data_type: String
+          - name: participation_count
+            data_type: UInt32
+          - name: participating_validators
+            data_type: UInt32
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: time_helpers
+        description: "Helper table for converting slots to timestamps."
+        columns:
+          - name: genesis_time_unix
+            data_type: UInt64
+          - name: seconds_per_slot
+            data_type: UInt64
+          - name: slots_per_epoch
+            data_type: UInt64
+
+      - name: transactions
+        description: "Execution transactions as referenced from the beacon chain (redundant with execution.transactions but keyed by slot)."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: block_number
+            data_type: UInt64
+          - name: block_hash
+            data_type: String
+          - name: transaction_index
+            data_type: UInt64
+          - name: transaction_hash
+            data_type: String
+          - name: fee_recipient
+            data_type: String
+          - name: gas_limit
+            data_type: UInt64
+          - name: gas_used
+            data_type: UInt64
+          - name: base_fee_per_gas
+            data_type: String
+          - name: from_address
+            data_type: String
+          - name: to_address
+            data_type: String
+          - name: value
+            data_type: String
+          - name: gas_price
+            data_type: UInt64
+          - name: nonce
+            data_type: UInt64
+          - name: input
+            data_type: String
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: transformer_progress
+        description: "Status of raw->modeled consensus transformations."
+        loaded_at_field: insert_version
+        columns:
+          - name: raw_table_name
+            data_type: String
+          - name: start_slot
+            data_type: UInt64
+          - name: end_slot
+            data_type: UInt64
+          - name: status
+            data_type: Enum8('processing'=1, 'completed'=2, 'failed'=3)
+          - name: processed_count
+            data_type: UInt64
+          - name: failed_count
+            data_type: UInt64
+          - name: error_message
+            data_type: String
+          - name: processed_at
+            data_type: DateTime
+          - name: insert_version
+            data_type: UInt64
+
       - name: validators
+        description: "Validator registry and dynamic balance/status data per slot."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: validator_index
+            data_type: UInt32
+          - name: balance
+            data_type: UInt64
+          - name: status
+            data_type: String
+          - name: pubkey
+            data_type: String
+          - name: withdrawal_credentials
+            data_type: String
+          - name: effective_balance
+            data_type: UInt64
+          - name: slashed
+            data_type: UInt8
+          - name: activation_eligibility_epoch
+            data_type: UInt64
+          - name: activation_epoch
+            data_type: UInt64
+          - name: exit_epoch
+            data_type: UInt64
+          - name: withdrawable_epoch
+            data_type: UInt64
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: voluntary_exits
+        description: "Voluntary exit messages."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: exit_index
+            data_type: UInt64
+          - name: signature
+            data_type: String
+          - name: epoch
+            data_type: UInt64
+          - name: validator_index
+            data_type: UInt64
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+
+      - name: withdrawals
+        description: "Beacon-chain withdrawals list per slot (Capella+)."
+        loaded_at_field: slot_timestamp
+        columns:
+          - name: slot
+            data_type: UInt64
+          - name: block_number
+            data_type: UInt64
+          - name: block_hash
+            data_type: String
+          - name: withdrawal_index
+            data_type: UInt64
+          - name: validator_index
+            data_type: UInt64
+          - name: address
+            data_type: String
+          - name: amount
+            data_type: UInt64
+          - name: slot_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64

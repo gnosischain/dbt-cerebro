@@ -38,7 +38,7 @@ gnosis_prefixes AS (
         p.cl_fork_name,
         p.cl_next_fork_name,
         IF(p.client='', 'Unknown', p.client) AS client
-    FROM {{ source('nebula','discovery_id_prefixes_x_peer_ids') }} AS d
+    FROM {{ source('nebula_discv5','discovery_id_prefixes_x_peer_ids') }} AS d
     INNER JOIN gnosis_peers AS p
       ON p.peer_id = d.peer_id
 )
@@ -94,7 +94,7 @@ FROM (
         neighbor_p.client                  AS neighbor_client,
 
         COUNT(*) AS cnt
-    FROM {{ source('nebula','neighbors') }} AS n
+    FROM {{ source('nebula_discv5','neighbors') }} AS n
 
     -- join to get the discovery_prefix + client/fork info for “peer”
     INNER JOIN gnosis_prefixes AS peer_p

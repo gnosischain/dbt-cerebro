@@ -1,6 +1,6 @@
 {{ 
     config(
-        tags                    = ["backedfi_oracle_events"],
+        tags                    = [ "backedfi_oracle_events" ],
         materialized            = 'incremental',
         incremental_strategy    = 'delete+insert',
         engine                  = 'ReplacingMergeTree()',

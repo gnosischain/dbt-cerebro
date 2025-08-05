@@ -1,18 +1,31 @@
 version: 2
 models:
-- name: execution_state_size_diff
-  description: This model calculates the difference in storage size for each address over time.  It sums the difference in storage values, considering a change to a zero value as a reduction in size.
+
+- name: execution_state_size_diff_daily
+  description: Daily summary of execution state size differences, including bytes diff per address and date.
   columns:
-  - name: block_timestamp
-    description: Timestamp of the block.
-    data_type: timestamp
   - name: address
-    description: Address involved in the storage change.
-    data_type: string
+    description: Ethereum address (20-byte hex string) involved in the size diff.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: date
+    description: Date for which the size difference is calculated, in UTC.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: bytes_diff
-    description: Difference in storage size in bytes (positive for increase, negative for decrease).
-    data_type: int
-  tags:
-  - execution
-  - size
-  - state
+    description: Sum of size difference in bytes for the address on the given date.
+    data_type: Int64
+  config:
+    access: public
+    materialized: table
+    tags:
+    - daily
+    - execution
+    - state
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

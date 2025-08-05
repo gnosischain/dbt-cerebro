@@ -1,56 +1,82 @@
 version: 2
 models:
+
 - name: consensus_validators_balances_dist_daily
-  description: Daily distribution of validator balances, showing quantiles.  Data is calculated from the `consensus.validators` source table and includes quantiles (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95) of validator balances (in billions).
+  description: Daily distribution of validator balances based on quantile calculations from the consensus layer data, aggregated per day.
   columns:
   - name: date
-    description: Date of the balance distribution.
-    data_type: DATE
+    description: The day for which the balance distribution is calculated, truncated from slot timestamp.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: q05
-    description: 5th percentile of validator balances (in billions).
-    data_type: FLOAT
+    description: 5th percentile of validator balances for the day.
+    data_type: Float64
   - name: q10
-    description: 10th percentile of validator balances (in billions).
-    data_type: FLOAT
+    description: 10th percentile of validator balances for the day.
+    data_type: Float64
   - name: q25
-    description: 25th percentile of validator balances (in billions).
-    data_type: FLOAT
+    description: 25th percentile of validator balances for the day.
+    data_type: Float64
   - name: q50
-    description: 50th percentile (median) of validator balances (in billions).
-    data_type: FLOAT
+    description: Median (50th percentile) of validator balances for the day.
+    data_type: Float64
   - name: q75
-    description: 75th percentile of validator balances (in billions).
-    data_type: FLOAT
+    description: 75th percentile of validator balances for the day.
+    data_type: Float64
   - name: q90
-    description: 90th percentile of validator balances (in billions).
-    data_type: FLOAT
+    description: 90th percentile of validator balances for the day.
+    data_type: Float64
   - name: q95
-    description: 95th percentile of validator balances (in billions).
-    data_type: FLOAT
-  tags:
-  - daily
-  - distribution
-  - validators
-  - consensus
+    description: 95th percentile of validator balances for the day.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - consensus
+    - validators
+    - balances
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: consensus_validators_status_daily
-  description: Daily count of validators by status.
+  description: Daily snapshot of validator statuses, including counts and states, aggregated by date.
   columns:
   - name: date
-    description: Date of the count.
-    data_type: DATE
+    description: Date representing the start of the day for the snapshot (UTC).
+    data_type: DateTime
+    tests:
+    - not_null
   - name: status
-    description: Status of the validator.
-    data_type: VARCHAR
+    description: Validator status category (e.g., active, exited, slashed).
+    data_type: String
+    tests:
+    - not_null
   - name: cnt
-    description: Count of validators with the given status on the given date.
-    data_type: INT
-  tags:
-  - daily
-  - consensus
-  - validators
-  materialized: incremental
-  incremental_strategy: delete+insert
-  engine: ReplacingMergeTree()
-  order_by: (date, status)
-  unique_key: (date, status)
-  partition_by: toStartOfMonth(date)
+    description: Count of validators in the given status on the date.
+    data_type: UInt64
+  - name: total_validators
+    description: Total number of validators considered in the snapshot.
+    data_type: UInt64
+  - name: active_validators
+    description: Number of active validators on the date.
+    data_type: UInt64
+  - name: exited_validators
+    description: Number of exited validators on the date.
+    data_type: UInt64
+  - name: slashed_validators
+    description: Number of slashed validators on the date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: table
+    tags:
+    - validators
+    - daily
+    - status
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

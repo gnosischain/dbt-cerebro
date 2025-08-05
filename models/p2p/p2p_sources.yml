@@ -1,17 +1,188 @@
 version: 2
 
 sources:
-  - name: nebula
+  - name: nebula_discv5
+    description: "P2P network crawl results using Discv5 (Ethereum portal/beacon network focused)."
     schema: nebula
+    tags: ["p2p", "discv5", "network-crawl"]
     tables:
+      - name: crawls
+        description: "Per-crawl summary metadata."
+        columns:
+          - name: id
+            data_type: UUID
+          - name: state
+            data_type: Enum8('started'=1,'cancelled'=2,'failed'=3,'succeeded'=4)
+          - name: finished_at
+            data_type: Nullable(DateTime64(3))
+          - name: updated_at
+            data_type: DateTime64(3)
+          - name: created_at
+            data_type: DateTime64(3)
+          - name: crawled_peers
+            data_type: Nullable(Int32)
+          - name: dialable_peers
+            data_type: Nullable(Int32)
+          - name: undialable_peers
+            data_type: Nullable(Int32)
+          - name: remaining_peers
+            data_type: Nullable(Int32)
+          - name: version
+            data_type: String
+          - name: network_id
+            data_type: String
+
       - name: visits
+        description: "One row per visited peer during a crawl, including agent and protocol metadata."
+        columns:
+          - name: crawl_id
+            data_type: Nullable(UUID)
+          - name: peer_id
+            data_type: String
+          - name: agent_version
+            data_type: String
+          - name: protocols
+            data_type: Array(LowCardinality(String))
+          - name: dial_maddrs
+            data_type: Array(String)
+          - name: filtered_maddrs
+            data_type: Array(String)
+          - name: extra_maddrs
+            data_type: Array(String)
+          - name: dial_errors
+            data_type: Array(LowCardinality(String))
+          - name: connect_maddr
+            data_type: Nullable(String)
+          - name: crawl_error
+            data_type: LowCardinality(Nullable(String))
+          - name: visit_started_at
+            data_type: DateTime64(3)
+          - name: visit_ended_at
+            data_type: DateTime64(3)
+          - name: peer_properties
+            data_type: JSON
+
       - name: neighbors
+        description: "Edges discovered between peers from neighbors responses."
+        columns:
+          - name: crawl_id
+            data_type: UUID
+          - name: crawl_created_at
+            data_type: DateTime64(3)
+          - name: peer_discovery_id_prefix
+            data_type: UInt64
+          - name: neighbor_discovery_id_prefix
+            data_type: UInt64
+          - name: error_bits
+            data_type: UInt16
+
       - name: discovery_id_prefixes_x_peer_ids
+        description: "Mapping from discovery ID prefix to peer_id."
+        columns:
+          - name: discovery_id_prefix
+            data_type: UInt64
+          - name: peer_id
+            data_type: String
 
-  - name: crawlers_data
-    schema: crawlers_data
+      - name: schema_migrations
+        description: "Schema migrations for nebula."
+        columns:
+          - name: version
+            data_type: Int64
+          - name: dirty
+            data_type: UInt8
+          - name: sequence
+            data_type: UInt64
+
+  - name: nebula_discv4
+    description: "P2P network crawl results using Discv4."
+    schema: nebula_discv4
+    tags: ["p2p", "discv4", "network-crawl"]
     tables:
-      - name: ipinfo
-      - name: ember_electricity_data
-      - name: country_codes
+      - name: crawls
+        description: "Per-crawl summary metadata."
+        columns:
+          - name: id
+            data_type: UUID
+          - name: state
+            data_type: Enum8('started'=1,'cancelled'=2,'failed'=3,'succeeded'=4)
+          - name: finished_at
+            data_type: Nullable(DateTime64(3))
+          - name: updated_at
+            data_type: DateTime64(3)
+          - name: created_at
+            data_type: DateTime64(3)
+          - name: crawled_peers
+            data_type: Nullable(Int32)
+          - name: dialable_peers
+            data_type: Nullable(Int32)
+          - name: undialable_peers
+            data_type: Nullable(Int32)
+          - name: remaining_peers
+            data_type: Nullable(Int32)
+          - name: version
+            data_type: String
+          - name: network_id
+            data_type: String
 
+      - name: visits
+        description: "One row per visited peer during a crawl."
+        columns:
+          - name: crawl_id
+            data_type: Nullable(UUID)
+          - name: peer_id
+            data_type: String
+          - name: agent_version
+            data_type: String
+          - name: protocols
+            data_type: Array(LowCardinality(String))
+          - name: dial_maddrs
+            data_type: Array(String)
+          - name: filtered_maddrs
+            data_type: Array(String)
+          - name: extra_maddrs
+            data_type: Array(String)
+          - name: dial_errors
+            data_type: Array(LowCardinality(String))
+          - name: connect_maddr
+            data_type: Nullable(String)
+          - name: crawl_error
+            data_type: LowCardinality(Nullable(String))
+          - name: visit_started_at
+            data_type: DateTime64(3)
+          - name: visit_ended_at
+            data_type: DateTime64(3)
+          - name: peer_properties
+            data_type: JSON
+
+      - name: neighbors
+        description: "Edges discovered between peers from neighbors responses."
+        columns:
+          - name: crawl_id
+            data_type: UUID
+          - name: crawl_created_at
+            data_type: DateTime64(3)
+          - name: peer_discovery_id_prefix
+            data_type: UInt64
+          - name: neighbor_discovery_id_prefix
+            data_type: UInt64
+          - name: error_bits
+            data_type: UInt16
+
+      - name: discovery_id_prefixes_x_peer_ids
+        description: "Mapping from discovery ID prefix to peer_id."
+        columns:
+          - name: discovery_id_prefix
+            data_type: UInt64
+          - name: peer_id
+            data_type: String
+
+      - name: schema_migrations
+        description: "Schema migrations for nebula_discv4."
+        columns:
+          - name: version
+            data_type: Int64
+          - name: dirty
+            data_type: UInt8
+          - name: sequence
+            data_type: UInt64

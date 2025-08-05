@@ -1,95 +1,178 @@
 version: 2
 models:
+
 - name: probelab_peers_clients_cloud_daily
-  description: Daily count of Probelab agents by client and cloud provider.  Data is aggregated from the `probelab_cloud_provider_avg_1d` source table.
+  description: Daily aggregated data on cloud providers, peer countries, and related metrics for monitoring and analysis.
   columns:
-  - name: date
-    description: Date of the count.
-    data_type: DATE
-  - name: client
-    description: Client (agent version type).
-    data_type: STRING
   - name: cloud
-    description: Cloud provider.
-    data_type: STRING
-  - name: value
-    description: Count of Probelab agents.
-    data_type: INT
-  tags:
-  - probelab
-  - daily
-  - cloud
-  - clients
-  refs:
-  - source('crawlers_data', 'probelab_cloud_provider_avg_1d')
-- name: probelab_peers_clients_country_daily
-  description: Daily count of Probelab clients by country.  This model aggregates data from the `probelab_countries_avg_1d` source table.
-  columns:
+    description: Cloud provider name (e.g., AWS, GCP, Azure)
+    data_type: String
+    tests:
+    - not_null
   - name: date
-    description: Date of the count.
-    data_type: DATE
+    description: Date of the record in UTC
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
   - name: client
-    description: Client (agent version type).
-    data_type: STRING
+    description: Client version type or identifier
+    data_type: String
+  - name: value
+    description: Numeric value representing the metric (e.g., count, percentage)
+    data_type: UInt64
   - name: country
-    description: Country code.
-    data_type: STRING
+    description: Country code or name associated with the peer
+    data_type: String
+  - name: country_name
+    description: Full country name
+    data_type: String
+  - name: crawl_id
+    description: Identifier for the specific crawl
+    data_type: String
+  - name: crawl_created_at
+    description: Timestamp when the crawl was created
+    data_type: DateTime64(0, 'UTC')
+  - name: total
+    description: Total count or sum relevant to the metric
+    data_type: Int64
+  - name: reachability
+    description: Reachability status or metric
+    data_type: String
+  - name: count
+    description: Count of specific records or events
+    data_type: Int64
+  - name: percentage
+    description: Percentage value (0-100) representing share or proportion
+    data_type: Float64
+  - name: is_cloud
+    description: Indicator if peer is in cloud (e.g., 'yes', 'no')
+    data_type: String
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - cloud
+    - peers
+    - daily
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: probelab_peers_clients_country_daily
+  description: Daily aggregated data of peers and clients by country, including counts and percentages for monitoring and analysis.
+  columns:
+  - name: date
+    description: The date of the record, representing the start of the day in UTC.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: client
+    description: Client identifier, representing the agent version type.
+    data_type: String
+    tests:
+    - not_null
+  - name: country
+    description: Country code or name associated with the record.
+    data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Count of clients in the given country on the given date.
-    data_type: INT
-  tags:
-  - probelab
-  - daily
-  - clients
-  - country
-  refs:
-  - source('crawlers_data', 'probelab_countries_avg_1d')
+    description: Count of peers or clients for the given country and date.
+    data_type: UInt64
+  - name: __pct
+    description: Percentage share of the total for the country on that day.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - analytics
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: probelab_peers_clients_daily
-  description: Daily counts of Probelab clients, grouped by client type and date.  Data is sourced from the `probelab_agent_semvers_avg_1d` table in the `crawlers_data` source.  The model uses an incremental strategy to efficiently update the data.
+  description: Business-facing daily metrics of peers and clients, including counts and proportions, derived from crawled data sources.
   columns:
   - name: date
-    description: Date of the count.
-    data_type: DATE
-  - name: value
-    description: Count of clients for the given date and client type.
-    data_type: INT
+    description: The date of the record, representing the start of the day (UTC).
+    data_type: DateTime
+    tests:
+    - not_null
   - name: client
-    description: Type of Probelab client.
-    data_type: STRING
+    description: Client identifier or version type associated with the record.
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Numeric value representing the count or metric, in integer units.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - daily
+    - metrics
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: probelab_peers_clients_quic_daily
-  description: Daily count of Probelab clients supporting QUIC, aggregated from crawler data.
+  description: Daily aggregated data on QUIC support status for peers and clients, including counts and timestamps.
   columns:
   - name: date
-    description: Date of the measurement.
-    data_type: DATE
-  - name: client
-    description: Client version type.
-    data_type: STRING
+    description: The day of the record, derived from max_crawl_created_at in the source.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: quic
-    description: QUIC support status (true/false).
-    data_type: BOOLEAN
+    description: Support status for QUIC; true if supported, false otherwise.
+    data_type: String
+  - name: client
+    description: Client identifier or version type.
+    data_type: String
   - name: value
-    description: Count of clients.
-    data_type: INT
-  tags:
-  - daily
-  - probelab
-  - quic
-  - clients
-  refs:
-  - source('crawlers_data', 'probelab_quic_support_over_7d')
+    description: Count of occurrences for the given date, client, and QUIC support status.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - quic
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: probelab_peers_clients_version_daily
-  description: Daily counts of Probelab peer clients by version.  This model aggregates data from the `probelab_agent_semvers_avg_1d` source table to provide a daily view of client versions.  The data is partitioned by month and ordered by date, client, and version for efficient querying.
+  description: Daily metrics of peer and client versions, aggregated by date, client, and version.
   columns:
   - name: date
-    description: Date of the count.
-    data_type: DATE
+    description: The date of the record, representing the day of data aggregation.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: client
-    description: Client type (agent version type).
-    data_type: STRING
+    description: The client type or source, e.g., agent or application.
+    data_type: String
+    tests:
+    - not_null
   - name: version
-    description: Semver string of the agent version.
-    data_type: STRING
+    description: The semantic version string of the client.
+    data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Count of clients with the given version on the given date.
-    data_type: INT
+    description: The count of occurrences for the specific client-version combination.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - analytics
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

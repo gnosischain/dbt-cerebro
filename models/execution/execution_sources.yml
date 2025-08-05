@@ -2,15 +2,747 @@ version: 2
 
 sources:
   - name: execution
+    description: "Raw execution-layer tables captured from Gnosis Chain (an Ethereum L1 fork). Each table is ingested directly from the node crawler and should be treated as authoritative chain data."
     schema: execution
+    loaded_at_field: block_timestamp
+    tags: ["gnosis", "execution", "l1", "authoritative", "crawler"]
+
     tables:
-      - name: balance_diffs
+
+      # ──────────────────────────
+      #  BLOCKS (headers)
+      # ──────────────────────────
       - name: blocks
-      - name: code_diffs
-      - name: contracts
-      - name: logs
-      - name: native_transfers
-      - name: nonce_diffs
-      - name: storage_diffs
-      - name: traces
+        description: "Canonical block headers (one row per block)."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the block containing the record."
+          - name: block_hash
+            data_type: String
+            description: "Keccak-256 hash of the block header."
+          - name: parent_hash
+            data_type: String
+            description: "Hash of the parent block header."
+          - name: uncles_hash
+            data_type: String
+            description: "Keccak-256 hash of the ommers list."
+          - name: author
+            data_type: String
+            description: "Address (20-byte hex) of the validator/miner that proposed the block."
+          - name: state_root
+            data_type: String
+            description: "Root hash of the state trie."
+          - name: transactions_root
+            data_type: String
+            description: "Root hash of the transactions trie."
+          - name: receipts_root
+            data_type: String
+            description: "Root hash of the receipts trie."
+          - name: gas_used
+            data_type: UInt64
+            description: "Total gas consumed by transactions in the block."
+          - name: gas_limit
+            data_type: UInt64
+            description: "Maximum gas allowed in the block."
+          - name: extra_data
+            data_type: String
+            description: "Arbitrary extra-data bytes set by the block proposer (hex)."
+          - name: logs_bloom
+            data_type: String
+            description: "Bloom filter for logs in this block."
+          - name: timestamp
+            data_type: UInt32
+            description: "Unix epoch seconds when the block was proposed."
+          - name: size
+            data_type: UInt64
+            description: "Serialized block size in bytes."
+          - name: mix_hash
+            data_type: String
+            description: "Mix hash (pre-merge PoW) or random field."
+          - name: nonce
+            data_type: String
+            description: "Block nonce (legacy field)."
+          - name: base_fee_per_gas
+            data_type: UInt64
+            description: "Base fee per gas introduced by EIP-1559 (wei)."
+          - name: withdrawals_root
+            data_type: String
+            description: "Root hash of withdrawals list (Shanghai+)."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier (100 for Gnosis)."
+          - name: block_timestamp
+            data_type: DateTime
+            description: "UTC timestamp for the block (materialized from `timestamp`)."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  TRANSACTIONS
+      # ──────────────────────────
       - name: transactions
+        description: "Signed EVM transactions included in blocks."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the block containing the transaction."
+          - name: transaction_index
+            data_type: UInt64
+            description: "Zero-based index of the transaction within the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Keccak-256 hash identifying the transaction."
+          - name: nonce
+            data_type: UInt64
+            description: "Transaction count of the sender before this transaction."
+          - name: from_address
+            data_type: String
+            description: "Sender address (EOA or contract) that signed the transaction."
+          - name: to_address
+            data_type: String
+            description: "Recipient address (null for contract creation)."
+          - name: value_binary
+            data_type: String
+            description: "Value (native token) as 32-byte big-endian binary."
+          - name: value_string
+            data_type: String
+            description: "Value as a decimal string."
+          - name: value_f64
+            data_type: Float64
+            description: "Value converted to floating-point GNO/XDAI (may lose precision)."
+          - name: input
+            data_type: String
+            description: "Calldata / input data supplied with the transaction (hex)."
+          - name: gas_limit
+            data_type: UInt64
+            description: "Gas limit provided by the sender."
+          - name: gas_used
+            data_type: UInt64
+            description: "Actual gas used by the transaction."
+          - name: gas_price
+            data_type: UInt64
+            description: "Legacy gas price (wei) for pre-EIP-1559 txs."
+          - name: transaction_type
+            data_type: UInt32
+            description: "Envelope type (0 = legacy, 1 = access-list, 2 = EIP-1559)."
+          - name: max_priority_fee_per_gas
+            data_type: UInt64
+            description: "Maximum miner tip per gas (wei) for EIP-1559."
+          - name: max_fee_per_gas
+            data_type: UInt64
+            description: "Maximum total fee per gas (wei) under EIP-1559."
+          - name: success
+            data_type: UInt8
+            description: "1 if the transaction succeeded; 0 if it reverted."
+          - name: n_input_bytes
+            data_type: UInt32
+            description: "Byte length of the input data."
+          - name: n_input_zero_bytes
+            data_type: UInt32
+            description: "Number of zero bytes in the input."
+          - name: n_input_nonzero_bytes
+            data_type: UInt32
+            description: "Number of non-zero bytes in the input."
+          - name: n_rlp_bytes
+            data_type: UInt32
+            description: "Total RLP-encoded payload size (bytes) if available."
+          - name: timestamp
+            data_type: UInt32
+            description: "Block timestamp (seconds since epoch)."
+          - name: r
+            data_type: String
+            description: "ECDSA signature r."
+          - name: s
+            data_type: String
+            description: "ECDSA signature s."
+          - name: v
+            data_type: UInt32
+            description: "ECDSA recovery id / y-parity."
+          - name: block_hash
+            data_type: String
+            description: "Hash of the enclosing block."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  LOGS
+      # ──────────────────────────
+      - name: logs
+        description: "Event logs emitted by smart contracts."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the block containing the log."
+          - name: block_hash
+            data_type: String
+            description: "Hash of the enclosing block."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Index of the transaction within the block."
+          - name: log_index
+            data_type: UInt32
+            description: "Zero-based index of the log within the receipt."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: address
+            data_type: String
+            description: "Contract address that emitted the event."
+          - name: topic0
+            data_type: String
+            description: "First indexed topic (event signature hash)."
+          - name: topic1
+            data_type: String
+            description: "Second indexed topic."
+          - name: topic2
+            data_type: String
+            description: "Third indexed topic."
+          - name: topic3
+            data_type: String
+            description: "Fourth indexed topic."
+          - name: data
+            data_type: String
+            description: "Non-indexed event data payload (hex)."
+          - name: n_data_bytes
+            data_type: UInt32
+            description: "Length of `data` in bytes."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  NATIVE TRANSFERS
+      # ──────────────────────────
+      - name: native_transfers
+        description: "Value (XDAI) transfers decoded from transactions."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the block."
+          - name: block_hash
+            data_type: String
+            description: "Block hash."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Index of the transaction within the block."
+          - name: transfer_index
+            data_type: UInt32
+            description: "Zero-based native-transfer index within the tx."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: from_address
+            data_type: String
+            description: "Sender address."
+          - name: to_address
+            data_type: String
+            description: "Recipient address."
+          - name: value_binary
+            data_type: String
+            description: "Transfer value as 32-byte big-endian binary."
+          - name: value_string
+            data_type: String
+            description: "Transfer value as decimal string."
+          - name: value_f64
+            data_type: Float64
+            description: "Transfer value as floating-point ether."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  CONTRACTS
+      # ──────────────────────────
+      - name: contracts
+        description: "Smart contracts created on-chain with deployment metadata."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Block in which the contract was created."
+          - name: block_hash
+            data_type: String
+            description: "Hash of the block."
+          - name: create_index
+            data_type: UInt32
+            description: "Index of this contract creation within the tx."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction that deployed the contract."
+          - name: contract_address
+            data_type: String
+            description: "Address of the newly created contract."
+          - name: deployer
+            data_type: String
+            description: "Address that initiated the creation."
+          - name: factory
+            data_type: String
+            description: "Factory contract address (if applicable)."
+          - name: init_code
+            data_type: String
+            description: "Constructor byte-code executed on deployment."
+          - name: code
+            data_type: String
+            description: "Runtime byte-code stored at the address."
+          - name: init_code_hash
+            data_type: String
+            description: "Keccak-256 hash of `init_code`."
+          - name: n_init_code_bytes
+            data_type: UInt32
+            description: "Size of `init_code` in bytes."
+          - name: n_code_bytes
+            data_type: UInt32
+            description: "Size of `code` in bytes."
+          - name: code_hash
+            data_type: String
+            description: "Keccak-256 hash of runtime code."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  TRACES
+      # ──────────────────────────
+      - name: traces
+        description: "Execution traces (internal calls, creates, rewards) for every transaction."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: action_from
+            data_type: String
+            description: "Sender address of the trace action."
+          - name: action_to
+            data_type: String
+            description: "Recipient address (null for CREATE)."
+          - name: action_value
+            data_type: String
+            description: "Native value transferred (wei, decimal string)."
+          - name: action_gas
+            data_type: UInt32
+            description: "Gas provided to the action."
+          - name: action_input
+            data_type: String
+            description: "Input calldata for the action."
+          - name: action_call_type
+            data_type: String
+            description: "Specific call-type (CALL, DELEGATECALL, etc.)."
+          - name: action_init
+            data_type: String
+            description: "Init code for CREATE/CREATE2."
+          - name: action_reward_type
+            data_type: String
+            description: "Reward type for mining rewards (block, uncle)."
+          - name: action_type
+            data_type: String
+            description: "Overall trace action type."
+          - name: result_gas_used
+            data_type: UInt32
+            description: "Gas actually used by the action."
+          - name: result_output
+            data_type: String
+            description: "Return data (hex)."
+          - name: result_code
+            data_type: String
+            description: "Runtime byte-code produced by CREATE."
+          - name: result_address
+            data_type: String
+            description: "Address of the newly-created contract."
+          - name: trace_address
+            data_type: String
+            description: "Dot-separated path of the call tree (e.g., '0.1')."
+          - name: subtraces
+            data_type: UInt32
+            description: "Number of immediate child traces."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Index of the parent transaction within the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Parent transaction hash."
+          - name: block_number
+            data_type: UInt32
+            description: "Block height."
+          - name: block_hash
+            data_type: String
+            description: "Block hash."
+          - name: error
+            data_type: String
+            description: "Error string if the action reverted/failed."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  BALANCE DIFFS
+      # ──────────────────────────
+      - name: balance_diffs
+        description: "Balance changes for accounts caused by each transaction."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the block."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Index of the transaction within the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: address
+            data_type: String
+            description: "Account address whose balance changed."
+          - name: from_value_binary
+            data_type: String
+            description: "Balance before change (32-byte binary)."
+          - name: from_value_string
+            data_type: String
+            description: "Balance before change (decimal string)."
+          - name: from_value_f64
+            data_type: Float64
+            description: "Balance before change (floating-point ether)."
+          - name: to_value_binary
+            data_type: String
+            description: "Balance after change (32-byte binary)."
+          - name: to_value_string
+            data_type: String
+            description: "Balance after change (decimal string)."
+          - name: to_value_f64
+            data_type: Float64
+            description: "Balance after change (floating-point ether)."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  STORAGE DIFFS
+      # ──────────────────────────
+      - name: storage_diffs
+        description: "Storage-slot mutations produced by each transaction."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Block height."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Transaction index in the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: address
+            data_type: String
+            description: "Contract address whose storage changed."
+          - name: slot
+            data_type: String
+            description: "32-byte storage-slot key."
+          - name: from_value
+            data_type: String
+            description: "Value before change (hex)."
+          - name: to_value
+            data_type: String
+            description: "Value after change (hex)."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  CODE DIFFS
+      # ──────────────────────────
+      - name: code_diffs
+        description: "Smart-contract runtime-code changes produced by transactions (e.g., self-destruct & new code)."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Block height."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Transaction index in the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: address
+            data_type: String
+            description: "Contract address whose code changed."
+          - name: from_value
+            data_type: String
+            description: "Runtime code hash before change."
+          - name: to_value
+            data_type: String
+            description: "Runtime code hash after change."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  NONCE DIFFS
+      # ──────────────────────────
+      - name: nonce_diffs
+        description: "Nonce updates for accounts produced by each transaction."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Block height."
+          - name: transaction_index
+            data_type: UInt32
+            description: "Transaction index in the block."
+          - name: transaction_hash
+            data_type: String
+            description: "Transaction hash."
+          - name: address
+            data_type: String
+            description: "Account address."
+          - name: from_value
+            data_type: UInt64
+            description: "Nonce before change."
+          - name: to_value
+            data_type: UInt64
+            description: "Nonce after change."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  WITHDRAWALS
+      # ──────────────────────────
+      - name: withdrawals
+        description: "Execution-layer representation of beacon-chain withdrawals bridged into blocks (Shanghai+)."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+            description: "Height of the enclosing block."
+          - name: block_hash
+            data_type: String
+            description: "Hash of the enclosing block."
+          - name: withdrawals_root
+            data_type: String
+            description: "Root of withdrawals list."
+          - name: withdrawal_index
+            data_type: String
+            description: "Global withdrawal index (string) as emitted by engine."
+          - name: validator_index
+            data_type: String
+            description: "Validator index (string) as emitted by engine."
+          - name: address
+            data_type: String
+            description: "Recipient address."
+          - name: amount
+            data_type: String
+            description: "Amount withdrawn (gwei)."
+          - name: chain_id
+            data_type: UInt64
+            description: "EVM chain identifier."
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+            description: "UTC timestamp of the enclosing block."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      # ──────────────────────────
+      #  INDEXING / PIPELINE METADATA
+      # ──────────────────────────
+      - name: indexing_state
+        description: "Worker-reported state for each indexed range across datasets and modes."
+        columns:
+          - name: mode
+            data_type: String
+            description: "Ingestion mode (e.g., backfill, realtime)."
+          - name: dataset
+            data_type: String
+            description: "Dataset identifier (e.g., transactions, blocks)."
+          - name: start_block
+            data_type: UInt32
+            description: "Start block (inclusive)."
+          - name: end_block
+            data_type: UInt32
+            description: "End block (exclusive)."
+          - name: status
+            data_type: String
+            description: "Current status of this range (pending, processing, failed, completed)."
+          - name: worker_id
+            data_type: String
+            description: "Identifier for worker processing this range."
+          - name: attempt_count
+            data_type: UInt8
+            description: "Number of attempts made."
+          - name: created_at
+            data_type: DateTime
+            description: "When this range was first created."
+          - name: completed_at
+            data_type: Nullable(DateTime)
+            description: "When this range was completed (if completed)."
+          - name: rows_indexed
+            data_type: Nullable(UInt64)
+            description: "Rows written for the range, if tracked."
+          - name: error_message
+            data_type: Nullable(String)
+            description: "Last error message, if any."
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds)."
+
+      - name: indexing_progress
+        description: "View aggregating execution.indexing_state into per-(mode,dataset) stats."
+        columns:
+          - name: mode
+            data_type: String
+          - name: dataset
+            data_type: String
+          - name: total_ranges
+            data_type: UInt64
+          - name: completed_ranges
+            data_type: UInt64
+          - name: processing_ranges
+            data_type: UInt64
+          - name: failed_ranges
+            data_type: UInt64
+          - name: pending_ranges
+            data_type: UInt64
+          - name: lowest_block_attempted
+            data_type: UInt32
+          - name: highest_block_attempted
+            data_type: UInt32
+          - name: highest_block_completed
+            data_type: UInt32
+          - name: total_rows_indexed
+            data_type: Nullable(UInt64)
+          - name: completion_percentage
+            data_type: Float64
+          - name: overall_status
+            data_type: String
+          - name: first_attempt
+            data_type: DateTime
+          - name: last_completion
+            data_type: Nullable(DateTime)
+
+      - name: continuous_ranges
+        description: "View summarizing continuous completed ranges and data continuity for each (mode,dataset)."
+        columns:
+          - name: mode
+            data_type: String
+          - name: dataset
+            data_type: String
+          - name: continuous_start
+            data_type: UInt32
+          - name: continuous_end
+            data_type: UInt32
+          - name: num_segments
+            data_type: UInt64
+          - name: total_blocks
+            data_type: Int64
+          - name: range_description
+            data_type: String
+          - name: coverage_percentage
+            data_type: Float64
+          - name: continuity_status
+            data_type: String
+
+      - name: indexing_summary
+        description: "View joining progress with continuity to summarize end-to-end indexing state."
+        columns:
+          - name: mode
+            data_type: String
+          - name: dataset
+            data_type: String
+          - name: total_ranges
+            data_type: UInt64
+          - name: completed_ranges
+            data_type: UInt64
+          - name: processing_ranges
+            data_type: UInt64
+          - name: failed_ranges
+            data_type: UInt64
+          - name: pending_ranges
+            data_type: UInt64
+          - name: completion_percentage
+            data_type: Float64
+          - name: overall_status
+            data_type: String
+          - name: highest_block_completed
+            data_type: UInt32
+          - name: total_rows_indexed
+            data_type: Nullable(UInt64)
+          - name: continuous_segments
+            data_type: UInt64
+          - name: first_continuous_block
+            data_type: UInt32
+          - name: last_continuous_block
+            data_type: UInt32
+          - name: continuity_description
+            data_type: String
+
+      - name: migrations
+        description: "One row per data migration executed by the crawler/ETL."
+        columns:
+          - name: name
+            data_type: String
+            description: "Migration identifier."
+          - name: executed_at
+            data_type: DateTime
+            description: "Execution time."
+          - name: success
+            data_type: UInt8
+            description: "1 if migration succeeded."

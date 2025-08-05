@@ -1,115 +1,219 @@
 version: 2
 models:
+
 - name: contracts_sdai_events
-  description: This model contains events from the contracts_sdai contract.  It uses the `decode_logs` macro to parse event logs from the `execution.logs` table.
+  description: Business-facing model capturing detailed events related to contracts on Gnosis Chain, including logs, transfers, contract creation, and associated metadata.
   columns:
   - name: block_number
-    description: The block number where the event occurred.
-    data_type: INTEGER
+    description: Block height containing the event.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: block_hash
-    description: The hash of the block where the event occurred.
-    data_type: STRING
-  - name: block_timestamp
-    description: The timestamp of the block where the event occurred.
-    data_type: TIMESTAMP
-  - name: log_index
-    description: The index of the log within the block.
-    data_type: INTEGER
-  - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: STRING
+    description: Hash of the block containing the event.
+    data_type: String
   - name: transaction_index
-    description: The index of the transaction within the block.
-    data_type: INTEGER
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt32
+  - name: log_index
+    description: Zero-based index of the log within the transaction.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Hash identifying the transaction that emitted the event.
+    data_type: String
+    tests:
+    - not_null
   - name: address
-    description: The address that emitted the event.
-    data_type: STRING
+    description: Contract address that emitted the event.
+    data_type: String
+  - name: topic0
+    description: First indexed topic (event signature hash).
+    data_type: String
+  - name: topic1
+    description: Second indexed topic.
+    data_type: String
+  - name: topic2
+    description: Third indexed topic.
+    data_type: String
+  - name: topic3
+    description: Fourth indexed topic.
+    data_type: String
   - name: data
-    description: The decoded event data.
-    data_type: JSON
-  - name: event_name
-    description: The name of the event.
-    data_type: STRING
-  tags:
-  - contracts
-  - sdai
-  - events
-  refs:
-  - source('execution', 'logs')
+    description: Non-indexed event data payload in hex.
+    data_type: String
+  - name: n_data_bytes
+    description: Length of `data` in bytes.
+    data_type: UInt32
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: insert_version
+    description: Monotonic ingestion version in nanoseconds.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - contracts
+    - sdai
+    - events
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: contracts_wxdai_calls
-  description: This model contains all calls made to the contracts_wxdai contract.  It's materialized incrementally using a delete+insert strategy for efficient updates.
+  description: This model captures detailed data on wxDai call transactions, including transaction details, logs, native transfers, contract creation, execution traces, balance and storage diffs, code changes, nonce updates, withdrawals, and indexing metadata.
   columns:
   - name: block_number
-    description: Number of the block where the call was made.
-    data_type: INTEGER
-  - name: block_hash
-    description: Hash of the block where the call was made.
-    data_type: STRING
-  - name: block_timestamp
-    description: Timestamp of the block where the call was made.
-    data_type: TIMESTAMP
+    description: Block height containing the transaction or event.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: transaction_hash
-    description: Hash of the transaction containing the call.
-    data_type: STRING
+    description: Unique identifier for the transaction (keccak-256 hash).
+    data_type: String
+    tests:
+    - not_null
+    - unique
   - name: transaction_index
-    description: Index of the call within the transaction.
-    data_type: INTEGER
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: block_timestamp
+    description: UTC timestamp of the block (materialized from `block_timestamp` field).
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: transaction_type
+    description: Envelope type of the transaction (0=legacy,1=access-list,2=EIP-1559).
+    data_type: UInt32
   - name: from_address
-    description: Address that initiated the call.
-    data_type: STRING
+    description: Sender address (EOA or contract) that initiated the transaction.
+    data_type: String
+    tests:
+    - not_null
   - name: to_address
-    description: Address of the contract being called.
-    data_type: STRING
-  - name: function_signature
-    description: Signature of the function called.
-    data_type: STRING
-  - name: function_name
-    description: Name of the function called.
-    data_type: STRING
-  - name: inputs
-    description: Inputs to the function call.
-    data_type: JSON
-  - name: outputs
-    description: Outputs of the function call.
-    data_type: JSON
-  - name: call_data
-    description: Raw call data.
-    data_type: STRING
-  tags:
-  - contracts
-  - wxdai
-  - calls
-  refs:
-  - source('execution', 'transactions')
+    description: Recipient address; null if contract creation.
+    data_type: String
+  - name: value_string
+    description: Transaction value in decimal string format (wei).
+    data_type: String
+  - name: value_f64
+    description: Transaction value converted to floating-point GNO/XDAI (may lose precision).
+    data_type: Float64
+  - name: input
+    description: Calldata or input data supplied with the transaction (hex).
+    data_type: String
+  - name: gas_limit
+    description: Gas limit provided by the sender.
+    data_type: UInt64
+  - name: gas_used
+    description: Actual gas used by the transaction.
+    data_type: UInt64
+  - name: success
+    description: 1 if transaction succeeded, 0 if reverted.
+    data_type: UInt8
+  - name: timestamp
+    description: Block timestamp in seconds since epoch.
+    data_type: UInt32
+  - name: r
+    description: ECDSA signature component r.
+    data_type: String
+  - name: s
+    description: ECDSA signature component s.
+    data_type: String
+  - name: v
+    description: ECDSA recovery id / y-parity.
+    data_type: UInt32
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: insert_version
+    description: Monotonic ingestion version in nanoseconds.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - contracts
+    - wxDai
+    - calls
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
 - name: contracts_wxdai_events
-  description: WXDAI contract events decoded from logs.  This model uses the `decode_logs` macro to parse event logs from the `execution.logs` table for the WXDAI contract (0xe91d153e0b41518a2ce8dd3d7944fa863463a97d).  Data is incrementally updated using `delete+insert` strategy.
+  description: This model captures on-chain events related to wxDai contracts, including logs, transfers, contract creation, and associated metadata for analysis and auditing.
   columns:
   - name: block_number
-    description: Number of the block where the event occurred.
-    data_type: INTEGER
-  - name: block_timestamp
-    description: Timestamp of the block where the event occurred.
-    data_type: TIMESTAMP
+    description: Block height containing the event.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: block_hash
+    description: Hash of the block containing the event.
+    data_type: String
+  - name: transaction_index
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: log_index
-    description: Index of the log within the block.
-    data_type: INTEGER
+    description: Zero-based index of the log within the transaction.
+    data_type: UInt32
   - name: transaction_hash
     description: Hash of the transaction that emitted the event.
-    data_type: STRING
-  - name: contract_address
-    description: Address of the contract that emitted the event.
-    data_type: STRING
-  - name: event_name
-    description: Name of the event.
-    data_type: STRING
-  - name: event_data
-    description: Parsed JSON data from the event.
-    data_type: JSON
+    data_type: String
+    tests:
+    - not_null
+  - name: address
+    description: Contract address that emitted the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: topic0
+    description: First indexed topic, typically the event signature hash.
+    data_type: String
+  - name: topic1
+    description: Second indexed topic.
+    data_type: String
+  - name: topic2
+    description: Third indexed topic.
+    data_type: String
+  - name: topic3
+    description: Fourth indexed topic.
+    data_type: String
   - name: data
-    description: Raw event data.
-    data_type: STRING
-  tags:
-  - contracts
-  - wxdai
-  - events
-  - execution
+    description: Non-indexed event data payload in hex.
+    data_type: String
+  - name: n_data_bytes
+    description: Length of `data` in bytes.
+    data_type: UInt32
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: insert_version
+    description: Monotonic ingestion version in nanoseconds.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - contracts
+    - wxDai
+    - events
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

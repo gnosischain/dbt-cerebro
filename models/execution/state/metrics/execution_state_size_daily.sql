@@ -14,12 +14,11 @@ WITH
 
 state_size_diff_daily AS (
     SELECT 
-        toStartOfDay(block_timestamp) AS date
-        ,SUM(bytes_diff) AS bytes_diff
+        date
+        ,bytes_diff
     FROM 
-        {{ ref('execution_state_size_diff') }}
-    {{ apply_monthly_incremental_filter('block_timestamp','date') }}
-    GROUP BY 1
+        {{ ref('execution_state_size_diff_daily') }}
+    {{ apply_monthly_incremental_filter('date','date') }}
 ),
 
 {% if is_incremental() %}

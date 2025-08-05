@@ -1,27 +1,39 @@
 version: 2
 models:
+
 - name: execution_state_address_current
-  description: Current execution state by address, summarizing total byte differences.
+  description: Current execution state of addresses, aggregating relevant data from execution layer tables.
   columns:
   - name: address
-    description: Address of the contract or account.
-    data_type: STRING
+    description: Ethereum address (20-byte hex string) representing the account or contract.
+    data_type: String
+    tests:
+    - not_null
+    - unique
   - name: bytes
-    description: Sum of byte differences for the address.
-    data_type: INT
-  tags:
-  - execution
-  - summary
+    description: Sum of bytes_diff values (total bytes changed) for the address.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
 - name: execution_state_size_daily
-  description: Daily aggregated execution state size, calculated as a cumulative sum of daily differences.  Uses an incremental strategy for efficient updates.
+  description: Daily snapshot of execution state size metrics, including bytes difference and cumulative size.
   columns:
   - name: date
-    description: Date of the daily aggregation.
-    data_type: DATE
-  - name: bytes
-    description: Cumulative sum of execution state size in bytes.
-    data_type: INT
-  tags:
-  - execution
-  - daily_agg
-  - incremental
+    description: Date of the snapshot in 'YYYY-MM-DD' format.
+    data_type: Date
+    tests:
+    - not_null
+  - name: bytes_diff
+    description: Difference in execution state size bytes compared to previous day.
+    data_type: UInt64
+  config:
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

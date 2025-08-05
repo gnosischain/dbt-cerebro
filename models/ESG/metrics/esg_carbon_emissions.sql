@@ -20,8 +20,8 @@ ember_data AS (
     SELECT
         "Date" AS month_date
         ,"Value" AS value
-        ,lagInFrame("Value") OVER (PARTITION BY "Country code" ORDER BY "Date" ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)  AS lag_value
-        ,"Country code" AS country
+        ,lagInFrame("Value") OVER (PARTITION BY "ISO 3 code" ORDER BY "Date" ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)  AS lag_value
+        ,"ISO 3 code" AS country
     FROM
         {{ source('crawlers_data','ember_electricity_data') }}
     WHERE   

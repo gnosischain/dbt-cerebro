@@ -1,85 +1,222 @@
 version: 2
 models:
+
 - name: contracts_circles_v1_Hub_events
-  description: Hub events from the Circles contract (0x29b9a7fbb8995b2423a71cc17cf9810798f6c543).  This model decodes event logs from the raw `execution.logs` table.
+  description: Business-facing hub for tracking contract-related events, including creation, transfers, and logs emitted by smart contracts on the Gnosis Chain.
   columns:
-  - name: block_number
-    description: Number of the block where the event was emitted.
-    data_type: INTEGER
   - name: block_timestamp
-    description: Timestamp of the block where the event was emitted.
-    data_type: TIMESTAMP
-  - name: log_index
-    description: Index of the log within the block.
-    data_type: INTEGER
+    description: UTC timestamp of the event occurrence.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: block_number
+    description: Height of the block containing the event.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: transaction_hash
     description: Hash of the transaction that emitted the event.
-    data_type: STRING
-  - name: event_name
-    description: Name of the event emitted.
-    data_type: STRING
-  - name: event_data
-    description: Parsed JSON data from the event.
-    data_type: JSON
-  - name: contract_address
-    description: Address of the contract that emitted the event.
-    data_type: STRING
-  tags:
-  - circles
-  - events
-  - hub
-- name: contracts_circles_v2_Hub_events
-  description: 'This model extracts events from the Circles contracts (address: 0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8) using the `decode_logs` macro.  It''s materialized incrementally using `delete+insert` strategy for efficient updates.  The data is partitioned by month for improved query performance.'
-  columns:
-  - name: block_number
-    description: The block number where the event occurred.
-    data_type: INTEGER
-  - name: block_timestamp
-    description: The timestamp of the block where the event occurred.
-    data_type: TIMESTAMP
+    data_type: String
+    tests:
+    - not_null
   - name: log_index
-    description: The index of the log within the block.
-    data_type: INTEGER
-  - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: STRING
-  - name: event_name
-    description: The name of the event emitted.
-    data_type: STRING
-  - name: event_data
-    description: The JSON-formatted data associated with the event.
-    data_type: JSON
+    description: Zero-based index of the log within the transaction.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: event_type
+    description: Type of the event (e.g., 'Transfer', 'ContractCreated', 'LogEmitted').
+    data_type: String
   - name: contract_address
-    description: The address of the contract that emitted the event.
-    data_type: STRING
-- name: contracts_circles_v2_NameRegistry_events
-  description: Events emitted by the Circles V2 NameRegistry contract.  Decoded from raw logs using the `decode_logs` macro.
-  columns:
-  - name: block_number
-    description: Number of the block where the event was emitted.
-    data_type: INTEGER
-  - name: block_timestamp
-    description: Timestamp of the block where the event was emitted.
-    data_type: TIMESTAMP
-  - name: log_index
-    description: Index of the log within the block.
-    data_type: INTEGER
-  - name: transaction_hash
-    description: Hash of the transaction that emitted the event.
-    data_type: STRING
-  - name: event_name
-    description: Name of the event emitted.
-    data_type: STRING
-  - name: address
-    description: Address involved in the event.  May vary depending on the specific event.
-    data_type: STRING
-  - name: name
-    description: Name involved in the event (if applicable).
-    data_type: STRING
+    description: Address of the contract emitting the event.
+    data_type: String
+  - name: topic0
+    description: First indexed topic, typically the event signature hash.
+    data_type: String
+  - name: topic1
+    description: Second indexed topic, if applicable.
+    data_type: String
+  - name: topic2
+    description: Third indexed topic, if applicable.
+    data_type: String
+  - name: topic3
+    description: Fourth indexed topic, if applicable.
+    data_type: String
   - name: data
-    description: Additional data associated with the event.  Structure depends on the specific event.
+    description: Non-indexed event data payload in hex.
+    data_type: String
+  - name: value
+    description: Value transferred or associated with the event, in wei or relevant units.
+    data_type: String
+  - name: from_address
+    description: Address initiating the event or transfer.
+    data_type: String
+  - name: to_address
+    description: Recipient address, if applicable.
+    data_type: String
+  - name: token_id
+    description: Token ID for ERC-721 or ERC-1155 tokens, if applicable.
+    data_type: String
+  - name: amount
+    description: Amount involved in the event, in token units.
+    data_type: String
+  - name: event_metadata
+    description: Additional metadata or payload associated with the event.
     data_type: JSON
-  tags:
-  - contracts
-  - circles_v2
-  - events
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - contracts
+    - hub
+    - events
+    materialized: incremental
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: contracts_circles_v2_Hub_events
+  description: This model captures the hub events related to contracts and circles in the V2 system, providing a comprehensive view of on-chain contract creation, events, and associated metadata.
+  columns:
+  - name: block_number
+    description: Block height at which the event was recorded.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: block_hash
+    description: Hash of the block containing the event.
+    data_type: String
+  - name: create_index
+    description: Index of the contract creation within the transaction.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Hash of the transaction that triggered the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: contract_address
+    description: Address of the contract involved in the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: deployer
+    description: Address that deployed the contract.
+    data_type: String
+  - name: factory
+    description: Factory contract address if applicable.
+    data_type: String
+  - name: init_code
+    description: Constructor byte-code used during deployment.
+    data_type: String
+  - name: code
+    description: Runtime byte-code stored at the contract address.
+    data_type: String
+  - name: init_code_hash
+    description: Keccak-256 hash of the init code.
+    data_type: String
+  - name: n_init_code_bytes
+    description: Size of init code in bytes.
+    data_type: UInt32
+  - name: n_code_bytes
+    description: Size of runtime code in bytes.
+    data_type: UInt32
+  - name: code_hash
+    description: Keccak-256 hash of the runtime code.
+    data_type: String
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block when event was recorded.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonic version for data ingestion.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - contracts
+    - circles
+    - hub
+    - v2
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: contracts_circles_v2_NameRegistry_events
+  description: Business-facing events related to NameRegistry contracts, including creation, updates, and transfers, captured from on-chain activity.
+  columns:
+  - name: id
+    description: Unique identifier for the event record.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: event_type
+    description: Type of the event (e.g., 'NameRegistered', 'NameUpdated', 'NameTransferred').
+    data_type: String
+    tests:
+    - not_null
+  - name: name
+    description: The name involved in the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: owner_address
+    description: Address of the owner or registrant at the time of the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: registration_date
+    description: UTC timestamp when the registration or event occurred.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: transaction_hash
+    description: Hash of the transaction that triggered the event.
+    data_type: String
+    tests:
+    - not_null
+  - name: block_number
+    description: Block height where the event was emitted.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: log_index
+    description: Index of the event log within the block.
+    data_type: UInt32
+    tests:
+    - not_null
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: event_data
+    description: Raw event data payload (hex-encoded).
+    data_type: String
+  - name: gas_used
+    description: Gas used by the transaction emitting the event.
+    data_type: UInt64
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: insert_version
+    description: Monotonically increasing version number for data ingestion.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - contracts
+    - NameRegistry
+    - events
+    materialized: incremental
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

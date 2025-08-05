@@ -2,11 +2,368 @@ version: 2
 
 sources:
   - name: crawlers_data
+    description: "External datasets ingested by various crawlers (not consensus/execution authoritative state)."
     schema: crawlers_data
-    tables:
-      - name: probelab_agent_semvers_avg_1d
-      - name: probelab_agent_types_avg_1d
-      - name: probelab_cloud_provider_avg_1d
-      - name: probelab_countries_avg_1d
-      - name: probelab_quic_support_over_7d
+    tags: ["external", "crawlers", "enrichment"]
 
+    tables:
+      - name: country_codes
+        description: "ISO3166 country codes mapping."
+        columns:
+          - name: name
+            data_type: String
+          - name: alpha-2
+            data_type: String
+          - name: alpha-3
+            data_type: String
+          - name: country-code
+            data_type: String
+          - name: iso_3166-2
+            data_type: String
+          - name: region
+            data_type: String
+          - name: sub-region
+            data_type: String
+          - name: intermediate-region
+            data_type: String
+          - name: region-code
+            data_type: String
+          - name: sub-region-code
+            data_type: String
+          - name: intermediate-region-code
+            data_type: String
+
+      - name: ember_electricity_data
+        description: "Ember electricity statistics (daily)."
+        columns:
+          - name: Area
+            data_type: String
+          - name: ISO 3 code
+            data_type: String
+          - name: Date
+            data_type: Date
+          - name: Area type
+            data_type: String
+          - name: Continent
+            data_type: String
+          - name: Ember region
+            data_type: String
+          - name: EU
+            data_type: Float64
+          - name: OECD
+            data_type: Float64
+          - name: G20
+            data_type: Float64
+          - name: G7
+            data_type: Float64
+          - name: ASEAN
+            data_type: Float64
+          - name: Category
+            data_type: String
+          - name: Subcategory
+            data_type: String
+          - name: Variable
+            data_type: String
+          - name: Unit
+            data_type: String
+          - name: Value
+            data_type: Float64
+          - name: YoY absolute change
+            data_type: Float64
+          - name: YoY % change
+            data_type: Float64
+
+      - name: gpay_wallets
+        description: "Subset of SAFE wallet addresses discovered via gpay integration crawler."
+        columns:
+          - name: SAFE_address
+            data_type: String
+          - name: SAFE_createdAt
+            data_type: DateTime
+
+      - name: ipinfo
+        description: "IP intelligence enrichment from ipinfo.io lookups."
+        columns:
+          - name: ip
+            data_type: String
+          - name: hostname
+            data_type: String
+          - name: city
+            data_type: String
+          - name: region
+            data_type: String
+          - name: country
+            data_type: String
+          - name: loc
+            data_type: String
+          - name: org
+            data_type: String
+          - name: postal
+            data_type: String
+          - name: timezone
+            data_type: String
+          - name: asn
+            data_type: String
+          - name: company
+            data_type: String
+          - name: carrier
+            data_type: String
+          - name: is_bogon
+            data_type: Bool
+          - name: is_mobile
+            data_type: Bool
+          - name: abuse_email
+            data_type: String
+          - name: abuse_phone
+            data_type: String
+          - name: error
+            data_type: String
+          - name: attempts
+            data_type: UInt8
+          - name: success
+            data_type: Bool
+          - name: created_at
+            data_type: DateTime
+          - name: updated_at
+            data_type: DateTime
+
+      # ──────────────── ProbeLab rollups ────────────────
+      - name: probelab_agent_semvers_avg_1d
+        description: "Daily average distribution of agent semantic versions across crawls."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: agent_version_semver
+            data_type: Array(Nullable(Int64))
+          - name: agent_version_semver_str
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)
+
+      - name: probelab_agent_semvers_over_7d
+        description: "7‑day time series of agent semantic versions."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: agent_version_semver
+            data_type: Array(Nullable(Int64))
+          - name: agent_version_semver_str
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(UInt32)
+
+      - name: probelab_agent_types_avg_1d
+        description: "Daily average distribution of agent types."
+        columns:
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)
+
+      - name: probelab_agent_types_over_7d
+        description: "7‑day time series of agent types."
+        columns:
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(UInt32)
+
+      - name: probelab_cloud_provider_avg_1d
+        description: "Daily average share of cloud providers."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: cloud_provider
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)
+
+      - name: probelab_cloud_provider_over_7d
+        description: "7‑day time series of cloud providers."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: cloud_provider
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(UInt32)
+
+      - name: probelab_countries_avg_1d
+        description: "Daily average share of peer countries."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: country_name
+            data_type: Nullable(String)
+          - name: country
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)
+
+      - name: probelab_countries_over_7d
+        description: "7‑day time series of peer countries."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: country_name
+            data_type: Nullable(String)
+          - name: country
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(UInt32)
+
+      - name: probelab_discv5_stale_records
+        description: "Share of stale records discovered in Discv5 crawls."
+        columns:
+          - name: crawl_id
+            data_type: Nullable(String)
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: total
+            data_type: Nullable(Int64)
+          - name: reachability
+            data_type: Nullable(String)
+          - name: count
+            data_type: Nullable(Int64)
+          - name: percentage
+            data_type: Nullable(Float64)
+
+      - name: probelab_is_cloud_avg_1d
+        description: "Daily average share of peers detected in cloud."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: is_cloud
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)
+
+      - name: probelab_is_cloud_over_7d
+        description: "7‑day time series of cloud share."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: is_cloud
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(UInt32)
+
+      - name: probelab_quic_support_over_7d
+        description: "7‑day time series average share of QUIC support."
+        columns:
+          - name: agent_version_type
+            data_type: Nullable(String)
+          - name: min_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: max_crawl_created_at
+            data_type: Nullable(DateTime64(6))
+          - name: quic_support
+            data_type: Nullable(String)
+          - name: __count
+            data_type: Nullable(Float64)
+          - name: __samples
+            data_type: Nullable(UInt32)
+          - name: __pct
+            data_type: Nullable(Float64)
+          - name: __total
+            data_type: Nullable(Float64)

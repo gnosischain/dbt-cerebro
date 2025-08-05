@@ -1,89 +1,191 @@
 version: 2
 models:
+
 - name: esg_consensus_power
-  description: This model aggregates consensus power data across different Ethereum clients.
+  description: Provides consensus power data with client types and mean values for analysis.
   columns:
   - name: type
-    description: Type of consensus power data.
-    data_type: INT
+    description: The type of power consensus, e.g., 4, 5, 6.
+    data_type: UInt64
+    tests:
+    - not_null
   - name: client
-    description: Ethereum client.
-    data_type: STRING
+    description: The client name, e.g., Lighthouse, Teku, Lodestar, Nimbus, Prysm.
+    data_type: String
+    tests:
+    - not_null
   - name: mean
-    description: Average consensus power.
-    data_type: FLOAT
+    description: The mean value of power consensus in floating point units.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
 - name: esg_country_power_consumption
-  description: Calculates the estimated power consumption for each country based on node configuration and distribution.  Combines daily country-level peer counts with a calculated average power consumption per client configuration.
+  description: Aggregated power consumption data by country, combining consensus and execution power metrics along with client-specific estimates.
   columns:
   - name: date
-    description: Date of the measurement.
-    data_type: DATE
+    description: Date of the power consumption record
+    data_type: DateTime
+    tests:
+    - not_null
   - name: country
-    description: Country where the power consumption is measured.
-    data_type: STRING
+    description: Country code or name
+    data_type: String
+    tests:
+    - not_null
   - name: power
-    description: Estimated power consumption in the country on the given date.
-    data_type: FLOAT
-- name: esg_execution_power
-  description: This model calculates the mean execution power for different Ethereum clients.
-  columns:
-  - name: type
-    description: Type of execution client.
-    data_type: INT64
+    description: Estimated power consumption in units consistent with source data
+    data_type: Float64
+  - name: mean
+    description: Calculated mean power value based on client and configuration data
+    data_type: Float64
   - name: client
-    description: Name of the execution client.
-    data_type: STRING
+    description: Client identifier associated with power metrics
+    data_type: String
+  - name: type
+    description: Power type category (e.g., consensus, execution, idle)
+    data_type: String
+  config:
+    materialized: table
+    access: public
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: esg_execution_power
+  description: A model representing execution power metrics categorized by type and client, with mean values.
+  columns:
+  - name: type
+    description: The type of execution, represented as an integer.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: client
+    description: The client name, such as 'Erigon' or 'Nethermind'.
+    data_type: String
+    tests:
+    - not_null
   - name: mean
-    description: Mean execution power.
-    data_type: FLOAT64
+    description: The average execution power value, in floating point units.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - metrics
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
 - name: esg_hardware_config
-  description: This model describes the hardware configuration of ESG systems.  It includes details such as CPU, RAM, storage, and GPU.
+  description: Hardware configuration details including type, CPU, cores/threads, architecture, RAM, storage, GPU, PSU, case, and OS.
   columns:
-  - name: type
-    description: Type of hardware configuration.
-    data_type: INT
-  - name: cpu
-    description: CPU model.
-    data_type: STRING
-  - name: cores_threads
-    description: Number of cores and threads.
-    data_type: STRING
   - name: architecture
-    description: CPU architecture.
-    data_type: STRING
-  - name: ram
-    description: RAM size.
-    data_type: STRING
-  - name: storage
-    description: Storage size and type.
-    data_type: STRING
-  - name: gpu
-    description: GPU model.
-    data_type: STRING
-  - name: psu
-    description: Power supply unit (PSU) wattage.
-    data_type: STRING
-  - name: case
-    description: Computer case type.
-    data_type: STRING
+    description: CPU architecture type, e.g., x86/x64.
+    data_type: String
+    tests:
+    - not_null
   - name: os
-    description: Operating system.
-    data_type: STRING
+    description: Operating system installed, e.g., Ubuntu 20.04.
+    data_type: String
+    tests:
+    - not_null
+  - name: ram
+    description: RAM size in GB, e.g., 16 GB, 64 GB, 256 GB.
+    data_type: String
+    tests:
+    - not_null
+  - name: storage
+    description: Storage capacity, e.g., 2 TB SSD.
+    data_type: String
+    tests:
+    - not_null
+  - name: type
+    description: Hardware type identifier, e.g., 4, 5, 6.
+    data_type: UInt64
+    tests:
+    - not_null
+    - unique
+  - name: cpu
+    description: CPU model, e.g., Intel i5-1135G7.
+    data_type: String
+    tests:
+    - not_null
+  - name: cores_threads
+    description: Cores and threads, e.g., 4/8, 6/12, 32/64.
+    data_type: String
+    tests:
+    - not_null
+  - name: psu
+    description: Power supply wattage, e.g., 65 Watt, 650 Watt.
+    data_type: String
+    tests:
+    - not_null
+  - name: case
+    description: Case type, e.g., Integrated, Custom.
+    data_type: String
+    tests:
+    - not_null
+  - name: gpu
+    description: GPU model, e.g., Onboard, AM 6970.
+    data_type: String
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - hardware
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
 - name: esg_idle_electric_power
-  description: This model calculates the mean idle electric power consumption for different types of power sources.  The source data is synthetic.
+  description: Model representing average idle electric power metrics categorized by type.
   columns:
   - name: type
-    description: Type of electric power source.
-    data_type: INT
+    description: Power type categories (e.g., 4, 5, 6)
+    data_type: UInt64
+    tests:
+    - not_null
   - name: mean
-    description: Mean idle electric power consumption.
-    data_type: FLOAT
+    description: Average idle electric power in units consistent with source (e.g., kWh)
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
 - name: esg_node_distribution
-  description: Distribution of ESG node types.  Provides the type and its corresponding distribution.
+  description: Provides the distribution of node types with their associated proportions.
   columns:
   - name: type
-    description: Type of ESG node.
-    data_type: INT64
+    description: Node type identifier (e.g., 4, 5, 6)
+    data_type: UInt64
+    tests:
+    - not_null
+    - unique
   - name: distribution
-    description: Distribution of the ESG node type.
-    data_type: FLOAT64
+    description: Proportion of nodes for each type (values between 0 and 1)
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer

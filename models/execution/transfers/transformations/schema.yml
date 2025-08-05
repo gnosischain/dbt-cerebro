@@ -1,36 +1,73 @@
 version: 2
 models:
+
 - name: transfers_erc20_bluechips
-  description: 'ERC20 transfers of bluechip tokens.  This model filters logs from the `execution.logs` source to only include transfers of a specific bluechip token (address: ''e91d153e0b41518a2ce8dd3d7944fa863463a97d'').  Data is incrementally updated using `delete+insert` strategy.'
+  description: This model captures ERC20 token transfer events involving bluechip tokens, including transaction details, token addresses, transfer amounts, and related metadata.
   columns:
   - name: block_number
-    description: Number of the block where the transfer occurred.
-    data_type: INTEGER
+    description: Height of the block containing the transfer event.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: block_timestamp
-    description: Timestamp of the block where the transfer occurred.
-    data_type: TIMESTAMP
+    description: UTC timestamp when the block was proposed.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: transaction_index
-    description: Index of the transaction within the block.
-    data_type: INTEGER
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt64
+    tests:
+    - not_null
   - name: log_index
-    description: Index of the log within the transaction.
-    data_type: INTEGER
+    description: Zero-based index of the log within the transaction.
+    data_type: UInt32
+    tests:
+    - not_null
   - name: transaction_hash
-    description: Hash of the transaction.
-    data_type: STRING
+    description: Unique hash identifying the transaction.
+    data_type: String
+    tests:
+    - not_null
+    - unique
   - name: token_address
-    description: Address of the token transferred.
-    data_type: STRING
+    description: Address of the ERC20 token contract involved in the transfer.
+    data_type: String
+    tests:
+    - not_null
   - name: from
-    description: Address of the sender.
-    data_type: STRING
+    description: Address of the sender in the transfer.
+    data_type: String
+    tests:
+    - not_null
   - name: to
-    description: Address of the recipient.
-    data_type: STRING
+    description: Address of the recipient in the transfer.
+    data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Amount of tokens transferred.
-    data_type: STRING
-  tags:
-  - erc20
-  - bluechip
-  - transfers
+    description: Transfer amount in wei (token units).
+    data_type: String
+  - name: value_f64
+    description: Transfer amount as floating-point number in token units.
+    data_type: Float64
+  - name: value_hex
+    description: Transfer amount in hexadecimal (for overflow or precise binary handling).
+    data_type: String
+  - name: chain_id
+    description: Identifier of the blockchain network.
+    data_type: UInt64
+  - name: insert_version
+    description: Monotonically increasing version number for ingestion.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - erc20
+    - bluechips
+    - transfers
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

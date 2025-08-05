@@ -1,14 +1,30 @@
 version: 2
 models:
+
 - name: rwa_backedfi_prices
-  description: This model aggregates daily prices for various RWA-backed financial instruments from on-chain oracle events.  The data is sourced from individual contract-specific models, each tracking `AnswerUpdated` events.  The model uses a `delete+insert` incremental strategy for efficient updates.
+  description: Business-facing table containing backedfi price data with timestamp and ticker information.
   columns:
   - name: bticker
-    description: The ticker symbol representing the RWA-backed financial instrument.
-    data_type: string
+    description: Ticker symbol for the backedfi asset.
+    data_type: String
+    tests:
+    - not_null
+    - unique
   - name: date
-    description: The date of the price observation (start of day).
-    data_type: date
+    description: Date of the price record, truncated to day.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: price
-    description: The price of the instrument in USD, scaled down by a factor of 10^8.
-    data_type: float
+    description: Price value in USD (or relevant currency) at the given date.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - prices
+    - backedfi
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

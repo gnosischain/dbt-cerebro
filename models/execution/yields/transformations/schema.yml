@@ -1,14 +1,28 @@
 version: 2
 models:
+
 - name: yields_sdai_rate_daily
-  description: This model calculates the daily rate of change in the SDai conversion rate.  It uses a calendar table to ensure daily granularity, even when no events occur on a given day. The rate is calculated as the difference between consecutive days' median conversion rates, floored to 12.  Incremental strategy is used for efficiency.
+  description: Daily yields SDai rate data including date, conversion rate, and calculated rate.
   columns:
   - name: date
-    description: The date of the conversion rate.
-    data_type: DATE
+    description: The day for which the rate data is recorded.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: sdai_conversion
-    description: The median SDai conversion rate for the day.
-    data_type: FLOAT
+    description: The minimum asset/share ratio (unitless) for the day.
+    data_type: Float64
   - name: rate
-    description: The daily change in the SDai conversion rate, floored to 12.
-    data_type: INT64
+    description: The difference in SDai conversion rate from the previous day, floored to 12 decimal places.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - yield
+    - sdai
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
