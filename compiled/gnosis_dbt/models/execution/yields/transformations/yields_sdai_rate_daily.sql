@@ -6,7 +6,10 @@ WITH
 sdai_rate_sparse_daily AS (
     SELECT
         toStartOfDay(block_timestamp) AS date
-        ,median(toUInt256OrNull(decoded_params['assets']) / toUInt256OrNull(decoded_params['shares']))  AS sdai_conversion
+        ,argMin(
+          toUInt256OrNull(decoded_params['assets']) / toUInt256OrNull(decoded_params['shares']),
+          block_timestamp
+        ) AS sdai_conversion
     FROM 
         `dbt`.`contracts_sdai_events`
     WHERE 

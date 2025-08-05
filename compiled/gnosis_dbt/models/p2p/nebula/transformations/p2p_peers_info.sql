@@ -1,6 +1,5 @@
 
 
-
 WITH
 
 fork_digests AS (
@@ -35,32 +34,33 @@ fork_version AS (
             ('0x06000064','Fulu')
         ]) AS tup
     )
-),
+)
 
-gnosis_peers AS (
-    SELECT 
-        visit_ended_at
-        ,peer_id
-        ,agent_version
-        ,CAST(peer_properties.fork_digest AS String) AS fork_digest
-        ,t2.cl_fork_name AS cl_fork_name
-        ,COALESCE(t3.cl_fork_name,peer_properties.next_fork_version) AS cl_next_fork_name
-        ,peer_properties
-        ,crawl_error
-        ,dial_errors
-    FROM 
-        `nebula`.`visits` t1
-    LEFT JOIN 
-        fork_digests t2
-        ON t1.peer_properties.fork_digest = t2.fork_digest
-    LEFT JOIN 
-        fork_version t3
-        ON t1.peer_properties.next_fork_version = t3.fork_version
-    WHERE
-        (   peer_properties.fork_digest IN (SELECT fork_digest FROM fork_digests) 
-            OR
-            peer_properties.next_fork_version LIKE '%064'
-        )
+
+SELECT 
+    t1.visit_ended_at,
+    t1.peer_id,
+    t1.agent_version,
+    toString(t1.peer_properties.fork_digest)        AS fork_digest,
+    t2.cl_fork_name                                  AS cl_fork_name,
+    coalesce(t3.cl_fork_name,
+                toString(t1.peer_properties.next_fork_version)) AS cl_next_fork_name,
+    t1.peer_properties,
+    t1.crawl_error,
+    t1.dial_errors
+FROM `nebula`.`visits` AS t1
+LEFT JOIN fork_digests t2
+    ON toString(t1.peer_properties.fork_digest) = t2.fork_digest
+LEFT JOIN fork_version t3
+    ON toString(t1.peer_properties.next_fork_version) = t3.fork_version
+WHERE
+    t1.visit_ended_at < today()
+    AND
+    (
+        toString(t1.peer_properties.fork_digest) IN (SELECT fork_digest FROM fork_digests)
+        OR
+        toString(t1.peer_properties.next_fork_version) LIKE '%064'
+    )
     
   
     
@@ -74,12 +74,3 @@ gnosis_peers AS (
       FROM `dbt`.`p2p_peers_info`
     )
   
-
-     SETTINGS
-        join_use_nulls=1
-)
-
-SELECT
-    *
-FROM gnosis_peers
-WHERE visit_ended_at < today()

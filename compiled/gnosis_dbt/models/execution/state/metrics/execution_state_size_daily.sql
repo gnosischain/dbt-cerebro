@@ -5,10 +5,10 @@ WITH
 
 state_size_diff_daily AS (
     SELECT 
-        toStartOfDay(block_timestamp) AS date
-        ,SUM(bytes_diff) AS bytes_diff
+        date
+        ,bytes_diff
     FROM 
-        `dbt`.`execution_state_size_diff`
+        `dbt`.`execution_state_size_diff_daily`
     
   
     
@@ -16,14 +16,13 @@ state_size_diff_daily AS (
     
 
     WHERE 
-    toStartOfMonth(toStartOfDay(block_timestamp)) >= (
+    toStartOfMonth(toStartOfDay(date)) >= (
       SELECT
         max(toStartOfMonth(date))
       FROM `dbt`.`execution_state_size_daily`
     )
   
 
-    GROUP BY 1
 ),
 
 
