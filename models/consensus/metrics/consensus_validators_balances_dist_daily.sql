@@ -22,9 +22,9 @@ FROM (
     SELECT
         toStartOfDay(slot_timestamp) AS date,
        quantilesTDigest(-- quantilesExactExclusive(
-            0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 1
+            0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
         )(balance/POWER(10,9)) AS q_balance
-    FROM {{ source('consensus', 'validators') }}
+    FROM {{ source('consensus', 'validators') }} FINAL
     WHERE 
         status = 'active_ongoing'
         AND
