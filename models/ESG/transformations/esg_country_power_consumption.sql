@@ -108,6 +108,6 @@ SELECT
     ,t1.country
     ,t1.cnt * t2.mean AS power
 FROM
-    {{ ref('p2p_peers_geo_daily') }} t1
+    {{ ref('int_p2p_discv5_geo_daily') }} t1
 CROSS JOIN 
     power_best_guess t2
