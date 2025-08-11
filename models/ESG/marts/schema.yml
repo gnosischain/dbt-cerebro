@@ -63,3 +63,63 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+- name: fct_esg_carbon_emissions
+  description: Fact table capturing carbon emissions data based on power consumption, CIF values, and country codes, aggregated by date.
+  columns:
+  - name: date
+    description: The date of the measurement, in DateTime format.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: energy
+    description: Total energy consumption in MWh, calculated as sum of power over 24 hours.
+    data_type: Float64
+  - name: co2_emissions
+    description: Total CO2 emissions in metric tons, derived from power, CIF, and country data.
+    data_type: Float64
+  - name: mean_cif
+    description: Average CIF value in gCO2/kWh for the period.
+    data_type: Float64
+  - name: power
+    description: Power consumption in kW, from source data.
+    data_type: Float64
+  - name: country
+    description: ISO 3 country code.
+    data_type: String
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_esg_power_consumption_top10
+  description: Aggregated power consumption data for top 10 countries per date, with 'Other' category for lower ranks.
+  columns:
+  - name: date
+    description: Date of power consumption measurement
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: country
+    description: Country name or 'Other' for aggregated lower ranks
+    data_type: String
+    tests:
+    - not_null
+  - name: power
+    description: Total power consumption in wei
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: rank
+    description: Rank of country based on power consumption for the date
+    data_type: UInt64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer

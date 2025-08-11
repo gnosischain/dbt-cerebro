@@ -17,15 +17,16 @@ peers AS (
         ,peer_id
         ,argMax(IF(client='','Unknown',client),visit_ended_at) AS client
         ,argMax(
-            CASE
-                WHEN platform = '' THEN 'Unknown'
-                WHEN platform = 'aarch64-linux' THEN 'linux-aarch_64'
-                WHEN platform = 'x86_64-linux' THEN 'linux-x86_64'
-                WHEN platform = 'x86_64-windows' THEN 'windows-x86_64'
-                ELSE platform
-            END 
+        CASE
+            WHEN platform = '' THEN 'Unknown'
+            WHEN platform = 'x86_64-linux-gnu' THEN 'linux-x86_64'
+            WHEN platform = 'linux-x64' THEN 'linux-x86_64'
+            WHEN platform = 'x86_64-unknown-linux-gnu' THEN 'linux-x86_64'
+            WHEN platform = 'x86_64-windows' THEN 'windows-x86_64'
+            ELSE platform
+        END
         ,visit_ended_at) AS platform
-    FROM {{ ref('int_p2p_discv5_peers') }}
+    FROM {{ ref('int_p2p_discv4_peers') }}
     WHERE
         empty(dial_errors) = 1 AND crawl_error IS NULL
         {{ apply_monthly_incremental_filter('visit_ended_at','date','true') }}

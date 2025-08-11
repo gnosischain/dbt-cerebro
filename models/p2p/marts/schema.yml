@@ -240,3 +240,250 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+- name: api_p2p_discv5_clients_daily
+  description: Daily metrics of P2P Discv5 clients including date, metric, label, and value.
+  columns:
+  - name: date
+    description: The date of the metrics in YYYY-MM-DD format.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: metric
+    description: The name of the metric being recorded.
+    data_type: String
+    tests:
+    - not_null
+  - name: label
+    description: A label categorizing the metric.
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: The value of the metric; numeric, units depend on metric.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_p2p_discv5_current_fork_daily
+  description: Daily count of current forks in the Discv5 network, filtered by label 'Current Fork'.
+  columns:
+  - name: date
+    description: Date of the record in YYYY-MM-DD format.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: fork
+    description: Identifier of the fork; categorical string.
+    data_type: String
+    tests:
+    - not_null
+  - name: cnt
+    description: Count of occurrences for the given date and fork.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_p2p_discv5_geo_latest
+  description: A table containing the latest geolocation data for P2P peers based on Discv5, including latitude, longitude, country, and count metrics.
+  columns:
+  - name: date
+    description: Date of the data record, representing the day of data aggregation.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null
+  - name: lat
+    description: Latitude coordinate of the peer's geolocation.
+    data_type: Float64
+  - name: long
+    description: Longitude coordinate of the peer's geolocation.
+    data_type: Float64
+  - name: country
+    description: Country code or name where the peer is located.
+    data_type: String
+  - name: cnt
+    description: Count of peers in the specified geolocation for the given date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_p2p_discv5_next_fork_daily
+  description: Daily count of the next fork in the Discv5 P2P network, filtered by label 'Next Fork' and ordered by date and fork.
+  columns:
+  - name: date
+    description: The date of the record, in YYYY-MM-DD format.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: fork
+    description: Identifier of the fork, as a string.
+    data_type: String
+    tests:
+    - not_null
+  - name: cnt
+    description: Count of occurrences for the given date and fork.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - p2p
+    - discv5
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_p2p_discv5_topology_latest
+  description: This model represents the latest topology data from the Discv5 P2P network crawl, including peer discovery and neighbor relationships, used for network analysis.
+  columns:
+  - name: date
+    description: Date of the topology snapshot.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: peer_ip
+    description: IP address of the peer.
+    data_type: String
+  - name: peer_discovery_id_prefix
+    description: Unique prefix identifier for the peer discovery.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: peer_cl_fork_name
+    description: Client fork name of the peer.
+    data_type: String
+  - name: peer_cl_next_fork_name
+    description: Next version client fork name of the peer.
+    data_type: String
+  - name: peer_client
+    description: Client software used by the peer.
+    data_type: String
+  - name: peer_hostname
+    description: Hostname of the peer.
+    data_type: String
+  - name: peer_city
+    description: City location of the peer.
+    data_type: String
+  - name: peer_country
+    description: Country location of the peer.
+    data_type: String
+  - name: peer_org
+    description: Organization associated with the peer.
+    data_type: String
+  - name: peer_lat
+    description: Latitude coordinate of the peer.
+    data_type: String
+  - name: peer_lon
+    description: Longitude coordinate of the peer.
+    data_type: String
+  - name: neighbor_ip
+    description: IP address of the neighbor peer.
+    data_type: String
+  - name: neighbor_discovery_id_prefix
+    description: Unique prefix identifier for the neighbor discovery.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: neighbor_cl_fork_name
+    description: Client fork name of the neighbor.
+    data_type: String
+  - name: neighbor_cl_next_fork_name
+    description: Next version client fork name of the neighbor.
+    data_type: String
+  - name: neighbor_client
+    description: Client software used by the neighbor.
+    data_type: String
+  - name: neighbor_city
+    description: City location of the neighbor.
+    data_type: String
+  - name: neighbor_country
+    description: Country location of the neighbor.
+    data_type: String
+  - name: neighbor_org
+    description: Organization associated with the neighbor.
+    data_type: String
+  - name: neighbor_lat
+    description: Latitude coordinate of the neighbor.
+    data_type: String
+  - name: neighbor_lon
+    description: Longitude coordinate of the neighbor.
+    data_type: String
+  - name: cnt
+    description: Count of occurrences or connections.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - p2p
+    - discv5
+    - topology
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_p2p_discv5_forks_daily
+  description: Daily count of Discv5 forks, aggregated by date, label, and fork type.
+  columns:
+  - name: date
+    description: Date of the record in YYYY-MM-DD format.
+    data_type: Date
+    tests:
+    - not_null
+  - name: label
+    description: Label categorizing the fork type.
+    data_type: String
+  - name: fork
+    description: Identifier for the specific fork.
+    data_type: String
+  - name: cnt
+    description: Count of occurrences for the given fork on the date.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - p2p
+    - discv5
+    - forks
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_p2p_discv5_geo_daily
+  description: Daily aggregated data capturing peer-to-peer network activity with geographic information, including date, country, and count metrics.
+  columns:
+  - name: date
+    description: Date of the aggregated data in YYYY-MM-DD format.
+    data_type: Date
+    tests:
+    - not_null
+  - name: country
+    description: Country code where the activity was observed.
+    data_type: String
+    tests:
+    - not_null
+  - name: cnt
+    description: Count of network activity occurrences for the given date and country.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - aggregate
+    - daily
+    materialized: table
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

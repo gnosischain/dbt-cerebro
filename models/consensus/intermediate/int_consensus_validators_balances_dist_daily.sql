@@ -24,7 +24,7 @@ FROM (
        quantilesTDigest(-- quantilesExactExclusive(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
         )(balance/POWER(10,9)) AS q_balance
-    FROM {{ source('consensus', 'validators') }} FINAL
+    FROM {{ ref('stg_consensus__validators') }}
     WHERE 
         status = 'active_ongoing'
         AND

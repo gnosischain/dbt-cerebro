@@ -14,7 +14,7 @@ SELECT
     toStartOfDay(slot_timestamp) AS date
     ,status
     ,COUNT(*) AS cnt
-FROM {{ source('consensus', 'validators') }} FINAL
+FROM {{ ref('stg_consensus__validators') }}
 WHERE
     slot_timestamp < today()
     {{ apply_monthly_incremental_filter('slot_timestamp', 'date', 'true') }}

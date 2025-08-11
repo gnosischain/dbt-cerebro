@@ -41,3 +41,107 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+- name: fct_execution_transactions_cnt_daily
+  description: Business-facing table summarizing daily counts of execution transactions, including transaction types, success status, and total number of transactions.
+  columns:
+  - name: date
+    description: Date of the transaction count (YYYY-MM-DD).
+    data_type: Date
+    tests:
+    - not_null
+  - name: transaction_type
+    description: Type of transaction (e.g., transfer, contract call).
+    data_type: String
+  - name: success
+    description: Indicates if the transaction was successful (1) or reverted (0).
+    data_type: UInt8
+  - name: n_txs
+    description: Total number of transactions of this type and success status on the given date.
+    data_type: UInt64
+    tests:
+    - not_null
+  config:
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_gas_used_daily
+  description: Business-facing table aggregating daily execution transaction data, including gas usage, transaction counts, and value metrics for each day.
+  columns:
+  - name: date
+    description: The day for which the metrics are aggregated, derived from block_timestamp.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: transaction_type
+    description: Type of transaction (e.g., legacy, EIP-1559), as string.
+    data_type: String
+    tests:
+    - not_null
+  - name: success
+    description: Indicator if transaction succeeded (1) or reverted (0).
+    data_type: UInt8
+    tests:
+    - not_null
+  - name: n_txs
+    description: Total number of transactions executed on the given day.
+    data_type: UInt64
+  - name: xdai_value
+    description: Sum of transaction values converted to XDAI (wei divided by 10^18).
+    data_type: Float64
+  - name: xdai_value_avg
+    description: Average transaction value in XDAI for the day.
+    data_type: Float64
+  - name: xdai_value_median
+    description: Median transaction value in XDAI for the day.
+    data_type: Float64
+  - name: gas_used
+    description: Total gas used by all transactions on the day.
+    data_type: UInt64
+  - name: gas_price_avg
+    description: Average gas price (wei) across transactions, cast to Int32.
+    data_type: Int32
+  - name: gas_price_median
+    description: Median gas price (wei) across transactions, cast to Int32.
+    data_type: Int32
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - gas
+    - transactions
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_value_daily
+  description: Business-facing table summarizing daily transaction values, success status, and transaction types from execution data.
+  columns:
+  - name: date
+    description: Date of the transaction day (YYYY-MM-DD).
+    data_type: Date
+    tests:
+    - not_null
+  - name: transaction_type
+    description: Type of transaction (e.g., transfer, contract call).
+    data_type: String
+  - name: success
+    description: Indicator if transaction succeeded (1) or failed (0).
+    data_type: UInt8
+  - name: xdai_value
+    description: Total value transferred in wei.
+    data_type: UInt64
+  - name: xdai_value_avg
+    description: Average transaction value in wei for the day.
+    data_type: Float64
+  - name: xdai_value_median
+    description: Median transaction value in wei for the day.
+    data_type: Float64
+  config:
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
