@@ -14,7 +14,7 @@ gnosis_power_consumption AS (
         ,t1.power
         ,ROW_NUMBER() OVER (PARTITION BY t1.date ORDER BY t1.power DESC) AS rank
     FROM
-        {{ ref('esg_country_power_consumption') }} t1
+        {{ ref('int_esg_country_power_consumption') }} t1
     LEFT JOIN
         {{ source('crawlers_data','country_codes') }} t2
         ON

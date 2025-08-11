@@ -58,7 +58,7 @@ SELECT
            JSONExtractArrayRaw(params))          AS types,
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
-FROM {{ source('raw_abi','event_signatures') }}
+FROM {{ ref('event_signatures') }}
 WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
 {% endset %}
 

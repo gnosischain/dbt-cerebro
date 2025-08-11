@@ -13,7 +13,7 @@ consensus_power AS (
         ,client
         ,mean
     FROM
-        {{ ref('esg_consensus_power') }}
+        {{ ref('stg_esg_consensus_power') }}
 ),
 
 execution_power AS (
@@ -22,7 +22,7 @@ execution_power AS (
         ,client
         ,mean
     FROM
-        {{ ref('esg_execution_power') }}
+        {{ ref('stg_esg_execution_power') }}
 ),
 
 idle_electric_power AS (
@@ -30,7 +30,7 @@ idle_electric_power AS (
         type
         ,mean
     FROM
-        {{ ref('esg_idle_electric_power') }}
+        {{ ref('stg_esg_idle_electric_power') }}
 ),
 
 node_distribution AS (
@@ -38,7 +38,7 @@ node_distribution AS (
         type
         ,distribution
     FROM
-        {{ ref('esg_node_distribution') }}
+        {{ ref('stg_esg_node_distribution') }}
 ),
 
 node_config_power AS (

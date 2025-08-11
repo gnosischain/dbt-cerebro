@@ -17,7 +17,7 @@ source AS (
         ) AS "value"
     FROM {{ source('execution','logs') }}
     WHERE
-        topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+        topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
         {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
 
 )

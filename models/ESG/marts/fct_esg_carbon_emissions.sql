@@ -1,10 +1,3 @@
-{{ 
-    config(
-            materialized='table'
-        ) 
-}}
-
-
 WITH
 
 gnosis_power_consumption AS (
@@ -13,7 +6,7 @@ gnosis_power_consumption AS (
         ,country
         ,power
     FROM
-        {{ ref('esg_country_power_consumption') }}
+        {{ ref('int_esg_country_power_consumption') }}
 ),
 
 ember_data AS (

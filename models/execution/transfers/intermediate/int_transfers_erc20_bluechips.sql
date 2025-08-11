@@ -23,7 +23,7 @@ SELECT
     ,"from"
     ,"to"
     ,"value"
-FROM {{ ref('stg_transfers_erc20') }}
+FROM {{ ref('int_transfers_erc20') }}
 WHERE
     token_address = '0xe91d153e0b41518a2ce8dd3d7944fa863463a97d'
     {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
