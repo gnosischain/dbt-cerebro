@@ -19,6 +19,7 @@ WITH
       visit_ended_at,
       peer_id,
       agent_version,
+      connect_maddr,
       peer_properties,
       crawl_error,
       dial_errors
@@ -35,6 +36,7 @@ WITH
       visit_ended_at,
       peer_id,
       agent_version,
+      connect_maddr,
       peer_properties,
       crawl_error,
       dial_errors,
@@ -70,6 +72,7 @@ WITH
       visit_ended_at,
       peer_id,
       agent_version,
+      connect_maddr,
       peer_properties,
       crawl_error,
       dial_errors,
@@ -93,52 +96,74 @@ WITH
       IF(ver_blob LIKE '%+%', arrayElement(splitByChar('+', ver_blob), 2), '')        AS plus_build
 
     FROM parsed
-  )
+  ),
+
+basic_info AS (
+  SELECT
+    visit_ended_at,
+    peer_id,
+    agent_version,
+    --replaceRegexpAll(connect_maddr, '^/ip4/([0-9.]+)/tcp/[0-9]+$', '\\1') AS ip,
+    arrayElement(splitByChar('/', ifNull(connect_maddr, '')), 3) AS ip,
+    peer_properties,
+    crawl_error,
+    dial_errors,
+    client,
+    variant,
+    IF(
+      plus_build != '',
+      arrayElement(splitByChar('-', pre_blob), 1),
+      splitByChar('-', ver_blob)[1]
+    )                                                       AS version,
+    IF(
+      plus_build != '',
+      IF(
+        length(splitByChar('-', pre_blob)) >= 2,
+        arrayElement(splitByChar('-', pre_blob), 2),
+        ''
+      ),
+      IF(
+        length(splitByChar('-', ver_blob)) = 3,
+        arrayElement(splitByChar('-', ver_blob), 2),
+        ''
+      )
+    )                                                       AS channel,
+    IF(
+      plus_build != '',
+      plus_build,
+      IF(
+        length(splitByChar('-', ver_blob)) > 1,
+        arrayElement(splitByChar('-', ver_blob), -1),
+        ''
+      )
+    )                                                       AS build,
+    platform,
+    runtime
+  FROM exploded
+)
 
 SELECT
-  visit_ended_at,
-  peer_id,
-  agent_version,
-  peer_properties,
-  crawl_error,
-  dial_errors,
-  client,
-  variant,
-
-  -- version: drop +build, then drop any “-channel” suffix
-  IF(
-    plus_build != '',
-    arrayElement(splitByChar('-', pre_blob), 1),
-    splitByChar('-', ver_blob)[1]
-  )                                                       AS version,
-
-  -- channel: from pre_blob if +build present, else only when exactly three dash-segments
-  IF(
-    plus_build != '',
-    IF(
-      length(splitByChar('-', pre_blob)) >= 2,
-      arrayElement(splitByChar('-', pre_blob), 2),
-      ''
-    ),
-    IF(
-      length(splitByChar('-', ver_blob)) = 3,
-      arrayElement(splitByChar('-', ver_blob), 2),
-      ''
-    )
-  )                                                       AS channel,
-
-  -- build: +metadata if present, otherwise last dash-segment
-  IF(
-    plus_build != '',
-    plus_build,
-    IF(
-      length(splitByChar('-', ver_blob)) > 1,
-      arrayElement(splitByChar('-', ver_blob), -1),
-      ''
-    )
-  )                                                       AS build,
-
-  platform,
-  runtime
-
-FROM exploded
+  t1.visit_ended_at,
+  t1.peer_id,
+  t1.agent_version,
+  t1.ip,
+  t1.peer_properties,
+  t1.crawl_error,
+  t1.dial_errors,
+  t1.client,
+  t1.variant,
+  t1.version,
+  t1.channel,
+  t1.build,
+  t1.platform,
+  t1.runtime,
+  t2.hostname   AS peer_hostname,
+  t2.city       AS peer_city,
+  t2.country    AS peer_country,
+  t2.org        AS peer_org,
+  t2.loc        AS peer_loc,
+  t2.generic_provider AS generic_provider
+FROM
+  basic_info t1
+LEFT JOIN {{ ref('stg_crawlers_data__ipinfo') }} AS t2
+  ON t2.ip = t1.ip

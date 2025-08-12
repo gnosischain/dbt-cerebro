@@ -57,7 +57,7 @@ peers AS (
   SELECT 
     t1.visit_ended_at,
     t1.peer_id,
-
+    t1.connect_maddr,
     -- Dynamic JSON leaves → String for safe joins/filters
     toString(t1.peer_properties.fork_digest)         AS fork_digest,
     toString(t1.peer_properties.next_fork_version)   AS next_fork_version,
@@ -90,6 +90,7 @@ parsed AS (
   SELECT
     visit_ended_at,
     peer_id,
+    connect_maddr,
     fork_digest,
     next_fork_version,
     cl_fork_name,
@@ -119,6 +120,7 @@ with_parts AS (
   SELECT
     visit_ended_at,
     peer_id,
+    connect_maddr,
     fork_digest,
     next_fork_version,
     cl_fork_name,
@@ -154,6 +156,7 @@ exploded AS (
     visit_ended_at,
     peer_id,
     agent_version,
+    connect_maddr,
     fork_digest,
     next_fork_version,
     cl_fork_name,
@@ -177,37 +180,67 @@ exploded AS (
     splitByChar('-', IF(position(ver_blob, '+') > 0, splitByChar('+', ver_blob)[1], ver_blob))
                                                                             AS hy_parts
   FROM with_parts
+),
+
+basic_info AS (
+  SELECT
+    visit_ended_at,
+    peer_id,
+    agent_version,
+    replaceRegexpAll(connect_maddr, '^/ip4/([0-9.]+)/tcp/[0-9]+$', '\\1') AS ip,
+    fork_digest,
+    cl_fork_name,
+    cl_next_fork_name,
+    next_fork_version,
+    peer_properties,
+    crawl_error,
+    dial_errors,
+    client,
+    variant,
+    IF(length(hy_parts) >= 1, hy_parts[1], '')                                AS version,
+    IF(length(hy_parts) >= 3, hy_parts[2], '')                                 AS channel,
+    IF(
+      plus_build != '',
+      plus_build,
+      IF(length(hy_parts) >= 2, hy_parts[length(hy_parts)], '')
+    )                                                                          AS build,
+    platform,
+    runtime
+  FROM exploded
 )
 
 SELECT
-  visit_ended_at,
-  peer_id,
-  agent_version,
-
-  fork_digest,
-  cl_fork_name,
-  cl_next_fork_name,
-  next_fork_version,
-
-  peer_properties,
-  crawl_error,
-  dial_errors,
-  client,
-  variant,
-
-  -- version: first hyphen piece if present
-  IF(length(hy_parts) >= 1, hy_parts[1], '')                                AS version,
-
-  -- channel: ONLY when there are 3+ hyphen pieces (e.g., vX-Y-Z)
-  IF(length(hy_parts) >= 3, hy_parts[2], '')                                 AS channel,
-
-  -- build: '+' suffix if present, else last hyphen piece when there are ≥2
-  IF(
-    plus_build != '',
-    plus_build,
-    IF(length(hy_parts) >= 2, hy_parts[length(hy_parts)], '')
-  )                                                                          AS build,
-
-  platform,
-  runtime
-FROM exploded
+  t1.visit_ended_at,
+  t1.peer_id,
+  t1.agent_version,
+  t1.ip,
+  t1.fork_digest,
+  t1.cl_fork_name,
+  t1.cl_next_fork_name,
+  t1.next_fork_version,
+  t1.peer_properties,
+  t1.crawl_error,
+  t1.dial_errors,
+  t1.client,
+  t1.variant,
+  t1.version,
+  t1.channel,
+  t1.build,
+  CASE
+      WHEN t1.platform = '' THEN 'Unknown'
+      WHEN t1.platform = 'aarch64-linux' THEN 'linux-aarch_64'
+      WHEN t1.platform = 'x86_64-linux' THEN 'linux-x86_64'
+      WHEN t1.platform = 'x86_64-windows' THEN 'windows-x86_64'
+      ELSE t1.platform
+  END AS platform,
+  t1.runtime,
+  t2.hostname   AS peer_hostname,
+  t2.city       AS peer_city,
+  t2.country    AS peer_country,
+  t2.org        AS peer_org,
+  t2.loc        AS peer_loc,
+  t2.generic_provider AS generic_provider
+FROM
+  basic_info t1
+LEFT JOIN {{ ref('stg_crawlers_data__ipinfo') }} AS t2
+  ON t2.ip = t1.ip

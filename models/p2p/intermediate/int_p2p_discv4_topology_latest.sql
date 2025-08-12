@@ -13,19 +13,15 @@ WITH
 gnosis_peers AS (
     SELECT 
         peer_id,
-        cl_fork_name,
-        cl_next_fork_name,
-        peer_properties.ip AS ip,
-        any(splitByChar('/', agent_version)[1]) AS client
-    FROM {{ ref('int_p2p_discv5_peers') }}
+        ip,
+        any(client) AS client
+    FROM {{ ref('int_p2p_discv4_peers') }}
     WHERE
         toStartOfDay(visit_ended_at) = today() - INTERVAL 1 DAY
         AND empty(dial_errors) = 1
         AND crawl_error IS NULL
     GROUP BY
         peer_id,
-        cl_fork_name,
-        cl_next_fork_name,
         ip
 ),
 
@@ -35,10 +31,8 @@ gnosis_prefixes AS (
         d.discovery_id_prefix,
         d.peer_id,
         p.ip,
-        p.cl_fork_name,
-        p.cl_next_fork_name,
         IF(p.client='', 'Unknown', p.client) AS client
-    FROM {{ ref('stg_nebula_discv5__discovery_id_prefixes_x_peer_ids') }} AS d
+    FROM {{ ref('stg_nebula_discv4__discovery_id_prefixes_x_peer_ids') }} AS d
     INNER JOIN gnosis_peers AS p
       ON p.peer_id = d.peer_id
 )
@@ -49,8 +43,6 @@ SELECT
     -- Peer columns from the subquery t1
     t1.peer_ip,
     t1.peer_discovery_id_prefix,
-    t1.peer_cl_fork_name,
-    t1.peer_cl_next_fork_name,
     t1.peer_client,
 
     -- Geographical info for peer (from crawlers_data.ipinfo)
@@ -63,8 +55,6 @@ SELECT
     -- Neighbor columns from subquery t1
     t1.neighbor_ip,
     t1.neighbor_discovery_id_prefix,
-    t1.neighbor_cl_fork_name,
-    t1.neighbor_cl_next_fork_name,
     t1.neighbor_client,
 
     -- Geographical info for neighbor (from crawlers_data.ipinfo)
@@ -82,19 +72,15 @@ FROM (
         -- “Peer” side of the edge
         peer_p.ip                      AS peer_ip,
         peer_p.discovery_id_prefix     AS peer_discovery_id_prefix,
-        peer_p.cl_fork_name            AS peer_cl_fork_name,
-        peer_p.cl_next_fork_name       AS peer_cl_next_fork_name,
         peer_p.client                  AS peer_client,
 
         -- “Neighbor” side of the edge
         neighbor_p.ip                      AS neighbor_ip,
         neighbor_p.discovery_id_prefix     AS neighbor_discovery_id_prefix,
-        neighbor_p.cl_fork_name            AS neighbor_cl_fork_name,
-        neighbor_p.cl_next_fork_name       AS neighbor_cl_next_fork_name,
         neighbor_p.client                  AS neighbor_client,
 
         COUNT(*) AS cnt
-    FROM {{ ref('stg_nebula_discv5__neighbors') }} AS n
+    FROM {{ ref('stg_nebula_discv4__neighbors') }} AS n
 
     -- join to get the discovery_prefix + client/fork info for “peer”
     INNER JOIN gnosis_prefixes AS peer_p
@@ -111,20 +97,16 @@ FROM (
         date,
         peer_p.ip,
         peer_p.discovery_id_prefix,
-        peer_p.cl_fork_name,
-        peer_p.cl_next_fork_name,
         peer_p.client,
         neighbor_p.ip,
         neighbor_p.discovery_id_prefix,
-        neighbor_p.cl_fork_name,
-        neighbor_p.cl_next_fork_name,
         neighbor_p.client
 ) AS t1
 
 -- LEFT JOIN to ipinfo for “peer”
-LEFT JOIN {{ ref('stg_crawlers_data__ipinfo') }} AS peer_info
+LEFT JOIN  {{ ref('stg_crawlers_data__ipinfo') }} AS peer_info
   ON peer_info.ip = t1.peer_ip
 
 -- LEFT JOIN to ipinfo for “neighbor”
-LEFT JOIN {{ ref('stg_crawlers_data__ipinfo') }} AS neighbor_info
+LEFT JOIN  {{ ref('stg_crawlers_data__ipinfo') }} AS neighbor_info
   ON neighbor_info.ip = t1.neighbor_ip

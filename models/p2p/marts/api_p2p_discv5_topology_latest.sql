@@ -1,3 +1,10 @@
+{{ 
+    config(
+        pre_hook=[
+            "SET enable_dynamic_type = 1"
+        ]
+    )
+}}
 
 SELECT
     date,
