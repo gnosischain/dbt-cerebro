@@ -21,6 +21,8 @@ peers_ip AS (
         ,any(peer_properties.ip) AS ip
     FROM {{ ref('int_p2p_discv5_peers') }}
     WHERE
+        toStartOfDay(visit_ended_at) < today()
+        AND
         empty(dial_errors) = 1 AND crawl_error IS NULL
         {{ apply_monthly_incremental_filter('visit_ended_at','date','true') }}
     GROUP BY 1, 2

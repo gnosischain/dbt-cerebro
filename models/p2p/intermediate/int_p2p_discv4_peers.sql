@@ -25,8 +25,6 @@ WITH
       dial_errors
   FROM {{ ref('stg_nebula_discv4__visits') }} A
   WHERE
-      visit_ended_at < today()
-      AND
       toString(peer_properties.network_id) = '100'
       {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
   ),

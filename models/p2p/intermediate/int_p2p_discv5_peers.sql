@@ -77,8 +77,7 @@ peers AS (
   LEFT JOIN fork_version t3
     ON toString(t1.peer_properties.next_fork_version) = t3.fork_version
   WHERE
-    t1.visit_ended_at < today()
-    AND (
+    (
       toString(t1.peer_properties.fork_digest) IN (SELECT fork_digest FROM fork_digests)
       OR toString(t1.peer_properties.next_fork_version) LIKE '%064'
     )
