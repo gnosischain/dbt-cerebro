@@ -4,7 +4,7 @@ SELECT
     validator_index,
     balance,
     status,
-    pubkeyg,
+    pubkey,
     withdrawal_credentials,
     effective_balance,
     slashed,
