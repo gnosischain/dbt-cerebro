@@ -54,7 +54,7 @@ SELECT
     arrayMap(x -> JSONExtractString(x, 'type'),
              arraySort(x -> toInt32OrZero(JSONExtractRaw(x, 'position')),
                        JSONExtractArrayRaw(input_params))) AS types
-FROM {{ source('raw_abi','function_signatures') }}
+FROM {{ ref('function_signatures') }}
 WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
 {% endset %}
 

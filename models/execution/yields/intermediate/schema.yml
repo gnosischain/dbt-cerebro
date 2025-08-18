@@ -1,0 +1,51 @@
+version: 2
+models:
+
+- name: yields_sdai_rate_daily
+  description: Daily yields SDai rate data including date, conversion rate, and calculated rate.
+  columns:
+  - name: date
+    description: The day for which the rate data is recorded.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: sdai_conversion
+    description: The minimum asset/share ratio (unitless) for the day.
+    data_type: Float64
+  - name: rate
+    description: The difference in SDai conversion rate from the previous day, floored to 12 decimal places.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - yield
+    - sdai
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_yields_sdai_rate_daily
+  description: Daily calculated SDAI rate based on sparse data and calendar interpolation, used for analytics and reporting.
+  columns:
+  - name: date
+    description: Date of the rate, truncated to start of day.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: sdai_conversion
+    description: SDAI conversion rate (scaled value), derived from contract events.
+    data_type: UInt64
+  - name: rate
+    description: Calculated rate as the difference in conversion over time, scaled by 12.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - analytics
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer

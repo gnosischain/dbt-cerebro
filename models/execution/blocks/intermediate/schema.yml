@@ -1,0 +1,85 @@
+version: 2
+models:
+
+- name: execution_blocks_clients_version_daily
+  description: Business-facing table summarizing client versions per day, derived from raw execution data.
+  columns:
+  - name: date
+    description: Date of the record in UTC (UTC date, no time component).
+    data_type: Date
+    tests:
+    - not_null
+  - name: client
+    description: Client identifier, normalized to known categories or 'Unknown'.
+    data_type: String
+    tests:
+    - not_null
+  - name: version
+    description: Client version string, may be empty if not specified.
+    data_type: String
+  - name: value
+    description: Aggregated count of occurrences for the client-version on the date.
+    data_type: UInt64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - daily
+    - client
+    - version
+    materialized: table
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: execution_blocks_production
+  description: Data model representing execution blocks with associated metadata, transactions, logs, and related entities for Gnosis Chain analysis.
+  columns:
+  - name: block_timestamp
+    description: UTC timestamp of the block (materialized from `timestamp` in source).
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: extra_data
+    description: Arbitrary extra-data bytes set by the block proposer (hex).
+    data_type: String
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - gnosis
+    - execution
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_blocks_clients_version_daily
+  description: Business-facing table summarizing client versions per day, derived from execution blocks data.
+  columns:
+  - name: client
+    description: Client identifier, normalized from decoded extra data.
+    data_type: String
+    tests:
+    - not_null
+  - name: date
+    description: Day of record, start of day timestamp.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: version
+    description: Client version string, may be empty if unknown.
+    data_type: String
+  - name: cnt
+    description: Count of records for the given client and date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: table
+    tags:
+    - business
+    - daily
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
