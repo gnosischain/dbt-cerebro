@@ -65,7 +65,6 @@ validators AS (
             SUM(balance) AS balance
         FROM {{ ref('stg_consensus__validators') }}
         {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
-        --WHERE status = 'active_ongoing'
         GROUP BY 1
     )
 )
@@ -76,9 +75,9 @@ SELECT
     ,t1.balance_diff AS balance_diff_original
     ,COALESCE(t2.amount,0)  AS deposited_amount
     ,COALESCE(t3.amount,0)  AS withdrawaled_amount
-    ,t1.balance_diff - COALESCE(t2.amount,0) - COALESCE(t4.amount,0) + COALESCE(t3.amount,0) + COALESCE(t5.amount,0) AS balance_diff
-    ,(t1.balance_diff - COALESCE(t2.amount,0) - COALESCE(t4.amount,0) + COALESCE(t3.amount,0) + COALESCE(t5.amount,0))/t1.balance AS rate
-    ,floor(POWER((1+rate),365) - 1,4) * 100 AS apy
+    ,t1.balance_diff - COALESCE(t2.amount,0) - COALESCE(t4.amount,0) + COALESCE(t3.amount,0) + COALESCE(t5.amount,0) AS eff_balance_diff
+    ,eff_balance_diff/t1.prev_balance AS rate
+    ,ROUND((POWER((1+rate),365) - 1) * 100,2) AS apy
 FROM validators t1
 LEFT JOIN 
     deposists t2
