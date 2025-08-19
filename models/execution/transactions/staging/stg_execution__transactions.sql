@@ -26,7 +26,7 @@ source AS (
         v,
         block_hash,
         block_timestamp
-    FROM {{ source('execution','transactions') }}
+    FROM {{ source('execution','transactions') }} FINAL
 )
 
 SELECT

@@ -25,6 +25,8 @@ SELECT
     ,CAST(AVG(COALESCE(gas_price/POWER(10,9),0)) AS Int32) AS gas_price_avg -- Gas units in Gwei
     ,CAST(median(COALESCE(gas_price/POWER(10,9),0)) AS Int32) AS gas_price_median -- Gas units in Gwei
 FROM {{ ref('stg_execution__transactions') }}
-{{ apply_monthly_incremental_filter('block_timestamp', 'date') }}
+WHERE
+    block_timestamp < today()
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
 GROUP BY 1, 2, 3
 

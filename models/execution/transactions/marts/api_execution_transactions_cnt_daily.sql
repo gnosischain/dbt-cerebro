@@ -1,7 +1,7 @@
 SELECT
     date
     ,transaction_type
-    ,success
-    ,n_txs
+    ,n_txs AS value
 FROM {{ ref('int_execution_transactions_info_daily') }}
-WHERE date < today()
+WHERE success = 1
+ORDER BY date, transaction_type
