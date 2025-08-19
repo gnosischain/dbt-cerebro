@@ -7,5 +7,5 @@ FROM (
     UNION ALL 
     SELECT date, '7DMA' AS label, apy_7dma AS apy FROM `dbt`.`fct_consensus_validators_apy_daily`
 )
-WHERE date < DATE '2024-04-01'
+WHERE date < DATE '2024-12-01'
 ORDER BY date, label

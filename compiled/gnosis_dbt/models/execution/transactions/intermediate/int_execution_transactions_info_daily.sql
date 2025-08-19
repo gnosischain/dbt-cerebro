@@ -13,13 +13,15 @@ SELECT
     ,CAST(AVG(COALESCE(gas_price/POWER(10,9),0)) AS Int32) AS gas_price_avg -- Gas units in Gwei
     ,CAST(median(COALESCE(gas_price/POWER(10,9),0)) AS Int32) AS gas_price_median -- Gas units in Gwei
 FROM `dbt`.`stg_execution__transactions`
-
+WHERE
+    block_timestamp < today()
+    
   
     
       
     
 
-    WHERE 
+    AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))

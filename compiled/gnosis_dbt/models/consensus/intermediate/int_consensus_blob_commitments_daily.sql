@@ -2,13 +2,13 @@
 
 
 
-
-SELECT 
+SELECT
     toStartOfDay(slot_timestamp) AS date
-    ,leftUTF8(withdrawal_credentials, 4) AS credentials_type
     ,COUNT(*) AS cnt
-FROM `dbt`.`stg_consensus__validators`
-
+FROM `dbt`.`stg_consensus__blob_commitments`
+WHERE
+    slot_timestamp < today()
+    
   
     
       
@@ -18,8 +18,8 @@ FROM `dbt`.`stg_consensus__validators`
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_credentials_daily`
+      FROM `dbt`.`int_consensus_blob_commitments_daily`
     )
   
 
-GROUP BY 1, 2
+GROUP BY 1

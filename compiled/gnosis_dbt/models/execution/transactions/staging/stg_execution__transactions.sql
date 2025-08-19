@@ -26,7 +26,7 @@ source AS (
         v,
         block_hash,
         block_timestamp
-    FROM `execution`.`transactions`
+    FROM `execution`.`transactions` FINAL
 )
 
 SELECT

@@ -15,8 +15,8 @@ SELECT
     ,cnt AS blocks_produced
     ,CASE
         WHEN toStartOfDay(toDateTime(genesis_time_unix)) = date 
-            THEN (86400 - toUnixTimestamp(toDateTime(genesis_time_unix)) % 86400) / seconds_per_slot - cnt
-        ELSE 86400 / seconds_per_slot - cnt 
+            THEN CAST((86400 - toUnixTimestamp(toDateTime(genesis_time_unix)) % 86400) / seconds_per_slot - cnt AS UInt64)
+        ELSE CAST(86400 / seconds_per_slot - cnt AS UInt64)
     END AS blocks_missed
 FROM (
     SELECT
