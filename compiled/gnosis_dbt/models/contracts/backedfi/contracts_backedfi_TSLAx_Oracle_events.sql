@@ -17,6 +17,9 @@ logs AS (
   SELECT *
   FROM `execution`.`logs`
   WHERE replaceAll(lower(address),'0x','') = '19972d1750f959dd14cf436da6360185bd54cea0'
+
+    
+
     
       AND block_timestamp >
         (SELECT coalesce(max(block_timestamp),'1970-01-01')
@@ -58,59 +61,133 @@ process AS (
     [l.topic1, l.topic2, l.topic3]       AS raw_topics,
     replaceAll(l.data,'0x','')           AS data_hex,
 
-    -- non-indexed metadata
+    -- non-indexed metadata (zip flags/types/positions, then filter non-indexed)
     arrayFilter((f,t,i) -> not f,
       arrayZip(a.flags, a.types, range(n_params))
     )                                    AS ni_meta,
 
-    arrayMap(x -> x.2, ni_meta)           AS ni_types,
-    arrayMap(x -> x.3, ni_meta)           AS ni_positions,
+    arrayMap(x -> x.2, ni_meta)          AS ni_types,
+    arrayMap(x -> x.3, ni_meta)          AS ni_positions,
 
-    -- split data into words for non-indexed params
+    -- head words (32-byte) from start of the data head area
     arrayMap(i ->
       if(i*64 < length(data_hex),
          substring(data_hex, 1 + i*64, 64),
          NULL),
-      range(length(ni_types)*10)
+      range(greatest(length(ni_types), 1) * 16)  -- generous upper bound
     )                                    AS data_words,
 
-    -- decode non-indexed values head/tail
+    -- base type for arrays (strip [])
+    arrayMap(j -> replaceRegexpOne(ni_types[j+1], '\\[\\]$', ''), range(length(ni_types))) AS ni_base_types,
+
+    /* ===================== DECODING ====================== */
+    -- For each non-indexed param j return a STRING:
+    --  - Arrays -> toJSONString(Array(String))
+    --  - Dynamic scalars -> String (hex or utf8)
+    --  - Static scalars -> String
     arrayMap(j ->
       if(
-        -- dynamic types
-        ni_types[j+1] = 'bytes'
-        OR ni_types[j+1] = 'string'
-        OR endsWith(ni_types[j+1],'[]')
-        OR (startsWith(ni_types[j+1],'bytes') AND ni_types[j+1] != 'bytes32'),
+        /* -------- ARRAY TYPES -------- */
+        endsWith(ni_types[j+1],'[]'),
 
-        -- dynamic: extract offset, length, and data chunk
-        (
-          if(
-            toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) IS NOT NULL
-            AND (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32 + 1) * 64 < length(data_hex),
-            
-            -- Extract the raw hex data first
-            substring(
-              data_hex,
-              1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32 + 1) * 64,
-              toUInt32(
-                reinterpretAsUInt256(
-                  reverse(unhex(
+        /* Build JSON string of the fully decoded array */
+        toJSONString(
+          arrayMap(
+            k ->
+              multiIf(
+                ni_base_types[j+1] = 'address',
+                  concat(
+                    '0x',
+                    substring(
+                      substring(
+                        data_hex,
+                        1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2,
+                        64 + 64 + (k + 1) * 64
+                      ),
+                      (64 + k*64) + 25, 40
+                    )
+                  ),
+
+                ni_base_types[j+1] = 'bytes32',
+                  concat(
+                    '0x',
                     substring(
                       data_hex,
-                      1 + (toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) / 32) * 64,
+                      1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2 + 64 + k*64,
                       64
                     )
-                  ))
+                  ),
+
+                startsWith(ni_base_types[j+1], 'uint') OR startsWith(ni_base_types[j+1], 'int'),
+                  toString(
+                    reinterpretAsUInt256(
+                      reverse(
+                        unhex(
+                          substring(
+                            data_hex,
+                            1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2 + 64 + k*64,
+                            64
+                          )
+                        )
+                      )
+                    )
+                  ),
+
+                /* Fallback: full 32-byte hex */
+                concat(
+                  '0x',
+                  substring(
+                    data_hex,
+                    1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2 + 64 + k*64,
+                    64
+                  )
                 )
-              ) * 2
-            ),
-            NULL
+              ),
+            /* range(N) where N is array length at base */
+            range(
+              toUInt32(
+                reinterpretAsUInt256(
+                  reverse(
+                    unhex(
+                      substring(
+                        data_hex,
+                        1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2,
+                        64
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
         ),
 
-        -- static types: bytes32, address, uint
-        (
+        /* -------- DYNAMIC SCALARS (string/bytes/bytesN≠32) -------- */
+        if(
+          ni_types[j+1] = 'bytes'
+          OR ni_types[j+1] = 'string'
+          OR (startsWith(ni_types[j+1],'bytes') AND ni_types[j+1] != 'bytes32'),
+
+          /* payload = hex of exactly len bytes; strings converted later */
+          substring(
+            data_hex,
+            1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2 + 64,
+            toUInt32(
+              reinterpretAsUInt256(
+                reverse(
+                  unhex(
+                    substring(
+                      data_hex,
+                      1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2,
+                      64
+                    )
+                  )
+                )
+              )
+            ) * 2
+          ),
+
+          /* -------- STATIC SCALARS -------- */
           if(
             data_words[j+1] IS NOT NULL,
             multiIf(
@@ -118,17 +195,10 @@ process AS (
                 concat('0x', data_words[j+1]),
 
               ni_types[j+1] = 'address',
-                concat(
-                  '0x',
-                  substring(data_words[j+1], 25, 40)
-                ),
+                concat('0x', substring(data_words[j+1], 25, 40)),
 
               startsWith(ni_types[j+1],'uint') OR startsWith(ni_types[j+1],'int'),
-                toString(
-                  reinterpretAsUInt256(
-                    reverse(unhex(data_words[j+1]))
-                  )
-                ),
+                toString(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))),
 
               NULL
             ),
@@ -137,62 +207,77 @@ process AS (
         )
       ),
       range(length(ni_types))
-    ) AS raw_decoded_values,
+    ) AS raw_values_str,
 
-    -- Convert string types from hex to text
+    -- Human-friendly normalization to STRING:
+    -- - Arrays already JSON strings: pass through
+    -- - Strings: hex → utf8 (remove NULs)
+    -- - Bytes/bytesN: ensure 0x prefix
     arrayMap(j ->
-      if(
-        ni_types[j+1] = 'string' AND raw_decoded_values[j+1] IS NOT NULL,
-        -- Convert hex to UTF-8 string, removing null bytes
-        replaceRegexpAll(
-          reinterpretAsString(unhex(raw_decoded_values[j+1])),
-          '\0',
-          ''
-        ),
-        -- For non-string types, keep the original value but add 0x prefix for bytes
-        if(
-          (ni_types[j+1] = 'bytes' OR (startsWith(ni_types[j+1],'bytes') AND ni_types[j+1] != 'bytes32'))
-          AND raw_decoded_values[j+1] IS NOT NULL,
-          concat('0x', raw_decoded_values[j+1]),
-          raw_decoded_values[j+1]
-        )
+      multiIf(
+        endsWith(ni_types[j+1],'[]') AND raw_values_str[j+1] IS NOT NULL,
+          raw_values_str[j+1],
+
+        ni_types[j+1] = 'string' AND raw_values_str[j+1] IS NOT NULL,
+          replaceRegexpAll(reinterpretAsString(unhex(raw_values_str[j+1])),'\0',''),
+
+        ((ni_types[j+1] = 'bytes') OR (startsWith(ni_types[j+1],'bytes') AND ni_types[j+1] != 'bytes32'))
+          AND raw_values_str[j+1] IS NOT NULL,
+          concat('0x', raw_values_str[j+1]),
+
+        /* else */
+        raw_values_str[j+1]
       ),
       range(length(ni_types))
     ) AS decoded_ni_values,
 
-    -- stitch back into full order
+    -- positions of indexed params (0-based positions into the param list)
+    arrayMap(x -> x.3,
+      arrayFilter((f,t,i) -> f, arrayZip(a.flags, a.types, range(n_params)))
+    ) AS indexed_positions,
+
+    -- stitch back into full order (correct topic index using 1-based indexOf)
     arrayMap(i ->
       if(
         param_flags[i+1],
-        -- indexed: decode topic value
+        /* k1 is 1-based; 0 means not found */
         multiIf(
+          indexOf(indexed_positions, i) = 0,
+            NULL,
           param_types[i+1] = 'address',
+            concat(
+              '0x',
+              substring(
+                replaceAll(arrayElement(raw_topics, indexOf(indexed_positions, i)), '0x',''),
+                25, 40
+              )
+            ),
+          startsWith(param_types[i+1],'uint') OR startsWith(param_types[i+1],'int'),
+            toString(
+              reinterpretAsUInt256(
+                reverse(
+                  unhex(
+                    replaceAll(arrayElement(raw_topics, indexOf(indexed_positions, i)), '0x','')
+                  )
+                )
+              )
+            ),
+          /* default: bytes32/topic hash as 0x + 64 hex chars */
           concat(
             '0x',
             substring(
-              replaceAll(raw_topics[i+1],'0x',''),
-              25,
-              40
+              replaceAll(arrayElement(raw_topics, indexOf(indexed_positions, i)), '0x',''),
+              1, 64
             )
-          ),
-          startsWith(param_types[i+1],'uint') OR startsWith(param_types[i+1],'int'),
-          toString(
-                  reinterpretAsUInt256(
-                    reverse(unhex(raw_topics[i+1]))
-                  )
-                ),
-          concat('0x', substring(replaceAll(raw_topics[i+1],'0x',''),1,64))
+          )
         ),
-
-        -- non-indexed: pick correct decoded value
-        decoded_ni_values[
-          indexOf(ni_positions, i)
-        ]
+        /* non-indexed: pick correct decoded value */
+        decoded_ni_values[indexOf(ni_positions, i)]
       ),
       range(n_params)
     ) AS param_values,
 
-    -- final JSON or map
+    -- final JSON or map (all values are full strings; arrays are JSON strings)
     
       mapFromArrays(param_names, param_values) AS decoded_params
     
