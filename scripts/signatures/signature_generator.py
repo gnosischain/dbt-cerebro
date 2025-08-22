@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
+"""
+Generate event and function signatures (topics/selectors) from contract ABIs.
+
+Fixes:
+- Canonicalizes types per Solidity ABI (tuples expanded; arrays preserved).
+- Handles tuple / tuple[] / nested array suffixes.
+- Normalizes uint→uint256, int→int256, (u)fixed→(u)fixed128x18 for hashing.
+"""
+
 import os
 import sys
+import re
 import csv
 import json
 import logging
@@ -54,6 +64,104 @@ database = os.environ.get('CLICKHOUSE_DATABASE', 'dbt')
 force_csv = os.environ.get('SIGNATURE_GEN_SOURCE', '').lower() == 'csv'
 
 # --------------------------------------------------------------------------------------
+# ABI canonical type helpers
+# --------------------------------------------------------------------------------------
+
+_ARRAY_SUFFIX_EXACT_RE = re.compile(r'(\[[0-9]*\])+$')  # e.g. [], [2], [][]
+
+def _array_suffix(s: str) -> str:
+    """Return the entire array suffix part, e.g. '[][]' or '[2][]', or ''."""
+    if not s:
+        return ''
+    m = _ARRAY_SUFFIX_EXACT_RE.search(s)
+    return m.group(0) if m else ''
+
+def _strip_array_suffix(s: str) -> str:
+    """Strip array suffix from type."""
+    return _ARRAY_SUFFIX_EXACT_RE.sub('', s or '')
+
+def _canonical_scalar(base: str) -> str:
+    """
+    Canonicalize a non-array, non-tuple base type per Solidity ABI rules.
+    """
+    t = (base or '').strip().lower()
+    if t == 'uint':
+        return 'uint256'
+    if t == 'int':
+        return 'int256'
+    if t == 'fixed':
+        return 'fixed128x18'
+    if t == 'ufixed':
+        return 'ufixed128x18'
+    # address, bool, string, bytes, bytes<M>, uint<M>, int<M>, function, etc.
+    return t
+
+def _sort_by_position_if_present(params: List[dict]) -> List[dict]:
+    """
+    Some sources include explicit 'position'. If present on all items, sort by it.
+    Otherwise keep the given order (ABI order is authoritative).
+    """
+    if not params:
+        return params
+    if all(isinstance(p, dict) and isinstance(p.get('position'), (int, float)) for p in params):
+        try:
+            return sorted(params, key=lambda p: int(p.get('position', 0)))
+        except Exception:
+            return params
+    return params
+
+def canonical_type_from_param(p: dict) -> str:
+    """
+    Build canonical ABI type for a param dict (handles tuple and arbitrary array suffix).
+    Examples:
+      {'type':'tuple','components':[{'type':'address'},{'type':'uint16[]'}]}
+        -> '(address,uint16[])'
+      {'type':'tuple[]', ...} -> '(address,uint16[])[]'
+      {'type':'uint'} -> 'uint256'
+    """
+    raw = (p.get('type') or '').strip()
+    suffix = _array_suffix(raw)
+    base = _strip_array_suffix(raw)
+
+    if base == 'tuple':
+        comps = p.get('components') or []
+        comps = _sort_by_position_if_present(comps)
+        inner = ','.join(canonical_type_from_param(c) for c in comps)
+        return f'({inner}){suffix}'
+    else:
+        return f"{_canonical_scalar(base)}{suffix}"
+
+# --------------------------------------------------------------------------------------
+# Helper functions for tuple processing (for storage; not used for hashing)
+# --------------------------------------------------------------------------------------
+
+def process_param_with_components(param: dict, position: int) -> dict:
+    """
+    Process a parameter that might have components (for tuples).
+    Returns a parameter dict with proper component structure (for storage only).
+    """
+    result = {
+        'name': param.get('name', f'param{position-1}'),
+        'type': param.get('type', 'unknown'),
+        'position': position,
+    }
+
+    # Handle indexed for events
+    if 'indexed' in param:
+        result['indexed'] = bool(param.get('indexed', False))
+
+    # Handle components for tuples
+    if (param.get('type', '') or '').startswith('tuple') and 'components' in param:
+        components = []
+        comps = _sort_by_position_if_present(param['components'])
+        for i, comp in enumerate(comps):
+            comp_processed = process_param_with_components(comp, i + 1)
+            components.append(comp_processed)
+        result['components'] = components
+
+    return result
+
+# --------------------------------------------------------------------------------------
 # Data loading
 # --------------------------------------------------------------------------------------
 
@@ -95,7 +203,6 @@ def try_fetch_from_clickhouse() -> Optional[List[Tuple[str, str, str, str]]]:
     except Exception as e:
         logger.warning(f"Falling back to CSV. Could not fetch from ClickHouse: {e}")
         return None
-
 
 def read_contracts_abi_from_csv(path: Path) -> List[Tuple[str, str, str, str]]:
     """
@@ -166,15 +273,14 @@ def generate_signatures(
                 typ = item.get('type')
                 if typ == 'event':
                     event_name = item.get('name')
-                    inputs = item.get('inputs', []) or []
-                    anonymous = bool(item.get('anonymous', False))
-
                     if not event_name:
                         continue
 
-                    # e.g., Transfer(address,address,uint256)
-                    types = [inp.get('type', 'unknown') for inp in inputs]
-                    signature_str = f"{event_name}({','.join(types)})"
+                    inputs = item.get('inputs', []) or []
+                    anonymous = bool(item.get('anonymous', False))
+                    # Canonical types for event hashing (tuples expanded)
+                    in_types_canon = [canonical_type_from_param(inp) for inp in inputs]
+                    signature_str = f"{event_name}({','.join(in_types_canon)})"
                     # 32-byte Keccak for event topics (strip "0x", lowercase)
                     signature_hash = w3.keccak(text=signature_str).hex()[2:]
 
@@ -182,21 +288,19 @@ def generate_signatures(
                     indexed_params = []
                     non_indexed_params = []
                     for i, inp in enumerate(inputs):
-                        p = {
-                            'name': inp.get('name', f'param{i}'),
-                            'type': inp.get('type', 'unknown'),
-                            'position': i + 1,
-                            'indexed': bool(inp.get('indexed', False)),
-                        }
+                        p = process_param_with_components(inp, i + 1)
                         params.append(p)
-                        (indexed_params if p['indexed'] else non_indexed_params).append(p)
+                        if p.get('indexed'):
+                            indexed_params.append(p)
+                        else:
+                            non_indexed_params.append(p)
 
                     event_signatures.append({
                         'contract_address': contract_address or '',
                         'implementation_address': implementation_address or '',
                         'contract_name': contract_name or '',
                         'event_name': event_name,
-                        'signature': signature_hash,
+                        'signature': signature_hash,  # no 0x, lowercase
                         'anonymous': 1 if anonymous else 0,
                         'params': json.dumps(params, ensure_ascii=False),
                         'indexed_params': json.dumps(indexed_params, ensure_ascii=False),
@@ -212,37 +316,36 @@ def generate_signatures(
                     outputs = item.get('outputs', []) or []
                     state_mutability = item.get('stateMutability', 'nonpayable')
 
-                    in_types = [inp.get('type', 'unknown') for inp in inputs]
-                    signature_str = f"{function_name}({','.join(in_types)})"
+                    # Canonical types for selector hashing (tuples expanded)
+                    in_types_canon = [canonical_type_from_param(inp) for inp in inputs]
+                    signature_str = f"{function_name}({','.join(in_types_canon)})"
                     # 4-byte selector (first 8 hex chars after 0x)
                     selector = w3.keccak(text=signature_str).hex()[2:10]
 
                     input_params = []
                     for i, inp in enumerate(inputs):
-                        input_params.append({
-                            'name': inp.get('name', f'param{i}'),
-                            'type': inp.get('type', 'unknown'),
-                            'position': i + 1,
-                        })
+                        param = process_param_with_components(inp, i + 1)
+                        input_params.append(param)
 
                     output_params = []
                     for i, outp in enumerate(outputs):
-                        output_params.append({
-                            'name': outp.get('name', f'return{i}'),
-                            'type': outp.get('type', 'unknown'),
-                            'position': i + 1,
-                        })
+                        param = process_param_with_components(outp, i + 1)
+                        output_params.append(param)
 
                     function_signatures.append({
                         'contract_address': contract_address or '',
                         'implementation_address': implementation_address or '',
                         'contract_name': contract_name or '',
                         'function_name': function_name,
-                        'signature': selector,
+                        'signature': selector,  # 8 hex chars, lowercase
                         'state_mutability': state_mutability,
                         'input_params': json.dumps(input_params, ensure_ascii=False),
                         'output_params': json.dumps(output_params, ensure_ascii=False),
                     })
+
+                else:
+                    # skip constructor, fallback, receive, etc.
+                    continue
 
         except json.JSONDecodeError as e:
             logger.warning(f"Could not decode ABI JSON for {contract_address}. Skipping row. Error: {e}")
@@ -289,7 +392,7 @@ def main():
         logger.error("No ABI rows found from either ClickHouse or CSV. Nothing to do.")
         sys.exit(1)
 
-    # 2) Generate signatures
+    # 2) Generate signatures (with canonicalized types)
     event_signatures, function_signatures = generate_signatures(abi_rows)
 
     # 3) Write seeds

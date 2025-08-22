@@ -118,7 +118,7 @@
                 FROM src
             )
             SELECT
-                JSONExtractString(implementations[1], 'address') AS impl_address,
+                JSONExtractString(implementations[1], 'address_hash') AS impl_address,
                 JSONExtractString(implementations[1], 'name') AS impl_name
             FROM data
         {% endset %}

@@ -16,7 +16,7 @@ deposists AS (
         toStartOfDay(slot_timestamp) AS date
         ,SUM(amount) AS amount
     FROM {{ ref('stg_consensus__deposits') }}
-    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
     GROUP BY 1
 ),
 
@@ -26,7 +26,7 @@ deposists_requests AS (
         SUM(toUInt64(JSONExtractString(deposit, 'amount'))) AS amount
     FROM {{ ref('stg_consensus__execution_requests') }}
     ARRAY JOIN JSONExtractArrayRaw(payload, 'deposits') AS deposit
-    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
     GROUP BY 1
 ),
 
@@ -36,7 +36,7 @@ withdrawals AS (
         toStartOfDay(slot_timestamp) AS date 
         ,SUM(amount) AS amount
     FROM {{ ref('stg_consensus__withdrawals') }}
-    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
     GROUP BY 1
 ),
 
@@ -46,7 +46,7 @@ withdrawals_requests AS (
         SUM(toUInt64(JSONExtractString(withdrawals, 'amount'))) AS amount
     FROM {{ ref('stg_consensus__execution_requests') }}
     ARRAY JOIN JSONExtractArrayRaw(payload, 'withdrawals') AS withdrawals
-    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+    {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
     GROUP BY 1
 ),
 
@@ -64,7 +64,7 @@ validators AS (
             toStartOfDay(slot_timestamp) AS date,
             SUM(balance) AS balance
         FROM {{ ref('stg_consensus__validators') }}
-        {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+        {{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
         GROUP BY 1
     )
 )

@@ -17,5 +17,5 @@ SELECT
     ,leftUTF8(withdrawal_credentials, 4) AS credentials_type
     ,COUNT(*) AS cnt
 FROM {{ ref('stg_consensus__validators') }}
-{{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and='false') }}
+{{ apply_monthly_incremental_filter(source_field='slot_timestamp',destination_field='date',add_and=false) }}
 GROUP BY 1, 2
