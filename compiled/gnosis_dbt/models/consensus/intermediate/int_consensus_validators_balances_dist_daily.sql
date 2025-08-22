@@ -22,6 +22,17 @@ FROM (
         slot_timestamp < today()
         
   
+    
+      
+    
+
+    AND 
+    toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
+      SELECT
+        max(toStartOfMonth(date))
+      FROM `dbt`.`int_consensus_validators_balances_dist_daily`
+    )
+  
 
     GROUP BY date
 )

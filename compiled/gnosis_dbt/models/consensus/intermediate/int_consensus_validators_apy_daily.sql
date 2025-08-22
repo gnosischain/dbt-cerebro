@@ -13,7 +13,7 @@ deposists AS (
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))
@@ -36,7 +36,7 @@ deposists_requests AS (
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))
@@ -59,7 +59,7 @@ withdrawals AS (
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))
@@ -82,7 +82,7 @@ withdrawals_requests AS (
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))
@@ -113,7 +113,7 @@ validators AS (
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))

@@ -14,7 +14,7 @@ FROM `dbt`.`stg_consensus__validators`
       
     
 
-    AND 
+    WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
       SELECT
         max(toStartOfMonth(date))

@@ -19,6 +19,8 @@ logs AS (
   WHERE replaceAll(lower(address),'0x','') = '7304979ec9e4eaa0273b6a037a31c4e9e5a75d16'
 
     
+      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2023-10-04'))
+    
 
     
       AND block_timestamp >
