@@ -1,0 +1,604 @@
+version: 2
+models:
+
+- name: stg_consensus__attestations
+  description: Business-facing table containing parsed attestation records with associated metadata
+  columns:
+  - name: slot
+    description: Enclosing block slot number
+    data_type: UInt64
+  - name: attestation_index
+    description: Index within the block
+    data_type: UInt64
+  - name: aggregation_bits
+    description: Aggregation bitfield
+    data_type: String
+  - name: signature
+    description: BLS signature
+    data_type: String
+  - name: attestation_slot
+    description: Attested slot
+    data_type: UInt64
+  - name: committee_index
+    description: Committee index
+    data_type: UInt64
+  - name: beacon_block_root
+    description: Beacon block root
+    data_type: String
+  - name: source_epoch
+    description: Source epoch
+    data_type: UInt64
+  - name: source_root
+    description: Source root
+    data_type: String
+  - name: target_epoch
+    description: Target epoch
+    data_type: UInt64
+  - name: target_root
+    description: Target root
+    data_type: String
+  - name: slot_timestamp
+    description: UTC timestamp from slot
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonic ingestion version
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - consensus
+    - attestations
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__blob_commitments
+  description: Staging model for blob commitments, capturing commitment data per slot with associated timestamps.
+  columns:
+  - name: slot
+    description: Slot number
+    data_type: UInt64
+  - name: commitment_index
+    description: Index of the commitment within the slot
+    data_type: UInt64
+  - name: commitment
+    description: KZG commitment string
+    data_type: String
+  - name: slot_timestamp
+    description: UTC timestamp of the slot
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonic ingestion version
+    data_type: UInt64
+  config:
+    access: public
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__blocks
+  description: Business-facing staging model representing consensus layer blocks with detailed attributes, including execution payloads, attestations, slashing events, and associated metadata.
+  columns:
+  - name: slot
+    description: Slot number.
+    data_type: UInt64
+  - name: proposer_index
+    description: Index of the proposing validator.
+    data_type: UInt64
+  - name: parent_root
+    description: Parent block root.
+    data_type: String
+  - name: state_root
+    description: State root.
+    data_type: String
+  - name: signature
+    description: Block signature.
+    data_type: String
+  - name: version
+    description: Fork version label for this block (e.g., bellatrix, capella).
+    data_type: String
+  - name: randao_reveal
+    description: RANDAO reveal for randomness.
+    data_type: String
+  - name: graffiti
+    description: Graffiti field.
+    data_type: String
+  - name: eth1_deposit_root
+    description: Eth1 deposit root.
+    data_type: String
+  - name: eth1_deposit_count
+    description: Eth1 deposit count.
+    data_type: UInt64
+  - name: eth1_block_hash
+    description: Eth1 block hash.
+    data_type: String
+  - name: slot_timestamp
+    description: UTC timestamp materialized from slot.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonic ingestion version (nanoseconds).
+    data_type: UInt64
+  - name: sync_aggregate_participation
+    description: Number of sync committee participants.
+    data_type: UInt64
+  - name: sync_aggregate_signature
+    description: Signature for sync aggregate.
+    data_type: String
+  - name: execution_payload_block_hash
+    description: Execution payload block hash.
+    data_type: String
+  - name: execution_payload_parent_hash
+    description: Execution payload parent hash.
+    data_type: String
+  - name: execution_payload_fee_recipient
+    description: Fee recipient (coinbase) for execution payload.
+    data_type: String
+  - name: execution_payload_state_root
+    description: Execution payload state root.
+    data_type: String
+  - name: execution_payload_receipts_root
+    description: Execution payload receipts root.
+    data_type: String
+  - name: execution_payload_logs_bloom
+    description: Execution payload logs bloom.
+    data_type: String
+  - name: execution_payload_prev_randao
+    description: Execution payload prev randao.
+    data_type: String
+  - name: execution_payload_block_number
+    description: Execution payload block number.
+    data_type: UInt64
+  - name: execution_payload_gas_limit
+    description: Execution payload gas limit.
+    data_type: UInt64
+  - name: execution_payload_gas_used
+    description: Execution payload gas used.
+    data_type: UInt64
+  - name: execution_payload_timestamp
+    description: Execution payload timestamp (seconds).
+    data_type: UInt64
+  - name: execution_payload_extra_data
+    description: Execution payload extra data.
+    data_type: String
+  - name: execution_payload_base_fee_per_gas
+    description: Execution payload base fee per gas.
+    data_type: String
+  - name: withdrawals_root
+    description: Root of withdrawals.
+    data_type: String
+  - name: withdrawals_count
+    description: Count of withdrawals in block.
+    data_type: UInt32
+  - name: blob_kzg_commitments_count
+    description: Blob KZG commitments count (Deneb+).
+    data_type: UInt32
+  - name: blob_kzg_commitments_root
+    description: Root of blob KZG commitments.
+    data_type: String
+  - name: execution_requests_count
+    description: Count of execution requests.
+    data_type: UInt32
+  - name: attestations
+    description: Attestation records included in blocks.
+    data_type: JSON
+  - name: attestation_slot
+    description: Slot of the attestation.
+    data_type: UInt64
+  - name: attestation_index
+    description: Index within the block.
+    data_type: UInt64
+  - name: aggregation_bits
+    description: Aggregation bitfield.
+    data_type: String
+  - name: attester_slashings
+    description: Attester slashing events.
+    data_type: JSON
+  - name: slashing_index
+    description: Slashing event index.
+    data_type: UInt64
+  - name: att_1_slot
+    description: First attestation slot.
+    data_type: UInt64
+  - name: att_1_committee_index
+    description: First attestation committee index.
+    data_type: UInt64
+  - name: att_1_beacon_block_root
+    description: First beacon block root.
+    data_type: String
+  - name: att_1_source_epoch
+    description: First source epoch.
+    data_type: UInt64
+  - name: att_1_source_root
+    description: First source root.
+    data_type: String
+  - name: att_1_target_epoch
+    description: First target epoch.
+    data_type: UInt64
+  - name: att_1_target_root
+    description: First target root.
+    data_type: String
+  - name: att_1_signature
+    description: Signature for first attestation.
+    data_type: String
+  - name: att_1_attesting_indices
+    description: Attesting validator indices for first attestation.
+    data_type: Array(UInt64)
+  - name: att_1_validator_count
+    description: Validator count for first attestation.
+    data_type: UInt32
+  - name: att_2_slot
+    description: Second attestation slot.
+    data_type: UInt64
+  - name: att_2_committee_index
+    description: Second attestation committee index.
+    data_type: UInt64
+  - name: att_2_beacon_block_root
+    description: Second beacon block root.
+    data_type: String
+  - name: att_2_source_epoch
+    description: Second source epoch.
+    data_type: UInt64
+  - name: att_2_source_root
+    description: Second source root.
+    data_type: String
+  - name: att_2_target_epoch
+    description: Second target epoch.
+    data_type: UInt64
+  - name: att_2_target_root
+    description: Second target root.
+    data_type: String
+  - name: att_2_signature
+    description: Signature for second attestation.
+    data_type: String
+  - name: att_2_attesting_indices
+    description: Attesting validator indices for second attestation.
+    data_type: Array(UInt64)
+  - name: att_2_validator_count
+    description: Validator count for second attestation.
+    data_type: UInt32
+  - name: total_slashed_validators
+    description: Total number of slashed validators.
+    data_type: UInt32
+  - name: blob_commitments
+    description: KZG blob commitments per slot.
+    data_type: JSON
+  - name: commitment_index
+    description: Commitment index.
+    data_type: UInt64
+  - name: commitment
+    description: Commitment string.
+    data_type: String
+  - name: blob_sidecars
+    description: Blob sidecars accompanying Deneb blocks.
+    data_type: JSON
+  - name: blob_index
+    description: Blob index.
+    data_type: UInt64
+  - name: kzg_commitment
+    description: KZG commitment string.
+    data_type: String
+  - name: kzg_proof
+    description: KZG proof string.
+    data_type: String
+  - name: blob_size
+    description: Size of the blob.
+    data_type: UInt64
+  - name: blob_hash
+    description: Hash of the blob.
+    data_type: String
+  - name: bls_changes
+    description: BLS-to-execution address change operations.
+    data_type: JSON
+  - name: change_index
+    description: Change operation index.
+    data_type: UInt64
+  - name: from_bls_pubkey
+    description: BLS public key.
+    data_type: String
+  - name: to_execution_address
+    description: Destination execution address.
+    data_type: String
+  - name: deposits
+    description: Eth1 deposits included in the beacon chain.
+    data_type: JSON
+  - name: deposit_index
+    description: Deposit index.
+    data_type: UInt64
+  - name: pubkey
+    description: Deposit public key.
+    data_type: String
+  - name: withdrawal_credentials
+    description: Withdrawal credentials.
+    data_type: String
+  - name: amount
+    description: Deposit amount in wei.
+    data_type: UInt64
+  - name: proof
+    description: Proof array.
+    data_type: Array(String)
+  - name: execution_payloads
+    description: Execution payloads embedded in beacon blocks.
+    data_type: JSON
+  - name: parent_hash
+    description: Parent block hash.
+    data_type: String
+  - name: fee_recipient
+    description: Fee recipient address.
+    data_type: String
+  - name: receipts_root
+    description: Receipts root.
+    data_type: String
+  - name: logs_bloom
+    description: Logs bloom.
+    data_type: String
+  - name: prev_randao
+    description: Previous RANDAO value.
+    data_type: String
+  - name: block_number
+    description: Block number.
+    data_type: UInt64
+  - name: gas_limit
+    description: Gas limit.
+    data_type: UInt64
+  - name: gas_used
+    description: Gas used.
+    data_type: UInt64
+  - name: base_fee_per_gas
+    description: Base fee per gas.
+    data_type: String
+  - name: block_hash
+    description: Block hash.
+    data_type: String
+  - name: blob_gas_used
+    description: Blob gas used.
+    data_type: UInt64
+  - name: excess_blob_gas
+    description: Excess blob gas.
+    data_type: UInt64
+  - name: extra_data
+    description: Extra data.
+    data_type: String
+  - name: transactions_count
+    description: Count of transactions.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - consensus
+    - staging
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__deposits
+  description: Processed deposits data from the consensus layer, including deposit details, proofs, and associated metadata for Gnosis Chain beacon nodes.
+  columns:
+  - name: deposit_index
+    description: Unique index of the deposit within the epoch.
+    data_type: UInt64
+  - name: slot_timestamp
+    description: UTC timestamp of the deposit event.
+    data_type: DateTime64(0, 'UTC')
+  - name: amount
+    description: Deposit amount in wei.
+    data_type: UInt64
+  - name: pubkey
+    description: Validator's public key.
+    data_type: String
+  - name: proof
+    description: Merkle proof for the deposit.
+    data_type: Array(String)
+  - name: slot
+    description: Slot number when the deposit was processed.
+    data_type: UInt64
+  - name: withdrawal_credentials
+    description: Withdrawal credentials associated with the deposit.
+    data_type: String
+  - name: signature
+    description: Deposit signature.
+    data_type: String
+  config:
+    access: public
+    tags:
+    - consensus
+    - deposits
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__execution_requests
+  description: This table contains counts of execution requests (deposits, withdrawals, consolidations) per slot, derived from the consensus layer data. It helps in analyzing the frequency and distribution of execution-related operations within each slot.
+  columns:
+  - name: slot
+    description: Slot number identifying the position in the chain.
+    data_type: UInt64
+  - name: payload
+    description: Type of execution request, e.g., 'deposit', 'withdrawal', 'consolidation'.
+    data_type: String
+  - name: deposits_count
+    description: Count of deposit requests in this slot.
+    data_type: UInt32
+  - name: withdrawals_count
+    description: Count of withdrawal requests in this slot.
+    data_type: UInt32
+  - name: consolidations_count
+    description: Count of consolidation requests in this slot.
+    data_type: UInt32
+  - name: slot_timestamp
+    description: UTC timestamp corresponding to the slot.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonically increasing version number for data ingestion.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - consensus
+    - execution
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__rewards
+  description: This model aggregates reward-related data from various consensus sources, providing a comprehensive view of rewards, slashing, attestations, and related activities for analysis.
+  columns:
+  - name: slot
+    description: Slot number in the beacon chain.
+    data_type: UInt64
+  - name: proposer_index
+    description: Validator index of the proposer.
+    data_type: UInt64
+  - name: total
+    description: Total rewards for the slot.
+    data_type: UInt64
+  - name: attestations
+    description: Number of attestations included in the slot.
+    data_type: UInt64
+  - name: sync_aggregate
+    description: Count of sync committee attestations.
+    data_type: UInt64
+  - name: proposer_slashings
+    description: Count of proposer slashings.
+    data_type: UInt64
+  - name: attester_slashings
+    description: Count of attester slashings.
+    data_type: UInt64
+  - name: slot_timestamp
+    description: UTC timestamp corresponding to the slot.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Ingestion version for tracking updates.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__specs
+  description: A staging model capturing consensus network specifications and parameters, including raw JSON data, network parameters, and related metadata.
+  columns:
+  - name: parameter_name
+    description: Name of the network parameter or specification.
+    data_type: String
+  - name: parameter_value
+    description: Value of the parameter, as a string representation.
+    data_type: String
+  - name: updated_at
+    description: Timestamp when the parameter was last updated.
+    data_type: DateTime64(0, 'UTC')
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__time_helpers
+  description: Helper table for converting slots to timestamps, including genesis time, seconds per slot, and slots per epoch.
+  columns:
+  - name: genesis_time_unix
+    description: Genesis time as Unix timestamp (seconds since epoch).
+    data_type: UInt64
+  - name: seconds_per_slot
+    description: Number of seconds in each slot.
+    data_type: UInt64
+  - name: slots_per_epoch
+    description: Number of slots in each epoch.
+    data_type: UInt64
+  config:
+    access: public
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__validators
+  description: A staging model capturing validator data including balances, statuses, and related metadata from the consensus layer. Used for downstream analysis and reporting.
+  columns:
+  - name: slot
+    description: Slot number at which validator data was recorded.
+    data_type: UInt64
+  - name: validator_index
+    description: Unique index identifying the validator.
+    data_type: UInt32
+  - name: balance
+    description: Validator's balance in Gwei.
+    data_type: UInt64
+  - name: status
+    description: Current status of the validator (e.g., active, exited).
+    data_type: String
+  - name: pubkey
+    description: Validator's public key.
+    data_type: String
+  - name: withdrawal_credentials
+    description: Withdrawal credentials associated with the validator.
+    data_type: String
+  - name: effective_balance
+    description: Effective balance in Gwei.
+    data_type: UInt64
+  - name: slashed
+    description: Indicator if validator has been slashed (1) or not (0).
+    data_type: UInt8
+  - name: activation_eligibility_epoch
+    description: Epoch when validator became eligible for activation.
+    data_type: UInt64
+  - name: activation_epoch
+    description: Epoch when validator was activated.
+    data_type: UInt64
+  - name: exit_epoch
+    description: Epoch when validator exited.
+    data_type: UInt64
+  - name: withdrawable_epoch
+    description: Epoch when validator's funds become withdrawable.
+    data_type: UInt64
+  - name: slot_timestamp
+    description: UTC timestamp corresponding to the slot.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonically increasing version for tracking inserts.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_consensus__withdrawals
+  description: A staged model capturing withdrawal data from the consensus layer, including withdrawal indices, validator references, addresses, amounts, and associated timestamps.
+  columns:
+  - name: withdrawal_index
+    description: Withdrawal index within the block
+    data_type: UInt64
+  - name: validator_index
+    description: Validator's index
+    data_type: UInt64
+  - name: address
+    description: Validator's withdrawal address
+    data_type: String
+  - name: amount
+    description: Amount in wei
+    data_type: UInt64
+  - name: slot
+    description: Slot number
+    data_type: UInt64
+  - name: block_number
+    description: Block number containing the withdrawal
+    data_type: UInt64
+  - name: block_hash
+    description: Hash of the block containing the withdrawal
+    data_type: String
+  - name: slot_timestamp
+    description: UTC timestamp corresponding to the slot
+    data_type: DateTime64(0, 'UTC')
+  config:
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer

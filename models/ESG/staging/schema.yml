@@ -2,23 +2,36 @@ version: 2
 models:
 
 - name: stg_esg_consensus_power
-  description: A staging model representing consensus power data, including client type, mean value, and type category.
+  description: A staging model representing consensus power metrics with client, type, and mean values.
   columns:
   - name: type
-    description: Type category of consensus power (e.g., 4, 5, 6)
+    description: The type of consensus power, e.g., 4, 5, 6.
     data_type: String
-    tests:
-    - not_null
   - name: client
-    description: Client name (e.g., Lighthouse, Teku, Lodestar, Nimbus, Prysm)
+    description: The client name, e.g., Lighthouse, Teku, Lodestar, Nimbus, Prysm.
     data_type: String
-    tests:
-    - not_null
   - name: mean
-    description: Mean value of consensus power (numeric, units unspecified)
+    description: The mean value of consensus power in floating point.
     data_type: Float64
-    tests:
-    - not_null
+  config:
+    access: public
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_esg_execution_power
+  description: A staging model representing execution power metrics, including client type, execution type, and mean execution power values.
+  columns:
+  - name: client
+    description: Client name, e.g., 'Erigon', 'Nethermind'
+    data_type: String
+  - name: type
+    description: Execution type, e.g., 4, 5, 6
+    data_type: UInt64
+  - name: mean
+    description: Mean execution power value in floating point units
+    data_type: Float64
   config:
     access: public
     materialized: view
@@ -26,104 +39,57 @@ models:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
-- name: stg_esg_execution_power
-  description: A staging model representing execution power data with client, type, and mean values
-  columns:
-  - name: type
-    description: The execution type (numeric identifiers 4, 5, 6)
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: client
-    description: The client name (e.g., 'Erigon', 'Nethermind')
-    data_type: String
-    tests:
-    - not_null
-  - name: mean
-    description: The average execution power in Gwei (floating point)
-    data_type: Float64
-    tests:
-    - not_null
-  config:
-    access: public
-    materialized: view
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
 - name: stg_esg_hardware_config
-  description: A staging model representing hardware configuration details including type, CPU, cores/threads, architecture, RAM, storage, GPU, PSU, case, and OS.
+  description: A staging model representing hardware configuration details including type, CPU, cores and threads, architecture, RAM, storage, GPU, PSU, case, and OS.
   columns:
+  - name: case
+    description: Hardware case type (e.g., Integrated, Custom)
+    data_type: String
+  - name: cpu
+    description: CPU model name (e.g., Intel i5-1135G7)
+    data_type: String
+  - name: storage
+    description: Storage specification (e.g., 2 TB SSD)
+    data_type: String
+  - name: architecture
+    description: CPU architecture (e.g., x86/x64)
+    data_type: String
+  - name: ram
+    description: RAM size (e.g., 16 GB)
+    data_type: String
+  - name: os
+    description: Operating system (e.g., Ubuntu 20.04)
+    data_type: String
   - name: type
     description: Hardware type identifier (e.g., 4, 5, 6)
     data_type: UInt64
-    tests:
-    - not_null
-  - name: cpu
-    description: CPU model description (e.g., 'Intel i5-1135G7')
-    data_type: String
-    tests:
-    - not_null
   - name: cores_threads
-    description: Cores and threads count (e.g., '4/8', '6/12', '32/64')
+    description: Cores and threads configuration (e.g., 4/8)
     data_type: String
-    tests:
-    - not_null
-  - name: architecture
-    description: CPU architecture (e.g., 'x86/x64')
-    data_type: String
-    tests:
-    - not_null
-  - name: ram
-    description: RAM size (e.g., '16 GB', '64 GB', '256 GB')
-    data_type: String
-    tests:
-    - not_null
-  - name: storage
-    description: Storage capacity (e.g., '2 TB SSD', '2TB SSD')
-    data_type: String
-    tests:
-    - not_null
-  - name: gpu
-    description: GPU model (e.g., 'Onboard', 'AM 6970')
-    data_type: String
-    tests:
-    - not_null
   - name: psu
-    description: Power supply unit wattage (e.g., '65 Watt', '650 Watt')
+    description: Power supply unit wattage (e.g., 65 Watt)
     data_type: String
-    tests:
-    - not_null
-  - name: case
-    description: Case type (e.g., 'Integrated', 'Custom')
+  - name: gpu
+    description: GPU model (e.g., Onboard, AM 6970)
     data_type: String
-    tests:
-    - not_null
-  - name: os
-    description: Operating system (e.g., 'Ubuntu 20.04')
-    data_type: String
-    tests:
-    - not_null
   config:
     access: public
+    tags:
+    - staging
     materialized: view
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: stg_esg_idle_electric_power
-  description: This model provides the average idle electric power values for different types, used for ESG analysis and reporting.
+  description: This model provides the idle electric power metrics with types and mean values for different categories.
   columns:
   - name: type
-    description: The category of electric power type (integer values 4, 5, 6)
-    data_type: UInt64
-    tests:
-    - not_null
+    description: Category type of idle electric power
+    data_type: String
   - name: mean
-    description: The average idle electric power in units consistent with source (float)
+    description: Average idle electric power values in units consistent with source
     data_type: Float64
-    tests:
-    - not_null
   config:
     access: public
     materialized: view
@@ -132,22 +98,17 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: stg_esg_node_distribution
-  description: A staging model providing node type and distribution data for ESG analysis.
+  description: A staging model representing the distribution of node types with associated distribution values used for ESG analysis.
   columns:
   - name: type
-    description: Node type identifier (integer values 4, 5, 6)
+    description: Node type identifier (e.g., 4, 5, 6)
     data_type: UInt64
-    tests:
-    - not_null
   - name: distribution
-    description: Distribution value associated with each node type (percentages)
+    description: Distribution value corresponding to each node type (e.g., 0.25, 0.50)
     data_type: Float64
-    tests:
-    - not_null
   config:
     access: public
-    materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

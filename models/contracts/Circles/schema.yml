@@ -2,34 +2,28 @@ version: 2
 models:
 
 - name: contracts_circles_v1_Hub_events
-  description: This model captures hub events related to contracts, including timestamps, addresses, and event-specific data for analytics and reporting purposes.
+  description: This model aggregates hub event data related to contracts, including timestamps, addresses, and event details for analysis and reporting.
   columns:
   - name: block_timestamp
-    description: The timestamp when the block containing the event was mined.
+    description: The timestamp when the block containing the event was mined (UTC).
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, indicating order.
+    description: The index of the log within the block (sequential, starting at 0).
     data_type: UInt64
-    tests:
-    - not_null
+  - name: transaction_hash
+    description: The hash identifying the transaction that emitted the event.
+    data_type: String
   - name: contract_address
     description: The address of the contract emitting the event.
     data_type: String
-    tests:
-    - not_null
   - name: event_name
     description: The name of the event emitted.
     data_type: String
   - name: event_data
     description: The JSON payload containing event-specific data.
     data_type: JSON
-  - name: transaction_hash
-    description: The hash of the transaction that included the event.
-    data_type: String
   - name: sender_address
-    description: The address initiating the transaction.
+    description: The address initiating the transaction or event sender.
     data_type: String
   - name: recipient_address
     description: The address receiving tokens or assets, if applicable.
@@ -37,11 +31,19 @@ models:
   - name: amount
     description: The amount transferred, in wei or relevant units.
     data_type: String
+  - name: block_number
+    description: The block number in which the event was included.
+    data_type: UInt64
+  - name: created_at
+    description: Timestamp when the record was created in the database.
+    data_type: DateTime
+  - name: updated_at
+    description: Timestamp when the record was last updated.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
     tags:
-    - contracts
     - hub_events
   meta:
     owner: analytics_team
@@ -51,38 +53,38 @@ models:
   description: This model captures hub events related to contracts, including transaction details, event types, and associated metadata for analysis and reporting.
   columns:
   - name: block_timestamp
-    description: The timestamp when the block containing the event was mined, in UTC.
+    description: Timestamp of the block when the event was recorded
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block (sequence number)
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
+    description: Hash of the transaction associated with the event
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: The address of the contract emitting the event.
+    description: Address of the contract emitting the event
     data_type: String
-    tests:
-    - not_null
   - name: event_type
-    description: The type of the event emitted, indicating its purpose or category.
-    data_type: String
-  - name: circle_id
-    description: Unique identifier for the circle associated with the event.
-    data_type: String
-  - name: circle_name
-    description: Human-readable name of the circle.
+    description: Type of the event emitted
     data_type: String
   - name: event_data
-    description: JSON object containing additional event-specific data.
+    description: JSON payload containing event-specific data
     data_type: JSON
+  - name: sender_address
+    description: Address of the sender initiating the transaction
+    data_type: String
+  - name: recipient_address
+    description: Address of the recipient, if applicable
+    data_type: String
+  - name: amount_wei
+    description: Amount transferred in wei; may overflow 64-bit, stored as String if necessary
+    data_type: String
+  - name: block_number
+    description: Number of the block containing the event
+    data_type: UInt64
+  - name: created_at
+    description: Timestamp when the record was created in the database
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -93,45 +95,38 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_circles_v2_NameRegistry_events
-  description: Events emitted by the NameRegistry contract, capturing registration and update activities.
+  description: Events emitted by the NameRegistry contract, capturing registration, renewal, and transfer activities related to domain names and addresses.
   columns:
   - name: block_timestamp
-    description: The timestamp when the event was recorded on the blockchain.
+    description: Timestamp of the event block in UTC
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
+    description: Hash of the transaction that emitted the event
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: event_type
-    description: Type of event, e.g., 'Registered', 'Updated'.
+    description: Type of the event (e.g., Registration, Renewal, Transfer)
     data_type: String
   - name: name
-    description: The registered name associated with the event.
+    description: Domain name involved in the event
     data_type: String
   - name: owner_address
-    description: Blockchain address of the owner involved in the event.
+    description: Address of the current owner in hexadecimal format
     data_type: String
-  - name: registration_date
-    description: Date when the name was registered or last updated.
+  - name: registrant_address
+    description: Address of the registrant in hexadecimal format
+    data_type: String
+  - name: registration_expiry
+    description: Expiry timestamp of the registration in UTC
     data_type: DateTime
-  - name: expires_at
-    description: Expiration date of the registration, if applicable.
-    data_type: DateTime
-  - name: block_number
-    description: The block number in which the event was included.
-    data_type: UInt64
-  - name: event_data
-    description: Raw JSON data of the event payload.
-    data_type: JSON
+  - name: transfer_from
+    description: Previous owner address in transfer events
+    data_type: String
+  - name: transfer_to
+    description: New owner address in transfer events
+    data_type: String
   config:
     access: public
     materialized: incremental

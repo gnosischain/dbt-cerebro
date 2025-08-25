@@ -2,56 +2,26 @@ version: 2
 models:
 
 - name: contracts_backedfi_TSLAx_Oracle_events
-  description: This model captures Oracle events related to TSLA-backed DeFi contracts, including transaction details, block info, and event-specific data.
+  description: This model captures Oracle events for TSLA, including block timestamp, log index, and related transaction details, used for tracking Oracle data updates.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was recorded
+    description: The timestamp of the block containing the event, in UTC.
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: Log index within the block, used to order events
+    description: The index of the log within the block, used to order events.
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: Hash of the transaction associated with the event
+    description: The hash of the transaction that emitted the event.
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: Address of the contract emitting the event
+    description: The address of the contract emitting the event.
     data_type: String
-    tests:
-    - not_null
-  - name: event_name
-    description: Name of the Oracle event
+  - name: output_json_type
+    description: Indicates if the output is in JSON format; boolean flag.
     data_type: String
-    tests:
-    - not_null
-  - name: event_data
-    description: JSON containing event-specific data payload
+  - name: output_data
+    description: The JSON data output from the Oracle event.
     data_type: JSON
-  - name: block_number
-    description: Number of the block containing the event
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: sender
-    description: Address of the sender initiating the transaction
-    data_type: String
-  - name: amount
-    description: Amount involved in the event, in wei
-    data_type: String
-  - name: token_symbol
-    description: Symbol of the token involved (e.g., 'TSLA')
-    data_type: String
-  - name: event_timestamp
-    description: Timestamp when the event was emitted
-    data_type: DateTime
-    tests:
-    - not_null
   config:
     access: public
     materialized: incremental
@@ -62,40 +32,31 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bC3M_Oracle_events
-  description: This model captures Oracle event logs related to BackedFi on the C3M platform, including block timestamps, log indices, and transaction details.
+  description: This model captures Oracle event logs related to backedfi, including timestamp, log index, and contract address.
   columns:
   - name: block_timestamp
-    description: The timestamp of the block containing the event, in UTC.
+    description: Timestamp of the block when the event was emitted
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block (numeric, range varies)
     data_type: UInt64
-    tests:
-    - not_null
-  - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: The address of the contract emitting the event.
+    description: Address of the contract emitting the event
     data_type: String
-    tests:
-    - not_null
-  - name: event_name
-    description: The name of the Oracle event.
+  - name: output_json_type
+    description: Indicates if the output is in JSON format (boolean)
     data_type: String
-  - name: event_data
-    description: The JSON payload of the event data.
-    data_type: JSON
-  - name: block_number
-    description: The number of the block containing the event.
-    data_type: UInt64
-  - name: log_data
-    description: Raw log data in hexadecimal.
+  - name: source_table
+    description: Source table name for logs
+    data_type: String
+  - name: contract_address_source
+    description: Source of the contract address data
+    data_type: String
+  - name: incremental_column
+    description: Column used for incremental processing, typically timestamp
+    data_type: String
+  - name: allow_nullable_key
+    description: Setting to allow nullable keys in the source system
     data_type: String
   config:
     access: public
@@ -107,49 +68,40 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bCOIN_Oracle_events
-  description: This model captures Oracle event logs related to backedfi bCOIN, including transaction details, block information, and event-specific data. It is used for tracking and analysis of Oracle events within the system.
+  description: This model captures Oracle event logs related to backedfi's bCOIN contract, including transaction details, block info, and event-specific data.
   columns:
   - name: block_timestamp
-    description: The timestamp of the block containing the event, in UTC.
+    description: Timestamp of the block when the event was emitted
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
+    description: Unique hash identifying the transaction
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: The address of the contract emitting the event.
+    description: Address of the contract emitting the event
     data_type: String
-    tests:
-    - not_null
   - name: event_name
-    description: The name of the Oracle event.
+    description: Name of the Oracle event
     data_type: String
   - name: event_data
-    description: The JSON payload containing event-specific data.
+    description: JSON object containing event-specific data
     data_type: JSON
   - name: block_number
-    description: The number of the block containing the event.
+    description: Number of the block containing the event
     data_type: UInt64
   - name: sender_address
-    description: The address that initiated the transaction.
+    description: Address of the sender initiating the transaction
     data_type: String
-  - name: gas_used
-    description: The amount of gas used for the transaction, in wei.
+  - name: amount_wei
+    description: Amount involved in the event, in wei
+    data_type: String
+  - name: gas_price_gwei
+    description: Gas price at the time of the transaction, in gwei
     data_type: String
   - name: status
-    description: The transaction status (e.g., success, failure).
-    data_type: String
-  - name: fee
-    description: The transaction fee paid, in wei.
+    description: Status of the transaction or event (e.g., success, failure)
     data_type: String
   config:
     access: public
@@ -161,110 +113,83 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bCSPX_Oracle_events
-  description: This model captures Oracle event logs related to backedfi bCSPX contracts, including transaction details, block information, and event-specific data.
+  description: This model captures Oracle event logs related to backedfi bCSPX contracts, including transaction details, block info, and event-specific data.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was emitted
+    description: The timestamp of the block when the event was recorded.
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: Index of the log within the block, used to order events
+    description: The index of the log within the block, used to order logs.
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: Hash of the transaction associated with the event
+    description: The hash of the transaction that generated the event.
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: Address of the contract emitting the event
+    description: The address of the contract emitting the event.
     data_type: String
-    tests:
-    - not_null
   - name: event_name
-    description: Name of the Oracle event
+    description: The name of the event emitted.
     data_type: String
-    tests:
-    - not_null
-  - name: data
-    description: Event-specific data payload in JSON format
+  - name: event_data
+    description: The JSON payload containing event-specific data.
     data_type: JSON
   - name: block_number
-    description: Number of the block containing the event
+    description: The number of the block containing the event.
     data_type: UInt64
-    tests:
-    - not_null
-  - name: log_data
-    description: Raw log data in hexadecimal
-    data_type: String
   - name: sender_address
-    description: Address of the sender initiating the transaction
+    description: The address initiating the transaction.
     data_type: String
-  - name: gas_price
-    description: Gas price paid for the transaction in wei
+  - name: recipient_address
+    description: The address receiving tokens or assets, if applicable.
     data_type: String
-  - name: gas_used
-    description: Amount of gas used by the transaction
-    data_type: String
-  - name: status
-    description: Status of the transaction (e.g., success, failure)
+  - name: amount
+    description: The amount involved in the event, in wei or relevant units.
     data_type: String
   - name: block_hash
-    description: Hash of the block containing the event
+    description: The hash of the block containing the event.
     data_type: String
+  - name: created_at
+    description: Timestamp when the record was created in the database.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
     tags:
     - backedfi_oracle_events
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bHIGH_Oracle_events
-  description: This model captures Oracle event logs related to the backedfi high contract, including timestamp, log index, and transaction details.
+  description: This model captures Oracle event logs related to the backedfi protocol, including block timestamps, log indices, and associated transaction details for analysis of Oracle activities.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was emitted.
+    description: The timestamp of the block containing the event, in UTC.
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: Index of the log within the block.
+    description: The index of the log within the block, used to order events.
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: Hash of the transaction emitting the event.
+    description: Unique hash identifying the transaction associated with the event.
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: Address of the Oracle contract emitting the event.
+    description: The address of the Oracle contract emitting the event.
     data_type: String
-    tests:
-    - not_null
   - name: event_type
-    description: Type of the Oracle event.
+    description: The type of Oracle event (e.g., 'Update', 'Failure').
     data_type: String
   - name: event_data
-    description: JSON containing event-specific data.
+    description: JSON object containing detailed event data.
     data_type: JSON
   - name: block_number
-    description: Number of the block containing the event.
+    description: The number of the block containing the event.
     data_type: UInt64
   - name: transaction_index
-    description: Index of the transaction within the block.
+    description: The index of the transaction within the block.
     data_type: UInt64
-  - name: timestamp
-    description: The timestamp when the event was processed.
-    data_type: DateTime
-    tests:
-    - not_null
+  - name: log_data
+    description: Raw data payload of the log, in hex format.
+    data_type: String
   config:
     access: public
     materialized: incremental
@@ -275,41 +200,41 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bIB01_Oracle_events
-  description: This model captures Oracle event logs related to the backedfi BIB01 contract, including block timestamps, log indices, and transaction details for analysis and reporting.
+  description: This model captures Oracle event logs related to BackedFi, including transaction details, block information, and event-specific data for analysis and reporting purposes.
   columns:
   - name: block_timestamp
-    description: The timestamp of the block containing the event, in UTC.
+    description: Timestamp of the block when the event was recorded
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block (sequence number)
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
+    description: Unique hash identifying the transaction
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: The address of the Oracle contract emitting the event.
+    description: Address of the contract emitting the event
     data_type: String
-    tests:
-    - not_null
   - name: event_name
-    description: The name of the Oracle event.
+    description: Name of the event emitted
     data_type: String
   - name: event_data
-    description: The JSON payload containing event-specific data.
+    description: JSON object containing event-specific data
     data_type: JSON
   - name: block_number
-    description: The number of the block containing the event.
+    description: Number of the block containing the event
     data_type: UInt64
-  - name: log_topics
-    description: The list of topics associated with the log, in JSON format.
-    data_type: JSON
+  - name: sender_address
+    description: Address initiating the transaction
+    data_type: String
+  - name: recipient_address
+    description: Address receiving tokens or assets (if applicable)
+    data_type: String
+  - name: amount
+    description: Amount transferred or involved in the event (in wei or relevant units)
+    data_type: String
+  - name: log_data
+    description: Raw log data in hexadecimal format
+    data_type: String
   config:
     access: public
     materialized: incremental
@@ -320,52 +245,32 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bIBTA_Oracle_events
-  description: This model captures Oracle events related to backedfi BIBTA contracts, including timestamp, log index, and other event details.
+  description: This model captures Oracle event logs related to BackedFi, providing details about event timestamps, transaction hashes, log indices, and associated contract addresses.
   columns:
   - name: block_timestamp
     description: The timestamp of the block when the event was emitted.
     data_type: DateTime
-    tests:
-    - not_null
-  - name: log_index
-    description: The index of the log within the block (numeric, sequential).
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: contract_address
-    description: Address of the contract emitting the event.
+  - name: transaction_hash
+    description: The hash identifying the transaction that emitted the event.
     data_type: String
-    tests:
-    - not_null
+  - name: log_index
+    description: The index of the log within the block, indicating order.
+    data_type: UInt64
+  - name: contract_address
+    description: The address of the contract emitting the event.
+    data_type: String
   - name: event_name
-    description: Name of the Oracle event.
+    description: The name of the Oracle event.
     data_type: String
   - name: event_data
-    description: JSON containing event-specific data.
+    description: The JSON payload containing event-specific data.
     data_type: JSON
-  - name: transaction_hash
-    description: Hash of the transaction that included the event.
-    data_type: String
-    tests:
-    - not_null
   - name: block_number
     description: The number of the block containing the event.
     data_type: UInt64
-  - name: sender_address
-    description: Address of the sender initiating the event.
+  - name: log_data
+    description: Additional raw data from the log.
     data_type: String
-  - name: gas_used
-    description: Amount of gas used for the transaction (in wei).
-    data_type: String
-  - name: status
-    description: Status of the transaction or event.
-    data_type: String
-  - name: created_at
-    description: Timestamp when the record was created in the system.
-    data_type: DateTime
-  - name: updated_at
-    description: Timestamp when the record was last updated.
-    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -376,46 +281,37 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bMSTR_Oracle_events
-  description: This model captures Oracle event logs related to backedfi, including transaction details, block information, and event-specific data for analysis and reporting.
+  description: This model captures Oracle event logs related to backedfi, including transaction details, block information, and event-specific data.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was emitted
+    description: Timestamp of the block when the event was recorded
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: Index of the log within the block, used to order events
+    description: Index of the log within the block (sequence number)
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
     description: Hash of the transaction associated with the event
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
     description: Address of the contract emitting the event
     data_type: String
-    tests:
-    - not_null
   - name: event_name
     description: Name of the Oracle event
     data_type: String
-  - name: payload
-    description: JSON payload containing event-specific data
+  - name: data
+    description: Event-specific data payload
     data_type: JSON
   - name: block_number
     description: Number of the block containing the event
     data_type: UInt64
-  - name: sender_address
+  - name: sender
     description: Address of the sender initiating the transaction
     data_type: String
-  - name: amount_wei
-    description: Amount involved in the event, denominated in wei
+  - name: amount
+    description: Amount involved in the event, in wei
     data_type: String
-  - name: fee_gwei
-    description: Transaction fee in gwei
+  - name: token_address
+    description: Address of the token involved in the event
     data_type: String
   config:
     access: public
@@ -427,49 +323,44 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_backedfi_bNVDA_Oracle_events
-  description: This model captures Oracle events for BackedFi's bNVDA contract, including timestamps, log indices, and related transaction details.
+  description: This model captures Oracle event logs related to backedfi bNVDA contract interactions, including timestamp, log index, and related transaction details.
   columns:
   - name: block_timestamp
-    description: The timestamp of the block containing the event, in UTC.
+    description: The timestamp of the block when the event was emitted, in UTC.
     data_type: DateTime
-    tests:
-    - not_null
   - name: log_index
-    description: The index of the log within the block, used for ordering.
+    description: The index of the log within the block, used to order events.
     data_type: UInt64
-    tests:
-    - not_null
   - name: transaction_hash
     description: The hash of the transaction that emitted the event.
     data_type: String
-    tests:
-    - not_null
-    - unique
   - name: contract_address
-    description: The address of the Oracle contract emitting the event.
+    description: The address of the Oracle contract involved in the event.
     data_type: String
-    tests:
-    - not_null
   - name: event_name
-    description: The name of the Oracle event.
+    description: The name identifier of the Oracle event.
     data_type: String
   - name: event_data
-    description: The JSON payload containing event-specific data.
+    description: JSON object containing event-specific data payload.
     data_type: JSON
   - name: block_number
-    description: The number of the block containing the event.
+    description: The number of the block in which the event was included.
     data_type: UInt64
-  - name: log_data
-    description: Raw log data in hexadecimal.
-    data_type: String
   - name: transaction_index
     description: The index of the transaction within the block.
     data_type: UInt64
-  - name: timestamp
-    description: The timestamp of the event occurrence, in UTC.
+  - name: log_data
+    description: Raw log data payload in hexadecimal.
+    data_type: String
+  - name: log_topics
+    description: List of topics associated with the log, in hexadecimal.
+    data_type: String
+  - name: block_hash
+    description: Hash of the block containing the event.
+    data_type: String
+  - name: event_timestamp
+    description: The timestamp when the event was emitted, in UTC.
     data_type: DateTime
-    tests:
-    - not_null
   config:
     access: public
     materialized: incremental

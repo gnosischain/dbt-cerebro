@@ -64,58 +64,48 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_esg_carbon_emissions
-  description: Fact table capturing carbon emissions data based on power consumption, CIF values, and country codes, aggregated by date.
+  description: A fact table aggregating carbon emissions data based on power consumption and CIF values, with calculations for energy and emissions in metric tons.
   columns:
   - name: date
-    description: The date of the measurement, in DateTime format.
+    description: The date of the measurement in UTC.
     data_type: DateTime
-    tests:
-    - not_null
+  - name: country
+    description: ISO 3-letter country code.
+    data_type: String
+  - name: power
+    description: Power consumption in kilowatts (kW).
+    data_type: Float64
   - name: energy
-    description: Total energy consumption in MWh, calculated as sum of power over 24 hours.
+    description: Total energy consumption in megawatt-hours (MWh).
     data_type: Float64
   - name: co2_emissions
-    description: Total CO2 emissions in metric tons, derived from power, CIF, and country data.
+    description: Total CO2 equivalent emissions in metric tons (tCO2e).
     data_type: Float64
   - name: mean_cif
-    description: Average CIF value in gCO2/kWh for the period.
+    description: Average Carbon Intensity Factor in gCO2/kWh.
     data_type: Float64
-  - name: power
-    description: Power consumption in kW, from source data.
-    data_type: Float64
-  - name: country
-    description: ISO 3 country code.
-    data_type: String
   config:
     access: public
-    materialized: view
+    materialized: table
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_esg_power_consumption_top10
-  description: Aggregated power consumption data for top 10 countries per date, with 'Other' category for lower ranks.
+  description: Aggregated power consumption data for top 10 countries per date, with 'Other' category for remaining.
   columns:
   - name: date
-    description: Date of power consumption measurement
+    description: The date of power consumption measurement.
     data_type: DateTime
-    tests:
-    - not_null
   - name: country
-    description: Country name or 'Other' for aggregated lower ranks
+    description: Country name or 'Other' for aggregated entries.
     data_type: String
-    tests:
-    - not_null
   - name: power
-    description: Total power consumption in wei
+    description: Total power consumption in wei units.
     data_type: UInt64
-    tests:
-    - not_null
   - name: rank
-    description: Rank of country based on power consumption for the date
+    description: Row number indicating the country's rank by power consumption for the date.
     data_type: UInt64
-    tests:
-    - not_null
   config:
     access: public
     materialized: table

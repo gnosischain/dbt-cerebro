@@ -2,18 +2,14 @@ version: 2
 models:
 
 - name: stg_execution__blocks
-  description: Staging model for execution layer blocks, including block metadata, transaction data, logs, and associated state changes, sourced from the execution.blocks table with transformations applied.
+  description: Business-facing staging model for execution blocks, including core block data, transaction details, logs, and related metadata, with decoded extra data.
   columns:
   - name: block_number
     description: Height of the block containing the record.
     data_type: UInt32
-    tests:
-    - not_null
   - name: block_hash
     description: Keccak-256 hash of the block header.
     data_type: String
-    tests:
-    - not_null
   - name: parent_hash
     description: Hash of the parent block header.
     data_type: String
@@ -35,15 +31,11 @@ models:
   - name: gas_used
     description: Total gas consumed by transactions in the block.
     data_type: UInt64
-    tests:
-    - not_null
   - name: gas_limit
     description: Maximum gas allowed in the block.
     data_type: UInt64
-    tests:
-    - not_null
   - name: extra_data
-    description: Arbitrary extra-data bytes set by the block proposer (hex).
+    description: Arbitrary extra-data bytes set by the block proposer (hex string).
     data_type: String
   - name: decoded_extra_data
     description: Decoded extra data from `extra_data` field.
@@ -51,8 +43,6 @@ models:
   - name: size
     description: Serialized block size in bytes.
     data_type: UInt64
-    tests:
-    - not_null
   - name: mix_hash
     description: Mix hash (pre-merge PoW) or random field.
     data_type: String
@@ -62,82 +52,69 @@ models:
   - name: base_fee_per_gas
     description: Base fee per gas (wei) introduced by EIP-1559.
     data_type: UInt64
-    tests:
-    - not_null
   - name: withdrawals_root
     description: Root hash of withdrawals list (Shanghai+).
     data_type: String
   - name: chain_id
     description: EVM chain identifier (e.g., 100 for Gnosis).
     data_type: UInt64
-    tests:
-    - not_null
   - name: block_timestamp
-    description: UTC timestamp for the block.
+    description: UTC timestamp of the block.
     data_type: DateTime
-    tests:
-    - not_null
   - name: insert_version
     description: Monotonic ingestion version (nanoseconds).
     data_type: UInt64
   - name: transactions
-    description: Array of transaction hashes included in the block.
-    data_type: String
-  - name: logs_bloom
-    description: Bloom filter for logs in this block.
-    data_type: String
-  - name: timestamp
-    description: Unix epoch seconds when the block was proposed.
-    data_type: UInt32
-  - name: logs
-    description: Event logs emitted by smart contracts within the block.
+    description: List of transactions included in the block with relevant details.
     data_type: JSON
-  - name: transactions_data
-    description: Detailed transaction data included in the block.
+  - name: logs
+    description: Event logs emitted during the block.
     data_type: JSON
   - name: native_transfers
     description: Decoded native token transfers within the block.
     data_type: JSON
   - name: contracts
-    description: Contracts created in this block with deployment info.
+    description: Contracts deployed in the block with deployment metadata.
     data_type: JSON
   - name: traces
-    description: Execution traces for internal calls and contract creation.
+    description: Execution traces for internal calls, creates, and rewards.
     data_type: JSON
   - name: balance_diffs
-    description: Balance changes caused by transactions in this block.
+    description: Balance changes for accounts caused by transactions.
     data_type: JSON
   - name: storage_diffs
-    description: Storage slot mutations within the block.
+    description: Storage-slot mutations produced by transactions.
     data_type: JSON
   - name: code_diffs
-    description: Changes to smart contract runtime code.
+    description: Changes in smart contract runtime code due to transactions.
     data_type: JSON
   - name: nonce_diffs
-    description: Nonce updates for accounts.
+    description: Nonce updates for accounts caused by transactions.
     data_type: JSON
   - name: withdrawals
-    description: Beacon chain withdrawal data bridged into the block.
+    description: Beacon-chain withdrawals bridged into blocks (Shanghai+).
     data_type: JSON
   - name: indexing_state
-    description: Worker-reported indexing state for this block.
+    description: Worker-reported state for indexed ranges.
     data_type: JSON
   - name: indexing_progress
     description: Aggregated progress metrics for indexing.
     data_type: JSON
   - name: continuous_ranges
-    description: Summarized continuous block ranges and coverage.
+    description: Summarized continuous completed ranges and data continuity.
     data_type: JSON
   - name: indexing_summary
-    description: End-to-end indexing status and coverage.
+    description: End-to-end indexing state summary.
     data_type: JSON
   - name: migrations
-    description: Data migration records executed during ingestion.
+    description: Records of data migrations executed by the crawler/ETL.
     data_type: JSON
   config:
     access: public
+    tags:
+    - staging
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

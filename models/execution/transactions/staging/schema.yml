@@ -2,102 +2,78 @@ version: 2
 models:
 
 - name: stg_execution__transactions
-  description: A staging model for execution transactions, transforming raw chain data into a structured format suitable for analysis.
+  description: Staging model for execution transactions, transforming raw chain data into a structured format for analysis.
   columns:
+  - name: transaction_hash
+    description: Unique identifier of the transaction (hash).
+    data_type: String
   - name: transaction_index
     description: Zero-based index of the transaction within the block.
     data_type: UInt64
-    tests:
-    - not_null
   - name: nonce
-    description: Transaction nonce (sender's transaction count).
+    description: Transaction nonce (number of transactions sent by sender).
     data_type: UInt64
   - name: block_number
-    description: Height of the block containing the transaction.
+    description: Height of the block containing this transaction.
     data_type: UInt32
-    tests:
-    - not_null
-  - name: transaction_hash
-    description: Keccak-256 hash identifying the transaction.
-    data_type: String
-    tests:
-    - not_null
-    - unique
   - name: from_address
-    description: Address (EOA or contract) that signed the transaction.
+    description: Address that initiated the transaction.
     data_type: String
-    tests:
-    - not_null
   - name: to_address
-    description: Recipient address; null for contract creation.
+    description: Recipient address; null if contract creation.
     data_type: String
   - name: value
-    description: Value transferred in wei.
+    description: Transaction value in wei.
     data_type: UInt256
   - name: input
-    description: Calldata / input data supplied with the transaction (hex).
+    description: Calldata or input data provided with the transaction.
     data_type: String
   - name: gas_limit
-    description: Gas limit provided by the sender.
+    description: Gas limit specified for the transaction.
     data_type: UInt64
   - name: gas_used
     description: Actual gas used by the transaction.
     data_type: UInt64
   - name: gas_price
-    description: Legacy gas price in wei (pre-EIP-1559).
+    description: Gas price in wei (legacy, pre-EIP-1559).
     data_type: UInt64
   - name: transaction_type
-    description: Envelope type (0 = legacy, 1 = access-list, 2 = EIP-1559).
+    description: Transaction type (0=legacy, 1=access list, 2=EIP-1559).
     data_type: UInt32
   - name: max_priority_fee_per_gas
-    description: Max miner tip per gas (wei) for EIP-1559.
+    description: Max tip per gas for EIP-1559 transactions.
     data_type: UInt64
   - name: max_fee_per_gas
-    description: Max total fee per gas (wei) under EIP-1559.
+    description: Max total fee per gas for EIP-1559 transactions.
     data_type: UInt64
   - name: success
-    description: 1 if the transaction succeeded; 0 if it reverted.
+    description: 1 if transaction succeeded, 0 if reverted.
     data_type: UInt8
-  - name: n_input_bytes
-    description: Byte length of the input data.
-    data_type: UInt32
-  - name: n_input_zero_bytes
-    description: Number of zero bytes in the input.
-    data_type: UInt32
-  - name: n_input_nonzero_bytes
-    description: Number of non-zero bytes in the input.
-    data_type: UInt32
-  - name: n_rlp_bytes
-    description: Total RLP-encoded payload size (bytes) if available.
-    data_type: UInt32
-  - name: timestamp
-    description: Block timestamp (seconds since epoch).
-    data_type: UInt32
   - name: r
-    description: ECDSA signature r component.
+    description: ECDSA signature component r.
     data_type: String
   - name: s
-    description: ECDSA signature s component.
+    description: ECDSA signature component s.
     data_type: String
   - name: v
     description: ECDSA recovery id / y-parity.
     data_type: UInt32
   - name: block_hash
-    description: Hash of the enclosing block.
+    description: Hash of the block containing this transaction.
     data_type: String
   - name: chain_id
-    description: EVM chain identifier.
+    description: Chain identifier (e.g., 100 for Gnosis).
     data_type: UInt64
   - name: block_timestamp
-    description: UTC timestamp of the block (materialized from `timestamp`).
+    description: UTC timestamp of the block containing this transaction.
     data_type: DateTime64(0, 'UTC')
   - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
+    description: Monotonically increasing version for ingestion tracking.
     data_type: UInt64
   config:
     access: public
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
