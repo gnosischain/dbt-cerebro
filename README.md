@@ -2,177 +2,350 @@
 
 ![Cerebro dbt](img/header-cerebro-dbt.png)
 
-This repository contains [dbt](https://www.getdbt.com/) models for comprehensive analysis of Gnosis Chain blockchain data. The project transforms raw on-chain data into actionable insights across multiple domains including P2P networking, consensus mechanisms, execution layer activity, and environmental sustainability metrics.
+A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across P2P networking, consensus mechanisms, execution layer activity, and environmental sustainability metrics.
 
-## 🏗️ Project Overview
+## Table of Contents
 
-Cerebro dbt enables transformation and analysis of Gnosis Chain data across four main domains:
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Quick Start](#-quick-start)
+- [Environment Setup](#-environment-setup)
+- [Docker Deployment](#-docker-deployment)
+- [Data Modeling Conventions](#-data-modeling-conventions)
+- [Contract Decoding System](#-contract-decoding-system)
+- [Development Workflow](#-development-workflow)
+- [Project Structure](#-project-structure)
+- [Troubleshooting](#-troubleshooting)
 
-- **📡 P2P Network**: Peer-to-peer interactions, client distributions, and network topology analysis
-- **⚖️ Consensus Layer**: Validator activity, block proposals, attestations, and consensus-layer events
-- **⚡ Execution Layer**: Transaction analysis, smart contract interactions, DeFi protocols, and user activity
+## 🗺️ Overview
+
+Cerebro dbt transforms Gnosis Chain data across four main domains:
+
+- **🔡 P2P Network**: Peer-to-peer interactions, client distributions, and network topology
+- **⚖️ Consensus Layer**: Validator activity, block proposals, attestations, and consensus events
+- **⚡ Execution Layer**: Transaction analysis, smart contract interactions, DeFi protocols
 - **🌍 ESG & Sustainability**: Environmental metrics including power consumption and carbon emissions
-- **🔗 Contract Decoding**: Automated ABI management and smart contract event/transaction decoding
 
-All data sources are unified in **ClickHouse Cloud** for high-performance analytics.
+All data is unified in **ClickHouse Cloud** for high-performance analytics.
 
-## 📁 Project Structure
+## 🏗️ Architecture
 
+```mermaid
+graph TD
+    subgraph "Data Sources"
+        A[Gnosis Chain Node] --> B[Raw Data Tables]
+        C[Blockscout API] --> D[Contract ABIs]
+        E[External APIs] --> F[Reference Data]
+    end
+    
+    subgraph "dbt Transformation Pipeline"
+        B --> G[Staging Models<br/>stg_*]
+        G --> H[Intermediate Models<br/>int_*]
+        H --> I[Fact Models<br/>fct_*]
+        I --> J[API Models<br/>api_*]
+        
+        D --> K[ABI Processing]
+        K --> L[Signature Generation]
+        L --> M[Contract Decoding]
+        M --> H
+    end
+    
+    subgraph "Data Storage"
+        N[ClickHouse Cloud]
+        G --> N
+        H --> N
+        I --> N
+        J --> N
+    end
+    
+    subgraph "Consumption"
+        J --> O[REST API]
+        J --> P[dbt Docs]
+        O --> Q[Applications]
+        P --> R[Documentation Server]
+    end
 ```
-├── models/
-│   ├── consensus/           # Validator metrics and consensus analysis
-│   ├── execution/           # Execution layer analysis
-│   │   ├── abi/            # Contract ABI management
-│   │   ├── blocks/         # Block production and client metrics
-│   │   ├── contracts/      # Decoded contract interactions
-│   │   ├── rwa/           # Real-world asset tracking
-│   │   ├── state/         # Blockchain state analysis
-│   │   ├── transactions/  # Transaction metrics
-│   │   ├── transfers/     # Token transfer analysis
-│   │   └── yields/        # DeFi yield calculations
-│   ├── p2p/                # P2P network analysis
-│   ├── probelab/           # Probelab crawler data
-│   └── ESG/                # Environmental sustainability metrics
-├── macros/                 # Reusable dbt macros
-│   ├── db/                # Database utilities
-│   ├── decoding/          # Contract decoding system
-│   └── execution/         # Execution layer helpers
-├── scripts/               # Python automation scripts
-└── seeds/                 # Static reference data
-```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - Docker and Docker Compose
 - ClickHouse Cloud account
-- Python 3.8+
+- Python 3.8+ (for local development)
+- Git
 
-### 1. Environment Setup
+### Basic Setup
 
-Create a `.env` file in the project root:
+```bash
+# 1. Clone the repository
+git clone <repository-url>
+cd cerebro-dbt
+
+# 2. Create environment file
+cp .env.example .env
+# Edit .env with your ClickHouse credentials
+
+# 3. Start the Docker container
+docker-compose up -d
+
+# 4. Enter the container
+docker exec -it dbt /bin/bash
+
+# 5. Test connection
+dbt debug
+
+# 6. Run all models
+dbt run
+
+# 7. Access documentation at http://localhost:8080
+```
+
+## Environment Setup
+
+### Configuration File (.env)
+
+Create a `.env` file in the project root with the following variables:
 
 ```bash
 # ClickHouse Cloud Configuration
 CLICKHOUSE_URL=your-clickhouse-cloud-host.com
-CLICKHOUSE_PORT=8123
+CLICKHOUSE_PORT=8443
 CLICKHOUSE_USER=default
-CLICKHOUSE_PASSWORD=your-password
+CLICKHOUSE_PASSWORD=your-secure-password
 CLICKHOUSE_SECURE=True
+CLICKHOUSE_DATABASE=dbt_database
 
-# Docker Configuration
+# Docker Configuration (optional)
 USER_ID=1000
 GROUP_ID=1000
 ```
 
-### 2. Launch the Environment
+### ClickHouse Requirements
+
+- ClickHouse version 24.1 or later
+- Database with appropriate permissions for:
+  - Creating/dropping tables
+  - Reading from source schemas
+  - Writing to target schemas
+
+## Docker Deployment
+
+### Container Services
+
+The `docker-compose.yml` provides:
+
+- **dbt Documentation Server**: Serves interactive documentation on port 8080
+- **Isolated Python Environment**: All dependencies pre-installed
+- **Volume Mounting**: Real-time code updates without rebuilding
+- **Environment Management**: Automatic loading of `.env` variables
+
+### Docker Commands
 
 ```bash
-# Start the dbt documentation server
+# Start services
 docker-compose up -d
 
-# Access dbt docs at http://localhost:8080
+# View logs
+docker-compose logs -f dbt
+
+# Enter container for development
+docker exec -it dbt /bin/bash
+
+# Stop services
+docker-compose down
+
+# Rebuild container (after Dockerfile changes)
+docker-compose build --no-cache
+
+# Run dbt commands from outside container
+docker exec dbt dbt run
+docker exec dbt dbt test
+docker exec dbt dbt docs generate
 ```
 
-### 3. Run dbt Models
+### Production Deployment
+
+For production environments:
+
+```bash
+# Use the production cron script
+docker exec dbt /app/cron.sh
+
+# Or set up automated runs
+docker exec dbt bash -c "dbt run && dbt test"
+```
+
+## Data Modeling Conventions
+
+### Model Layers
+
+The project follows a strict layered architecture with naming conventions:
+
+```mermaid
+graph LR
+    A[Raw Data] --> B[stg_*<br/>Staging]
+    B --> C[int_*<br/>Intermediate]
+    C --> D[fct_*<br/>Facts]
+    D --> E[api_*<br/>API Views]
+    
+    style B fill:#e1f5fe
+    style C fill:#fff3e0
+    style D fill:#f3e5f5
+    style E fill:#e8f5e9
+```
+
+#### 1. Staging Models (`stg_*`)
+
+- **Purpose**: Light transformations of raw source data
+- **Location**: `models/*/staging/`
+- **Characteristics**:
+  - Minimal transformations (type casting, column renaming)
+  - 1:1 relationship with source tables
+  - Usually materialized as views
+  - No business logic
+
+**Example**:
+```sql
+-- stg_execution__blocks.sql
+SELECT 
+    block_number,
+    CONCAT('0x', author) AS author,  -- Format standardization
+    block_timestamp
+FROM {{ source('execution','blocks') }}
+```
+
+#### 2. Intermediate Models (`int_*`)
+
+- **Purpose**: Heavy transformations and business logic
+- **Location**: `models/*/intermediate/`
+- **Characteristics**:
+  - Complex joins and aggregations
+  - Materialized as incremental tables for performance
+  - Contains business logic and calculations
+  - Often partitioned by month
+
+**Example**:
+```sql
+-- int_execution_blocks_clients_version_daily.sql
+{{ 
+    config(
+        materialized='incremental',
+        incremental_strategy='delete+insert',
+        partition_by='toStartOfMonth(date)'
+    ) 
+}}
+```
+
+#### 3. Fact Models (`fct_*`)
+
+- **Purpose**: Business-ready metrics and KPIs
+- **Location**: `models/*/marts/`
+- **Characteristics**:
+  - Final business transformations
+  - Usually materialized as views
+  - Optimized for querying
+  - Contains calculated metrics
+
+#### 4. API Models (`api_*`)
+
+- **Purpose**: Models served via REST API
+- **Location**: `models/*/marts/`
+- **Characteristics**:
+  - Simplified structure for API consumption
+  - Always materialized as views
+  - Optimized for read performance
+  - Consistent naming and structure
+
+### Incremental Processing Strategy
+
+```sql
+{{ 
+    config(
+        materialized='incremental',
+        incremental_strategy='delete+insert',
+        engine='ReplacingMergeTree()',
+        order_by='(block_timestamp, transaction_hash)',
+        unique_key='(block_timestamp, transaction_hash)',
+        partition_by='toStartOfMonth(block_timestamp)'
+    )
+}}
+
+-- Use the monthly filter macro
+{{ apply_monthly_incremental_filter('block_timestamp', 'date') }}
+```
+
+## Contract Decoding System
+
+### Overview
+
+The contract decoding system transforms raw blockchain data into human-readable formats:
+
+```mermaid
+graph TD
+    A[Contract Address] --> B[Fetch ABI from Blockscout]
+    B --> C[Store in contracts_abi table]
+    C --> D[Generate Signatures<br/>Python Script]
+    D --> E[Store in Seed Files]
+    E --> F[dbt seed]
+    F --> G[Function Signatures Table]
+    F --> H[Event Signatures Table]
+    
+    I[Raw Transactions] --> J[decode_calls macro]
+    K[Raw Logs] --> L[decode_logs macro]
+    
+    G --> J
+    H --> L
+    
+    J --> M[Decoded Calls]
+    L --> N[Decoded Events]
+```
+
+### Complete Workflow for Adding New Contracts
+
+#### Step 1: Fetch Contract ABI
 
 ```bash
 # Enter the container
 docker exec -it dbt /bin/bash
 
-# Run all models
-dbt run
+# Fetch ABI for a single contract
+dbt run-operation fetch_and_insert_abi --args '{"address": "0xe91d153e0b41518a2ce8dd3d7944fa863463a97d"}'
 
-# Run specific model groups
-dbt run --select execution.contracts
-dbt run --select p2p
-dbt run --select consensus
+# For multiple contracts, repeat the command
+dbt run-operation fetch_and_insert_abi --args '{"address": "0xAnotherAddress"}'
 ```
 
-## 🔧 Core Features
-
-### Smart Contract Decoding System
-
-Our automated contract decoding system transforms raw blockchain data into human-readable insights:
-
-#### 1. **ABI Management**
-- Automated ABI fetching from Blockscout
-- Support for proxy contracts and implementations
-- Version tracking and updates
-
-#### 2. **Signature Generation**
-- Automatic function and event signature calculation
-- Keccak256 hashing using Web3.py
-- Optimized signature tables for fast lookups
-
-#### 3. **Transaction & Event Decoding**
-- Real-time decoding of contract calls
-- Event log parsing with parameter extraction
-- Support for complex data types (arrays, structs, dynamic types)
-
-### Environmental Sustainability (ESG)
-
-Track the environmental impact of the Gnosis Chain network:
-
-- **Power Consumption**: Node-level power usage estimation
-- **Carbon Emissions**: CO2 impact calculation by geography
-- **Client Efficiency**: Performance metrics across different clients
-
-### P2P Network Analysis
-
-Comprehensive peer-to-peer network insights:
-
-- **Geographic Distribution**: Global node distribution mapping
-- **Client Diversity**: Implementation variety and versions
-- **Network Topology**: Connection patterns and health metrics
-
-## 📊 Key Model Categories
-
-### Execution Layer Models
-
-| Category | Purpose | Example Models |
-|----------|---------|----------------|
-| **Blocks** | Block production analysis | `execution_blocks_clients_daily` |
-| **Transactions** | Transaction metrics | `execution_txs_info_daily` |
-| **Contracts** | Decoded contract interactions | `contracts_wxdai_events` |
-| **State** | Blockchain state growth | `execution_state_size_daily` |
-| **Yields** | DeFi yield calculations | `yields_sdai_apy_daily` |
-
-### P2P Network Models
-
-| Model | Description |
-|-------|-------------|
-| `p2p_peers_geo_daily` | Daily geographic distribution of peers |
-| `p2p_peers_clients_daily` | Client software distribution |
-| `p2p_peers_cl_fork_daily` | Consensus layer fork adoption |
-
-### ESG Models
-
-| Model | Description |
-|-------|-------------|
-| `esg_carbon_emissions` | Daily CO2 emissions estimates |
-| `esg_country_power_consumption` | Power usage by country |
-
-## 🔨 Adding New Smart Contracts
-
-### Step 1: Fetch Contract ABI
+#### Step 2: Export ABIs and Generate Signatures
 
 ```bash
-# Add a new contract for decoding
-dbt run-operation fetch_and_insert_abi --args '{"address": "0xYourContractAddress"}'
-```
+# IMPORTANT: Export current ABIs to prevent data loss
+# This creates/updates the contracts_abi.csv seed file
+python scripts/abi/export_contracts_abi.py
 
-### Step 2: Generate Signatures
-
-```bash
-# Process ABIs into function/event signatures
+# Generate signature files from ABIs
 python scripts/signatures/signature_generator.py
+
+# This creates/updates:
+# - seeds/event_signatures.csv
+# - seeds/function_signatures.csv
 ```
 
-### Step 3: Create dbt Models
+#### Step 3: Load Seeds into Database
 
-Create event decoding model:
+```bash
+# Load all seed files into ClickHouse
+dbt seed
+
+# Or load specific seeds
+dbt seed --select contracts_abi
+dbt seed --select event_signatures
+dbt seed --select function_signatures
+```
+
+#### Step 4: Create Decoding Models
+
+Create models for your contract:
 
 ```sql
 -- models/execution/contracts/your_protocol/your_contract_events.sql
@@ -182,7 +355,6 @@ Create event decoding model:
         incremental_strategy='delete+insert',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, log_index)',
-        unique_key='(block_timestamp, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         pre_hook=["SET allow_experimental_json_type = 1"]
     )
@@ -198,171 +370,203 @@ Create event decoding model:
 }}
 ```
 
-Create transaction decoding model:
-
-```sql
--- models/execution/contracts/your_protocol/your_contract_calls.sql
-{{ 
-    config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
-        engine='ReplacingMergeTree()',
-        order_by='(block_timestamp, transaction_hash)',
-        unique_key='(block_timestamp, transaction_hash)',
-        partition_by='toStartOfMonth(block_timestamp)',
-        pre_hook=["SET allow_experimental_json_type = 1"]
-    )
-}}
-
-{{ 
-    decode_calls(
-        tx_table=source('execution','transactions'),
-        contract_address='0xYourContractAddress',
-        output_json_type=true,
-        incremental_column='block_timestamp'
-    )
-}}
-```
-
-### Step 4: Run Your Models
+#### Step 5: Run Your Models
 
 ```bash
+# Run specific contract models
 dbt run --select your_contract_events your_contract_calls
+
+# Or run all contract models
+dbt run --select execution.contracts
 ```
 
-## 🛠️ Available Macros
+### Important Notes on ABI Management
 
-### Contract Decoding Macros
+⚠️ **Critical**: Always export ABIs before running `dbt seed` to prevent data loss:
 
-| Macro | Purpose |
-|-------|---------|
-| `decode_logs()` | Decode contract event logs |
-| `decode_calls()` | Decode transaction function calls |
-| `fetch_abi_from_blockscout()` | Retrieve ABI from Blockscout API |
-| `fetch_and_insert_abi()` | Store ABI in contracts_abi table |
-
-### Database Utilities
-
-| Macro | Purpose |
-|-------|---------|
-| `apply_monthly_incremental_filter()` | Efficient incremental processing |
-| `decode_hex_split()` | Parse hex data into readable text |
-| `drop_dbt_trash()` | Clean up temporary tables |
-
-## 📈 Data Sources
-
-### Raw Data Tables
-
-All raw data is sourced from Gnosis Chain and stored in ClickHouse:
-
-- **execution**: Blocks, transactions, logs, traces, contracts
-- **consensus**: Validator data, attestations, proposals
-- **nebula**: P2P network crawl data
-- **crawlers_data**: External data (IP geolocation, country codes, etc.)
-
-### External Data Integration
-
-- **Probelab**: P2P network health metrics
-- **Blockscout**: Contract verification and ABIs  
-- **Ember**: Electricity carbon intensity data
-- **IP Geolocation**: Geographic mapping of nodes
-
-## 🔄 Incremental Processing
-
-The project uses efficient incremental strategies:
-
-- **Monthly Partitioning**: Data partitioned by month for optimal performance
-- **Delete+Insert**: Ensures data consistency for updated records
-- **Time-based Filtering**: Only processes new data since last run
-
-## 📊 Analytics Use Cases
-
-### DeFi Analytics
-- Track sDAI yield rates and APY calculations
-- Monitor RWA token price feeds from BackedFi oracles
-- Analyze Aave V3 lending protocol activity
-
-### Network Health
-- Monitor client diversity across execution and consensus layers
-- Track geographic decentralization
-- Identify network upgrade adoption rates
-
-### Environmental Impact
-- Calculate network-wide power consumption
-- Estimate carbon emissions by region
-- Track sustainability improvements over time
-
-## 🐳 Docker Configuration
-
-The project includes a complete Docker setup:
-
-```yaml
-# docker-compose.yml provides:
-# - dbt documentation server (port 8080)
-# - Isolated Python environment
-# - Volume mounting for development
-# - Environment variable management
+```bash
+# Correct workflow when adding new contracts:
+1. dbt run-operation fetch_and_insert_abi --args '{"address": "0x..."}'
+2. python scripts/abi/export_contracts_abi.py  # Export to CSV
+3. python scripts/signatures/signature_generator.py
+4. dbt seed  # Now safe to run
 ```
 
-## 🔧 Development Workflow
+The `contracts_abi` table in ClickHouse is the source of truth, but `dbt seed` will overwrite it with the CSV contents. Always export first!
 
-1. **Model Development**
-   ```bash
-   dbt run --select +my_model  # Run model and dependencies
-   dbt test --select my_model  # Run data quality tests
+## Development Workflow
+
+### Creating New Models
+
+1. **Choose the appropriate layer**:
+   - Raw data transformation → `stg_*`
+   - Complex business logic → `int_*`
+   - Business metrics → `fct_*`
+   - API endpoints → `api_*`
+
+2. **Follow naming conventions**:
+   ```
+   stg_{source}__{table}
+   int_{domain}_{metric}_{grain}
+   fct_{domain}_{metric}_{grain}
+   api_{domain}_{metric}_{grain}
    ```
 
-2. **Documentation**
-   ```bash
-   dbt docs generate           # Generate documentation
-   dbt docs serve --port 8000  # Serve docs locally
-   ```
-
-3. **Contract Integration**
-   ```bash
-   # Add new contract
-   dbt run-operation fetch_and_insert_abi --args '{"address": "0x..."}'
-   python scripts/signatures/signature_generator.py
-   dbt run --select contracts.new_protocol
-   ```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Missing ABI Data**
+3. **Configure materialization**:
    ```sql
-   -- Check if ABI was fetched correctly
-   SELECT * FROM contracts_abi WHERE contract_address = '0x...';
+   -- Staging: usually view
+   {{ config(materialized='view') }}
+   
+   -- Intermediate: incremental for large datasets
+   {{ config(
+       materialized='incremental',
+       incremental_strategy='delete+insert'
+   ) }}
+   
+   -- Facts/API: view for real-time data
+   {{ config(materialized='view') }}
    ```
 
-2. **Signature Generation Failed**
-   ```sql
-   -- Verify signatures were created
-   SELECT * FROM function_signatures WHERE contract_address = '0x...';
-   SELECT * FROM event_signatures WHERE contract_address = '0x...';
-   ```
+### Testing Models
 
-3. **Decoding Issues**
-   - Ensure contract address matches exactly (case-sensitive)
-   - Verify raw data format in source tables
-   - Check signature tables have entries
+```bash
+# Run all tests
+dbt test
 
-### Performance Optimization
+# Test specific model
+dbt test --select my_model
 
-- Use incremental models for large datasets
-- Partition by month for better query performance
-- Monitor ClickHouse query performance
-- Add appropriate indexes for query patterns
+# Run and test together
+dbt build --select +my_model
+```
+
+### Documentation
+
+```bash
+# Generate documentation
+dbt docs generate
+
+# Serve locally (inside container)
+dbt docs serve --port 8000 --host 0.0.0.0
+
+# Documentation is automatically served on port 8080 via Docker
+```
+
+## Project Structure
+
+```
+cerebro-dbt/
+├── models/
+│   ├── consensus/          # Consensus layer models
+│   │   ├── staging/       # stg_consensus__*
+│   │   ├── intermediate/  # int_consensus_*
+│   │   └── marts/        # fct_consensus_*, api_consensus_*
+│   ├── execution/         # Execution layer models
+│   │   ├── staging/
+│   │   ├── intermediate/
+│   │   └── marts/
+│   ├── contracts/         # Decoded contract data
+│   │   └── {protocol}/    # One folder per protocol
+│   ├── p2p/              # P2P network models
+│   └── ESG/              # Environmental metrics
+├── macros/
+│   ├── db/               # Database utilities
+│   ├── decoding/         # Contract decoding macros
+│   └── execution/        # Execution helpers
+├── seeds/                # Static reference data
+│   ├── contracts_abi.csv
+│   ├── event_signatures.csv
+│   └── function_signatures.csv
+├── scripts/
+│   ├── abi/             # ABI export utilities
+│   │   └── export_contracts_abi.py
+│   └── signatures/       # Signature generation
+│       └── signature_generator.py
+└── tests/               # Data quality tests
+```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Missing ABI After Seed
+
+**Problem**: Running `dbt seed` overwrites newly fetched ABIs
+
+**Solution**:
+```bash
+# Always export before seeding
+python scripts/abi/export_contracts_abi.py
+python scripts/signatures/signature_generator.py
+dbt seed
+```
+
+#### 2. Signature Generation Fails
+
+**Problem**: Python script fails to generate signatures
+
+**Solution**:
+```bash
+# Check Python dependencies
+pip install -r requirements.txt
+
+# Verify ABI data exists
+SELECT COUNT(*) FROM contracts_abi;
+
+# Check for malformed JSON
+SELECT contract_address 
+FROM contracts_abi 
+WHERE NOT isValidJSON(abi_json);
+```
+
+#### 3. Incremental Model Not Updating
+
+**Problem**: Incremental models not processing new data
+
+**Solution**:
+```bash
+# Force full refresh
+dbt run --select my_model --full-refresh
+
+# Check incremental filter
+SELECT MAX(block_timestamp) FROM my_model;
+```
+
+#### 4. Docker Container Issues
+
+**Problem**: Container won't start or connect to ClickHouse
+
+**Solution**:
+```bash
+# Check logs
+docker-compose logs dbt
+
+# Verify environment variables
+docker exec dbt env | grep CLICKHOUSE
+
+# Test connection
+docker exec dbt dbt debug
+```
+
+#### 5. Contract Decoding Returns Empty Results
+
+**Problem**: Decoded tables are empty despite having signatures
+
+**Checklist**:
+- Contract address matches exactly (case-sensitive)
+- Signatures were generated and seeded
+- Raw data exists for the time period
+- Check start_blocktime parameter in model
+
+```sql
+-- Debug query
+SELECT COUNT(*) 
+FROM execution.logs 
+WHERE address = '0xYourAddress'
+  AND block_timestamp > '2024-01-01';
+```
 
 
-## 📜 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
-
-## 🔗 Related Resources
-
-- [dbt Documentation](https://docs.getdbt.com/)
-- [ClickHouse Documentation](https://clickhouse.com/docs)
-- [Gnosis Chain Documentation](https://docs.gnosischain.com/)
-- [Blockscout API](https://gnosis.blockscout.com/api-docs)
