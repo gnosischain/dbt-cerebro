@@ -9,15 +9,18 @@
 
 
 
+
 WITH
   tx AS (
     SELECT *
     FROM `execution`.`transactions`
-    WHERE replaceAll(lower(to_address),'0x','') = 'e91d153e0b41518a2ce8dd3d7944fa863463a97d'
+    WHERE replaceAll(lower(to_address),'0x','') = '99c43743a2dbd406160cc43cf08113b17178789c'
+      
+        AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2025-06-30'))
       
       
         AND block_timestamp >
-            (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_wxdai_calls`)
+            (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_AgentResultMapping_calls`)
       
       AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
   ),
@@ -30,7 +33,7 @@ SELECT
     arrayMap(x -> JSONExtractString(x,'name'), params_raw) AS names,
     arrayMap(x -> JSONExtractString(x,'type'), params_raw) AS types
 FROM `dbt`.`function_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = 'e91d153e0b41518a2ce8dd3d7944fa863463a97d'
+WHERE replaceAll(lower(contract_address),'0x','') = '99c43743a2dbd406160cc43cf08113b17178789c'
  ),
 
   process AS (
