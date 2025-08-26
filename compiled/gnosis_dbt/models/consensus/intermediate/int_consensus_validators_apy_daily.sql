@@ -7,14 +7,40 @@ deposists AS (
         toStartOfDay(slot_timestamp) AS date
         ,SUM(amount) AS amount
     FROM `dbt`.`stg_consensus__deposits`
-    
+    WHERE 
+        slot_timestamp < toDate('2025-04-30')
+        
   
     
       
     
 
-    WHERE 
+    AND 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
+      SELECT
+        max(toStartOfMonth(date))
+      FROM `dbt`.`int_consensus_validators_apy_daily`
+    )
+  
+
+    GROUP BY 1
+
+    UNION ALL 
+
+    SELECT 
+        date
+        ,SUM(amount) AS amount
+    FROM `dbt`.`int_GBCDeposit_deposists_daily`
+    WHERE 
+        date >= toDate('2025-04-30')
+        
+  
+    
+      
+    
+
+    AND 
+    toStartOfMonth(toStartOfDay(date)) >= (
       SELECT
         max(toStartOfMonth(date))
       FROM `dbt`.`int_consensus_validators_apy_daily`
@@ -131,6 +157,8 @@ SELECT
     ,t1.balance_diff AS balance_diff_original
     ,COALESCE(t2.amount,0)  AS deposited_amount
     ,COALESCE(t3.amount,0)  AS withdrawaled_amount
+    ,COALESCE(t4.amount,0)  AS deposited_amount_request
+    ,COALESCE(t5.amount,0)  AS withdrawaled_amount_request
     ,t1.balance_diff - COALESCE(t2.amount,0) - COALESCE(t4.amount,0) + COALESCE(t3.amount,0) + COALESCE(t5.amount,0) AS eff_balance_diff
     ,eff_balance_diff/t1.prev_balance AS rate
     ,ROUND((POWER((1+rate),365) - 1) * 100,2) AS apy
