@@ -16,8 +16,8 @@ WITH
 logs AS (
   SELECT *
   FROM `execution`.`logs`
-  WHERE replaceAll(lower(address),'0x','') = 'c12c1e50abb450d6205ea2c3fa861b3b834d13e8'
-
+  WHERE address = 'c12c1e50abb450d6205ea2c3fa861b3b834d13e8'
+  
     
 
     
@@ -284,6 +284,7 @@ process AS (
 
   FROM logs AS l
   ANY LEFT JOIN abi AS a
+    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
 )
 

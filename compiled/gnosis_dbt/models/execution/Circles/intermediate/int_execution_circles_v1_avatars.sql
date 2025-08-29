@@ -10,3 +10,14 @@ WHERE
     event_name = 'RegisterHuman'
     
   
+    
+      
+    
+
+    WHERE 
+    toStartOfMonth(toStartOfDay(block_timestamp)) >= (
+      SELECT
+        max(toStartOfMonth(date))
+      FROM `dbt`.`int_execution_circles_v1_avatars`
+    )
+  

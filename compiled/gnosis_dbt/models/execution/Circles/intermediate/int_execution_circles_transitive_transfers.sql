@@ -2,10 +2,10 @@
 
 
 SELECT
-  toStartOfDay(block_timestamp) AS date,
-  decoded_params['from'] AS from_avatar,
-  decoded_params['to']   AS  to_avatar,
-  SUM(
+  toStartOfDay(block_timestamp) AS date
+  ,decoded_params['from'] AS from_avatar
+  ,decoded_params['to']   AS  to_avatar
+  ,SUM(
     toUInt256OrZero(
       arrayJoin(
         JSONExtract(

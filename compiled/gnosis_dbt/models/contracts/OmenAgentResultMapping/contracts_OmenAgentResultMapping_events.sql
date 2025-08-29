@@ -16,8 +16,8 @@ WITH
 logs AS (
   SELECT *
   FROM `execution`.`logs`
-  WHERE replaceAll(lower(address),'0x','') = '260e1077dea98e738324a6cefb0ee9a272ed471a'
-
+  WHERE address = '260e1077dea98e738324a6cefb0ee9a272ed471a'
+  
     
       AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2024-09-30'))
     
@@ -286,6 +286,7 @@ process AS (
 
   FROM logs AS l
   ANY LEFT JOIN abi AS a
+    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
 )
 

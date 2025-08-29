@@ -41,6 +41,7 @@ fork_version AS (
 /* Pull only relevant rows from source and normalize Dynamic→String once */
 peers AS (
   SELECT 
+    t1.crawl_id,
     t1.visit_ended_at,
     t1.peer_id,
     t1.connect_maddr,
@@ -86,6 +87,7 @@ peers AS (
 /* Split and locate version token via regex */
 parsed AS (
   SELECT
+    crawl_id,
     visit_ended_at,
     peer_id,
     connect_maddr,
@@ -116,6 +118,7 @@ parsed AS (
 /* Derive variant, version blob, platform, runtime */
 with_parts AS (
   SELECT
+    crawl_id,
     visit_ended_at,
     peer_id,
     connect_maddr,
@@ -151,6 +154,7 @@ with_parts AS (
 /* Split version blob and prep hyphen parts; also clean runtime */
 exploded AS (
   SELECT
+    crawl_id,
     visit_ended_at,
     peer_id,
     agent_version,
@@ -182,6 +186,7 @@ exploded AS (
 
 basic_info AS (
   SELECT
+    crawl_id,
     visit_ended_at,
     peer_id,
     agent_version,
@@ -208,6 +213,7 @@ basic_info AS (
 )
 
 SELECT
+  t1.crawl_id,
   t1.visit_ended_at,
   t1.peer_id,
   t1.agent_version,

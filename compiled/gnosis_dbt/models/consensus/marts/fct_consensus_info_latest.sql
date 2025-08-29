@@ -61,6 +61,26 @@ status_7d AS (
 ),
 
 
+staked_latest AS (
+    SELECT
+        'Staked' AS label
+        ,effective_balance/32 AS value
+    FROM 
+        `dbt`.`int_consensus_validators_balances_daily`
+    WHERE
+        date = (SELECT MAX(date) FROM `dbt`.`int_consensus_validators_balances_daily`)
+),
+
+staked_7d AS (
+    SELECT
+        'Staked' AS label
+        ,effective_balance/32 AS value
+    FROM 
+        `dbt`.`int_consensus_validators_balances_daily`
+    WHERE
+        date = subtractDays((SELECT MAX(date) FROM `dbt`.`int_consensus_validators_balances_daily`), 7)
+),
+
 
 info_latest AS ( 
     SELECT
@@ -91,6 +111,11 @@ info_latest AS (
        label 
     ,  value
     FROM status_latest
+    UNION ALL
+    SELECT
+       label 
+    ,  value
+    FROM staked_latest
 ),
 
 info_7d AS ( 
@@ -114,12 +139,17 @@ info_7d AS (
        label 
     ,  value
     FROM status_7d
+    UNION ALL
+    SELECT
+       label 
+    ,  value
+    FROM staked_7d
 )
 
 SELECT
     t1.label
     ,t1.value AS value
-    ,IF(t1.value=0 AND t2.value=0, 0, ROUND((COALESCE(t2.value / NULLIF(t1.value, 0), 0) - 1) * 100, 1)) AS change_pct
+    ,IF(t1.value=0 AND t2.value=0, 0, ROUND(( COALESCE(t1.value / NULLIF(t2.value, 0), 0) - 1) * 100, 1)) AS change_pct
 FROM info_latest t1
 INNER JOIN info_7d t2
 ON t2.label = t1.label

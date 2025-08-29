@@ -16,14 +16,16 @@ WITH
 logs AS (
   SELECT *
   FROM `execution`.`logs`
-  WHERE address = '9e8e794ad6ecdb6d5c7eabe059d30e907f58859b'
+  WHERE address = '83183da839ce8228e31ae41222ead9edbb5cdcf1'
   
+    
+      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2024-10-08'))
     
 
     
       AND block_timestamp >
         (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_backedfi_bHIGH_Oracle_events`)
+         FROM `dbt`.`contracts_Seer_MarketFactory_events`)
     
 ),
 
@@ -38,7 +40,7 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = '9e8e794ad6ecdb6d5c7eabe059d30e907f58859b'
+WHERE replaceAll(lower(contract_address),'0x','') = '83183da839ce8228e31ae41222ead9edbb5cdcf1'
  ),
 
 process AS (
