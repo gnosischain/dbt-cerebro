@@ -18,6 +18,6 @@ backers_7d AS (
 
 SELECT
     t1.total AS total
-    ,IF(t1.total=0 AND t2.total=0, 0, ROUND((1- COALESCE(t2.total / NULLIF(t1.total, 0), 0)) * 100, 1)) AS change_pct
+    ,IF(t1.total=0 AND t2.total=0, 0, ROUND((COALESCE(t1.total / NULLIF(t2.total, 0), 0) - 1) * 100, 1)) AS change_pct
 FROM backers_latest t1
 CROSS JOIN backers_7d t2

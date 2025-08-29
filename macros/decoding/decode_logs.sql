@@ -79,8 +79,8 @@ WITH
 logs AS (
   SELECT *
   FROM {{ source_table }}
-  WHERE replaceAll(lower({{ address_column }}),'0x','') = '{{ addr }}'
-
+  WHERE {{ address_column }} = '{{ addr }}'
+  
     {% if start_blocktime is not none and start_blocktime|trim != '' %}
       AND toStartOfMonth({{ incremental_column }}) >= toStartOfMonth(toDateTime('{{ start_blocktime }}'))
     {% endif %}
@@ -339,6 +339,7 @@ process AS (
 
   FROM logs AS l
   ANY LEFT JOIN abi AS a
+    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
 )
 
