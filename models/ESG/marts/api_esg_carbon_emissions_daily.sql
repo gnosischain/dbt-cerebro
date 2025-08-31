@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','esg','carbon_emissions']
+    )
+}}
+
+
 SELECT
     date,
     AVG(daily_co2_kg_mean) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS ma7_value,

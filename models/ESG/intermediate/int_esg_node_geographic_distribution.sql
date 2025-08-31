@@ -4,7 +4,8 @@
         incremental_strategy='delete+insert',
         unique_key='(date, node_category, country_code)',
         partition_by='toStartOfMonth(date)',
-        order_by='(date, node_category, country_code)'
+        order_by='(date, node_category, country_code)',
+        tags=['production','esg','nodes']
     )
 }}
 

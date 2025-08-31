@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "info"]
+    )
+}}
+
 WITH
 
 deposits_withdrawls_latest AS (

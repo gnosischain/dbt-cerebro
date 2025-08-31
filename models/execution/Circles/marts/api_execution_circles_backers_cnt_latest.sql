@@ -1,3 +1,10 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','circles','backers']
+    )
+}}
+
 WITH
 
 backers_latest AS (

@@ -1,3 +1,9 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','discv5','clients']
+    ) 
+}}
 
 SELECT
     date

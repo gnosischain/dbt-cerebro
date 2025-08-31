@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','circles','orgs']
+    )
+}}
+
 WITH
 
 orgs_latest AS (

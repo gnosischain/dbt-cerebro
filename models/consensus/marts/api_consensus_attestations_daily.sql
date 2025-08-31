@@ -1,4 +1,9 @@
-
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "attestations"]
+    )
+}}
 SELECT
     date
     ,inclusion_delay

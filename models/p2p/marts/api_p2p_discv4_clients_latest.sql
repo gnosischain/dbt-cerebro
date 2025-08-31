@@ -1,3 +1,9 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','discv4','clients']
+    ) 
+}}
 
 SELECT
     metric

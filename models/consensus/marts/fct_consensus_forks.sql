@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "forks"]
+    )
+}}
+
 WITH
 
 fork_digests AS (

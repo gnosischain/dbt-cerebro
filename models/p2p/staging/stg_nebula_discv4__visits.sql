@@ -2,7 +2,8 @@
     config(
         pre_hook=[
           "SET allow_experimental_json_type = 1"
-        ]
+        ],
+        tags=['production','nebula_discv4','visits']
     )
 }}
 

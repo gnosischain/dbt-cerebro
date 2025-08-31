@@ -1,3 +1,10 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','yields','sdai_apy']
+    )
+}}
+
 WITH
 
 sdai_apy_daily AS (

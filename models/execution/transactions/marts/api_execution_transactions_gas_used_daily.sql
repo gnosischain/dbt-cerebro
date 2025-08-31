@@ -1,3 +1,10 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production', 'execution', 'transactions']
+    )
+}}
+
 SELECT
     date
     ,transaction_type

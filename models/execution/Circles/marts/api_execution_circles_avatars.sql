@@ -1,3 +1,10 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','circles','avatars']
+    )
+}}
+
 SELECT
     date
     ,avatar_type

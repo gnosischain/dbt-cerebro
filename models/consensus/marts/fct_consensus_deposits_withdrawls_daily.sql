@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "deposits_withdrawls"]
+    )
+}}
+
 SELECT
     date
     ,'withdrawls' AS label

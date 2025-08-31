@@ -10,7 +10,8 @@
           "SET allow_experimental_json_type = 1",
           "SET enable_dynamic_type = 1",
           "SET join_use_nulls = 1"
-        ]
+        ],
+        tags=['production','p2p','discv5']
     )
 }}
 

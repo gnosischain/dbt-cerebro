@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','circles','humans']
+    )
+}}
+
 WITH
 
 humans_latest AS (

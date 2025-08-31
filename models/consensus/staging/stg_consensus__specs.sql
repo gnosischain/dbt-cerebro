@@ -1,3 +1,9 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "specs"]
+    )
+}}
 
 SELECT
     parameter_name,

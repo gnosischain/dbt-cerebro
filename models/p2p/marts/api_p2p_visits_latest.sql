@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','discv4','discv5','visits']
+    ) 
+}}
+
 WITH 
 
 discv4_prev7D AS (
@@ -48,7 +56,7 @@ SELECT
     t4.total_visits AS discv5_total_visits,
     t4.pct_successful AS discv5_pct_successful,
     t4.crawls AS discv5_crawls,
-    ROUND((COALESCE(t4.crawls / NULLIF(t2.crawls, 0), 0) - 1) * 100, 1) AS change_discv5_crawls_pct
+    ROUND((COALESCE(t4.crawls / NULLIF(t3.crawls, 0), 0) - 1) * 100, 1) AS change_discv5_crawls_pct
 FROM discv4_prev7D t1
 CROSS JOIN discv4 t2
 CROSS JOIN discv5_prev7D t3

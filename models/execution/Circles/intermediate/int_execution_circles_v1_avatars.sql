@@ -9,6 +9,7 @@
         settings                = { 
                                     'allow_nullable_key': 1 
                                 },
+        tags                    = ['dev','execution','circles','avatars']
     )
 }}
 

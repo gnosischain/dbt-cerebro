@@ -1,3 +1,9 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "time_helpers"]
+    )
+}}
 
 SELECT
     genesis_time_unix,

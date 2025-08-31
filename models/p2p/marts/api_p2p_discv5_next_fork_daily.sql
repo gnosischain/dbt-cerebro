@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','discv4','forks']
+    ) 
+}}
+
+
 SELECT
     date
     ,fork

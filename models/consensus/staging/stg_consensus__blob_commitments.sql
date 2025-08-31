@@ -1,3 +1,9 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "blob_commitments"]
+    )
+}}
 
 SELECT
    slot,

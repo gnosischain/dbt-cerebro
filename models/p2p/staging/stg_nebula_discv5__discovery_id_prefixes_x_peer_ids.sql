@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','nebula_discv5','discovery_id_prefixes_x_peer_ids']
+    ) 
+}}
+
 WITH
 
 source AS (

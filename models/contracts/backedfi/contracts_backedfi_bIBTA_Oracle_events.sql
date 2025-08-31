@@ -1,6 +1,5 @@
 {{ 
     config(
-        tags                    = [ "backedfi_oracle_events" ],
         materialized            = 'incremental',
         incremental_strategy    = 'delete+insert',
         engine                  = 'ReplacingMergeTree()',
@@ -12,7 +11,8 @@
                                 },
         pre_hook                = [
                                     "SET allow_experimental_json_type = 1"
-                                ]
+                                ],
+        tags                    = ['production','contracts','backedfi','events']
     )
 }}
 

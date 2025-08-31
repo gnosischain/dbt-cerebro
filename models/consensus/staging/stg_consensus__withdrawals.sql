@@ -1,3 +1,9 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "withdrawals"]
+    )
+}}
 
 SELECT
     slot,

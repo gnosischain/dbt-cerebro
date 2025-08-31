@@ -3,7 +3,8 @@
         materialized='table',
         pre_hook=[
             "SET enable_dynamic_type = 1"
-        ]
+        ],
+        tags=['production','p2p','discv4']
     )
 }}
 

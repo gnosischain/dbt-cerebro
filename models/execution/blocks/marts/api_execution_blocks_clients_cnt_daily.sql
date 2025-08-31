@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','blocks']
+    )
+}}
+
+
 SELECT
     date
     ,client

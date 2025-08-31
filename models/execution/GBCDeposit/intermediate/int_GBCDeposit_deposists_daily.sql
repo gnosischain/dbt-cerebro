@@ -1,14 +1,7 @@
 {{ 
     config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
-        engine='ReplacingMergeTree()',
-        order_by='(date, withdrawal_credentials)',
-        unique_key='(date, withdrawal_credentials)',
-        partition_by='toStartOfMonth(date)',
-        settings={
-            'allow_nullable_key': 1
-        }
+        materialized='view',
+        tags=['production','execution','GBCDeposit']
     )
 }}
 

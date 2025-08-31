@@ -8,7 +8,8 @@
         partition_by='toStartOfMonth(visit_ended_at)',
         pre_hook=[
           "SET allow_experimental_json_type = 1"
-        ]
+        ],
+        tags=['production','p2p','discv4']
     ) 
 }}
 

@@ -1,5 +1,11 @@
-WITH
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','state','size']
+    )
+}}
 
+WITH
 
 source AS (
     SELECT 

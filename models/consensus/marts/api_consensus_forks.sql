@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "forks"]
+    )
+}}
+
 SELECT
   fork_name
   ,fork_version 

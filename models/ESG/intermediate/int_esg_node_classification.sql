@@ -5,6 +5,7 @@
         unique_key='(date, node_category)',
         order_by='(date, node_category)',
         partition_by='toStartOfMonth(date)',
+        tags=['production','esg','nodes']
     )
 }}
 

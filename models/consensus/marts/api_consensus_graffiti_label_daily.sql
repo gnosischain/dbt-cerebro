@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "graffiti"]
+    )
+}}
+
 SELECT
     date
     ,label

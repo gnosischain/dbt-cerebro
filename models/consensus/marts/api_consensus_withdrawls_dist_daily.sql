@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "withdrawls"]
+    )
+}}
+
 SELECT
     date
     ,q05

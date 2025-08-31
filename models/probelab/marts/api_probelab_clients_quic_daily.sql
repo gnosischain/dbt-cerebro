@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','probelab']
+    ) 
+}}
+
 SELECT 
     toStartOfDay(max_crawl_created_at) AS date
     ,agent_version_type AS client

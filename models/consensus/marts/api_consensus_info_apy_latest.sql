@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "info"]
+    )
+}}
+
 SELECT
     value
     ,change_pct

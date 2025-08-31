@@ -1,3 +1,9 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','rwa','backedfi','prices']
+    )
+}}
 
 {% set btickers = [
   'bC3M','bCOIN','bCSPX','bHIGH',

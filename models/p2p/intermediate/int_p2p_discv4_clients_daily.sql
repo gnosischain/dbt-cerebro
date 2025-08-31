@@ -8,7 +8,8 @@
         partition_by='toStartOfMonth(date)',
         settings={
             'allow_nullable_key': 1
-        }
+        },
+        tags=['production','p2p','discv4']
     ) 
 }}
 

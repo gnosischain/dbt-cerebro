@@ -1,11 +1,11 @@
--- Enhanced node population estimation using both successful and failed connections
 {{ 
     config(
         materialized='incremental',
         incremental_strategy='delete+insert',
         unique_key='observation_date',
         partition_by='toStartOfMonth(observation_date)',
-        order_by='observation_date'
+        order_by='observation_date',
+        tags=['production','esg','nodes']
     )
 }}
 

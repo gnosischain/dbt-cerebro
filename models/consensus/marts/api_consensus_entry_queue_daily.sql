@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "entry_queue"]
+    )
+}}
+
 SELECT
     date
     ,validator_count

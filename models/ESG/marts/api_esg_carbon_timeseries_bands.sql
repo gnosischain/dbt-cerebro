@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','esg','carbon_emissions']
+    )
+}}
+
+
 SELECT
     date,
     daily_co2_kg_mean AS value,

@@ -5,7 +5,8 @@
         engine='ReplacingMergeTree()',
         order_by='(date,credentials_type)',
         unique_key='(date,credentials_type)',
-        partition_by='toStartOfMonth(date)'
+        partition_by='toStartOfMonth(date)',
+        tags=["production", "consensus", "credentials"]
     ) 
 }}
 

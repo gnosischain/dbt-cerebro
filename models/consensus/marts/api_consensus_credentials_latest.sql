@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "credentials"]
+    )
+}}
+
 SELECT 
     credentials_type
     ,cnt

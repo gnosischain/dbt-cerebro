@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "validators_balances"]
+    )
+}}
+
 -- in GNO
 SELECT
     date,

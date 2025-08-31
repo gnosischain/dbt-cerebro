@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "info"]
+    )
+}}
+
 SELECT
     toUInt32(value) AS value
     ,change_pct

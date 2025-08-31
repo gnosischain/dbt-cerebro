@@ -6,6 +6,7 @@
         order_by='(date)',
         unique_key='(date)',
         partition_by='toStartOfMonth(date)',
+        tags=["production", "consensus", "validators_balances"]
     ) 
 }}
 

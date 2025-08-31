@@ -7,7 +7,8 @@
         order_by='(date, node_category, client_type)',
         settings={
             'allow_nullable_key': 1
-        }
+        },
+        tags=['production','esg','nodes']
     )
 }}
 

@@ -1,5 +1,12 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','execution','circles','avatars']
+    )
+}}
+
 WITH dates AS (
-    -- get min/max date from your data
+    -- get min/max date 
     SELECT
         min(date) AS min_date,
         max(date) AS max_date

@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','clients']
+    ) 
+}}
+
 WITH 
 
 discv4_prev7D AS (

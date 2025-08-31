@@ -1,3 +1,11 @@
+
+{{ 
+    config(
+        materialized='view',
+        tags=['production','nebula_discv5','neighbors']
+    ) 
+}}
+
 WITH 
 
 source AS (

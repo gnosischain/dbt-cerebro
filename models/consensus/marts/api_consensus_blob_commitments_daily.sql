@@ -1,3 +1,10 @@
+{{
+    config(
+        materialized='view',
+        tags=["production", "consensus", "blob_commitments"]
+    )
+}}
+
 SELECT
     date
     ,cnt AS value

@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','crawlers_data']
+    )
+}}
+
+
 SELECT
     "name",
     "alpha-2",

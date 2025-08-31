@@ -1,4 +1,11 @@
 
+{{ 
+    config(
+        materialized='view',
+        tags=['production','p2p','topology']
+    )
+}}
+
 SELECT
     protocol,
     date,

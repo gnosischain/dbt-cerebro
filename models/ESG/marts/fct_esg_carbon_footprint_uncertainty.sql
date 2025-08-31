@@ -4,6 +4,7 @@
         incremental_strategy='delete+insert',
         unique_key='date',
         partition_by='toStartOfMonth(date)',
+        tags=['production','esg','carbon_emissions']
     )
 }}
 

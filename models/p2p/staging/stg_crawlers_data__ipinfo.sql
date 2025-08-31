@@ -1,4 +1,10 @@
 
+{{ 
+    config(
+        materialized='view',
+        tags=['production','crawlers_data','ipinfo']
+    ) 
+}}
 
 WITH
 

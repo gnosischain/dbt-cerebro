@@ -1,6 +1,3 @@
 #!/bin/bash
 
-dbt run 
-
-
-
+dbt run --select tag:production

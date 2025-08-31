@@ -1,3 +1,11 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','crawlers_data']
+    )
+}}
+
+
 SELECT
     "Area",
     "ISO 3 code",
