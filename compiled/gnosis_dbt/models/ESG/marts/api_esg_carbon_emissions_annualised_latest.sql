@@ -1,3 +1,5 @@
+
+
 SELECT
     annual_co2_tonnes_projected
 FROM `dbt`.`fct_esg_carbon_footprint_uncertainty`

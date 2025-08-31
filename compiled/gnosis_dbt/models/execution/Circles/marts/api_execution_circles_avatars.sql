@@ -1,3 +1,5 @@
+
+
 SELECT
     date
     ,avatar_type

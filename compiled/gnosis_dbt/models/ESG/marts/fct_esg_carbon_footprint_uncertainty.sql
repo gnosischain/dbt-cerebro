@@ -254,7 +254,7 @@ SELECT
     
     -- Metadata
     now() AS calculated_at,
-    '2025-08-29 20:42:53.725158+00:00' AS run_id
+    '2025-08-31 21:45:14.875538+00:00' AS run_id
     
 FROM enhanced_statistics
 ORDER BY date DESC

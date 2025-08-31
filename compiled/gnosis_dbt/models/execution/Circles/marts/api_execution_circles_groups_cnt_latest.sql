@@ -1,3 +1,5 @@
+
+
 WITH
 
 groups_latest AS (

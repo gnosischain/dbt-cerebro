@@ -1,3 +1,5 @@
+
+
 WITH
 
 orgs_latest AS (

@@ -1,3 +1,6 @@
+
+
+
 WITH network_daily_cif AS (
     -- Get network's daily effective carbon intensity
     SELECT
@@ -10,7 +13,7 @@ WITH network_daily_cif AS (
 ),
 
 country_monthly_cif AS (
-    -- Get ALL monthly country carbon intensities (not just latest)
+    -- Get all monthly country carbon intensities 
     SELECT
         ci.country_code,
         ci.carbon_intensity_mean AS carbon_intensity,
@@ -24,10 +27,10 @@ country_monthly_cif AS (
             'DEU',  -- Germany  
             'CHN',  -- China
             'FRA',  -- France
-            'SWE',  -- Sweden (clean)
+            'SWE',  -- Sweden 
             'AUS',  -- Australia
             'BRA',  -- Brazil
-            'ISL'   -- Iceland (very clean)
+            'ISL'   -- Iceland
         )
 ),
 

@@ -1,3 +1,5 @@
+
+
 SELECT
     slot,
     validator_index,

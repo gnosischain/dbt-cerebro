@@ -1,3 +1,5 @@
+
+
 SELECT
     transaction_type
     ,SUM(n_txs) AS value

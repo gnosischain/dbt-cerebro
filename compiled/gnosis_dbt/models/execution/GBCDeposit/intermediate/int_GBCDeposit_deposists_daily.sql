@@ -10,16 +10,5 @@ WHERE
     event_name = 'DepositEvent'
     
   
-    
-      
-    
-
-    AND 
-    toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_GBCDeposit_deposists_daily`
-    )
-  
 
 GROUP BY 1, 2

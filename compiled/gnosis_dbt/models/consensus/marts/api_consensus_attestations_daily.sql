@@ -1,3 +1,4 @@
+
 SELECT
     date
     ,inclusion_delay

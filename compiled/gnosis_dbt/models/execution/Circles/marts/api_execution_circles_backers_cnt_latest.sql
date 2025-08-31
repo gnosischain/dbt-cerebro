@@ -1,3 +1,5 @@
+
+
 WITH
 
 backers_latest AS (

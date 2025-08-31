@@ -1,3 +1,6 @@
+
+
+
 SELECT
     date,
     daily_co2_kg_mean AS value,

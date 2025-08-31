@@ -1,4 +1,3 @@
--- Enhanced node population estimation using both successful and failed connections
 
 
 WITH peer_connection_analysis AS (

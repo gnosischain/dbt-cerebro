@@ -1,3 +1,5 @@
+
+
 SELECT
     date
     ,transaction_type

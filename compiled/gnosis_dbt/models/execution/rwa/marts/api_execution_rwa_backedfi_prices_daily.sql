@@ -1,3 +1,5 @@
+
+
 SELECT
   bticker,
   date,

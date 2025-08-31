@@ -1,3 +1,6 @@
+
+
+
 SELECT
     date
     ,client

@@ -1,3 +1,5 @@
+
+
 SELECT 
     date
     ,credentials_type

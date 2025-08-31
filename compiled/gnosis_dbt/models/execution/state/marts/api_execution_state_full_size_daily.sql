@@ -1,3 +1,5 @@
+
+
 SELECT
     date
     ,bytes/POWER(10,9) AS value

@@ -1,3 +1,5 @@
+
+
 SELECT
     date
     ,effective_balance/32 AS value

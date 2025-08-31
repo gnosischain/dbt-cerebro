@@ -1,3 +1,5 @@
+
+
 SELECT 
     credentials_type
     ,cnt

@@ -1,3 +1,5 @@
+
+
 WITH 
 
 discv4_prev7D AS (

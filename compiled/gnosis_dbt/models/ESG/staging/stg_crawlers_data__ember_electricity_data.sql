@@ -1,3 +1,6 @@
+
+
+
 SELECT
     "Area",
     "ISO 3 code",

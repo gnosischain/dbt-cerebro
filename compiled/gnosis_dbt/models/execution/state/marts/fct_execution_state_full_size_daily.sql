@@ -1,3 +1,5 @@
+
+
 SELECT
     date
     ,SUM(bytes_diff) OVER (ORDER BY date ASC) AS bytes

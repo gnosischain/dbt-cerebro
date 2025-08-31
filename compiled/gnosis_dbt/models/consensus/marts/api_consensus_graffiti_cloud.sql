@@ -1,3 +1,6 @@
+
+
+
 SELECT
     label
     ,graffiti
