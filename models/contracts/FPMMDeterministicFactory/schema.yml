@@ -2,7 +2,7 @@ version: 2
 models:
 
 - name: contracts_FPMMDeterministicFactory_calls
-  description: This model processes deterministic factory call data related to FPMM contracts, providing insights into call patterns and transaction details.
+  description: This model processes deterministic factory call data, aggregating call details for analysis and reporting.
   columns:
   - name: block_timestamp
     description: Timestamp of the block when the call was made
@@ -16,80 +16,66 @@ models:
   - name: caller_address
     description: Address initiating the call
     data_type: String
+  - name: method_id
+    description: Identifier of the method called
+    data_type: String
   - name: call_data
-    description: Encoded data of the call
+    description: Encoded call data payload
+    data_type: String
+  - name: return_value
+    description: Value returned from the call
     data_type: String
   - name: block_number
-    description: Number of the block containing the call
+    description: Block number in which the call was included
     data_type: UInt64
-  - name: log_index
-    description: Index of the log within the block
-    data_type: UInt64
-  - name: call_type
-    description: Type of the call (e.g., 'call', 'delegatecall')
-    data_type: String
-  - name: value
-    description: Amount transferred in wei
-    data_type: String
   - name: gas_used
     description: Gas used for the call
     data_type: UInt64
   - name: status
-    description: Call execution status ('success' or 'failure')
+    description: Call execution status (e.g., success or failure)
     data_type: String
-  - name: block_start_timestamp
-    description: Start timestamp of the block
-    data_type: DateTime
-  - name: block_end_timestamp
-    description: End timestamp of the block
-    data_type: DateTime
   config:
     access: public
     materialized: incremental
     tags:
+    - production
+    - contracts
     - fpmm
-    - deterministic
+    - calls
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_FPMMDeterministicFactory_events
-  description: This model processes deterministic factory event logs related to FPMM contracts, capturing event details, timestamps, and related identifiers for analysis.
+  description: This model processes deterministic factory event logs related to FPMM contracts, capturing event details, timestamps, and identifiers for analysis.
   columns:
   - name: block_timestamp
-    description: The timestamp of the block when the event was emitted, in UTC.
+    description: Timestamp of the block containing the event, in UTC.
     data_type: DateTime
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block, used to order logs.
     data_type: UInt64
   - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: String
-  - name: contract_address
-    description: The address of the contract emitting the event.
+    description: Unique hash identifying the transaction that emitted the event.
     data_type: String
   - name: event_type
-    description: The type of event emitted, e.g., 'DeterministicFactoryCreated'.
+    description: Type of the event emitted by the factory contract.
     data_type: String
-  - name: factory_id
-    description: The unique identifier for the factory, if applicable.
+  - name: factory_address
+    description: Address of the factory contract emitting the event.
     data_type: String
-  - name: creator_address
-    description: Address of the entity that created the factory.
-    data_type: String
-  - name: creation_timestamp
-    description: The timestamp when the factory was created, in UTC.
-    data_type: DateTime
-  - name: additional_data
-    description: JSON containing supplementary event data.
+  - name: event_data
+    description: JSON object containing event-specific data.
     data_type: JSON
   config:
     access: public
     materialized: incremental
     tags:
+    - production
+    - contracts
     - fpmm
-    - factory
+    - events
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

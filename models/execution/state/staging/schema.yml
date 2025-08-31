@@ -2,40 +2,46 @@ version: 2
 models:
 
 - name: stg_execution__storage_diffs
-  description: Stage model for storage differences capturing transaction, storage, and account changes
+  description: Business-facing staging model capturing storage slot mutations and related transaction data from execution layer. Used for analysis of contract storage changes, transaction details, and chain state updates.
   columns:
-  - name: address
-    description: Contract address involved in storage diff (hex string).
+  - name: slot
+    description: 32-byte storage slot key affected by the transaction.
     data_type: String
   - name: block_number
-    description: Block height at which the storage diff occurred.
+    description: Block height at which the storage change occurred.
     data_type: UInt32
-  - name: slot
-    description: Storage slot key (hex string, 32 bytes).
+  - name: transaction_index
+    description: Zero-based index of the transaction within the block.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Hash of the transaction that caused the storage change.
+    data_type: String
+  - name: address
+    description: Contract address whose storage was modified.
     data_type: String
   - name: from_value
-    description: Value before change (hex string).
+    description: Previous value of the storage slot (hexadecimal).
     data_type: String
   - name: to_value
-    description: Value after change (hex string).
+    description: New value of the storage slot (hexadecimal).
     data_type: String
   - name: chain_id
     description: EVM chain identifier.
     data_type: UInt64
   - name: block_timestamp
-    description: UTC timestamp of the block when diff was recorded.
+    description: UTC timestamp when the block was proposed.
     data_type: DateTime64(0, 'UTC')
-  - name: transaction_hash
-    description: Hash of the transaction producing the diff.
-    data_type: String
-  - name: transaction_index
-    description: Index of the transaction within the block.
-    data_type: UInt32
   - name: insert_version
-    description: Monotonic version for data ingestion.
+    description: Monotonically increasing version number for ingestion.
     data_type: UInt64
   config:
     access: public
+    tags:
+    - production
+    - execution
+    - state
+    - size
+    materialized: view
   meta:
     owner: analytics_team
     authoritative: false

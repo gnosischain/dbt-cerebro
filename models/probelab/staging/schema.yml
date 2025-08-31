@@ -5,139 +5,156 @@ models:
   description: Daily average distribution of agent semantic versions across crawls.
   columns:
   - name: agent_version_type
-    description: Type of agent version (e.g., browser, node).
+    description: Type of agent version, nullable string.
     data_type: Nullable(String)
   - name: min_crawl_created_at
-    description: Earliest crawl timestamp in the period.
+    description: Earliest crawl timestamp in the period, nullable DateTime64(6).
     data_type: Nullable(DateTime64(6))
   - name: max_crawl_created_at
-    description: Latest crawl timestamp in the period.
+    description: Latest crawl timestamp in the period, nullable DateTime64(6).
     data_type: Nullable(DateTime64(6))
   - name: agent_version_semver
-    description: Array of semantic version components (nullable integers).
+    description: Array of semantic version integers, nullable array of nullable Int64.
     data_type: Array(Nullable(Int64))
   - name: agent_version_semver_str
-    description: Semantic version string representation.
+    description: Semantic version as string, nullable string.
     data_type: Nullable(String)
   - name: __count
-    description: Count of occurrences in the period.
+    description: Count of records in the period, nullable float.
     data_type: Nullable(Float64)
   - name: __samples
-    description: Number of samples.
+    description: Number of samples, nullable unsigned int.
     data_type: Nullable(UInt32)
   - name: __pct
-    description: Percentage share of total.
+    description: Percentage share, nullable float.
     data_type: Nullable(Float64)
   - name: __total
-    description: Total count for normalization.
+    description: Total count, nullable float.
     data_type: Nullable(Float64)
   config:
     access: public
+    tags:
+    - production
+    - crawlers_data
+    - probelab_agent_semvers_avg_1d
+    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__probelab_cloud_provider_avg_1d
-  description: Daily average share of cloud providers across crawls, representing the proportion of each cloud provider observed in the dataset on a given day.
+  description: Daily average share of cloud providers across crawls, representing the proportion of each cloud provider in the dataset for each day.
   columns:
   - name: agent_version_type
-    description: Type of agent version, nullable string.
-    data_type: String
+    description: Type of agent version; nullable if not available.
+    data_type: Nullable(String)
   - name: min_crawl_created_at
-    description: Earliest crawl timestamp in the period, nullable datetime.
-    data_type: DateTime64(6)
+    description: Earliest crawl timestamp for the period; nullable if not available.
+    data_type: Nullable(DateTime64(6))
   - name: max_crawl_created_at
-    description: Latest crawl timestamp in the period, nullable datetime.
-    data_type: DateTime64(6)
+    description: Latest crawl timestamp for the period; nullable if not available.
+    data_type: Nullable(DateTime64(6))
   - name: cloud_provider
-    description: Name of the cloud provider, nullable string.
-    data_type: String
+    description: Name of the cloud provider; nullable if not specified.
+    data_type: Nullable(String)
   - name: __count
-    description: Count of observations for the cloud provider, nullable float.
-    data_type: Float64
+    description: Count of records contributing to the average; nullable.
+    data_type: Nullable(Float64)
   - name: __samples
-    description: Number of samples used to compute the average, nullable unsigned int.
-    data_type: UInt32
+    description: Number of samples used; nullable.
+    data_type: Nullable(UInt32)
   - name: __pct
-    description: Percentage share of the cloud provider, nullable float.
-    data_type: Float64
+    description: Percentage share of the cloud provider; nullable.
+    data_type: Nullable(Float64)
   - name: __total
-    description: Total observations considered in the calculation, nullable float.
-    data_type: Float64
+    description: Total count used to compute percentage; nullable.
+    data_type: Nullable(Float64)
   config:
     access: public
+    tags:
+    - production
+    - crawlers_data
+    - probelab_cloud_provider_avg_1d
+    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__probelab_countries_avg_1d
-  description: Daily average share of peer countries, aggregated over crawls, providing insights into country-level distribution patterns.
+  description: Daily average share of peer countries with data aggregated from crawls.
   columns:
-  - name: __total
-    description: Total count of observations for the day.
-    data_type: Float64
-  - name: country_name
-    description: Name of the country.
+  - name: agent_version_type
+    description: Type of agent version; nullable if unknown.
     data_type: String
   - name: min_crawl_created_at
-    description: Earliest crawl timestamp for the day.
+    description: Earliest crawl timestamp in the period.
     data_type: DateTime64(0, 'UTC')
-  - name: __samples
-    description: Number of samples used for aggregation.
-    data_type: UInt32
-  - name: country
-    description: Country code or identifier.
-    data_type: String
-  - name: agent_version_type
-    description: Type of agent version.
-    data_type: String
   - name: max_crawl_created_at
-    description: Latest crawl timestamp for the day.
+    description: Latest crawl timestamp in the period.
     data_type: DateTime64(0, 'UTC')
+  - name: country_name
+    description: Human-readable country name; nullable if unknown.
+    data_type: String
+  - name: country
+    description: Country code or identifier; nullable if unknown.
+    data_type: String
   - name: __count
-    description: Count of records for the country.
+    description: Count of records in the aggregation.
     data_type: Float64
+  - name: __samples
+    description: Number of samples used for averaging.
+    data_type: UInt32
   - name: __pct
-    description: Percentage share of the country among total.
+    description: Percentage share of the country relative to total.
+    data_type: Float64
+  - name: __total
+    description: Total count or sum used for percentage calculation.
     data_type: Float64
   config:
     access: public
+    tags:
+    - production
+    - crawlers_data
+    - probelab_countries_avg_1d
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__probelab_quic_support_over_7d
-  description: 7‑day time series average share of QUIC support.
+  description: This model provides a 7-day time series of the average share of QUIC support, aggregated from crawler data to analyze network protocol adoption trends.
   columns:
   - name: agent_version_type
-    description: Type of agent version; nullable string.
-    data_type: String
+    description: Type of agent version, nullable string.
+    data_type: Nullable(String)
   - name: min_crawl_created_at
-    description: Earliest crawl timestamp in the period; nullable DateTime64(6).
-    data_type: DateTime64(6, 'UTC')
+    description: Earliest crawl timestamp in the 7-day window, nullable datetime.
+    data_type: Nullable(DateTime64(6))
   - name: max_crawl_created_at
-    description: Latest crawl timestamp in the period; nullable DateTime64(6).
-    data_type: DateTime64(6, 'UTC')
+    description: Latest crawl timestamp in the 7-day window, nullable datetime.
+    data_type: Nullable(DateTime64(6))
   - name: quic_support
-    description: Support status for QUIC protocol; nullable string.
-    data_type: String
+    description: Support status for QUIC protocol, nullable string.
+    data_type: Nullable(String)
   - name: __count
-    description: Count of records contributing to the average; nullable float.
-    data_type: Float64
+    description: Count of records contributing to the average, nullable float.
+    data_type: Nullable(Float64)
   - name: __samples
-    description: Number of samples used; nullable UInt32.
-    data_type: UInt32
+    description: Number of samples used for calculation, nullable unsigned integer.
+    data_type: Nullable(UInt32)
   - name: __pct
-    description: Percentage support; nullable float.
-    data_type: Float64
+    description: Percentage share of support, nullable float.
+    data_type: Nullable(Float64)
   - name: __total
-    description: Total number of observations; nullable float.
-    data_type: Float64
+    description: Total number of observations considered, nullable float.
+    data_type: Nullable(Float64)
   config:
     access: public
-    tags: []
+    tags:
+    - production
+    - crawlers_data
+    - probelab_quic_support_over_7d
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

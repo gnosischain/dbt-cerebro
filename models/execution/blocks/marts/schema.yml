@@ -49,63 +49,74 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_blocks_clients_cnt_daily
-  description: Business-facing table providing daily counts of clients per execution block.
+  description: Daily count of clients with execution blocks, aggregated by date. Provides business insights into client activity over time.
   columns:
   - name: date
-    description: Date of the record in YYYY-MM-DD format.
+    description: Calendar date of the aggregation period.
     data_type: Date
   - name: client
-    description: Client identifier (e.g., address or unique client ID).
+    description: Unique identifier for the client.
     data_type: String
   - name: value
     description: Count of execution blocks for the client on the given date.
     data_type: UInt64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - blocks
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_blocks_clients_pct_daily
-  description: Business-facing metric representing the percentage of clients with execution blocks on a daily basis, derived from the raw execution data.
+  description: Business-facing metric representing the percentage of execution blocks associated with clients on a daily basis, derived from the raw execution data.
   columns:
   - name: date
-    description: Date of the observation in YYYY-MM-DD format.
-    data_type: DateTime
+    description: Date of the data aggregation (UTC), in 'YYYY-MM-DD' format.
+    data_type: Date
   - name: client
-    description: Client identifier (e.g., address or unique client ID).
+    description: Client identifier (e.g., application or service name).
     data_type: String
   - name: value
-    description: Percentage of clients with execution blocks for the given date (0-100).
+    description: Percentage of execution blocks associated with clients, as a decimal between 0 and 100.
     data_type: Float64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - blocks
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_blocks_clients_daily
-  description: Aggregated daily metrics of execution blocks per client, including counts and percentage share.
+  description: This fact table aggregates daily client execution block data, including counts and percentages, for analysis of client activity over time.
   columns:
   - name: date
-    description: Calendar date of the aggregated data (UTC).
-    data_type: DateTime
+    description: Date of the record in YYYY-MM-DD format.
+    data_type: Date
   - name: client
-    description: Client identifier (e.g., address or ID).
+    description: Unique identifier for the client.
     data_type: String
   - name: cnt
-    description: Total count of execution blocks for the client on the date.
+    description: Total number of execution blocks for the client on the given date.
     data_type: UInt64
   - name: pct
-    description: Percentage share of client's count relative to total on that date.
+    description: Percentage of total blocks across all clients on that date (range 0 to 1).
     data_type: Float64
   config:
     access: public
     tags:
-    - daily
-    - aggregation
+    - production
+    - execution
+    - blocks
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

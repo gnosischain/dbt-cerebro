@@ -146,13 +146,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_daily
-  description: Business-facing table summarizing daily counts of API execution transactions, including transaction type and date.
+  description: Business-facing daily count of API execution transactions, derived from the `int_execution_transactions_info_daily` source, filtered for successful transactions.
   columns:
   - name: date
-    description: Calendar date of the transaction count (UTC).
-    data_type: DateTime
+    description: Date of the transaction count, in YYYY-MM-DD format.
+    data_type: Date
   - name: transaction_type
-    description: Type of transaction (e.g., 'transfer', 'contract_call').
+    description: Type/category of the transaction (e.g., transfer, contract call).
     data_type: String
   - name: value
     description: Count of transactions of the given type on the date.
@@ -160,79 +160,88 @@ models:
   config:
     access: public
     tags:
-    - daily
-    - api
+    - production
+    - execution
     - transactions
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_total
-  description: Aggregated count of transactions grouped by transaction type, representing total number of execution transactions per type.
+  description: Business-facing metric representing the total count of API execution transactions, aggregated by transaction type. Provides insights into transaction volume per type.
   columns:
   - name: transaction_type
-    description: Type of transaction (e.g., standard, contract creation, etc.).
+    description: Type of transaction (e.g., 'transfer', 'contract_call') as categorized in the source data.
     data_type: String
   - name: value
-    description: Total count of transactions of this type.
+    description: Total count of transactions for the given transaction type.
     data_type: UInt64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_gas_used_daily
-  description: Daily aggregated data of gas used in API execution transactions, providing insights into gas consumption trends and patterns.
+  description: Daily aggregated data on gas used in API execution transactions, including transaction type, gas metrics, and timestamps for business analysis.
   columns:
   - name: date
-    description: Date of the transaction, in UTC.
+    description: Date of the transaction aggregation (UTC).
     data_type: DateTime
   - name: transaction_type
-    description: Type/category of the transaction (e.g., standard, internal).
+    description: Type/category of the transaction (e.g., transfer, contract call).
     data_type: String
   - name: gas_used
-    description: Total gas used in the transactions on this date.
+    description: Total gas used in transactions on this day.
     data_type: UInt64
   - name: gas_price_avg
-    description: Average gas price (wei) paid per transaction.
+    description: Average gas price (wei) across transactions for the day.
     data_type: UInt64
   - name: gas_price_median
-    description: Median gas price (wei) paid per transaction.
+    description: Median gas price (wei) across transactions for the day.
     data_type: UInt64
   config:
     access: public
-    materialized: table
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_value_daily
-  description: Business-facing table summarizing daily transaction values from API executions, including average and median metrics for XDAI values.
+  description: Daily aggregated values of API execution transactions, including average and median values, for business analysis.
   columns:
   - name: date
-    description: Date of the transaction summary (UTC).
-    data_type: DateTime
+    description: Date of the transaction aggregation (YYYY-MM-DD).
+    data_type: Date
   - name: transaction_type
-    description: Type/category of transaction (e.g., transfer, contract call).
+    description: Type/category of the transaction (e.g., transfer, contract call).
     data_type: String
   - name: xdai_value
     description: Total value in XDAI for the day (wei units).
     data_type: UInt64
   - name: xdai_value_avg
     description: Average transaction value in XDAI for the day (wei units).
-    data_type: UInt64
+    data_type: Float64
   - name: xdai_value_median
     description: Median transaction value in XDAI for the day (wei units).
-    data_type: UInt64
+    data_type: Float64
   config:
     access: public
-    materialized: view
     tags:
-    - analytics
-    - daily
+    - production
+    - execution
     - transactions
+    materialized: view
   meta:
     owner: analytics_team
     authoritative: false

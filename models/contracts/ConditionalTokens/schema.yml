@@ -2,73 +2,82 @@ version: 2
 models:
 
 - name: contracts_ConditionalTokens_calls
-  description: Model representing conditional token calls with relevant transaction details
+  description: Model representing calls to ConditionalTokens contracts, including transaction details, block information, and call-specific data for analysis and reporting.
   columns:
-  - name: block_timestamp
-    description: Timestamp of the block when the transaction was included
-    data_type: DateTime
   - name: transaction_hash
     description: Unique hash identifying the transaction
     data_type: String
+  - name: block_number
+    description: Block number containing the transaction
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC
+    data_type: DateTime
   - name: contract_address
-    description: Address of the contract involved in the call
+    description: Address of the ConditionalTokens contract involved in the call
+    data_type: String
+  - name: call_data
+    description: Encoded call data for the contract interaction
     data_type: String
   - name: output_json_type
     description: Indicates if the output is in JSON format (boolean)
     data_type: String
-  - name: tx_table
-    description: Source table for transactions
-    data_type: String
-  - name: incremental_column
-    description: Column used for incremental processing, typically block timestamp
-    data_type: String
-  - name: start_blocktime
-    description: Starting block timestamp for data ingestion
-    data_type: String
+  - name: output_data
+    description: The output data from the call, stored as JSON
+    data_type: JSON
   config:
     access: public
     materialized: incremental
     tags:
+    - production
     - contracts
-    - conditional_tokens
-    quote: true
+    - conditionaltokens
+    - calls
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_ConditionalTokens_events
-  description: Event data related to ConditionalTokens contracts, including block timestamps, log indices, and transaction details for tracking conditional token events.
+  description: This model captures conditional token events including transaction details, block information, and event-specific data for analysis and reporting.
   columns:
-  - name: block_timestamp
-    description: Timestamp of the block when the event was emitted
-    data_type: DateTime
-  - name: log_index
-    description: Log index within the block, indicating event order
-    data_type: UInt64
   - name: transaction_hash
-    description: Hash of the transaction that emitted the event
-    data_type: String
-  - name: event_type
-    description: Type of the conditional token event (e.g., creation, resolution)
-    data_type: String
-  - name: contract_address
-    description: Address of the ConditionalTokens contract emitting the event
-    data_type: String
-  - name: token_id
-    description: Identifier of the token involved in the event
-    data_type: String
-  - name: amount
-    description: Amount involved in the event, in wei
+    description: Unique hash identifying the transaction associated with the event.
     data_type: String
   - name: block_number
-    description: Number of the block containing the event
+    description: The block number in which the event was recorded.
     data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp when the block was mined, in UTC.
+    data_type: DateTime64(0, 'UTC')
+  - name: log_index
+    description: Index of the log within the block, used to order events.
+    data_type: UInt64
+  - name: event_type
+    description: Type of the conditional token event (e.g., creation, resolution).
+    data_type: String
+  - name: condition_id
+    description: Identifier for the specific condition associated with the event.
+    data_type: String
+  - name: collateral_token
+    description: Address of the collateral token involved in the event.
+    data_type: String
+  - name: payout_numerators
+    description: JSON array representing payout numerators for the event.
+    data_type: JSON
+  - name: payout_denominator
+    description: Denominator for the payout calculation.
+    data_type: UInt64
+  - name: event_data
+    description: Raw event data payload in JSON format.
+    data_type: JSON
   config:
     access: public
-    materialized: incremental
     tags:
+    - production
     - contracts
+    - conditionaltokens
     - events
+    materialized: incremental
   meta:
     owner: analytics_team
     authoritative: false

@@ -2,25 +2,37 @@ version: 2
 models:
 
 - name: stg_execution__blocks
-  description: Business-facing staging model for execution blocks, including core block data, transaction details, logs, and related metadata, with decoded extra data.
+  description: Business-facing staging model for execution layer blocks, including core block data, metadata, and related entities. Provides a cleaned and consolidated view for analysis.
   columns:
-  - name: block_number
-    description: Height of the block containing the record.
-    data_type: UInt32
-  - name: block_hash
-    description: Keccak-256 hash of the block header.
+  - name: nonce
+    description: Block nonce (legacy proof-of-work nonce) as a string.
     data_type: String
+  - name: author
+    description: Address (hex string) of the block proposer.
+    data_type: String
+  - name: block_timestamp
+    description: UTC timestamp when the block was proposed.
+    data_type: DateTime
   - name: parent_hash
     description: Hash of the parent block header.
     data_type: String
-  - name: uncles_hash
-    description: Keccak-256 hash of the ommers list.
+  - name: size
+    description: Serialized size of the block in bytes.
+    data_type: UInt64
+  - name: block_number
+    description: Height of the block in the chain.
+    data_type: UInt64
+  - name: block_hash
+    description: Keccak-256 hash of the block header.
     data_type: String
-  - name: author
-    description: Address (hex string) of the validator/miner proposing the block.
+  - name: mix_hash
+    description: Mix hash (pre-merge PoW) or random field.
     data_type: String
-  - name: state_root
-    description: Root hash of the state trie.
+  - name: gas_limit
+    description: Maximum gas allowed in the block.
+    data_type: UInt64
+  - name: withdrawals_root
+    description: Root hash of withdrawals list (Shanghai+).
     data_type: String
   - name: transactions_root
     description: Root hash of the transactions trie.
@@ -31,90 +43,32 @@ models:
   - name: gas_used
     description: Total gas consumed by transactions in the block.
     data_type: UInt64
-  - name: gas_limit
-    description: Maximum gas allowed in the block.
-    data_type: UInt64
-  - name: extra_data
-    description: Arbitrary extra-data bytes set by the block proposer (hex string).
-    data_type: String
-  - name: decoded_extra_data
-    description: Decoded extra data from `extra_data` field.
-    data_type: String
-  - name: size
-    description: Serialized block size in bytes.
-    data_type: UInt64
-  - name: mix_hash
-    description: Mix hash (pre-merge PoW) or random field.
-    data_type: String
-  - name: nonce
-    description: Block nonce (legacy field).
+  - name: uncles_hash
+    description: Keccak-256 hash of the ommers list.
     data_type: String
   - name: base_fee_per_gas
     description: Base fee per gas (wei) introduced by EIP-1559.
     data_type: UInt64
-  - name: withdrawals_root
-    description: Root hash of withdrawals list (Shanghai+).
+  - name: state_root
+    description: Root hash of the state trie.
     data_type: String
   - name: chain_id
-    description: EVM chain identifier (e.g., 100 for Gnosis).
+    description: Chain identifier (e.g., 100 for Gnosis).
     data_type: UInt64
-  - name: block_timestamp
-    description: UTC timestamp of the block.
-    data_type: DateTime
   - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
+    description: Monotonic ingestion version timestamp.
     data_type: UInt64
-  - name: transactions
-    description: List of transactions included in the block with relevant details.
-    data_type: JSON
-  - name: logs
-    description: Event logs emitted during the block.
-    data_type: JSON
-  - name: native_transfers
-    description: Decoded native token transfers within the block.
-    data_type: JSON
-  - name: contracts
-    description: Contracts deployed in the block with deployment metadata.
-    data_type: JSON
-  - name: traces
-    description: Execution traces for internal calls, creates, and rewards.
-    data_type: JSON
-  - name: balance_diffs
-    description: Balance changes for accounts caused by transactions.
-    data_type: JSON
-  - name: storage_diffs
-    description: Storage-slot mutations produced by transactions.
-    data_type: JSON
-  - name: code_diffs
-    description: Changes in smart contract runtime code due to transactions.
-    data_type: JSON
-  - name: nonce_diffs
-    description: Nonce updates for accounts caused by transactions.
-    data_type: JSON
-  - name: withdrawals
-    description: Beacon-chain withdrawals bridged into blocks (Shanghai+).
-    data_type: JSON
-  - name: indexing_state
-    description: Worker-reported state for indexed ranges.
-    data_type: JSON
-  - name: indexing_progress
-    description: Aggregated progress metrics for indexing.
-    data_type: JSON
-  - name: continuous_ranges
-    description: Summarized continuous completed ranges and data continuity.
-    data_type: JSON
-  - name: indexing_summary
-    description: End-to-end indexing state summary.
-    data_type: JSON
-  - name: migrations
-    description: Records of data migrations executed by the crawler/ETL.
-    data_type: JSON
+  - name: extra_data
+    description: Arbitrary extra data bytes set by proposer (hex).
+    data_type: String
   config:
     access: public
     tags:
-    - staging
+    - production
+    - execution
+    - blocks
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

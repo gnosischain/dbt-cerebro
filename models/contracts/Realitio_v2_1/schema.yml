@@ -2,48 +2,53 @@ version: 2
 models:
 
 - name: contracts_Realitio_v2_1_calls
-  description: A record of calls made to the Realitio v2.1 contract, including transaction details, block information, and call-specific data for analysis and auditing purposes.
+  description: This model captures call data related to Realitio v2.1 contracts, including transaction details, block information, and call-specific attributes for analysis and reporting purposes.
   columns:
   - name: transaction_hash
-    description: Unique identifier of the transaction in which the call was made.
+    description: Unique identifier of the transaction in which the call occurred.
     data_type: String
   - name: block_number
-    description: The block height at which the transaction was included.
+    description: Number of the block containing the transaction.
     data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the block was mined, in UTC.
+    description: Timestamp when the block was mined, in UTC.
     data_type: DateTime64(0, 'UTC')
   - name: caller_address
-    description: Ethereum address of the caller initiating the call.
+    description: Address of the caller initiating the call.
     data_type: String
   - name: contract_address
-    description: Ethereum address of the contract being called.
+    description: Address of the contract being called.
     data_type: String
   - name: call_data
-    description: Encoded call data payload sent in the transaction.
+    description: Encoded data payload of the call.
     data_type: String
-  - name: call_value
-    description: Amount of wei transferred with the call.
+  - name: output_json_type
+    description: Indicates if the output is in JSON format; true or false.
     data_type: String
-  - name: call_gas
-    description: Gas limit for the call.
-    data_type: UInt64
-  - name: call_gas_price
-    description: Gas price in wei for the call.
+  - name: output_data
+    description: The output data returned from the call.
     data_type: String
-  - name: call_nonce
-    description: Transaction nonce for the caller.
-    data_type: UInt64
   - name: call_success
-    description: Indicates if the call was successful.
+    description: Boolean indicating if the call was successful.
     data_type: String
-  - name: call_return_data
-    description: Return data from the call, if any.
+  - name: gas_used
+    description: Amount of gas used for the call, in wei.
     data_type: String
+  - name: call_type
+    description: Type of the call, e.g., 'call', 'delegatecall'.
+    data_type: String
+  - name: created_at
+    description: Timestamp when the record was created in the database.
+    data_type: DateTime64(0, 'UTC')
+  - name: updated_at
+    description: Timestamp when the record was last updated.
+    data_type: DateTime64(0, 'UTC')
   config:
-    access: public
     materialized: incremental
+    access: public
     tags:
+    - production
+    - contracts
     - realitio
     - calls
   meta:
@@ -51,51 +56,59 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Realitio_v2_1_events
-  description: Events emitted by the Realitio v2.1 contract, capturing transaction details, block information, and event-specific data for analytics and monitoring.
+  description: This model captures Realitio V2.1 event logs related to contract interactions, including timestamps, addresses, and event-specific data.
   columns:
-  - name: transaction_hash
-    description: Unique hash identifying the transaction (hex string).
-    data_type: String
-  - name: block_number
-    description: Block number in which the event was included.
-    data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined (UTC).
+    description: The timestamp when the block was mined (UTC)
     data_type: DateTime
   - name: log_index
-    description: Index of the event log within the block.
+    description: The index of the log within the block (sequence number)
     data_type: UInt64
+  - name: transaction_hash
+    description: Hash of the transaction associated with the event
+    data_type: String
+  - name: contract_address
+    description: Address of the contract emitting the event
+    data_type: String
   - name: event_type
-    description: Type of the event emitted (e.g., 'AnswerRevealed', 'QuestionCreated').
+    description: Type of the event emitted (e.g., 'AnswerSubmitted', 'QuestionCreated')
     data_type: String
   - name: question_id
-    description: Identifier for the question associated with the event.
+    description: Unique identifier for the question related to the event
     data_type: String
   - name: answer
-    description: The answer submitted or revealed, if applicable.
+    description: The answer submitted or relevant to the event
+    data_type: String
+  - name: answerer
+    description: Address of the entity submitting the answer
     data_type: String
   - name: question_content
-    description: Content/details of the question.
+    description: Content of the question posed in the event
     data_type: String
-  - name: reward
-    description: Reward amount in wei associated with the question.
-    data_type: String
-  - name: final_answer
-    description: Final answer revealed for the question.
-    data_type: String
-  - name: final_answer_timestamp
-    description: Timestamp when the final answer was revealed (UTC).
+  - name: question_created_at
+    description: Timestamp when the question was created (UTC)
     data_type: DateTime
-  - name: is_finalized
-    description: Indicates if the question has been finalized (true/false).
-    data_type: String
-  - name: created_at
-    description: Record creation timestamp in UTC.
+  - name: answer_submitted_at
+    description: Timestamp when the answer was submitted (UTC)
     data_type: DateTime
+  - name: block_number
+    description: The number of the block containing the event
+    data_type: UInt64
+  - name: gas_price
+    description: Gas price at the time of the transaction (wei)
+    data_type: String
+  - name: gas_used
+    description: Gas used by the transaction
+    data_type: UInt64
+  - name: event_data
+    description: Raw event data in JSON format
+    data_type: JSON
   config:
     access: public
     materialized: incremental
     tags:
+    - production
+    - contracts
     - realitio
     - events
   meta:

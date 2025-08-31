@@ -2,37 +2,90 @@ version: 2
 models:
 
 - name: stg_nebula_discv4__visits
-  description: Staging model for nebula_discv4 visits, capturing peer visit details during network crawls.
+  description: Staging model for visits data from nebula_discv4 source, including peer and protocol metadata.
+  columns:
+  - name: crawl_id
+    description: Identifier for the crawl; nullable if not available.
+    data_type: UUID
+  - name: peer_id
+    description: Unique identifier for the peer.
+    data_type: String
+  - name: agent_version
+    description: Version string of the peer's agent.
+    data_type: String
+  - name: protocols
+    description: List of protocols supported by the peer.
+    data_type: Array(LowCardinality(String))
+  - name: dial_maddrs
+    description: Array of dial multiaddresses.
+    data_type: Array(String)
+  - name: filtered_maddrs
+    description: Array of filtered multiaddresses.
+    data_type: Array(String)
+  - name: extra_maddrs
+    description: Array of extra multiaddresses.
+    data_type: Array(String)
+  - name: dial_errors
+    description: List of dial error messages.
+    data_type: Array(LowCardinality(String))
+  - name: connect_maddr
+    description: Nullable connect multiaddress.
+    data_type: Nullable(String)
+  - name: crawl_error
+    description: Nullable crawl error message.
+    data_type: LowCardinality(Nullable(String))
+  - name: visit_started_at
+    description: Timestamp when the visit started.
+    data_type: DateTime64(3)
+  - name: visit_ended_at
+    description: Timestamp when the visit ended.
+    data_type: DateTime64(3)
+  - name: peer_properties
+    description: JSON object with peer properties.
+    data_type: JSON
+  config:
+    access: public
+    tags:
+    - production
+    - nebula_discv4
+    - visits
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_nebula_discv5__visits
+  description: Staging model for nebula discv5 visits data, capturing peer visit details during network crawls.
   columns:
   - name: crawl_id
     description: Identifier for the crawl session; nullable if not available.
     data_type: UUID
   - name: peer_id
-    description: Unique identifier of the peer visited.
+    description: Unique identifier of the visited peer.
     data_type: String
   - name: agent_version
     description: Version string of the peer's agent software.
     data_type: String
   - name: protocols
-    description: List of protocols supported by the peer.
+    description: List of protocols supported by the peer during visit.
     data_type: Array(LowCardinality(String))
   - name: dial_maddrs
-    description: Array of multiaddrs used for dialing.
+    description: Array of dial multiaddresses used during connection attempts.
     data_type: Array(String)
   - name: filtered_maddrs
-    description: Array of filtered multiaddrs.
+    description: Array of filtered multiaddresses associated with the peer.
     data_type: Array(String)
   - name: extra_maddrs
-    description: Array of additional multiaddrs.
+    description: Additional multiaddresses discovered for the peer.
     data_type: Array(String)
   - name: dial_errors
-    description: Array of dial error messages encountered.
+    description: List of errors encountered during dialing attempts.
     data_type: Array(LowCardinality(String))
   - name: connect_maddr
-    description: Multiaddr used for connection; nullable if not available.
+    description: Multiaddress used for the successful connection, if any.
     data_type: Nullable(String)
   - name: crawl_error
-    description: Nullable error message related to the crawl.
+    description: Error message if the crawl encountered issues connecting to the peer.
     data_type: LowCardinality(Nullable(String))
   - name: visit_started_at
     description: Timestamp when the visit started.
@@ -41,159 +94,122 @@ models:
     description: Timestamp when the visit ended.
     data_type: DateTime64(3)
   - name: peer_properties
-    description: JSON object containing peer properties.
+    description: JSON object containing additional peer metadata.
     data_type: JSON
   config:
     access: public
-    materialized: view
     tags:
-    - staging
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: stg_nebula_discv5__visits
-  description: Staging model for visits data from nebula_discv5 source, containing details about each peer visit during network crawls, including timing, protocols, addresses, errors, and peer properties.
-  columns:
-  - name: crawl_id
-    description: Identifier for the crawl session; nullable if not available.
-    data_type: UUID
-  - name: peer_id
-    description: Unique identifier for the peer; string.
-    data_type: String
-  - name: agent_version
-    description: Software version of the peer agent; string.
-    data_type: String
-  - name: protocols
-    description: List of protocols supported by the peer.
-    data_type: Array(LowCardinality(String))
-  - name: dial_maddrs
-    description: Array of multiaddrs used for dialing.
-    data_type: Array(String)
-  - name: filtered_maddrs
-    description: Array of filtered multiaddrs.
-    data_type: Array(String)
-  - name: extra_maddrs
-    description: Array of additional multiaddrs.
-    data_type: Array(String)
-  - name: dial_errors
-    description: List of errors encountered during dialing.
-    data_type: Array(LowCardinality(String))
-  - name: connect_maddr
-    description: Multiaddr used for connection; nullable.
-    data_type: Nullable(String)
-  - name: crawl_error
-    description: Error message related to the crawl; nullable.
-    data_type: LowCardinality(Nullable(String))
-  - name: visit_started_at
-    description: Timestamp when the visit started.
-    data_type: DateTime64(3)
-  - name: visit_ended_at
-    description: Timestamp when the visit ended.
-    data_type: DateTime64(3)
-  - name: peer_properties
-    description: JSON object containing peer-specific properties.
-    data_type: JSON
-  config:
-    access: public
+    - production
+    - nebula_discv5
+    - visits
     materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__ipinfo
-  description: Staging model for IP information data, including geolocation, organization, and network provider details, derived from raw IP info sources.
+  description: Staging model that processes raw IP information data, categorizing providers, and normalizing fields for downstream analysis.
   columns:
-  - name: postal
-    description: Postal code associated with the IP address.
-    data_type: String
   - name: ip
-    description: IP address in string format.
+    description: IP address of the entity, stored as a string.
     data_type: String
-  - name: is_bogon
-    description: Indicator if the IP is part of a bogon (invalid or reserved IP space).
-    data_type: UInt64
+  - name: hostname
+    description: Resolved hostname for the IP, if available.
+    data_type: String
+  - name: city
+    description: City associated with the IP location.
+    data_type: String
+  - name: region
+    description: Region or state where the IP is located.
+    data_type: String
   - name: country
-    description: Country name associated with the IP.
-    data_type: String
-  - name: carrier
-    description: Carrier or ISP name associated with the IP.
-    data_type: String
-  - name: generic_provider
-    description: Categorized provider type based on organization name.
+    description: Country code or name for the IP location.
     data_type: String
   - name: loc
-    description: Geolocation coordinates (latitude, longitude).
+    description: Geographical coordinates (latitude, longitude) as a string.
+    data_type: String
+  - name: org
+    description: Organization name associated with the IP.
+    data_type: String
+  - name: postal
+    description: Postal code of the IP location.
     data_type: String
   - name: timezone
     description: Timezone of the IP location.
     data_type: String
   - name: asn
     description: Autonomous System Number associated with the IP.
-    data_type: UInt64
-  - name: hostname
-    description: Resolved hostname for the IP address.
-    data_type: String
-  - name: is_mobile
-    description: Indicator if the IP belongs to a mobile network.
-    data_type: UInt64
-  - name: org
-    description: Organization name associated with the IP.
     data_type: String
   - name: company
     description: Company name linked to the IP.
     data_type: String
-  - name: region
-    description: Region or state associated with the IP.
+  - name: carrier
+    description: Carrier information for mobile or network provider.
     data_type: String
-  - name: city
-    description: City associated with the IP.
+  - name: is_bogon
+    description: Boolean indicating if the IP is a bogon (invalid or reserved).
     data_type: String
+  - name: is_mobile
+    description: Boolean indicating if the IP belongs to a mobile network.
+    data_type: String
+  - name: generic_provider
+    description: Categorized provider type based on organization name, e.g., AWS, Google, Azure, etc.
+    data_type: String
+    quote: true
   config:
     access: public
     materialized: view
+    tags:
+    - production
+    - crawlers_data
+    - ipinfo
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_nebula_discv4__discovery_id_prefixes_x_peer_ids
-  description: Mapping from discovery ID prefix to peer_id, sourced from the nebula_discv4 database.
+  description: Mapping from discovery ID prefix to peer_id in the nebula_discv4 schema.
   columns:
   - name: discovery_id_prefix
-    description: The prefix of the discovery ID used to identify peers.
+    description: Discovery ID prefix used to identify peers, type UInt64.
     data_type: UInt64
   - name: peer_id
-    description: The peer identifier as a string.
+    description: Peer identifier as a string.
     data_type: String
   config:
     access: public
-    quote: true
+    tags:
+    - production
+    - nebula_discv4
+    - discovery_id_prefixes_x_peer_ids
+    materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_nebula_discv4__neighbors
-  description: This table contains neighbor discovery data from the nebula_discv4 source, representing edges between peers identified during network crawls.
+  description: Discovered neighbor relationships between peers from the nebula_discv4 neighbors data.
   columns:
   - name: crawl_id
-    description: Unique identifier for the crawl session.
-    data_type: UUID
+    description: Identifier for the specific crawl session.
+    data_type: String
   - name: crawl_created_at
     description: Timestamp when the crawl was initiated.
     data_type: DateTime64(0, 'UTC')
   - name: peer_discovery_id_prefix
-    description: Discovery ID prefix of the peer, used as a peer identifier.
+    description: Prefix of the peer discovery ID, representing the source peer.
     data_type: UInt64
   - name: neighbor_discovery_id_prefix
-    description: Discovery ID prefix of the neighbor peer.
+    description: Prefix of the neighbor's discovery ID, representing the target peer.
     data_type: UInt64
   - name: error_bits
-    description: Error bits indicating issues encountered during neighbor discovery.
+    description: Bitfield indicating errors encountered during neighbor discovery.
     data_type: UInt16
   config:
     access: public
     tags:
-    - discv4
+    - production
+    - nebula_discv4
     - neighbors
     materialized: view
   meta:
@@ -201,48 +217,51 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: stg_nebula_discv5__discovery_id_prefixes_x_peer_ids
-  description: Mapping from discovery ID prefix to peer_id, representing the association between discovery prefixes and peer identifiers in the Discv5 network.
+  description: Mapping from discovery ID prefix to peer_id, sourced from the nebula_discv5 discovery data.
   columns:
   - name: discovery_id_prefix
-    description: The prefix of the discovery ID, used for grouping peers.
+    description: Discovery ID prefix as a UInt64 integer.
     data_type: UInt64
   - name: peer_id
-    description: The unique identifier of the peer, represented as a string.
+    description: Peer identifier as a string.
     data_type: String
   config:
     access: public
     tags:
-    - staging
+    - production
+    - nebula_discv5
+    - discovery_id_prefixes_x_peer_ids
     materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: stg_nebula_discv5__neighbors
-  description: Edges discovered between peers from neighbors responses in the Discv5 network crawl.
+  description: Edges discovered between peers from neighbors responses in the nebula_discv5 schema.
   columns:
   - name: crawl_id
-    description: Identifier of the crawl session.
+    description: Identifier for the specific crawl session.
     data_type: String
   - name: crawl_created_at
     description: Timestamp when the crawl was initiated.
     data_type: DateTime64(0, 'UTC')
   - name: peer_discovery_id_prefix
-    description: Discovery ID prefix of the peer.
+    description: Numeric prefix identifying the peer discovery ID.
     data_type: UInt64
   - name: neighbor_discovery_id_prefix
-    description: Discovery ID prefix of the neighbor peer.
+    description: Numeric prefix identifying the neighbor discovery ID.
     data_type: UInt64
   - name: error_bits
-    description: Error bits indicating issues during neighbor discovery (bitmask).
+    description: Error bits indicating issues encountered during discovery.
     data_type: UInt16
   config:
     access: public
     tags:
-    - discv5
+    - production
+    - nebula_discv5
     - neighbors
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

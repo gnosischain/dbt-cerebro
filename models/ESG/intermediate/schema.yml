@@ -214,3 +214,507 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+- name: int_esg_carbon_intensity_ensemble
+  description: Aggregated model estimating monthly carbon intensity with uncertainty modeling, seasonal adjustments, and confidence intervals for ESG analysis.
+  columns:
+  - name: month_date
+    description: The first day of the month for the data point, in date format.
+    data_type: DateTime
+  - name: country_code
+    description: ISO 3-letter country code or 'WORLD' for global data.
+    data_type: String
+  - name: carbon_intensity_mean
+    description: Estimated average carbon intensity in gCO2/kWh, seasonally adjusted.
+    data_type: Float64
+  - name: carbon_intensity_std
+    description: Standard deviation of the carbon intensity estimate, representing uncertainty.
+    data_type: Float64
+  - name: ci_lower_95
+    description: Lower bound of the 95% confidence interval.
+    data_type: Float64
+  - name: ci_upper_95
+    description: Upper bound of the 95% confidence interval.
+    data_type: Float64
+  - name: ci_lower_90
+    description: Lower bound of the 90% confidence interval.
+    data_type: Float64
+  - name: ci_upper_90
+    description: Upper bound of the 90% confidence interval.
+    data_type: Float64
+  - name: coefficient_of_variation
+    description: Ratio of the combined uncertainty to the mean, indicating relative variability.
+    data_type: Float64
+  - name: uncertainty_category
+    description: 'Qualitative assessment of uncertainty: ''Low'', ''Medium'', or ''High''.'
+    data_type: String
+  - name: base_carbon_intensity
+    description: Raw baseline carbon intensity in gCO2/kWh before seasonal adjustment.
+    data_type: Float64
+  - name: temporal_std
+    description: Standard deviation representing temporal (time-based) uncertainty.
+    data_type: Float64
+  - name: measurement_std
+    description: Standard deviation representing measurement or data quality uncertainty.
+    data_type: Float64
+  - name: seasonal_adjustment
+    description: Multiplicative factor applied for seasonal effects based on hemisphere and month.
+    data_type: Float64
+  - name: sources_used
+    description: List of data sources contributing to this estimate.
+    data_type: JSON
+  - name: confidence_score
+    description: Confidence score assigned to the data, based on source reliability.
+    data_type: Float64
+  - name: n_sources
+    description: Number of data sources used.
+    data_type: UInt64
+  - name: calculated_at
+    description: Timestamp when the data was computed.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - carbon_intensity
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_esg_dynamic_power_consumption
+  description: Business-facing model calculating dynamic power consumption, CO2 emissions, and efficiency metrics for nodes categorized by type, with data integration from multiple sources and robust fallback mechanisms.
+  columns:
+  - name: date
+    description: Date of the measurement in UTC, used for time-series analysis.
+    data_type: DateTime
+  - name: node_category
+    description: Category of node (e.g., 'home_staker', 'professional_operator', 'cloud_hosted').
+    data_type: String
+  - name: country_code
+    description: ISO 3-letter country code.
+    data_type: String
+  - name: country_name
+    description: Name of the country.
+    data_type: String
+  - name: region
+    description: Geographic region.
+    data_type: String
+  - name: sub_region
+    description: Sub-region within the larger region.
+    data_type: String
+  - name: country_code_alpha3
+    description: Alpha-3 country code used for cross-referencing.
+    data_type: String
+  - name: estimated_total_nodes
+    description: Estimated total number of nodes in the category.
+    data_type: UInt64
+  - name: nodes_lower_95
+    description: Lower bound of 95% confidence interval for node count.
+    data_type: UInt64
+  - name: nodes_upper_95
+    description: Upper bound of 95% confidence interval for node count.
+    data_type: UInt64
+  - name: power_source
+    description: Source of power consumption data, e.g., 'CCRI_Tier4_Empirical'.
+    data_type: String
+  - name: measurement_confidence
+    description: Confidence level of CCRI empirical data (0 to 1).
+    data_type: Float64
+  - name: base_power_watts
+    description: CCRI empirical mean power consumption per node in Watts.
+    data_type: Float64
+  - name: power_std_watts
+    description: Standard deviation of CCRI power measurements in Watts.
+    data_type: Float64
+  - name: client_efficiency_multiplier
+    description: Multiplier representing client efficiency from upstream model.
+    data_type: Float64
+  - name: diversity_bonus
+    description: Resilience bonus factor based on client diversity.
+    data_type: Float64
+  - name: client_breakdown
+    description: Array of tuples with client_type, category_client_percentage, estimated_client_nodes.
+    data_type: JSON
+  - name: total_client_nodes
+    description: Total estimated client nodes for validation.
+    data_type: UInt64
+  - name: avg_power_watts_per_node
+    description: Final adjusted average power consumption per node in Watts after efficiency factors.
+    data_type: Float64
+  - name: power_std_dev_per_node
+    description: Standard deviation of power consumption per node after efficiency factors.
+    data_type: Float64
+  - name: daily_energy_kwh_mean
+    description: Estimated daily energy consumption in kilowatt-hours.
+    data_type: Float64
+  - name: pue_factor
+    description: Power Usage Effectiveness (PUE) factor for data center overhead.
+    data_type: Float64
+  - name: ccri_base_power_watts
+    description: CCRI empirical base power in Watts for source tracking.
+    data_type: Float64
+  - name: carbon_intensity_gco2_kwh
+    description: Carbon intensity in gCO2e per kWh, with fallback hierarchy.
+    data_type: Float64
+  - name: carbon_intensity_std_gco2_kwh
+    description: Standard deviation of carbon intensity in gCO2e per kWh.
+    data_type: Float64
+  - name: carbon_intensity_source
+    description: Source of carbon intensity data, e.g., 'country_specific'.
+    data_type: String
+  - name: daily_co2_kg_mean
+    description: Estimated daily CO2 emissions in kilograms.
+    data_type: Float64
+  - name: daily_co2_kg_std
+    description: Standard deviation of daily CO2 emissions in kilograms.
+    data_type: Float64
+  - name: client_breakdown_json
+    description: JSON string of client breakdown array for diagnostics.
+    data_type: String
+  - name: debug_total_clients
+    description: Total number of client nodes for debugging.
+    data_type: UInt64
+  - name: calculated_at
+    description: Timestamp of the calculation execution.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - power_consumption
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_esg_node_classification
+  description: A model classifying and aggregating node data based on operational archetypes, geographic distribution, and confidence metrics for ESG analysis.
+  columns:
+  - name: peer_org
+    description: Peer organization name associated with the node.
+    data_type: String
+  - name: client_type
+    description: Client type used by the node, e.g., browser, app.
+    data_type: String
+  - name: ip_address
+    description: IP address of the node at last observation.
+    data_type: String
+  - name: peer_id
+    description: Unique identifier for the peer node.
+    data_type: String
+  - name: observation_date
+    description: Date of the observation in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: country_code
+    description: ISO country code of the node's location.
+    data_type: String
+  - name: generic_provider
+    description: Cloud or hosting provider associated with the node.
+    data_type: String
+  - name: last_seen_that_day
+    description: Timestamp of the last observation on that day.
+    data_type: DateTime
+  - name: node_category
+    description: 'Classification of node archetype: cloud_hosted, professional_operator, home_staker, or unknown.'
+    data_type: String
+  - name: classification_confidence
+    description: Confidence score (0 to 1) of the node classification.
+    data_type: Float64
+  - name: date
+    description: Observation date in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: observed_nodes
+    description: Count of distinct nodes observed on that date and category.
+    data_type: UInt64
+  - name: avg_confidence
+    description: Average classification confidence for nodes in that category.
+    data_type: Float64
+  - name: observed_successful_nodes
+    description: Number of nodes with successful connections.
+    data_type: UInt64
+  - name: enhanced_total_reachable
+    description: Total reachable nodes after enhancement.
+    data_type: UInt64
+  - name: connection_success_rate_pct
+    description: Connection success rate percentage.
+    data_type: Float64
+  - name: estimated_total_nodes
+    description: Estimated total nodes after scaling.
+    data_type: UInt64
+  - name: nodes_lower_95
+    description: Lower bound estimate of total nodes at 95% confidence.
+    data_type: UInt64
+  - name: nodes_upper_95
+    description: Upper bound estimate of total nodes at 95% confidence.
+    data_type: UInt64
+  - name: sample_coverage
+    description: Proportion of the network sampled.
+    data_type: Float64
+  - name: scaling_factor
+    description: Factor used to scale observed data to estimate total nodes.
+    data_type: Float64
+  - name: country_observed_nodes
+    description: Count of observed nodes per country.
+    data_type: UInt64
+  - name: country_estimated_nodes
+    description: Estimated total nodes per country after scaling.
+    data_type: UInt64
+  - name: category_percentage
+    description: Percentage share of each node category within total estimated nodes.
+    data_type: Float64
+  - name: hidden_nodes_estimated
+    description: Estimated number of hidden nodes (difference between total and observed).
+    data_type: Int64
+  - name: hidden_nodes_percentage
+    description: Percentage of hidden nodes relative to total estimated nodes.
+    data_type: Float64
+  - name: geographic_distribution
+    description: JSON array of country codes and their estimated nodes.
+    data_type: JSON
+  - name: top_countries
+    description: String listing top 5 countries by estimated nodes, separated by commas.
+    data_type: String
+  - name: calculated_at
+    description: Timestamp when the report was generated.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - nodes
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_esg_node_client_distribution
+  description: Business-facing model providing estimated client node distribution metrics across node categories and client types, including percentages, rankings, and efficiency factors, based on classification and client data sources.
+  columns:
+  - name: date
+    description: The date of the data snapshot, in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: node_category
+    description: Category of the node, e.g., validator, archive, etc.
+    data_type: String
+  - name: estimated_total_nodes
+    description: Estimated total number of nodes in the category.
+    data_type: UInt64
+  - name: nodes_lower_95
+    description: Lower bound of the 95% confidence interval for total nodes.
+    data_type: UInt64
+  - name: nodes_upper_95
+    description: Upper bound of the 95% confidence interval for total nodes.
+    data_type: UInt64
+  - name: scaling_factor
+    description: Scaling factor applied to client node estimates.
+    data_type: Float64
+  - name: client_type
+    description: Type of client, e.g., consensus_Lighthouse, execution_Geth, etc.
+    data_type: String
+  - name: observed_client_nodes
+    description: Number of observed client nodes for the given client type.
+    data_type: UInt64
+  - name: observed_client_percentage
+    description: Percentage of client nodes relative to total observed nodes on that date.
+    data_type: Float64
+  - name: estimated_client_nodes
+    description: Estimated number of client nodes in the category, adjusted by observed percentage.
+    data_type: UInt64
+  - name: client_nodes_lower_95
+    description: Lower bound estimate for client nodes, based on confidence interval.
+    data_type: UInt64
+  - name: client_nodes_upper_95
+    description: Upper bound estimate for client nodes, based on confidence interval.
+    data_type: UInt64
+  - name: client_efficiency_factor
+    description: Efficiency factor for the client, relative to baseline.
+    data_type: Float64
+  - name: category_client_percentage
+    description: Percentage of estimated client nodes within the node category.
+    data_type: Float64
+  - name: global_client_percentage
+    description: Percentage of estimated client nodes across all categories for the date.
+    data_type: Float64
+  - name: rank_in_category
+    description: Rank of the client within its node category based on estimated nodes.
+    data_type: UInt64
+  - name: global_rank
+    description: Rank of the client across all categories based on estimated nodes.
+    data_type: UInt64
+  - name: calculated_at
+    description: Timestamp when the metrics were calculated.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - nodes
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_esg_node_geographic_distribution
+  description: This model provides a detailed distribution of nodes across countries and categories, including estimated counts, confidence bounds, and regional metadata, for ESG analysis.
+  columns:
+  - name: date
+    description: The date of the node classification data in UTC.
+    data_type: DateTime
+  - name: node_category
+    description: The category of nodes, e.g., validator, full node, etc.
+    data_type: String
+  - name: estimated_total_nodes
+    description: The estimated total number of nodes in the category.
+    data_type: UInt64
+  - name: nodes_lower_95
+    description: The lower bound of the 95% confidence interval for node count.
+    data_type: UInt64
+  - name: nodes_upper_95
+    description: The upper bound of the 95% confidence interval for node count.
+    data_type: UInt64
+  - name: geographic_distribution
+    description: JSON array representing country distributions with country codes and node counts.
+    data_type: String
+  - name: country_code
+    description: The ISO alpha-2 country code.
+    data_type: String
+  - name: country_name
+    description: The full name of the country.
+    data_type: String
+  - name: region
+    description: The region to which the country belongs.
+    data_type: String
+  - name: sub_region
+    description: The sub-region within the main region.
+    data_type: String
+  - name: country_code_alpha3
+    description: The ISO alpha-3 country code.
+    data_type: String
+  - name: estimated_nodes
+    description: The estimated number of nodes for the specific country.
+    data_type: UInt64
+  - name: category_percentage
+    description: Percentage of nodes in the country relative to the total in the category.
+    data_type: Float64
+  - name: global_percentage
+    description: Percentage of nodes in the country relative to all categories on the date.
+    data_type: Float64
+  - name: rank_in_category
+    description: The ranking of the country within the category based on node count.
+    data_type: UInt64
+  - name: global_rank
+    description: The ranking of the country globally based on node count.
+    data_type: UInt64
+  - name: calculated_at
+    description: Timestamp when the data was calculated.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - nodes
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_esg_node_population_chao1
+  description: Model estimating network population size and connectivity metrics based on peer connection analysis, including Chao-1 estimates for successful and total connections, failure analysis, and derived coverage and success rates.
+  columns:
+  - name: observation_date
+    description: Date of the peer connection observation, in date format.
+    data_type: DateTime
+  - name: peer_id
+    description: Unique identifier for each peer node.
+    data_type: String
+  - name: crawl_id
+    description: Identifier for each connection attempt or crawl session.
+    data_type: String
+  - name: connection_status
+    description: Status of the connection attempt, categorized as 'successful', 'failed', or 'unknown'.
+    data_type: String
+  - name: failure_type
+    description: Specific failure reason for unsuccessful connections, such as 'timeout', 'refused', etc.
+    data_type: String
+  - name: times_observed
+    description: Count of distinct crawl attempts observed for a peer on a given date.
+    data_type: UInt64
+  - name: s_obs_successful
+    description: Number of unique peers observed with successful connections on a date.
+    data_type: UInt64
+  - name: f1_successful
+    description: Count of peers observed exactly once with successful connections.
+    data_type: UInt64
+  - name: f2_successful
+    description: Count of peers observed exactly twice with successful connections.
+    data_type: UInt64
+  - name: s_obs_all
+    description: Number of unique peers observed with any connection attempt (successful or failed).
+    data_type: UInt64
+  - name: f1_all
+    description: Count of peers observed exactly once with any connection attempt.
+    data_type: UInt64
+  - name: f2_all
+    description: Count of peers observed exactly twice with any connection attempt.
+    data_type: UInt64
+  - name: peers_with_only_failures
+    description: Count of peers that only had failed connection attempts, no successes.
+    data_type: UInt64
+  - name: estimated_reachable_from_failures
+    description: Estimated number of peers reachable based on failure analysis, derived from failure types and their reachability probabilities.
+    data_type: UInt64
+  - name: chao1_successful_only
+    description: Chao-1 estimate of total successful nodes, including unseen ones.
+    data_type: UInt64
+  - name: chao1_all_discovered
+    description: Chao-1 estimate of total nodes discovered across all attempts.
+    data_type: UInt64
+  - name: estimated_network_size
+    description: Total estimated network size, including unreachable nodes.
+    data_type: UInt64
+  - name: enhanced_total_reachable
+    description: Improved estimate of total reachable nodes combining multiple signals.
+    data_type: UInt64
+  - name: connection_success_rate_pct
+    description: Percentage of successful connections out of total observed peers.
+    data_type: Float64
+  - name: network_discovery_coverage_pct
+    description: Percentage of total peers discovered relative to total attempts.
+    data_type: Float64
+  - name: reachable_discovery_coverage_pct
+    description: Percentage of successful peers relative to the enhanced total reachable estimate.
+    data_type: Float64
+  - name: hidden_successful_nodes
+    description: Estimated number of successful nodes not observed directly (hidden nodes).
+    data_type: UInt64
+  - name: hidden_reachable_nodes
+    description: Estimated number of reachable nodes not observed directly.
+    data_type: UInt64
+  - name: hidden_total_nodes
+    description: Estimated total nodes in the network, including hidden and unreachable.
+    data_type: UInt64
+  - name: hidden_successful_pct
+    description: Percentage of hidden successful nodes relative to total successful nodes.
+    data_type: Float64
+  - name: hidden_total_pct
+    description: Percentage of hidden total nodes relative to total estimated network size.
+    data_type: Float64
+  - name: calculated_at
+    description: Timestamp when the estimation calculation was performed.
+    data_type: DateTime
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - esg
+    - nodes
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer

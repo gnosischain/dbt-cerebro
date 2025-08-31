@@ -1,0 +1,102 @@
+version: 2
+models:
+
+- name: int_execution_circles_backing
+  description: Business-facing model representing execution data related to circles backing activities, aggregated by date with counts of relevant events.
+  columns:
+  - name: date
+    description: Date truncated to day from block timestamp, representing the day of the event.
+    data_type: DateTime
+  - name: cnt
+    description: Count of 'CirclesBackingCompleted' events on the given date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - execution
+    - circles
+    - backing
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_circles_transitive_transfers
+  description: Business-facing table aggregating transitive transfer data within execution circles, derived from blockchain events and transaction data, for analysis of transfer flows
+  columns:
+  - name: date
+    description: Date truncated from block timestamp, representing the day of the transfer
+    data_type: DateTime
+  - name: from_avatar
+    description: Originator address extracted from decoded parameters
+    data_type: String
+  - name: to_avatar
+    description: Recipient address extracted from decoded parameters
+    data_type: String
+  - name: total_amount
+    description: Sum of amounts (in wei) transferred in the event, aggregated over the group
+    data_type: UInt64
+  - name: cnt
+    description: Count of transfer events aggregated in the group
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - circles
+    - transitive_transfers
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_circles_v1_avatars
+  description: Business-facing model representing avatars in execution circles, including user and inviter addresses, timestamps, and related metadata.
+  columns:
+  - name: block_timestamp
+    description: UTC timestamp when the event was recorded.
+    data_type: DateTime
+  - name: user_address
+    description: Decoded avatar address of the user (hex string).
+    data_type: String
+  - name: inviter_address
+    description: Decoded inviter address (hex string).
+    data_type: String
+  config:
+    access: public
+    tags:
+    - dev
+    - execution
+    - circles
+    - avatars
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_circles_v2_avatars
+  description: Business-facing model representing avatar data derived from execution layer tables, including registration events, counts, and associated metadata.
+  columns:
+  - name: date
+    description: Date truncated to day from block timestamps, representing the day of the event.
+    data_type: DateTime
+  - name: avatar_type
+    description: 'Type of avatar based on registration event: ''Human'', ''Group'', ''Org'', or ''Unknown''.'
+    data_type: String
+  - name: cnt
+    description: Count of registration events for the given avatar type on the specific date.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - circles
+    - avatars
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
