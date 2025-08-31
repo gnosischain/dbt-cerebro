@@ -1,3 +1,10 @@
+{{ 
+    config(
+        materialized='view',
+        tags=['production','crawlers_data', 'probelab_agent_semvers_avg_1d']
+    ) 
+}}
+
 SELECT
     agent_version_type,
     min_crawl_created_at,
