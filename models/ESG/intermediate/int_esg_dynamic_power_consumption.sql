@@ -173,6 +173,7 @@ carbon_intensity_lookup AS (
     LEFT JOIN {{ ref('int_esg_carbon_intensity_ensemble') }} ci_world
         ON ci_world.country_code = 'WORLD'
         AND ci_world.month_date = toStartOfMonth(p.date)
+    WHERE ci_country.month_date != DATE '1970-01-01' OR ci_world.month_date != DATE '1970-01-01' -- nu;;s ghet repl;ace by date...
 ),
 
 -- Final calculations with carbon emissions
@@ -219,7 +220,7 @@ final_calculations AS (
         p.total_client_nodes
         
     FROM final_power_calculations p
-    JOIN carbon_intensity_lookup ci
+    INNER JOIN carbon_intensity_lookup ci
         ON p.date = ci.date
         AND COALESCE(p.country_code_alpha3, '') = COALESCE(ci.country_code_alpha3, '')
 )
