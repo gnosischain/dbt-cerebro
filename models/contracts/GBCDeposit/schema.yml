@@ -2,44 +2,47 @@ version: 2
 models:
 
 - name: contracts_GBCDeposit_calls
-  description: This model captures GBC deposit call data, including transaction details, contract interactions, and timestamps relevant for deposit analysis.
+  description: Contains call data related to GBC Deposit contracts, including transaction details, block timestamps, and contract-specific information.
   columns:
   - name: transaction_hash
-    description: Unique identifier of the transaction (hash)
+    description: Unique identifier for each transaction, represented as a hexadecimal string.
     data_type: String
-  - name: block_number
-    description: Block number in which the transaction was included
-    data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined (UTC)
+    description: Timestamp of the block containing the transaction, in UTC.
     data_type: DateTime
+  - name: block_number
+    description: Number of the block containing the transaction.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block, indicating order of logs.
+    data_type: UInt64
   - name: contract_address
-    description: Address of the contract involved in the call
+    description: Address of the GBC Deposit contract involved in the call.
+    data_type: String
+  - name: method_id
+    description: Identifier of the method called in the contract, as a hexadecimal string.
+    data_type: String
+  - name: method_name
+    description: Name of the method invoked in the contract.
     data_type: String
   - name: caller_address
-    description: Address initiating the call
+    description: Address initiating the transaction, as a hexadecimal string.
     data_type: String
   - name: call_data
-    description: Encoded data payload of the call
+    description: Encoded call data payload sent to the contract.
     data_type: String
   - name: output_json_type
-    description: Indicates if output is in JSON format (true/false)
-    data_type: String
-  - name: transaction_index
-    description: Index of the transaction within the block
+    description: Indicates if the output is in JSON format; boolean represented as integer.
     data_type: UInt64
-  - name: gas_used
-    description: Gas used for the transaction
-    data_type: UInt64
-  - name: gas_price
-    description: Gas price in wei
+  - name: output_data
+    description: The output data from the contract call, stored as JSON.
     data_type: String
-  - name: status
-    description: Transaction status (e.g., success, failure)
+  - name: output_status
+    description: Status of the contract call execution, e.g., success or failure.
     data_type: String
-  - name: output_json
-    description: Output data in JSON format
-    data_type: JSON
+  - name: block_month
+    description: The start of the month for the block timestamp, used for partitioning.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -53,35 +56,38 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_GBCDeposit_events
-  description: Business-facing events related to GBC deposits, capturing transaction details, timestamps, and identifiers for analysis.
+  description: Business-facing model capturing GBC deposit events with timestamp, log index, and related details.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event occurred
+    description: Timestamp of the block when the event occurred, in UTC.
     data_type: DateTime
   - name: log_index
-    description: Index of the log within the block (numeric, sequential)
+    description: Index of the log within the block, used to order events.
     data_type: UInt64
   - name: transaction_hash
-    description: Unique hash identifying the transaction
+    description: Unique hash identifying the transaction.
     data_type: String
   - name: contract_address
-    description: Address of the contract emitting the event
+    description: Address of the contract emitting the event.
     data_type: String
-  - name: depositor_address
-    description: Address of the account making the deposit
+  - name: event_type
+    description: Type of the event emitted, e.g., 'GBCDeposit'.
     data_type: String
   - name: deposit_amount
-    description: Amount deposited in wei
+    description: Amount deposited, in wei.
     data_type: String
-  - name: deposit_id
-    description: Unique identifier for the deposit event
+  - name: depositor_address
+    description: Address of the depositor.
     data_type: String
   - name: block_number
-    description: Number of the block containing the event
+    description: Number of the block containing the event.
     data_type: UInt64
-  - name: event_type
-    description: Type of the event, e.g., 'Deposit'
-    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: event_data
+    description: Raw JSON data of the event for additional context.
+    data_type: JSON
   config:
     access: public
     materialized: incremental
@@ -91,6 +97,6 @@ models:
     - gbcdeposit
     - events
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

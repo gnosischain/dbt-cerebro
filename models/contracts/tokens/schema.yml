@@ -2,44 +2,35 @@ version: 2
 models:
 
 - name: contracts_sdai_events
-  description: This model captures SDAI event data related to contracts, including transaction details, timestamps, and identifiers for analysis and reporting.
+  description: This model captures SDAI-related event data from contract logs, including timestamps, addresses, and event-specific details for analysis and reporting.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was emitted.
+    description: The timestamp of the block containing the event, in UTC.
     data_type: DateTime
   - name: log_index
-    description: Index of the log within the block.
+    description: The index of the log within the block, used to order events.
     data_type: UInt64
   - name: transaction_hash
-    description: Hash of the transaction associated with the event.
+    description: The hash of the transaction that emitted the event.
     data_type: String
   - name: contract_address
-    description: Address of the contract emitting the event.
+    description: The address of the contract emitting the event.
     data_type: String
   - name: event_type
-    description: Type of the event emitted.
+    description: The type of the event emitted, indicating the specific action.
     data_type: String
-  - name: event_data
-    description: JSON containing event-specific data.
-    data_type: JSON
-  - name: block_number
-    description: Number of the block containing the event.
-    data_type: UInt64
   - name: sender_address
-    description: Address of the sender involved in the event.
+    description: The address initiating the transaction or event.
     data_type: String
   - name: recipient_address
-    description: Address of the recipient involved in the event.
+    description: The address receiving tokens or assets, if applicable.
     data_type: String
   - name: amount
-    description: Amount transferred in wei.
+    description: The amount involved in the event, in wei or relevant units.
     data_type: String
-  - name: status
-    description: Status of the event, e.g., 'success' or 'failure'.
-    data_type: String
-  - name: created_at
-    description: Timestamp when the record was created.
-    data_type: DateTime
+  - name: metadata
+    description: Additional event data in JSON format.
+    data_type: JSON
   config:
     access: public
     materialized: incremental
@@ -53,38 +44,47 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_wxdai_calls
-  description: This model contains data on WXDai calls related to contracts, including transaction details and call specifics.
+  description: This model contains call data related to wxDai contracts, including transaction details and block information.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the call occurred.
+    description: Timestamp of the block when the call was made.
     data_type: DateTime
   - name: transaction_hash
-    description: Unique hash identifying the transaction.
+    description: Unique hash of the transaction.
     data_type: String
   - name: block_number
-    description: Number of the block containing the transaction.
+    description: Number of the block containing the call.
     data_type: UInt64
   - name: log_index
     description: Index of the log within the block.
     data_type: UInt64
-  - name: contract_address
-    description: Address of the contract involved in the call.
-    data_type: String
   - name: caller_address
-    description: Address initiating the call.
+    description: Address of the caller initiating the call.
     data_type: String
-  - name: call_data
-    description: Encoded call data payload.
+  - name: contract_address
+    description: Address of the contract being called.
+    data_type: String
+  - name: method_id
+    description: Identifier of the method invoked in the call.
+    data_type: String
+  - name: input_data
+    description: Encoded input data for the call.
+    data_type: String
+  - name: output_data
+    description: Encoded output data returned from the call.
     data_type: String
   - name: call_value
-    description: Value transferred during the call in wei.
+    description: Value transferred in the call, in wei.
     data_type: String
-  - name: output_json_type
-    description: Indicates if output is in JSON format.
-    data_type: UInt64
-  - name: output_data
-    description: Output data from the call.
+  - name: status
+    description: Call execution status (e.g., success or failure).
     data_type: String
+  - name: block_hash
+    description: Hash of the block containing the call.
+    data_type: String
+  - name: created_at
+    description: Timestamp when the record was created.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -94,47 +94,50 @@ models:
     - wxdai
     - calls
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_wxdai_events
-  description: This model captures WXDai event logs related to contracts, including transaction details, block information, and event-specific data for analysis and reporting.
+  description: This model captures WXDai event logs related to contracts, including block and log details, timestamps, and transaction info.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block when the event was emitted (UTC)
+    description: Timestamp of the block containing the event, in UTC.
     data_type: DateTime
   - name: block_number
-    description: Number of the block containing the event
+    description: Number of the block containing the event.
     data_type: UInt64
   - name: log_index
-    description: Index of the log within the block
+    description: Index of the log within the block.
     data_type: UInt64
   - name: transaction_hash
-    description: Hash of the transaction that emitted the event
+    description: Hash of the transaction that generated the event.
     data_type: String
   - name: contract_address
-    description: Address of the contract emitting the event
+    description: Address of the contract emitting the event.
     data_type: String
   - name: event_name
-    description: Name of the emitted event
+    description: Name of the event emitted.
     data_type: String
-  - name: amount
-    description: Amount involved in the event, in wei
-    data_type: String
-  - name: sender
-    description: Address of the sender involved in the event
-    data_type: String
-  - name: recipient
-    description: Address of the recipient involved in the event
-    data_type: String
-  - name: data
-    description: Raw event data payload in JSON format
+  - name: event_data
+    description: JSON object containing event-specific data.
     data_type: JSON
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: gas_used
+    description: Amount of gas used for the transaction, in wei.
+    data_type: String
+  - name: gas_price
+    description: Gas price at the time of transaction, in wei.
+    data_type: String
+  - name: status
+    description: Status of the transaction (e.g., success or failure).
+    data_type: String
   - name: created_at
-    description: Timestamp when the record was created in the database (UTC)
+    description: Record creation timestamp in UTC.
     data_type: DateTime
   - name: updated_at
-    description: Timestamp when the record was last updated (UTC)
+    description: Record last update timestamp in UTC.
     data_type: DateTime
   config:
     access: public
@@ -145,6 +148,6 @@ models:
     - wxdai
     - events
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

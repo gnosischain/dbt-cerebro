@@ -593,54 +593,54 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_forks
-  description: A fact table capturing different consensus fork details, including fork name, version, digest, epoch, and fork time, derived from multiple source tables and calculations.
+  description: A fact table capturing consensus fork information, including fork names, versions, digests, epochs, and times, derived from beacon chain data.
   columns:
-  - name: fork_digest
-    description: Unique identifier hash for each fork digest.
-    data_type: String
-  - name: cl_fork_name
-    description: Name of the fork as parsed from source data.
+  - name: fork_name
+    description: Name of the fork (e.g., Phase0, Altair, Bellatrix, Capella, Deneb, Electra, Fulu).
     data_type: String
   - name: fork_version
-    description: Version string associated with the fork (e.g., 'PHASE0', 'Altair').
+    description: Fork version string (e.g., 'PHASE0', 'Altair', etc.).
     data_type: String
-  - name: fork_name
-    description: Standardized fork name, normalized (e.g., 'PHASE0' for 'GENESIS').
+  - name: fork_digest
+    description: Unique digest identifier for the fork.
     data_type: String
   - name: fork_epoch
     description: Epoch number at which the fork occurred.
     data_type: String
   - name: fork_time
-    description: Calculated timestamp when the fork occurred, or NULL if not applicable.
+    description: UTC timestamp when the fork occurred; null if epoch is -1.
     data_type: DateTime
   config:
     access: public
-    materialized: view
     tags:
     - production
     - consensus
     - forks
+    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_graffiti_cloud
-  description: Aggregated graffiti counts over various time windows, filtered to exclude 'None' graffiti.
+  description: Aggregated graffiti counts over different time windows, filtered to exclude 'None' graffiti.
   columns:
   - name: label
-    description: Time window label, e.g., '7D', '30D', '90D', 'All'.
+    description: Time window label for graffiti counts ('7D', '30D', '90D', 'All').
     data_type: String
   - name: v_7d
-    description: Sum of counts for the last 7 days.
+    description: Sum of graffiti occurrences in the last 7 days.
     data_type: UInt64
   - name: v_30d
-    description: Sum of counts for the last 30 days.
+    description: Sum of graffiti occurrences in the last 30 days.
     data_type: UInt64
   - name: v_90d
-    description: Sum of counts for the last 90 days.
+    description: Sum of graffiti occurrences in the last 90 days.
     data_type: UInt64
+  - name: graffiti
+    description: Graffiti string identifier.
+    data_type: String
   - name: v_all
-    description: Total count across all available data.
+    description: Total graffiti occurrences across all time.
     data_type: UInt64
   config:
     access: public
@@ -654,16 +654,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_info_latest
-  description: Aggregated latest consensus data including deposit and withdrawal counts, total amounts, APY, validator status, and staked balances, with 7-day comparisons.
+  description: Aggregated latest consensus data including deposit and withdrawal counts, total amounts, APY, validator statuses, and staked balances, with comparisons to 7-day prior data.
   columns:
   - name: label
-    description: Label identifying the metric, e.g., deposits_cnt, withdrawls_total_amount, APY7D.
+    description: Identifier for the metric or category (e.g., deposits, withdrawls, APY).
     data_type: String
   - name: value
-    description: Numeric value of the metric; units vary per label.
+    description: Numeric value of the metric; units vary (counts, amounts, percentages).
     data_type: Float64
   - name: change_pct
-    description: Percentage change over 7 days; 0 if both current and previous are zero.
+    description: Percentage change compared to 7-day prior; 0 if both values are zero.
     data_type: Float64
   config:
     access: public
@@ -673,7 +673,7 @@ models:
     - info
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_validators_apy_daily

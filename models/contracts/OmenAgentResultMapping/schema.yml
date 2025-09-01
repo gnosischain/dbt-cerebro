@@ -2,37 +2,28 @@ version: 2
 models:
 
 - name: contracts_OmenAgentResultMapping_calls
-  description: This model processes call data related to Omen Agent Result Mapping, including transaction details, contract addresses, and timing information for analysis and reporting.
+  description: This model processes call data related to Omen Agent Result Mapping, including transaction details, contract addresses, and timestamps for analysis and reporting.
   columns:
   - name: transaction_hash
-    description: Unique identifier for each transaction.
+    description: Unique identifier for each transaction, used as primary key.
     data_type: String
-  - name: block_number
-    description: Block number in which the transaction was included.
-    data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined.
+    description: Timestamp of the block containing the transaction, in UTC.
     data_type: DateTime64(0, 'UTC')
+  - name: block_number
+    description: Number of the block containing the transaction.
+    data_type: UInt64
   - name: contract_address
     description: Address of the contract involved in the call.
     data_type: String
   - name: output_json_type
-    description: Indicates if the output is in JSON format (true/false).
-    data_type: UInt64
-  - name: transaction_index
-    description: Index of the transaction within the block.
-    data_type: UInt64
-  - name: call_data
-    description: Encoded call data for the transaction.
+    description: Indicates if the output is in JSON format; boolean flag.
     data_type: String
-  - name: block_time
-    description: Alias for block_timestamp, representing the time of the block.
-    data_type: DateTime64(0, 'UTC')
-  - name: incremental_column
-    description: Column used for incremental processing, typically block timestamp.
-    data_type: DateTime64(0, 'UTC')
+  - name: tx_table
+    description: Source table for transaction data.
+    data_type: String
   - name: start_blocktime
-    description: Starting block timestamp for data processing window.
+    description: Starting block timestamp for data processing, in UTC.
     data_type: DateTime64(0, 'UTC')
   config:
     access: public
@@ -47,29 +38,32 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_OmenAgentResultMapping_events
-  description: This model processes event logs related to Omen Agent Result Mapping, capturing details of contract events for analysis.
+  description: This model processes Omen Agent Result Mapping events, capturing details about event timestamps, block info, and transaction data for analysis.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block containing the event, in UTC.
+    description: Timestamp of the block when the event was emitted
     data_type: DateTime
-  - name: log_index
-    description: Index of the log within the block, used to order logs.
+  - name: block_number
+    description: Number of the block containing the event
     data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block
+    data_type: UInt64
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event
+    data_type: String
   - name: contract_address
-    description: Address of the contract emitting the event.
+    description: Address of the contract emitting the event
     data_type: String
-  - name: event_id
-    description: Unique identifier for the event, possibly a hash.
-    data_type: String
-  - name: result_mapping_id
-    description: Identifier for the result mapping, linking to related records.
-    data_type: String
-  - name: status
-    description: Status of the event, e.g., 'success', 'failure'.
-    data_type: String
-  - name: details
-    description: Additional event details in JSON format.
+  - name: event_data
+    description: JSON containing event-specific data
     data_type: JSON
+  - name: created_at
+    description: Timestamp when the record was created in the database
+    data_type: DateTime
+  - name: updated_at
+    description: Timestamp when the record was last updated
+    data_type: DateTime
   config:
     access: public
     materialized: incremental

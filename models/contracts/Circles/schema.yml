@@ -2,131 +2,125 @@ version: 2
 models:
 
 - name: contracts_circles_v1_Hub_events
-  description: This model captures event data related to contracts circles, including timestamps, identifiers, and related metadata for analysis and reporting.
+  description: This model processes and consolidates event data related to contract circles, capturing key event attributes for analysis and reporting.
   columns:
   - name: block_timestamp
-    description: The timestamp when the block containing the event was mined.
+    description: Timestamp of the block containing the event, in UTC.
     data_type: DateTime
   - name: log_index
-    description: The index of the log within the block.
-    data_type: UInt64
-  - name: block_number
-    description: The number of the block containing the event.
+    description: Index of the log within the block, used to order events.
     data_type: UInt64
   - name: transaction_hash
-    description: The hash of the transaction that generated the event.
-    data_type: String
-  - name: contract_address
-    description: The address of the contract emitting the event.
+    description: Hash of the transaction that emitted the event.
     data_type: String
   - name: event_name
-    description: The name of the event emitted.
+    description: Name of the event emitted, indicating the event type.
+    data_type: String
+  - name: contract_address
+    description: Address of the contract emitting the event.
     data_type: String
   - name: circle_id
-    description: Unique identifier for the circle related to the event.
+    description: Unique identifier for the circle associated with the event.
     data_type: String
-  - name: circle_name
-    description: Human-readable name of the circle.
+  - name: owner_address
+    description: Address of the owner involved in the event.
     data_type: String
-  - name: sender_address
-    description: Address of the sender initiating the event.
-    data_type: String
-  - name: recipient_address
-    description: Address of the recipient involved in the event.
-    data_type: String
-  - name: event_value
-    description: The value associated with the event, in wei.
-    data_type: String
-  - name: event_metadata
-    description: Additional metadata for the event in JSON format.
+  - name: event_data
+    description: JSON object containing detailed event data.
     data_type: JSON
   config:
     access: public
+    materialized: incremental
     tags:
     - production
     - contracts
     - circles
     - events
-    materialized: incremental
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_circles_v2_Hub_events
-  description: This model processes hub events related to contracts and circles, capturing event details, timestamps, and identifiers for business analysis.
+  description: This model processes hub event logs related to contracts and circles, capturing event details, timestamps, and identifiers for business analysis.
   columns:
   - name: block_timestamp
-    description: Timestamp of the event in UTC
+    description: The timestamp when the block was mined, in UTC.
     data_type: DateTime
   - name: log_index
-    description: Index of the log within the block
+    description: The index of the log within the block, indicating order.
     data_type: UInt64
   - name: transaction_hash
-    description: Unique hash of the transaction
+    description: Unique identifier of the transaction associated with the event.
     data_type: String
   - name: event_name
-    description: Name of the event emitted
-    data_type: String
-  - name: contract_address
-    description: Address of the contract emitting the event
+    description: Name of the event emitted, e.g., 'CircleCreated', 'CircleJoined'.
     data_type: String
   - name: circle_id
-    description: Identifier for the circle involved
+    description: Unique identifier for the circle involved in the event.
     data_type: String
-  - name: contract_id
-    description: Identifier for the contract involved
+  - name: contract_address
+    description: Ethereum address of the contract emitting the event.
     data_type: String
-  - name: event_data
-    description: JSON containing event-specific data
+  - name: sender_address
+    description: Address initiating the transaction or event.
+    data_type: String
+  - name: recipient_address
+    description: Address receiving tokens or involved in the event.
+    data_type: String
+  - name: amount
+    description: Amount transferred or involved, in wei; may be large.
+    data_type: String
+  - name: metadata
+    description: Additional event data in JSON format.
     data_type: JSON
   config:
     access: public
+    materialized: incremental
     tags:
     - production
     - contracts
     - circles
     - events
-    materialized: incremental
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_circles_v2_NameRegistry_events
-  description: This model captures NameRegistry events related to contracts circles v2, including event details, timestamps, and transaction info.
+  description: This model captures NameRegistry events related to contracts circles v2, including event timestamps, addresses, and transaction details.
   columns:
   - name: event_id
-    description: Unique identifier for each event.
+    description: Unique identifier for each event, typically a hash or UUID.
+    data_type: String
+  - name: event_type
+    description: Type of the event (e.g., Registration, Transfer).
+    data_type: String
+  - name: contract_address
+    description: Address of the contract involved in the event.
+    data_type: String
+  - name: from_address
+    description: Address initiating the event, if applicable.
+    data_type: String
+  - name: to_address
+    description: Address receiving the event, if applicable.
     data_type: String
   - name: block_number
     description: Blockchain block number where the event was recorded.
     data_type: UInt64
   - name: block_timestamp
     description: Timestamp of the block containing the event.
-    data_type: DateTime64(0, 'UTC')
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that triggered the event.
+    data_type: String
   - name: log_index
     description: Index of the log within the block.
     data_type: UInt64
-  - name: transaction_hash
-    description: Hash of the transaction that emitted the event.
-    data_type: String
-  - name: contract_address
-    description: Address of the contract emitting the event.
-    data_type: String
-  - name: event_name
-    description: Name of the event emitted.
-    data_type: String
-  - name: owner_address
-    description: Address of the owner involved in the event.
-    data_type: String
-  - name: name
-    description: Name associated with the registry event.
-    data_type: String
-  - name: registration_time
-    description: Time when the registration occurred.
-    data_type: DateTime64(0, 'UTC')
-  - name: metadata
-    description: Additional metadata in JSON format.
+  - name: event_data
+    description: Raw JSON data associated with the event.
     data_type: JSON
+  - name: created_at
+    description: Timestamp when the record was created in the database.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -140,44 +134,35 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_circles_v2_CirclesBackingFactory_events
-  description: This table captures event data emitted by the CirclesBackingFactory contract, including transaction details, block info, and event-specific parameters.
+  description: This model captures events emitted by the CirclesBackingFactory contract, including transaction details and event-specific data for analysis.
   columns:
-  - name: id
-    description: Unique identifier for each event record, generated as a primary key.
-    data_type: String
-  - name: block_number
-    description: Block number in which the event was included.
-    data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined, in UTC.
-    data_type: DateTime64(0, 'UTC')
-  - name: transaction_hash
-    description: Hash of the transaction that emitted the event.
-    data_type: String
+    description: The timestamp when the block containing the event was mined.
+    data_type: DateTime
   - name: log_index
-    description: Index of the log within the block, used to order events.
+    description: The index of the log within the block, used to order events.
     data_type: UInt64
-  - name: contract_address
-    description: Address of the CirclesBackingFactory contract emitting the event.
+  - name: transaction_hash
+    description: The hash of the transaction that emitted the event.
     data_type: String
   - name: event_name
-    description: Name of the event emitted, e.g., 'BackingCreated', 'BackingUpdated'.
+    description: The name of the event emitted by the contract.
+    data_type: String
+  - name: contract_address
+    description: The address of the CirclesBackingFactory contract emitting the event.
     data_type: String
   - name: backing_id
     description: Unique identifier for the backing instance.
     data_type: String
-  - name: owner
-    description: Address of the owner associated with the backing.
+  - name: backing_amount
+    description: Amount associated with the backing, in wei.
     data_type: String
-  - name: amount_wei
-    description: Amount involved in the event, denominated in wei.
+  - name: backing_owner
+    description: Address of the owner who initiated the backing.
     data_type: String
-  - name: backing_type
-    description: Type of backing, e.g., 'collateral', 'liquidity'.
-    data_type: String
-  - name: created_at
-    description: Timestamp when the record was created in the system.
-    data_type: DateTime64(0, 'UTC')
+  - name: backing_timestamp
+    description: Timestamp when the backing was created.
+    data_type: DateTime
   config:
     access: public
     tags:
@@ -187,6 +172,6 @@ models:
     - events
     materialized: incremental
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
