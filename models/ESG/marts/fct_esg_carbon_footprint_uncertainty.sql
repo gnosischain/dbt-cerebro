@@ -291,9 +291,9 @@ SELECT
     round(network_carbon_intensity_gco2_kwh + 1.96 * network_carbon_intensity_std, 2) AS effective_carbon_intensity_upper_95,
     
     -- NODE POPULATION WITH BOUNDS
-    total_estimated_nodes AS estimated_validator_nodes,
-    total_nodes_lower_95 AS validator_nodes_lower_95,
-    total_nodes_upper_95 AS validator_nodes_upper_95,
+    total_estimated_nodes AS estimated_nodes,
+    total_nodes_lower_95 AS nodes_lower_95,
+    total_nodes_upper_95 AS nodes_upper_95,
     
     -- Category breakdown for energy (daily)
     home_staker_energy_kwh_daily,

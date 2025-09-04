@@ -2,53 +2,62 @@ version: 2
 models:
 
 - name: stg_execution__blocks
-  description: Business-facing staging model for execution blocks, including core block data, decoded extra data, and associated metadata for analysis.
+  description: Business-facing staging model for execution layer blocks, including metadata, transaction, log, transfer, contract, trace, and index metadata.
   columns:
   - name: extra_data
     description: Arbitrary extra-data bytes set by the block proposer (hex).
     data_type: String
+  - name: mix_hash
+    description: Mix hash (pre-merge PoW) or random field.
+    data_type: String
   - name: parent_hash
     description: Hash of the parent block header.
-    data_type: String
-  - name: receipts_root
-    description: Root hash of the receipts trie.
-    data_type: String
-  - name: block_timestamp
-    description: UTC timestamp of the block (materialized from `timestamp`).
-    data_type: DateTime
-  - name: base_fee_per_gas
-    description: Base fee per gas (wei) introduced by EIP-1559.
-    data_type: UInt64
-  - name: state_root
-    description: Root hash of the state trie.
     data_type: String
   - name: gas_used
     description: Total gas consumed by transactions in the block.
     data_type: UInt64
-  - name: block_number
-    description: Height of the block containing the record.
-    data_type: UInt32
-  - name: nonce
-    description: Block nonce (legacy field).
+  - name: author
+    description: Address (20-byte hex) of the validator/miner that proposed the block.
     data_type: String
-  - name: mix_hash
-    description: Mix hash (pre-merge PoW) or random field.
+  - name: receipts_root
+    description: Root hash of the receipts trie.
     data_type: String
-  - name: block_hash
-    description: Keccak-256 hash of the block header.
+  - name: state_root
+    description: Root hash of the state trie.
     data_type: String
   - name: transactions_root
     description: Root hash of the transactions trie.
     data_type: String
-  - name: size
-    description: Serialized block size in bytes.
-    data_type: UInt64
+  - name: block_number
+    description: Height of the block containing the record.
+    data_type: UInt32
+  - name: block_hash
+    description: Keccak-256 hash of the block header.
+    data_type: String
   - name: uncles_hash
     description: Keccak-256 hash of the ommers list.
     data_type: String
-  - name: author
-    description: Address (20-byte hex) of the validator/miner that proposed the block.
+  - name: size
+    description: Serialized block size in bytes.
+    data_type: UInt64
+  - name: nonce
+    description: Block nonce (legacy field).
     data_type: String
+  - name: base_fee_per_gas
+    description: Base fee per gas introduced by EIP-1559 (wei).
+    data_type: UInt64
+  - name: withdrawals_root
+    description: Root hash of withdrawals list (Shanghai+).
+    data_type: String
+  - name: block_timestamp
+    description: UTC timestamp for the block (materialized from `timestamp`).
+    data_type: DateTime
+  - name: chain_id
+    description: EVM chain identifier (100 for Gnosis).
+    data_type: UInt64
+  - name: insert_version
+    description: Monotonic ingestion version (nanoseconds).
+    data_type: UInt64
   config:
     access: public
     tags:
@@ -57,6 +66,6 @@ models:
     - blocks
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer

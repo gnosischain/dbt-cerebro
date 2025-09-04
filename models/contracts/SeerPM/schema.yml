@@ -2,25 +2,25 @@ version: 2
 models:
 
 - name: contracts_Seer_MarketFactory_calls
-  description: This model captures call data related to the Seer MarketFactory contracts, including transaction details, block information, and call specifics.
+  description: This model processes call data from the Seer MarketFactory contract, capturing transaction details, block info, and call specifics for analysis.
   columns:
   - name: block_timestamp
-    description: The timestamp when the block was mined, in UTC.
+    description: Timestamp of the block containing the call, in UTC.
     data_type: DateTime
   - name: transaction_hash
     description: Unique hash identifying the transaction.
     data_type: String
   - name: block_number
-    description: The number of the block containing the transaction.
+    description: Number of the block containing the call.
     data_type: UInt64
   - name: log_index
-    description: The index of the log within the block.
+    description: Index of the log within the block.
     data_type: UInt64
   - name: caller_address
-    description: Address of the caller initiating the transaction.
+    description: Address of the caller initiating the call.
     data_type: String
   - name: contract_address
-    description: Address of the contract being called.
+    description: Address of the contract being called, fixed as '0x83183da839ce8228e31ae41222ead9edbb5cdcf1'.
     data_type: String
   - name: call_data
     description: Encoded call data payload.
@@ -28,8 +28,17 @@ models:
   - name: output_json_type
     description: Indicates if the output is in JSON format; boolean flag.
     data_type: String
-  - name: output_data
-    description: The output data from the call, in JSON format.
+  - name: incremental_column
+    description: Column used for incremental processing, typically 'block_timestamp'.
+    data_type: String
+  - name: start_blocktime
+    description: The starting block timestamp for incremental loads, e.g., '2024-10-08'.
+    data_type: DateTime
+  - name: settings_allow_nullable_key
+    description: Setting indicating allowance of nullable keys, typically '1'.
+    data_type: String
+  - name: pre_hook
+    description: SQL commands executed before model run, e.g., setting JSON type allowance.
     data_type: String
   config:
     access: public
@@ -44,46 +53,55 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Seer_MarketFactory_events
-  description: This model captures event logs related to the Seer MarketFactory, including transaction details, block information, and event-specific data, used for analytics and reporting.
+  description: This model captures event logs related to the Seer MarketFactory, including transaction details, block information, and event-specific data for analysis and reporting.
   columns:
   - name: block_timestamp
-    description: Timestamp of the block containing the event, in UTC.
+    description: The timestamp of the block when the event was recorded.
     data_type: DateTime
   - name: log_index
-    description: Index of the log within the block, used to order events.
+    description: The index of the log within the block (order of logs).
     data_type: UInt64
   - name: transaction_hash
-    description: Unique hash identifying the transaction.
+    description: The hash identifying the transaction associated with the event.
     data_type: String
   - name: block_number
-    description: Number of the block containing the event.
+    description: The number of the block containing the event.
     data_type: UInt64
   - name: contract_address
-    description: Address of the contract emitting the event.
+    description: The address of the contract emitting the event.
     data_type: String
   - name: event_name
-    description: Name of the event emitted.
+    description: The name/type of the event emitted.
     data_type: String
   - name: event_data
-    description: JSON object containing event-specific data.
+    description: The JSON payload containing event-specific data.
     data_type: JSON
+  - name: block_hash
+    description: The hash of the block containing the event.
+    data_type: String
+  - name: transaction_index
+    description: The index of the transaction within the block.
+    data_type: UInt64
   - name: sender_address
-    description: Address of the sender involved in the event.
+    description: The address initiating the transaction.
     data_type: String
   - name: receiver_address
-    description: Address of the receiver involved in the event.
+    description: The address receiving the transaction, if applicable.
     data_type: String
-  - name: amount
-    description: Amount transferred in wei.
-    data_type: UInt64
-  - name: token_id
-    description: Identifier for the token involved.
+  - name: gas_used
+    description: The amount of gas used for the transaction, in wei.
     data_type: String
-  - name: block_hash
-    description: Hash of the block containing the event.
+  - name: gas_price
+    description: The gas price at the time of the transaction, in wei.
     data_type: String
-  - name: created_at
-    description: Timestamp when the record was created in the database.
+  - name: value
+    description: The value transferred in the transaction, in wei.
+    data_type: String
+  - name: block_base_fee_per_gas
+    description: The base fee per gas in the block, in wei.
+    data_type: String
+  - name: timestamp
+    description: Alias for block_timestamp for convenience.
     data_type: DateTime
   config:
     access: public
@@ -98,37 +116,37 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Seer_Wrapped1155Factory_calls
-  description: This model captures call data for the Seer Wrapped1155Factory contract, including transaction details, block info, and call specifics.
+  description: This model captures call data for the Seer Wrapped1155Factory contract, including transaction details, block information, and call specifics.
   columns:
+  - name: block_number
+    description: The number of the block containing the transaction.
+    data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the block was mined, in UTC.
+    description: The timestamp when the block was mined.
     data_type: DateTime
   - name: transaction_hash
     description: Unique hash identifying the transaction.
     data_type: String
-  - name: block_number
-    description: The number of the block containing the transaction.
-    data_type: UInt64
   - name: log_index
-    description: Index of the log within the block.
+    description: Index of the log within the transaction receipt.
     data_type: UInt64
-  - name: caller_address
-    description: Address initiating the call.
+  - name: caller
+    description: Address of the caller initiating the call.
     data_type: String
   - name: contract_address
-    description: Address of the contract being called.
+    description: Address of the contract being interacted with.
     data_type: String
   - name: function_name
     description: Name of the function invoked in the call.
     data_type: String
   - name: call_data
-    description: Encoded call data payload.
+    description: Encoded data payload of the call.
     data_type: String
-  - name: output_json_type
-    description: Indicates if the output is in JSON format.
-    data_type: UInt64
-  - name: output_data
-    description: The output data from the call, in JSON or raw format.
+  - name: value
+    description: Amount of wei transferred with the call.
+    data_type: String
+  - name: output_json
+    description: JSON-formatted output of the call, if applicable.
     data_type: String
   config:
     access: public
@@ -144,43 +162,37 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Seer_Wrapped1155Factory_events
-  description: Event logs emitted by the Wrapped1155Factory contract, capturing creation, transfer, and approval events related to ERC-1155 tokens.
+  description: Event logs emitted by the Wrapped1155Factory contract, capturing transaction details, event specifics, and block information.
   columns:
   - name: block_number
-    description: The block number at which the event was included.
+    description: The number of the block containing the event.
     data_type: UInt64
+  - name: block_timestamp
+    description: The timestamp when the block was mined.
+    data_type: DateTime
   - name: transaction_hash
-    description: Hash of the transaction that emitted the event.
+    description: Hash of the transaction emitting the event.
     data_type: String
   - name: log_index
     description: Index of the log within the block.
     data_type: UInt64
-  - name: block_timestamp
-    description: Timestamp when the block was mined.
-    data_type: DateTime
-  - name: event_type
-    description: Type of the event (e.g., 'Transfer', 'Approval', 'Create').
+  - name: event_name
+    description: Name of the emitted event.
     data_type: String
+  - name: event_data
+    description: JSON object containing event-specific data.
+    data_type: JSON
   - name: contract_address
     description: Address of the Wrapped1155Factory contract emitting the event.
     data_type: String
-  - name: from_address
-    description: Address of the sender (for transfer and approval events).
+  - name: block_hash
+    description: Hash of the block containing the event.
     data_type: String
-  - name: to_address
-    description: Address of the receiver (for transfer and approval events).
-    data_type: String
-  - name: token_id
-    description: Identifier of the ERC-1155 token involved.
-    data_type: String
-  - name: amount
-    description: Quantity of tokens transferred or approved.
-    data_type: String
-  - name: operator
-    description: Address authorized to operate on the tokens (for approvals).
-    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
   - name: created_at
-    description: Timestamp when the record was created in the database.
+    description: Timestamp when the record was created in the data warehouse.
     data_type: DateTime
   config:
     access: public

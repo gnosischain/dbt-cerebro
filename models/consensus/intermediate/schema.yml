@@ -106,16 +106,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_consensus_blocks_daily
-  description: Daily aggregated data summarizing consensus layer blocks, missed blocks, and related metrics for Gnosis Chain.
+  description: Daily aggregation of consensus layer blocks with computed metrics such as blocks produced and missed.
   columns:
   - name: date
     description: The day for which the metrics are aggregated, in UTC.
     data_type: Date
   - name: blocks_produced
-    description: Count of consensus blocks produced on the day.
+    description: Number of blocks produced on the given date.
     data_type: UInt64
   - name: blocks_missed
-    description: Number of expected blocks missed during the day.
+    description: Number of blocks missed on the given date.
     data_type: UInt64
   config:
     access: public
@@ -175,13 +175,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_consensus_entry_queue_daily
-  description: Daily aggregated data on validator activation days, including quantiles and mean, derived from consensus validator data.
+  description: Daily aggregated data on validator activation days, quantiles, and mean activation days for consensus entry queue analysis.
   columns:
   - name: date
-    description: The date (UTC) representing the day of validator activation.
+    description: Date representing the day of validator activation.
     data_type: DateTime64(0, 'UTC')
   - name: validator_count
-    description: Total number of validators active on the given date.
+    description: Total number of validators activated on the date.
     data_type: UInt64
   - name: q05
     description: 5th percentile of activation days.
@@ -205,7 +205,7 @@ models:
     description: 95th percentile of activation days.
     data_type: Float64
   - name: mean
-    description: Average activation days for validators on the given date.
+    description: Average activation days for validators activated on the date.
     data_type: Float64
   config:
     access: public
@@ -219,130 +219,118 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_consensus_graffiti_daily
-  description: Daily aggregated data on graffiti detection, labels, and related client/brand info for consensus layer analysis.
+  description: Aggregated daily counts of graffiti labels with associated metadata, including detected brands, clients, and labels, for consensus layer analysis.
   columns:
   - name: date
-    description: Date of the record, representing the start of the day in UTC.
-    data_type: DateTime64(0, 'UTC')
+    description: Date of the aggregated data, truncated to day.
+    data_type: DateTime
   - name: graffiti
-    description: Original graffiti string from beacon blocks.
+    description: Original graffiti string from the block, in hex format.
     data_type: String
   - name: label
-    description: Final label assigned based on brand, client, or other heuristics.
+    description: 'Final label assigned based on priority: brand, EL+CL combo, EL, CL, ''None'', or ''Other''.'
     data_type: String
   - name: cnt
-    description: Count of occurrences for the graffiti on the given date.
+    description: Count of occurrences for the given graffiti label on that date.
     data_type: UInt64
-  - name: g
-    description: Lowercase version of graffiti for search purposes.
-    data_type: String
   - name: brands_found
     description: Array of detected brand keys present in graffiti.
     data_type: Array(String)
-  - name: brand_label
-    description: Human-readable brand name if detected.
-    data_type: String
-  - name: el_found
-    description: Array of detected Ethereum client (EL) keys.
-    data_type: Array(String)
-  - name: cl_found
-    description: Array of detected consensus layer (CL) client keys.
-    data_type: Array(String)
   - name: el_label
-    description: Detected EL client label.
+    description: Detected Ethereum client label if any.
     data_type: String
   - name: cl_label
-    description: Detected CL client label.
+    description: Detected consensus client label if any.
     data_type: String
   config:
     access: public
+    materialized: table
     tags:
     - production
     - consensus
     - graffiti
-    materialized: incremental
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: int_consensus_validators_apy_daily
-  description: Daily calculation of validators' APY based on deposits, withdrawals, and balance changes.
+  description: Daily aggregated data on validator balances, deposits, withdrawals, and APY calculations for consensus validators.
   columns:
   - name: date
-    description: The date representing the day of the APY calculation.
-    data_type: DateTime64(0, 'UTC')
+    description: The date representing the day of the record, truncated from slot timestamp.
+    data_type: DateTime
   - name: balance
-    description: Total validator balance at the end of the day (wei).
+    description: Total validator balance in wei as of the date.
     data_type: UInt64
   - name: balance_diff
-    description: Difference in balance from previous day (wei).
+    description: Difference in total validator balance compared to previous day.
     data_type: Int64
   - name: deposited_amount
-    description: Total deposits made on that day (wei).
+    description: Total amount deposited on the date in wei.
     data_type: UInt64
   - name: withdrawaled_amount
-    description: Total withdrawals made on that day (wei).
+    description: Total amount withdrawn on the date in wei.
     data_type: UInt64
   - name: deposited_amount_request
-    description: Sum of deposit requests processed on that day (wei).
+    description: Sum of deposit request amounts in wei for the date.
     data_type: UInt64
   - name: withdrawaled_amount_request
-    description: Sum of withdrawal requests processed on that day (wei).
+    description: Sum of withdrawal request amounts in wei for the date.
     data_type: UInt64
   - name: eff_balance_diff
-    description: Effective balance change considering deposits and withdrawals (wei).
+    description: Effective balance change considering deposits and withdrawals.
     data_type: Int64
   - name: rate
-    description: Rate of change in balance relative to previous balance.
+    description: Rate of change of balance relative to previous balance.
     data_type: Float64
   - name: apy
-    description: Annual Percentage Yield calculated from the rate (%).
+    description: Annual Percentage Yield calculated from rate, expressed as a percentage.
     data_type: Float64
   config:
     access: public
-    materialized: incremental
+    materialized: table
     tags:
     - production
     - consensus
     - validators_apy
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: int_consensus_validators_apy_dist
-  description: Business-facing model providing aggregated APY distribution metrics for consensus validators, based on rate calculations and quantile analysis.
+  description: This model calculates the distribution of annual percentage yields (APY) for consensus validators, aggregated monthly, based on their rate of return derived from balance changes, deposits, withdrawals, and related metrics.
   columns:
   - name: date
-    description: The month start date for the APY distribution aggregation.
+    description: The start date of the month for which the APY distribution is calculated.
     data_type: DateTime64(0, 'UTC')
   - name: q05
-    description: 5th percentile of the APY distribution, rounded to 2 decimal places.
+    description: 5th percentile of the validator APY distribution for the month.
     data_type: Float64
   - name: q10
-    description: 10th percentile of the APY distribution, rounded to 2 decimal places.
+    description: 10th percentile of the validator APY distribution for the month.
     data_type: Float64
   - name: q25
-    description: 25th percentile (first quartile) of the APY distribution, rounded to 2 decimal places.
+    description: 25th percentile of the validator APY distribution for the month.
     data_type: Float64
   - name: q50
-    description: Median (50th percentile) of the APY distribution, rounded to 2 decimal places.
+    description: Median (50th percentile) of the validator APY distribution for the month.
     data_type: Float64
   - name: q75
-    description: 75th percentile (third quartile) of the APY distribution, rounded to 2 decimal places.
+    description: 75th percentile of the validator APY distribution for the month.
     data_type: Float64
   - name: q90
-    description: 90th percentile of the APY distribution, rounded to 2 decimal places.
+    description: 90th percentile of the validator APY distribution for the month.
     data_type: Float64
   - name: q95
-    description: 95th percentile of the APY distribution, rounded to 2 decimal places.
+    description: 95th percentile of the validator APY distribution for the month.
     data_type: Float64
   config:
     access: public
+    materialized: table
     tags:
     - production
     - consensus
     - validators_apy
-    materialized: table
   meta:
     owner: analytics_team
     authoritative: false

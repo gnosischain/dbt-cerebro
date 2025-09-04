@@ -593,22 +593,22 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_forks
-  description: A fact table capturing consensus fork information, including fork names, versions, digests, epochs, and times, derived from beacon chain data.
+  description: Business-facing table aggregating fork information, including fork name, version, digest, epoch, and fork time, derived from consensus data sources.
   columns:
   - name: fork_name
     description: Name of the fork (e.g., Phase0, Altair, Bellatrix, Capella, Deneb, Electra, Fulu).
     data_type: String
-  - name: fork_version
-    description: Fork version string (e.g., 'PHASE0', 'Altair', etc.).
-    data_type: String
   - name: fork_digest
     description: Unique digest identifier for the fork.
     data_type: String
+  - name: fork_version
+    description: Fork version string (e.g., 'PHASE0', 'Altair', etc.).
+    data_type: String
   - name: fork_epoch
-    description: Epoch number at which the fork occurred.
+    description: Epoch at which the fork occurred, represented as a string.
     data_type: String
   - name: fork_time
-    description: UTC timestamp when the fork occurred; null if epoch is -1.
+    description: UTC timestamp when the fork occurred, derived from genesis time and epoch.
     data_type: DateTime
   config:
     access: public
@@ -622,10 +622,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_graffiti_cloud
-  description: Aggregated graffiti counts over different time windows, filtered to exclude 'None' graffiti.
+  description: Aggregated graffiti counts over different time windows, filtered to exclude 'None' graffiti entries.
   columns:
   - name: label
-    description: Time window label for graffiti counts ('7D', '30D', '90D', 'All').
+    description: Time window labels for graffiti counts ('7D', '30D', '90D', 'All').
+    data_type: String
+  - name: graffiti
+    description: Graffiti string identifier.
     data_type: String
   - name: v_7d
     description: Sum of graffiti occurrences in the last 7 days.
@@ -636,11 +639,8 @@ models:
   - name: v_90d
     description: Sum of graffiti occurrences in the last 90 days.
     data_type: UInt64
-  - name: graffiti
-    description: Graffiti string identifier.
-    data_type: String
   - name: v_all
-    description: Total graffiti occurrences across all time.
+    description: Total sum of graffiti occurrences across all time.
     data_type: UInt64
   config:
     access: public
@@ -654,16 +654,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_info_latest
-  description: Aggregated latest consensus data including deposit and withdrawal counts, total amounts, APY, validator statuses, and staked balances, with comparisons to 7-day prior data.
+  description: Aggregated latest consensus layer statistics including deposits, withdrawals, APY, validator status, and staked balances, with comparisons over 7-day periods.
   columns:
   - name: label
-    description: Identifier for the metric or category (e.g., deposits, withdrawls, APY).
+    description: Identifier for the metric, e.g., deposits_cnt, withdrawls_total_amount, APY7D.
     data_type: String
   - name: value
-    description: Numeric value of the metric; units vary (counts, amounts, percentages).
+    description: Numeric value of the metric; units vary per label.
     data_type: Float64
   - name: change_pct
-    description: Percentage change compared to 7-day prior; 0 if both values are zero.
+    description: Percentage change over 7 days; null if denominator is zero.
     data_type: Float64
   config:
     access: public
@@ -673,7 +673,7 @@ models:
     - info
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_validators_apy_daily

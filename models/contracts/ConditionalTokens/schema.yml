@@ -2,35 +2,47 @@ version: 2
 models:
 
 - name: contracts_ConditionalTokens_calls
-  description: Model representing Conditional Tokens call data, including transaction details, contract addresses, and output JSON types for analysis.
+  description: This model captures conditional token call data, including transaction details, block timestamps, and contract-specific information relevant for analysis.
   columns:
-  - name: block_timestamp
-    description: Timestamp of the block when the call was made, in UTC.
-    data_type: DateTime
   - name: transaction_hash
-    description: Unique hash identifying the transaction.
+    description: Unique identifier for the transaction
     data_type: String
+  - name: block_timestamp
+    description: Timestamp of the block containing the transaction
+    data_type: DateTime64(0, 'UTC')
+  - name: block_number
+    description: Number of the block containing the transaction
+    data_type: UInt64
   - name: contract_address
-    description: Address of the contract involved in the call.
+    description: Address of the conditional token contract
+    data_type: String
+  - name: caller_address
+    description: Address initiating the call
+    data_type: String
+  - name: call_data
+    description: Encoded call data payload
     data_type: String
   - name: output_json_type
-    description: Boolean indicating if the output is in JSON format.
-    data_type: UInt64
-  - name: tx_table
-    description: Name of the source table containing transaction data.
+    description: Indicates if output is in JSON format (boolean)
     data_type: String
-  - name: contract_address_param
-    description: Contract address parameter used in the call.
+  - name: output_data
+    description: Output data from the call, in JSON format
     data_type: String
-  - name: output_json_type_param
-    description: JSON type parameter used in the call.
-    data_type: UInt64
-  - name: incremental_column
-    description: Column used for incremental processing, typically block timestamp.
+  - name: gas_used
+    description: Gas used for the transaction (wei)
     data_type: String
-  - name: start_blocktime
-    description: Starting block timestamp for data processing.
+  - name: gas_price
+    description: Gas price at the time of transaction (wei)
     data_type: String
+  - name: status
+    description: Transaction status (e.g., success, failure)
+    data_type: String
+  - name: error_message
+    description: Error message if transaction failed
+    data_type: String
+  - name: created_at
+    description: Record creation timestamp
+    data_type: DateTime64(0, 'UTC')
   config:
     access: public
     materialized: incremental
@@ -40,42 +52,48 @@ models:
     - conditionaltokens
     - calls
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_ConditionalTokens_events
-  description: This model captures conditional token events including block timestamp, log index, transaction hash, event type, and associated data for analysis.
+  description: Events related to Conditional Tokens, including transaction details and timestamps.
   columns:
+  - name: event_id
+    description: Unique identifier for each event.
+    data_type: String
   - name: block_timestamp
-    description: The timestamp of the block when the event was recorded.
+    description: Timestamp of the block when the event was recorded.
     data_type: DateTime
   - name: log_index
-    description: The index of the log within the block, used to order events.
+    description: Index of the log within the block.
     data_type: UInt64
   - name: transaction_hash
-    description: The hash of the transaction associated with the event.
+    description: Hash of the transaction associated with the event.
+    data_type: String
+  - name: contract_address
+    description: Address of the contract emitting the event.
     data_type: String
   - name: event_type
-    description: The type of event emitted, e.g., 'Create', 'Resolve'.
+    description: Type of the event emitted.
     data_type: String
   - name: condition_id
-    description: The identifier of the condition related to the event.
-    data_type: String
-  - name: collateral_token
-    description: The address of the collateral token involved in the event.
-    data_type: String
-  - name: amount
-    description: The amount involved in the event, in wei.
+    description: Identifier for the specific condition involved.
     data_type: String
   - name: outcome_index
-    description: The index of the outcome associated with the event.
+    description: Index of the outcome related to the event.
     data_type: UInt64
+  - name: amount
+    description: Amount involved in the event, in wei.
+    data_type: String
+  - name: sender
+    description: Address of the sender initiating the event.
+    data_type: String
+  - name: recipient
+    description: Address of the recipient involved in the event.
+    data_type: String
   - name: block_number
-    description: The block number where the event was recorded.
+    description: Number of the block containing the event.
     data_type: UInt64
-  - name: event_data
-    description: Additional event data in JSON format.
-    data_type: JSON
   config:
     access: public
     materialized: incremental
@@ -85,6 +103,6 @@ models:
     - conditionaltokens
     - events
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
