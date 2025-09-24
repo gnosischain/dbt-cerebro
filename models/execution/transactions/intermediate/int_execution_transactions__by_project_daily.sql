@@ -14,41 +14,46 @@
 WITH tx AS (
   SELECT
     block_timestamp,
-    toDate(block_timestamp)            AS day,
+    toDate(block_timestamp)                     AS day,
     transaction_hash,
-    from_address,
-    to_address,
-    input,
-    toFloat64(gas_used)   AS gas_used,
-    toFloat64(gas_price)  AS gas_price
+    lower(from_address)                         AS from_address,   
+    lower(to_address)                           AS to_address,     
+    toFloat64(gas_used)                         AS gas_used,
+    toFloat64(gas_price)                        AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
   {% if is_incremental() %}
-    WHERE block_timestamp >= date_trunc('month', now() - INTERVAL 35 DAY)
+    WHERE block_timestamp >= date_trunc('month', now())
   {% endif %}
 ),
+
 lbl AS (
-  SELECT address, project FROM {{ ref('stg_execution_transactions__labels') }}
+  SELECT
+    address,        
+    project
+  FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),
+
 classified AS (
   SELECT
     t.day,
-    multiIf(
-      l.project IS NOT NULL, l.project,
-      (t.input = '' OR t.input = '0x' OR t.input IS NULL), 'EOA',
-      'Others'
-    )                                    AS project,
-    COUNT()                               AS tx_count,
-    countDistinct(t.from_address)         AS active_accounts,
-    SUM(t.gas_used * t.gas_price) / 1e18  AS fee_native_sum
+    IF(l.project IS NOT NULL, l.project, 'Unknown')  AS project,
+    COUNT()                                          AS tx_count,
+    countDistinct(t.from_address)                    AS active_accounts,
+    SUM(t.gas_used * t.gas_price) / 1e18             AS fee_native_sum
   FROM tx t
-  LEFT JOIN lbl l ON t.to_address = l.address
+  LEFT JOIN lbl l
+    ON t.to_address = l.address
   GROUP BY t.day, project
 ),
+
 px AS (
-  SELECT price_date, anyLast(price_usd) AS price_usd
-  FROM {{ ref('stg_execution_transactions__prices') }}
+  SELECT
+    price_date,
+    anyLast(price_usd) AS price_usd
+  FROM {{ ref('stg_crawlers_data__dune_prices') }}
   GROUP BY price_date
 )
+
 SELECT
   c.day,
   c.project,
