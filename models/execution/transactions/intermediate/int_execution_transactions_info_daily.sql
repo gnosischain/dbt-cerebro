@@ -10,7 +10,7 @@ WITH tx AS (
       SUM(COALESCE(gas_used/POWER(10,9),0))                           AS gas_used,
       CAST(AVG(COALESCE(gas_price/POWER(10,9),0)) AS Int32)           AS gas_price_avg,
       CAST(median(COALESCE(gas_price/POWER(10,9),0)) AS Int32)        AS gas_price_median,
-      SUM(toFloat64(gas_used) * toFloat64(gas_price)) / 1e18          AS fee_native_sum     
+      SUM(toFloat64OrZero(gas_used) * toFloat64OrZero(gas_price)) / 1e18          AS fee_native_sum     
   FROM {{ ref('stg_execution__transactions') }}
   WHERE block_timestamp < TODAY()
   {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}

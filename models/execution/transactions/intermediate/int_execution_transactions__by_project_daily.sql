@@ -18,8 +18,8 @@ WITH tx AS (
     transaction_hash,
     lower(from_address)                         AS from_address,   
     lower(to_address)                           AS to_address,     
-    toFloat64(gas_used)                         AS gas_used,
-    toFloat64(gas_price)                        AS gas_price
+    toFloat64OrZero(gas_used)                         AS gas_used,
+    toFloat64OrZero(gas_price)                        AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
   {% if is_incremental() %}
     WHERE block_timestamp >= date_trunc('month', now())
