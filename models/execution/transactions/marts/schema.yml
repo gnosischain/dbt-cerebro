@@ -246,3 +246,101 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+- name: api_execution_transactions_3m_daily
+  description: Last 90 days – daily total successful transactions.
+  columns:
+  - name: day
+    description: Day (UTC).
+    data_type: Date
+  - name: total
+    description: Total successful transactions for the day.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags: [production, execution, transactions]
+
+- name: api_execution_transactions_3y_monthly
+  description: Last 3 years – monthly total successful transactions.
+  columns:
+  - name: month
+    description: Month (UTC) truncated to first day.
+    data_type: Date
+  - name: total
+    description: Total successful transactions for the month.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags: [production, execution, transactions]
+
+- name: api_execution_transactions_by_project_3m_daily
+  description: Last 90 days – daily transactions by project.
+  columns:
+  - name: day
+    description: Day (UTC).
+    data_type: Date
+  - name: project
+    description: Project label (or 'Unknown').
+    data_type: String
+  - name: total
+    description: Transactions for the project on the day.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags: [production, execution, transactions]
+
+- name: api_execution_transactions_by_project_24h
+  description: Rolling last 24 hours – transactions by project (hourly recent fact).
+  columns:
+  - name: project
+    description: Project label (or 'Unknown').
+    data_type: String
+  - name: total
+    description: Transactions in the last 24 hours for the project.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags: [production, execution, transactions, hourly]
+
+- name: api_execution_transactions_by_project_7d
+  description: Rolling last 7 days – transactions by project (daily base).
+  columns:
+  - name: project
+    description: Project label (or 'Unknown').
+    data_type: String
+  - name: total
+    description: Transactions in the last 7 days for the project.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags: [production, execution, transactions]
+
+- name: fct_execution_transactions__by_project_hourly_recent
+  description: Hourly recent by-project fact (~48h) used by 24h API views (txs, active accounts, fees).
+  columns:
+  - name: hour
+    description: Hour bucket (UTC).
+    data_type: DateTime
+  - name: project
+    description: Project label (or 'Unknown').
+    data_type: String
+  - name: tx_count
+    description: Transactions in the hour for the project.
+    data_type: UInt64
+  - name: active_accounts
+    description: Distinct senders in the hour for the project.
+    data_type: UInt64
+  - name: fee_native_sum
+    description: Total fees (xDAI) in the hour for the project.
+    data_type: Float64
+  - name: fee_usd_sum
+    description: Total fees (USD) in the hour for the project.
+    data_type: Float64
+  config:
+    access: public
+    materialized: incremental
+    tags: [production, execution, transactions, hourly]

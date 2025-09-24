@@ -1,0 +1,14 @@
+{{
+  config(
+    materialized='view',
+    tags=['production','execution','transactions']
+  )
+}}
+
+SELECT
+  day,
+  project,
+  tx_count AS total
+FROM {{ ref('int_execution_transactions__by_project_daily') }}
+WHERE day > now() - INTERVAL 90 DAY
+ORDER BY day DESC, project

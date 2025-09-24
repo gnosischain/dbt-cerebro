@@ -1,47 +1,71 @@
 version: 2
 models:
+  - name: int_execution_transactions_info_daily
+    description: Business-facing table summarizing daily execution transactions, including counts, values, median metrics, gas usage, and fees.
+    columns:
+      - name: date
+        description: Day of the transaction, truncated from block timestamp.
+        data_type: DateTime
+      - name: transaction_type
+        description: Type of transaction, as string.
+        data_type: String
+      - name: success
+        description: Transaction success status (1 = success, 0 = failure).
+        data_type: UInt8
+      - name: n_txs
+        description: Count of transactions for the given day, transaction type, and success status.
+        data_type: UInt64
+      - name: xdai_value
+        description: Total value transferred in xDAI units (wei divided by 10^18).
+        data_type: Float64
+      - name: xdai_value_avg
+        description: Average value per transaction in xDAI units.
+        data_type: Float64
+      - name: xdai_value_median
+        description: Median value per transaction in xDAI units.
+        data_type: Float64
+      - name: gas_used
+        description: Sum of gas used in Gwei units (gas_used / 10^9).
+        data_type: Float64
+      - name: gas_price_avg
+        description: Average gas price in Gwei (gas_price / 10^9), cast to Int32.
+        data_type: Int32
+      - name: gas_price_median
+        description: Median gas price in Gwei (gas_price / 10^9), cast to Int32.
+        data_type: Int32
+      - name: fee_native_sum
+        description: Total transaction fees in native units (xDAI).
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Total transaction fees converted to USD using the daily price.
+        data_type: Float64
+    config:
+      access: public
+      materialized: incremental
+      tags: [production, execution, transactions]
 
-- name: int_execution_transactions_info_daily
-  description: Business-facing table summarizing daily execution transactions, including counts, values, and median metrics for transaction types, success status, and gas usage.
-  columns:
-  - name: date
-    description: Day of the transaction, truncated from block timestamp.
-    data_type: DateTime
-  - name: transaction_type
-    description: Type of transaction, as string.
-    data_type: String
-  - name: success
-    description: Transaction success status (1 = success, 0 = failure).
-    data_type: UInt8
-  - name: n_txs
-    description: Count of transactions for the given day, transaction type, and success status.
-    data_type: UInt64
-  - name: xdai_value
-    description: Total value transferred in xDai units (wei divided by 10^18).
-    data_type: Float64
-  - name: xdai_value_avg
-    description: Average value per transaction in xDai units.
-    data_type: Float64
-  - name: xdai_value_median
-    description: Median value per transaction in xDai units.
-    data_type: Float64
-  - name: gas_used
-    description: Sum of gas used in Gwei units (gas_used / 10^9).
-    data_type: Float64
-  - name: gas_price_avg
-    description: Average gas price in Gwei (gas_price / 10^9), cast to Int32.
-    data_type: Int32
-  - name: gas_price_median
-    description: Median gas price in Gwei (gas_price / 10^9), cast to Int32.
-    data_type: Int32
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    materialized: incremental
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
+  - name: int_execution_transactions__by_project_daily
+    description: Daily by-project rollup (tx_count, active_accounts, fees) attributed by to_address label; unlabeled → 'Unknown'.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: tx_count
+        description: Number of transactions for the project on the day.
+        data_type: UInt64
+      - name: active_accounts
+        description: Distinct senders for the project on the day.
+        data_type: UInt64
+      - name: fee_native_sum
+        description: Total fees in native units (xDAI) for the project on the day.
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Total fees in USD for the project on the day.
+        data_type: Float64
+    config:
+      access: public
+      materialized: incremental
+      tags: [production, execution, transactions]
