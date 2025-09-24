@@ -14,21 +14,23 @@
 WITH tx AS (
   SELECT
     block_timestamp,
-    toDate(block_timestamp)                     AS day,
+    toDate(block_timestamp)           AS day,
     transaction_hash,
-    lower(from_address)                         AS from_address,   
-    lower(to_address)                           AS to_address,     
-    toFloat64OrZero(gas_used)                         AS gas_used,
-    toFloat64OrZero(gas_price)                        AS gas_price
+    lower(from_address)               AS from_address,
+    lower(to_address)                 AS to_address,
+    toFloat64OrZero(gas_used)         AS gas_used,
+    toFloat64OrZero(gas_price)        AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
-  {% if is_incremental() %}
-    WHERE block_timestamp >= date_trunc('month', now())
-  {% endif %}
+  WHERE
+    {% if is_incremental() %}
+      block_timestamp >= date_trunc('month', now()) AND
+    {% endif %}
+    from_address IS NOT NULL
 ),
 
 lbl AS (
   SELECT
-    address,        
+    lower(address) AS address,        -- normalize to match tx.to_address
     project
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),
@@ -36,11 +38,11 @@ lbl AS (
 classified AS (
   SELECT
     t.day,
-    IF(l.project IS NOT NULL, l.project, 'Unknown')  AS project,
-    COUNT()                                          AS tx_count,
-    countDistinct(t.from_address)                    AS active_accounts,
-    groupBitmapState(cityHash64(t.from_address))     AS ua_bitmap_state,
-    SUM(t.gas_used * t.gas_price) / 1e18             AS fee_native_sum
+    IF(l.project IS NOT NULL, l.project, 'Unknown') AS project,
+    COUNT()                                         AS tx_count,
+    countDistinct(t.from_address)                   AS active_accounts,
+    groupBitmapState(cityHash64(t.from_address))    AS ua_bitmap_state,
+    SUM(t.gas_used * t.gas_price) / 1e18            AS fee_native_sum
   FROM tx t
   LEFT JOIN lbl l
     ON t.to_address = l.address

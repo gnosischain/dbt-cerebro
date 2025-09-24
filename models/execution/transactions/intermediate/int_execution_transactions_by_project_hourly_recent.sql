@@ -20,6 +20,7 @@ WITH tx AS (
     toFloat64OrZero(gas_price)          AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
   WHERE block_timestamp >= now() - INTERVAL 2 DAY
+    AND from_address IS NOT NULL
 ),
 lbl AS (
   SELECT address, project FROM {{ ref('stg_crawlers_data__dune_labels') }}
