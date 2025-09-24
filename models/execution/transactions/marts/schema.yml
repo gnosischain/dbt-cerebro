@@ -111,6 +111,250 @@ models:
     config:
       access: public
 
+  # New facts for actives (views over ints) -----------------------------------
+  - name: fct_execution_transactions_active_accounts_daily
+    description: Chain-wide daily active accounts via bitmap merge across projects.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: active_accounts
+        description: Distinct senders for the day (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: fct_execution_transactions_active_accounts_hourly_recent
+    description: Chain-wide hourly active accounts (~48h) via bitmap merge across projects.
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: ua_bitmap_state
+        description: Merged bitmap state of active addresses for the hour (AggregateFunction(groupBitmap, UInt64)).
+        data_type: AggregateFunction(groupBitmap, UInt64)
+      - name: active_accounts
+        description: Distinct senders for the hour (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: fct_execution_transactions_active_accounts_monthly
+    description: Chain-wide monthly active accounts via bitmap merge across daily project bitmaps.
+    columns:
+      - name: month
+        description: Month (UTC).
+        data_type: Date
+      - name: active_accounts
+        description: Distinct senders in the month (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  # Transactions — counts & by-project ----------------------------------------
+  - name: api_execution_transactions_daily
+    description: Full daily total successful transactions.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: total
+        description: Total successful transactions for the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_monthly
+    description: Full monthly total successful transactions.
+    columns:
+      - name: month
+        description: Month (UTC) truncated to first day.
+        data_type: Date
+      - name: total
+        description: Total successful transactions for the month.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_by_project_daily
+    description: Full daily transactions by project.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Transactions for the project on the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_by_project_24h
+    description: Rolling last 24 hours – transactions by project (hourly recent base).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Transactions in the last 24 hours for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  # Active accounts ------------------------------------------------------------
+  - name: api_execution_transactions_active_accounts_24h_unique
+    description: Rolling last 24 hours – chain-wide unique active addresses (exact via bitmap merge).
+    columns:
+      - name: value
+        description: Distinct senders in the last 24 hours.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_active_accounts_hourly_ma_24h
+    description: Hourly active accounts with 24h moving average (computed over ~48h base).
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: moving_average
+        description: 24h moving average of hourly active accounts.
+        data_type: Float64
+      - name: total
+        description: Hourly active accounts (actual).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_active_accounts_daily
+    description: Full daily chain-wide unique active addresses (via FCT).
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: total
+        description: Distinct senders on the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_monthly
+    description: Full monthly chain-wide unique active addresses (via FCT).
+    columns:
+      - name: month
+        description: Month (UTC).
+        data_type: Date
+      - name: total
+        description: Distinct senders in the month.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_by_project_daily
+    description: Full daily active accounts by project.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Distinct senders for the project/day (per-day distinct).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_by_project_24h
+    description: Rolling last 24 hours – active accounts by project (exact via bitmap merge of hourly states).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Distinct senders in the last 24 hours for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  # Fees -----------------------------------------------------------------------
+  - name: api_execution_transactions_fees_24h
+    description: Rolling last 24 hours – total transaction fees (native & USD).
+    columns:
+      - name: total_fee_native
+        description: Total fees in native units over last 24 hours.
+        data_type: Float64
+      - name: total_fee_usd
+        description: Total fees in USD over last 24 hours.
+        data_type: Float64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_fees_daily
+    description: Full daily total transaction fees (native & USD), successful txs only.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: total_fee_native
+        description: Total fees in native units for the day.
+        data_type: Float64
+      - name: total_fee_usd
+        description: Total fees in USD for the day.
+        data_type: Float64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_fees_by_project_24h
+    description: Rolling last 24 hours – transaction fees by project (native & USD).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: fee_native
+        description: Fees in native units for the project over last 24 hours.
+        data_type: Float64
+      - name: fee_usd
+        description: Fees in USD for the project over last 24 hours.
+        data_type: Float64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  # Legacy APIs kept (if still present in repo) --------------------------------
   - name: api_execution_transactions_cnt_daily
     description: Business-facing daily count of API execution transactions, derived from int_execution_transactions_info_daily, filtered for successful transactions.
     columns:
@@ -183,214 +427,6 @@ models:
       - name: xdai_value_median
         description: Median transaction value in XDAI for the day (wei units).
         data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  # New transactions APIs ------------------------------------------------------
-  - name: api_execution_transactions_3m_daily
-    description: Last 90 days – daily total successful transactions.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: total
-        description: Total successful transactions for the day.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_3y_monthly
-    description: Last 3 years – monthly total successful transactions.
-    columns:
-      - name: month
-        description: Month (UTC) truncated to first day.
-        data_type: Date
-      - name: total
-        description: Total successful transactions for the month.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_by_project_3m_daily
-    description: Last 90 days – daily transactions by project.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Transactions for the project on the day.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_by_project_24h
-    description: Rolling last 24 hours – transactions by project (hourly recent base).
-    columns:
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Transactions in the last 24 hours for the project.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions, hourly]
-
-  - name: api_execution_transactions_by_project_7d
-    description: Rolling last 7 days – transactions by project (daily base).
-    columns:
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Transactions in the last 7 days for the project.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  # New facts for actives (views over ints) -----------------------------------
-  - name: fct_execution_transactions_active_accounts_daily
-    description: Chain-wide daily active accounts via bitmap merge across projects.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: active_accounts
-        description: Distinct senders for the day (exact via bitmap merge).
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: fct_execution_transactions_active_accounts_hourly_recent
-    description: Chain-wide hourly active accounts (~48h) via bitmap merge across projects.
-    columns:
-      - name: hour
-        description: Hour bucket (UTC).
-        data_type: DateTime
-      - name: ua_bitmap_state
-        description: Merged bitmap state of active addresses for the hour (AggregateFunction(groupBitmap, UInt64)).
-        data_type: AggregateFunction(groupBitmap, UInt64)
-      - name: active_accounts
-        description: Distinct senders for the hour (exact via bitmap merge).
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions, hourly]
-
-  # Active accounts APIs -------------------------------------------------------
-  - name: api_execution_transactions_active_accounts_24h_unique
-    description: Rolling last 24 hours – chain-wide unique active addresses (exact via bitmap merge).
-    columns:
-      - name: value
-        description: Distinct senders in the last 24 hours.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions, hourly]
-
-  - name: api_execution_transactions_active_accounts_hourly_ma_24h
-    description: Hourly active accounts with 24h moving average (computed over ~48h base).
-    columns:
-      - name: hour
-        description: Hour bucket (UTC).
-        data_type: DateTime
-      - name: moving_average
-        description: 24h moving average of hourly active accounts.
-        data_type: Float64
-      - name: total
-        description: Hourly active accounts (actual).
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions, hourly]
-
-  - name: api_execution_transactions_active_accounts_daily_3m
-    description: Last 90 days – chain-wide daily active accounts.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: total
-        description: Distinct senders on the day.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_active_accounts_monthly_3m
-    description: Last 3 months – chain-wide monthly active accounts via bitmap merge of daily by-project sets.
-    columns:
-      - name: month
-        description: Month (UTC).
-        data_type: Date
-      - name: total
-        description: Distinct senders in the month (exact via bitmap merge).
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_active_accounts_by_project_daily_3m
-    description: Last 90 days – daily active accounts by project.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Distinct senders for the project/day (per-day distinct).
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions]
-
-  - name: api_execution_transactions_active_accounts_by_project_24h
-    description: Rolling last 24 hours – active accounts by project (exact via bitmap merge of hourly states).
-    columns:
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Distinct senders in the last 24 hours for the project.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, transactions, hourly]
-
-  - name: api_execution_transactions_active_accounts_by_project_30d
-    description: Rolling last 30 days – active accounts by project (exact via bitmap merge of daily states).
-    columns:
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: total
-        description: Distinct senders in the last 30 days for the project.
-        data_type: UInt64
     config:
       access: public
       materialized: view
