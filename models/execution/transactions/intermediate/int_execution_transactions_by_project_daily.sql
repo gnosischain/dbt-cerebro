@@ -29,9 +29,7 @@ WITH tx AS (
 ),
 
 lbl AS (
-  SELECT
-    lower(address) AS address,
-    project
+  SELECT lower(address) AS address, project
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),
 
@@ -42,6 +40,7 @@ classified AS (
     COUNT()                                         AS tx_count,
     countDistinct(t.from_address)                   AS active_accounts,
     groupBitmapState(cityHash64(t.from_address))    AS ua_bitmap_state,
+    SUM(t.gas_used)                                 AS gas_used_sum,             
     SUM(t.gas_used * t.gas_price) / 1e18            AS fee_native_sum
   FROM tx t
   LEFT JOIN lbl l
@@ -50,9 +49,7 @@ classified AS (
 ),
 
 px AS (
-  SELECT
-    price_date,
-    anyLast(price_usd) AS price_usd
+  SELECT price_date, anyLast(price_usd) AS price_usd
   FROM {{ ref('stg_crawlers_data__dune_prices') }}
   GROUP BY price_date
 )
@@ -63,6 +60,7 @@ SELECT
   c.tx_count,
   c.active_accounts,
   c.ua_bitmap_state,
+  c.gas_used_sum,                                        
   c.fee_native_sum,
   c.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum
 FROM classified c
