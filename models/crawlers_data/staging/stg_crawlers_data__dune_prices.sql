@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','transactions']
+    tags=['staging','crawlers_data']
   )
 }}
 
@@ -10,7 +10,7 @@ WITH base AS (
     toDate(block_date) AS price_date,
     upper(symbol)      AS symbol,
     toFloat64(price)   AS price_usd
-  FROM {{ source('playground_max','gnosis_daily_bluechip_prices') }}
+  FROM {{ source('playground_max','dune_prices') }}
   WHERE upper(symbol) IN ('XDAI','DAI')
 )
 SELECT

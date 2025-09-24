@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','transactions']
+    tags=['staging','crawlers_data']
   )
 }}
 
