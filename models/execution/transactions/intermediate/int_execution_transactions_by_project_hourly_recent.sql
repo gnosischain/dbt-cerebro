@@ -23,7 +23,8 @@ WITH tx AS (
     AND from_address IS NOT NULL
 ),
 lbl AS (
-  SELECT address, project FROM {{ ref('stg_crawlers_data__dune_labels') }}
+  SELECT lower(address) AS address, project
+  FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),
 classified AS (
   SELECT

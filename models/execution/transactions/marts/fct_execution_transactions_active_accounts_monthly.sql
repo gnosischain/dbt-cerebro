@@ -2,13 +2,11 @@
   config(
     materialized='view', 
     tags=['production','execution','transactions']
-  )
+)
 }}
 
 SELECT
-  day,
-  project,
-  active_accounts AS total
+  date_trunc('month', day) AS month,
+  bitmapCardinality(groupBitmapMerge(ua_bitmap_state)) AS active_accounts
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
-WHERE day > now() - INTERVAL 90 DAY
-ORDER BY day DESC, project
+GROUP BY month

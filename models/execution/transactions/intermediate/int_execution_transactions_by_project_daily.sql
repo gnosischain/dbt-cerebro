@@ -30,7 +30,7 @@ WITH tx AS (
 
 lbl AS (
   SELECT
-    lower(address) AS address,        -- normalize to match tx.to_address
+    lower(address) AS address,
     project
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),

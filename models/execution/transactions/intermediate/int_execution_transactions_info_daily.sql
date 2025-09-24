@@ -1,41 +1,69 @@
+{{
+  config(
+    materialized='incremental',
+    incremental_strategy='delete+insert',
+    engine='ReplacingMergeTree()',
+    order_by='(date, transaction_type, success)',
+    unique_key='(date, transaction_type, success)',
+    partition_by='toStartOfMonth(date)',
+    settings={'allow_nullable_key': 1},
+    tags=['production','execution','transactions']
+  )
+}}
+
 WITH tx AS (
   SELECT
-      toStartOfDay(block_timestamp)                                  AS date,
-      toString(transaction_type)                                      AS transaction_type,
-      success,
-      COUNT(*)                                                        AS n_txs,
-      SUM(value/POWER(10,18))                                         AS xdai_value,
-      AVG(value/POWER(10,18))                                         AS xdai_value_avg,
-      median(value/POWER(10,18))                                      AS xdai_value_median,
-      SUM(COALESCE(gas_used/POWER(10,9),0))                           AS gas_used,
-      CAST(AVG(COALESCE(gas_price/POWER(10,9),0)) AS Int32)           AS gas_price_avg,
-      CAST(median(COALESCE(gas_price/POWER(10,9),0)) AS Int32)        AS gas_price_median,
-      SUM(toFloat64OrZero(gas_used) * toFloat64OrZero(gas_price)) / 1e18          AS fee_native_sum     
+    block_timestamp,
+    toDate(block_timestamp)                AS date,
+    toString(transaction_type)             AS transaction_type,
+    COALESCE(success, 0)                   AS success,
+    toFloat64OrZero(value) / 1e18          AS value_native,
+    toFloat64OrZero(gas_used)              AS gas_used,
+    toFloat64OrZero(gas_price)             AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
-  WHERE block_timestamp < TODAY()
+  WHERE block_timestamp < today()
   {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-  GROUP BY 1,2,3
 ),
+
+agg AS (
+  SELECT
+    date,
+    transaction_type,
+    success,
+    COUNT()                                                AS n_txs,
+    SUM(value_native)                                      AS xdai_value,
+    AVG(value_native)                                      AS xdai_value_avg,
+    median(value_native)                                   AS xdai_value_median,
+    -- gas_used is in "gas units" (not wei) – sum as-is
+    SUM(gas_used)                                          AS gas_used,
+    CAST(AVG(gas_price / 1e9) AS Int32)                    AS gas_price_avg,     -- Gwei
+    CAST(median(gas_price / 1e9) AS Int32)                 AS gas_price_median,  -- Gwei
+    SUM(gas_used * gas_price) / 1e18                       AS fee_native_sum
+  FROM tx
+  GROUP BY date, transaction_type, success
+),
+
 px AS (
   SELECT
     price_date,
     anyLast(price_usd) AS price_usd
-  FROM {{ ref('stg_execution_transactions__prices') }}
+  FROM {{ ref('stg_crawlers_data__dune_prices') }}
   GROUP BY price_date
 )
+
 SELECT
-    tx.date,
-    tx.transaction_type,
-    tx.success,
-    tx.n_txs,
-    tx.xdai_value,
-    tx.xdai_value_avg,
-    tx.xdai_value_median,
-    tx.gas_used,
-    tx.gas_price_avg,
-    tx.gas_price_median,
-    tx.fee_native_sum,
-    tx.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum   
-FROM tx
+  a.date,
+  a.transaction_type,
+  a.success,
+  a.n_txs,
+  a.xdai_value,
+  a.xdai_value_avg,
+  a.xdai_value_median,
+  a.gas_used,
+  a.gas_price_avg,
+  a.gas_price_median,
+  a.fee_native_sum,
+  a.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum
+FROM agg a
 LEFT JOIN px
-  ON px.price_date = toDate(tx.date)
+  ON px.price_date = a.date

@@ -2,14 +2,12 @@
   config(
     materialized='view', 
     tags=['production','execution','transactions']
-)
+  )
 }}
 
 SELECT
+  day,
   project,
-  SUM(fee_native_sum) AS fee_native,
-  SUM(fee_usd_sum)    AS fee_usd
+  tx_count AS total
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
-WHERE day > now() - INTERVAL 30 DAY
-GROUP BY project
-ORDER BY fee_usd DESC
+ORDER BY day DESC, project

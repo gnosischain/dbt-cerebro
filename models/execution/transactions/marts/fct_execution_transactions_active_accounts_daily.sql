@@ -1,4 +1,9 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ 
+  config(
+   materialized='view', 
+   tags=['production','execution','transactions']
+   ) 
+}}
 
 SELECT
   day,
