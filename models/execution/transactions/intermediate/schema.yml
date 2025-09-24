@@ -44,8 +44,8 @@ models:
       materialized: incremental
       tags: [production, execution, transactions]
 
-  - name: int_execution_transactions__by_project_daily
-    description: Daily by-project rollup (tx_count, active_accounts, fees) attributed by to_address label; unlabeled → 'Unknown'.
+  - name: int_execution_transactions_by_project_daily
+    description: Daily by-project rollup (tx_count, active_accounts, bitmap of users, fees) attributed by to_address label; unlabeled → 'Unknown'.
     columns:
       - name: day
         description: Day (UTC).
@@ -57,8 +57,11 @@ models:
         description: Number of transactions for the project on the day.
         data_type: UInt64
       - name: active_accounts
-        description: Distinct senders for the project on the day.
+        description: Distinct senders for the project on the day (per-day distinct).
         data_type: UInt64
+      - name: ua_bitmap_state
+        description: Bitmap aggregate state of distinct senders for the project/day (AggregateFunction(groupBitmap, UInt64)).
+        data_type: AggregateFunction(groupBitmap, UInt64)
       - name: fee_native_sum
         description: Total fees in native units (xDAI) for the project on the day.
         data_type: Float64
@@ -69,3 +72,32 @@ models:
       access: public
       materialized: incremental
       tags: [production, execution, transactions]
+
+  - name: int_execution_transactions_by_project_hourly_recent
+    description: Hourly by-project rollup (~48h) with tx_count, active_accounts, bitmap of users, and fees; used for 24h rolling APIs.
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: tx_count
+        description: Transactions in the hour for the project.
+        data_type: UInt64
+      - name: active_accounts
+        description: Distinct senders in the hour for the project.
+        data_type: UInt64
+      - name: ua_bitmap_state
+        description: Bitmap aggregate state of distinct senders for the project/hour (AggregateFunction(groupBitmap, UInt64)).
+        data_type: AggregateFunction(groupBitmap, UInt64)
+      - name: fee_native_sum
+        description: Total fees (xDAI) in the hour for the project.
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Total fees (USD) in the hour for the project.
+        data_type: Float64
+    config:
+      access: public
+      materialized: incremental
+      tags: [production, execution, transactions, hourly]

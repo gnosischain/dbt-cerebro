@@ -1,346 +1,414 @@
 version: 2
 models:
 
-- name: execution_txs_info_daily
-  description: Business-facing summary of daily execution transactions, including counts, gas usage, and average/median gas prices, aggregated by date, transaction type, and success status.
-  columns:
-  - name: date
-    description: Date representing the start of the day (UTC).
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of transaction (e.g., legacy, EIP-1559).
-    data_type: String
-    tests:
-    - not_null
-  - name: success
-    description: Transaction success status (1 = success, 0 = failure).
-    data_type: UInt8
-    tests:
-    - not_null
-  - name: n_txs
-    description: Total number of transactions for the given grouping.
-    data_type: UInt64
-  - name: gas_used
-    description: Total gas used by transactions (sum over group).
-    data_type: UInt64
-  - name: gas_price_avg
-    description: Average gas price (wei) across transactions in the group.
-    data_type: Int32
-  - name: gas_price_median
-    description: Median gas price (wei) across transactions in the group.
-    data_type: Int32
-  config:
-    access: public
-    materialized: table
-    tags:
-    - daily
-    - execution
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-- name: fct_execution_transactions_cnt_daily
-  description: Business-facing table summarizing daily counts of execution transactions, including transaction types, success status, and total number of transactions.
-  columns:
-  - name: date
-    description: Date of the transaction count (YYYY-MM-DD).
-    data_type: Date
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of transaction (e.g., transfer, contract call).
-    data_type: String
-  - name: success
-    description: Indicates if the transaction was successful (1) or reverted (0).
-    data_type: UInt8
-  - name: n_txs
-    description: Total number of transactions of this type and success status on the given date.
-    data_type: UInt64
-    tests:
-    - not_null
-  config:
-    access: public
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: fct_execution_transactions_gas_used_daily
-  description: Business-facing table aggregating daily execution transaction data, including gas usage, transaction counts, and value metrics for each day.
-  columns:
-  - name: date
-    description: The day for which the metrics are aggregated, derived from block_timestamp.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of transaction (e.g., legacy, EIP-1559), as string.
-    data_type: String
-    tests:
-    - not_null
-  - name: success
-    description: Indicator if transaction succeeded (1) or reverted (0).
-    data_type: UInt8
-    tests:
-    - not_null
-  - name: n_txs
-    description: Total number of transactions executed on the given day.
-    data_type: UInt64
-  - name: xdai_value
-    description: Sum of transaction values converted to XDAI (wei divided by 10^18).
-    data_type: Float64
-  - name: xdai_value_avg
-    description: Average transaction value in XDAI for the day.
-    data_type: Float64
-  - name: xdai_value_median
-    description: Median transaction value in XDAI for the day.
-    data_type: Float64
-  - name: gas_used
-    description: Total gas used by all transactions on the day.
-    data_type: UInt64
-  - name: gas_price_avg
-    description: Average gas price (wei) across transactions, cast to Int32.
-    data_type: Int32
-  - name: gas_price_median
-    description: Median gas price (wei) across transactions, cast to Int32.
-    data_type: Int32
-  config:
-    access: public
-    materialized: incremental
-    tags:
-    - gas
-    - transactions
-    - daily
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: fct_execution_transactions_value_daily
-  description: Business-facing table summarizing daily transaction values, success status, and transaction types from execution data.
-  columns:
-  - name: date
-    description: Date of the transaction day (YYYY-MM-DD).
-    data_type: Date
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of transaction (e.g., transfer, contract call).
-    data_type: String
-  - name: success
-    description: Indicator if transaction succeeded (1) or failed (0).
-    data_type: UInt8
-  - name: xdai_value
-    description: Total value transferred in wei.
-    data_type: UInt64
-  - name: xdai_value_avg
-    description: Average transaction value in wei for the day.
-    data_type: Float64
-  - name: xdai_value_median
-    description: Median transaction value in wei for the day.
-    data_type: Float64
-  config:
-    access: public
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_cnt_daily
-  description: Business-facing daily count of API execution transactions, derived from the `int_execution_transactions_info_daily` source, filtered for successful transactions.
-  columns:
-  - name: date
-    description: Date of the transaction count, in YYYY-MM-DD format.
-    data_type: Date
-  - name: transaction_type
-    description: Type/category of the transaction (e.g., transfer, contract call).
-    data_type: String
-  - name: value
-    description: Count of transactions of the given type on the date.
-    data_type: UInt64
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    materialized: view
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_cnt_total
-  description: Business-facing metric representing the total count of API execution transactions, aggregated by transaction type. Provides insights into transaction volume per type.
-  columns:
-  - name: transaction_type
-    description: Type of transaction (e.g., 'transfer', 'contract_call') as categorized in the source data.
-    data_type: String
-  - name: value
-    description: Total count of transactions for the given transaction type.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_gas_used_daily
-  description: Daily aggregated data on gas used in API execution transactions, including transaction type, gas metrics, and timestamps for business analysis.
-  columns:
-  - name: date
-    description: Date of the transaction aggregation (UTC).
-    data_type: DateTime
-  - name: transaction_type
-    description: Type/category of the transaction (e.g., transfer, contract call).
-    data_type: String
-  - name: gas_used
-    description: Total gas used in transactions on this day.
-    data_type: UInt64
-  - name: gas_price_avg
-    description: Average gas price (wei) across transactions for the day.
-    data_type: UInt64
-  - name: gas_price_median
-    description: Median gas price (wei) across transactions for the day.
-    data_type: UInt64
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    materialized: view
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_value_daily
-  description: Daily aggregated values of API execution transactions, including average and median values, for business analysis.
-  columns:
-  - name: date
-    description: Date of the transaction aggregation (YYYY-MM-DD).
-    data_type: Date
-  - name: transaction_type
-    description: Type/category of the transaction (e.g., transfer, contract call).
-    data_type: String
-  - name: xdai_value
-    description: Total value in XDAI for the day (wei units).
-    data_type: UInt64
-  - name: xdai_value_avg
-    description: Average transaction value in XDAI for the day (wei units).
-    data_type: Float64
-  - name: xdai_value_median
-    description: Median transaction value in XDAI for the day (wei units).
-    data_type: Float64
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    materialized: view
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_3m_daily
-  description: Last 90 days – daily total successful transactions.
-  columns:
-  - name: day
-    description: Day (UTC).
-    data_type: Date
-  - name: total
-    description: Total successful transactions for the day.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags: [production, execution, transactions]
+  # Legacy/earlier marts kept as-is -------------------------------------------
+  - name: execution_txs_info_daily
+    description: Business-facing summary of daily execution transactions, including counts, gas usage, and average/median gas prices, aggregated by date, transaction type, and success status.
+    columns:
+      - name: date
+        description: Date representing the start of the day (UTC).
+        data_type: DateTime
+      - name: transaction_type
+        description: Type of transaction (e.g., legacy, EIP-1559).
+        data_type: String
+      - name: success
+        description: Transaction success status (1 = success, 0 = failure).
+        data_type: UInt8
+      - name: n_txs
+        description: Total number of transactions for the given grouping.
+        data_type: UInt64
+      - name: gas_used
+        description: Total gas used by transactions (sum over group).
+        data_type: UInt64
+      - name: gas_price_avg
+        description: Average gas price (wei) across transactions in the group.
+        data_type: Int32
+      - name: gas_price_median
+        description: Median gas price (wei) across transactions in the group.
+        data_type: Int32
+    config:
+      access: public
+      materialized: table
+      tags: [daily, execution]
 
-- name: api_execution_transactions_3y_monthly
-  description: Last 3 years – monthly total successful transactions.
-  columns:
-  - name: month
-    description: Month (UTC) truncated to first day.
-    data_type: Date
-  - name: total
-    description: Total successful transactions for the month.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags: [production, execution, transactions]
+  - name: fct_execution_transactions_cnt_daily
+    description: Business-facing table summarizing daily counts of execution transactions, including transaction types, success status, and total number of transactions.
+    columns:
+      - name: date
+        description: Date of the transaction count (YYYY-MM-DD).
+        data_type: Date
+      - name: transaction_type
+        description: Type of transaction (e.g., transfer, contract call).
+        data_type: String
+      - name: success
+        description: Indicates if the transaction was successful (1) or reverted (0).
+        data_type: UInt8
+      - name: n_txs
+        description: Total number of transactions of this type and success status on the given date.
+        data_type: UInt64
+    config:
+      access: public
 
-- name: api_execution_transactions_by_project_3m_daily
-  description: Last 90 days – daily transactions by project.
-  columns:
-  - name: day
-    description: Day (UTC).
-    data_type: Date
-  - name: project
-    description: Project label (or 'Unknown').
-    data_type: String
-  - name: total
-    description: Transactions for the project on the day.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags: [production, execution, transactions]
+  - name: fct_execution_transactions_gas_used_daily
+    description: Business-facing table aggregating daily execution transaction data, including gas usage, transaction counts, and value metrics for each day.
+    columns:
+      - name: date
+        description: The day for which the metrics are aggregated, derived from block_timestamp.
+        data_type: DateTime
+      - name: transaction_type
+        description: Type of transaction (e.g., legacy, EIP-1559), as string.
+        data_type: String
+      - name: success
+        description: Indicator if transaction succeeded (1) or reverted (0).
+        data_type: UInt8
+      - name: n_txs
+        description: Total number of transactions executed on the day.
+        data_type: UInt64
+      - name: xdai_value
+        description: Sum of transaction values converted to XDAI (wei divided by 10^18).
+        data_type: Float64
+      - name: xdai_value_avg
+        description: Average transaction value in XDAI for the day.
+        data_type: Float64
+      - name: xdai_value_median
+        description: Median transaction value in XDAI for the day.
+        data_type: Float64
+      - name: gas_used
+        description: Total gas used by all transactions on the day.
+        data_type: UInt64
+      - name: gas_price_avg
+        description: Average gas price (wei) across transactions, cast to Int32.
+        data_type: Int32
+      - name: gas_price_median
+        description: Median gas price (wei) across transactions, cast to Int32.
+        data_type: Int32
+    config:
+      access: public
+      materialized: incremental
+      tags: [gas, transactions, daily]
 
-- name: api_execution_transactions_by_project_24h
-  description: Rolling last 24 hours – transactions by project (hourly recent fact).
-  columns:
-  - name: project
-    description: Project label (or 'Unknown').
-    data_type: String
-  - name: total
-    description: Transactions in the last 24 hours for the project.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags: [production, execution, transactions, hourly]
+  - name: fct_execution_transactions_value_daily
+    description: Business-facing table summarizing daily transaction values, success status, and transaction types from execution data.
+    columns:
+      - name: date
+        description: Date of the transaction day (YYYY-MM-DD).
+        data_type: Date
+      - name: transaction_type
+        description: Type of transaction (e.g., transfer, contract call).
+        data_type: String
+      - name: success
+        description: Indicator if transaction succeeded (1) or failed (0).
+        data_type: UInt8
+      - name: xdai_value
+        description: Total value transferred in wei.
+        data_type: UInt64
+      - name: xdai_value_avg
+        description: Average transaction value in wei for the day.
+        data_type: Float64
+      - name: xdai_value_median
+        description: Median transaction value in wei for the day.
+        data_type: Float64
+    config:
+      access: public
 
-- name: api_execution_transactions_by_project_7d
-  description: Rolling last 7 days – transactions by project (daily base).
-  columns:
-  - name: project
-    description: Project label (or 'Unknown').
-    data_type: String
-  - name: total
-    description: Transactions in the last 7 days for the project.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags: [production, execution, transactions]
+  - name: api_execution_transactions_cnt_daily
+    description: Business-facing daily count of API execution transactions, derived from int_execution_transactions_info_daily, filtered for successful transactions.
+    columns:
+      - name: date
+        description: Date of the transaction count, in YYYY-MM-DD format.
+        data_type: Date
+      - name: transaction_type
+        description: Type/category of the transaction (e.g., transfer, contract call).
+        data_type: String
+      - name: value
+        description: Count of transactions of the given type on the date.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
 
-- name: fct_execution_transactions__by_project_hourly_recent
-  description: Hourly recent by-project fact (~48h) used by 24h API views (txs, active accounts, fees).
-  columns:
-  - name: hour
-    description: Hour bucket (UTC).
-    data_type: DateTime
-  - name: project
-    description: Project label (or 'Unknown').
-    data_type: String
-  - name: tx_count
-    description: Transactions in the hour for the project.
-    data_type: UInt64
-  - name: active_accounts
-    description: Distinct senders in the hour for the project.
-    data_type: UInt64
-  - name: fee_native_sum
-    description: Total fees (xDAI) in the hour for the project.
-    data_type: Float64
-  - name: fee_usd_sum
-    description: Total fees (USD) in the hour for the project.
-    data_type: Float64
-  config:
-    access: public
-    materialized: incremental
-    tags: [production, execution, transactions, hourly]
+  - name: api_execution_transactions_cnt_total
+    description: Business-facing metric representing the total count of API execution transactions, aggregated by transaction type.
+    columns:
+      - name: transaction_type
+        description: Type of transaction as categorized in the source data.
+        data_type: String
+      - name: value
+        description: Total count of transactions for the given transaction type.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_gas_used_daily
+    description: Daily aggregated data on gas used in API execution transactions.
+    columns:
+      - name: date
+        description: Date of the transaction aggregation (UTC).
+        data_type: DateTime
+      - name: transaction_type
+        description: Type/category of the transaction.
+        data_type: String
+      - name: gas_used
+        description: Total gas used in transactions on this day.
+        data_type: UInt64
+      - name: gas_price_avg
+        description: Average gas price (wei) across transactions for the day.
+        data_type: UInt64
+      - name: gas_price_median
+        description: Median gas price (wei) across transactions for the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_value_daily
+    description: Daily aggregated values of API execution transactions, including average and median values.
+    columns:
+      - name: date
+        description: Date of the transaction aggregation (YYYY-MM-DD).
+        data_type: Date
+      - name: transaction_type
+        description: Type/category of the transaction.
+        data_type: String
+      - name: xdai_value
+        description: Total value in XDAI for the day (wei units).
+        data_type: UInt64
+      - name: xdai_value_avg
+        description: Average transaction value in XDAI for the day (wei units).
+        data_type: Float64
+      - name: xdai_value_median
+        description: Median transaction value in XDAI for the day (wei units).
+        data_type: Float64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  # New transactions APIs ------------------------------------------------------
+  - name: api_execution_transactions_3m_daily
+    description: Last 90 days – daily total successful transactions.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: total
+        description: Total successful transactions for the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_3y_monthly
+    description: Last 3 years – monthly total successful transactions.
+    columns:
+      - name: month
+        description: Month (UTC) truncated to first day.
+        data_type: Date
+      - name: total
+        description: Total successful transactions for the month.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_by_project_3m_daily
+    description: Last 90 days – daily transactions by project.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Transactions for the project on the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_by_project_24h
+    description: Rolling last 24 hours – transactions by project (hourly recent base).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Transactions in the last 24 hours for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_by_project_7d
+    description: Rolling last 7 days – transactions by project (daily base).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Transactions in the last 7 days for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  # New facts for actives (views over ints) -----------------------------------
+  - name: fct_execution_transactions_active_accounts_daily
+    description: Chain-wide daily active accounts via bitmap merge across projects.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: active_accounts
+        description: Distinct senders for the day (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: fct_execution_transactions_active_accounts_hourly_recent
+    description: Chain-wide hourly active accounts (~48h) via bitmap merge across projects.
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: ua_bitmap_state
+        description: Merged bitmap state of active addresses for the hour (AggregateFunction(groupBitmap, UInt64)).
+        data_type: AggregateFunction(groupBitmap, UInt64)
+      - name: active_accounts
+        description: Distinct senders for the hour (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: fct_execution_transactions_active_accounts_hourly_recent_ma
+    description: 24h moving average over hourly active accounts (~48h base).
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: moving_average
+        description: 24h moving average of hourly active accounts.
+        data_type: Float64
+      - name: total
+        description: Hourly active accounts (actual).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  # Active accounts APIs -------------------------------------------------------
+  - name: api_execution_transactions_active_accounts_24h_unique
+    description: Rolling last 24 hours – chain-wide unique active addresses (exact via bitmap merge).
+    columns:
+      - name: value
+        description: Distinct senders in the last 24 hours.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_active_accounts_hourly_ma_24h
+    description: Hourly active accounts with 24h moving average (computed over ~48h base).
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+      - name: moving_average
+        description: 24h moving average of hourly active accounts.
+        data_type: Float64
+      - name: total
+        description: Hourly active accounts (actual).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_active_accounts_daily_3m
+    description: Last 90 days – chain-wide daily active accounts.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: total
+        description: Distinct senders on the day.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_monthly_3m
+    description: Last 3 months – chain-wide monthly active accounts via bitmap merge of daily by-project sets.
+    columns:
+      - name: month
+        description: Month (UTC).
+        data_type: Date
+      - name: total
+        description: Distinct senders in the month (exact via bitmap merge).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_by_project_daily_3m
+    description: Last 90 days – daily active accounts by project.
+    columns:
+      - name: day
+        description: Day (UTC).
+        data_type: Date
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Distinct senders for the project/day (per-day distinct).
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]
+
+  - name: api_execution_transactions_active_accounts_by_project_24h
+    description: Rolling last 24 hours – active accounts by project (exact via bitmap merge of hourly states).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Distinct senders in the last 24 hours for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions, hourly]
+
+  - name: api_execution_transactions_active_accounts_by_project_30d
+    description: Rolling last 30 days – active accounts by project (exact via bitmap merge of daily states).
+    columns:
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+      - name: total
+        description: Distinct senders in the last 30 days for the project.
+        data_type: UInt64
+    config:
+      access: public
+      materialized: view
+      tags: [production, execution, transactions]

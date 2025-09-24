@@ -39,6 +39,7 @@ classified AS (
     IF(l.project IS NOT NULL, l.project, 'Unknown')  AS project,
     COUNT()                                          AS tx_count,
     countDistinct(t.from_address)                    AS active_accounts,
+    groupBitmapState(cityHash64(t.from_address))     AS ua_bitmap_state,
     SUM(t.gas_used * t.gas_price) / 1e18             AS fee_native_sum
   FROM tx t
   LEFT JOIN lbl l
@@ -59,6 +60,7 @@ SELECT
   c.project,
   c.tx_count,
   c.active_accounts,
+  c.ua_bitmap_state,
   c.fee_native_sum,
   c.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum
 FROM classified c
