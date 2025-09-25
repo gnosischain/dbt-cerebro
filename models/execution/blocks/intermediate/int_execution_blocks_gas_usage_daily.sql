@@ -3,19 +3,18 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     engine='ReplacingMergeTree()',
-    order_by='(day)',
-    unique_key='(day)',
-    partition_by='toStartOfMonth(day)',
-    tags=['production','execution','transactions','gas']
+    order_by='(date)',
+    unique_key='(date)',
+    partition_by='toStartOfMonth(date)',
+    tags=['production','execution','blocks','gas']
   )
 }}
 
 SELECT
-  toDate(block_timestamp)         AS day,
-  SUM(toFloat64OrZero(gas_used))  AS gas_used_sum,
-  SUM(toFloat64OrZero(gas_limit)) AS gas_limit_sum
-FROM {{ source('execution','blocks') }}
-{% if is_incremental() %}
-WHERE block_timestamp >= date_trunc('month', now())
-{% endif %}
-GROUP BY day
+  toDate(block_timestamp)         AS date,
+  SUM(gas_used)                   AS gas_used_sum,
+  SUM(gas_limit)                  AS gas_limit_sum,
+  gas_used_sum / NULLIF(gas_limit_sum, 0) AS gas_used_fraq
+FROM {{ ref('stg_execution__blocks') }}
+{{ apply_monthly_incremental_filter('block_timestamp', 'date') }}
+GROUP BY date

@@ -8,6 +8,6 @@
 SELECT
     date
     ,client
-    ,pct AS value
+    ,ROUND(fraq * 100, 2) AS value
 FROM {{ ref('fct_execution_blocks_clients_daily') }}
 ORDER BY date, client

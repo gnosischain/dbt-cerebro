@@ -17,7 +17,7 @@ WITH tx AS (
     toDate(block_timestamp)                AS date,
     toString(transaction_type)             AS transaction_type,
     COALESCE(success, 0)                   AS success,
-    toFloat64OrZero(value) / 1e18          AS value_native,
+    toFloat64OrZero(value) / 1e18          AS value_native, 
     toFloat64OrZero(gas_used)              AS gas_used,
     toFloat64OrZero(gas_price)             AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
