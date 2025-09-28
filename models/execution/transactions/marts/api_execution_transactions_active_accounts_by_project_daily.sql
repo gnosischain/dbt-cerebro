@@ -2,12 +2,14 @@
   config(
     materialized='view', 
     tags=['production','execution','transactions']
-  )
+    )
 }}
 
 SELECT
-  day,
+  date,
   project,
-  active_accounts AS total
+  bitmapCardinality(groupBitmapMerge(ua_bitmap_state)) AS value
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
-ORDER BY day DESC, project
+WHERE date < today()
+GROUP BY date, project
+ORDER BY date DESC, project

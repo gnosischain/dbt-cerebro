@@ -1,12 +1,11 @@
-{{ 
-  config(
-   materialized='view', 
-   tags=['production','execution','transactions']
-   ) 
-}}
+{{ config(
+    materialized='view', 
+    tags=['production','execution','transactions']
+  ) 
+  }}
 
 SELECT
-  day,
+  date,
   bitmapCardinality(groupBitmapMerge(ua_bitmap_state)) AS active_accounts
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
-GROUP BY day
+GROUP BY date

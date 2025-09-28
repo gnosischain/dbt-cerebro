@@ -7,7 +7,7 @@
 
 SELECT
   date,
-  SUM(n_txs) AS value
+  SUM(fee_usd_sum) AS value
 FROM {{ ref('int_execution_transactions_info_daily') }}
 WHERE success = 1
   AND date < today()

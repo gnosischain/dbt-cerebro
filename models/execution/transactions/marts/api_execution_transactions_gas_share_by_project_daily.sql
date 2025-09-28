@@ -1,25 +1,23 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions','gas'])
+  config(
+    materialized='view', 
+    tags=['production','execution','transactions','gas']
+    )
 }}
 
-WITH proj AS (
+WITH tot AS (
   SELECT
-    day,
-    project,
-    gas_used_sum AS project_gas_used
-  FROM {{ ref('int_execution_transactions_by_project_daily') }}
-),
-tot AS (
-  SELECT
-    day,
+    date,
     SUM(gas_used_sum) AS day_gas_used
   FROM {{ ref('int_execution_transactions_by_project_daily') }}
-  GROUP BY day
+  WHERE date < today()                
+  GROUP BY date
 )
 SELECT
-  p.day,
+  p.date,
   p.project,
-  p.project_gas_used / NULLIF(t.day_gas_used, 0) AS share_of_used  
-FROM proj p
-JOIN tot t USING (day)
-ORDER BY p.day DESC, p.project
+  p.gas_used_sum / NULLIF(t.day_gas_used, 0) AS value
+FROM {{ ref('int_execution_transactions_by_project_daily') }} p
+JOIN tot t USING (date)
+WHERE p.date < today()
+ORDER BY p.date DESC, p.project

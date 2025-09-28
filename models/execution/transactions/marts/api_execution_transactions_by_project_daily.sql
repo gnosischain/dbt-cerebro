@@ -2,12 +2,13 @@
   config(
     materialized='view', 
     tags=['production','execution','transactions']
-  )
+    )
 }}
 
 SELECT
-  day,
+  date,
   project,
-  tx_count AS total
+  tx_count AS value
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
-ORDER BY day DESC, project
+WHERE date < today()
+ORDER BY date DESC, project
