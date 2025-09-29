@@ -2,16 +2,14 @@
   config(
     materialized='view', 
     tags=['production','execution','transactions','hourly']
-    )
+  )
 }}
 
 SELECT
   toDate(now()) AS date,
-  project,
-  bitmapCardinality(
-    groupBitmapMerge(ua_bitmap_state)
-  ) AS value
+  project AS label,
+  bitmapCardinality(groupBitmapMerge(ua_bitmap_state)) AS value
 FROM {{ ref('int_execution_transactions_by_project_hourly_recent') }}
 WHERE hour >= now() - INTERVAL 24 HOUR
-GROUP BY project
+GROUP BY label
 ORDER BY value DESC
