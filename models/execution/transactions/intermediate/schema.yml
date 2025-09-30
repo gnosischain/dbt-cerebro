@@ -1,107 +1,133 @@
 version: 2
 models:
 
-  - name: int_execution_transactions_info_daily
-    description: Business-facing table summarizing daily execution transactions, including counts, values, median metrics, gas usage, and fees.
-    columns:
-      - name: date
-        description: Day of the transaction, truncated from block timestamp.
-        data_type: DateTime
-      - name: transaction_type
-        description: Type of transaction, as string.
-        data_type: String
-      - name: success
-        description: Transaction success status (1 = success, 0 = failure).
-        data_type: UInt8
-      - name: n_txs
-        description: Count of transactions for the given day, transaction type, and success status.
-        data_type: UInt64
-      - name: xdai_value
-        description: Total value transferred in xDAI units (wei divided by 10^18).
-        data_type: Float64
-      - name: xdai_value_avg
-        description: Average value per transaction in xDAI units.
-        data_type: Float64
-      - name: xdai_value_median
-        description: Median value per transaction in xDAI units.
-        data_type: Float64
-      - name: gas_used
-        description: Sum of gas used (gas units, not wei).
-        data_type: Float64
-      - name: gas_price_avg
-        description: Average gas price in Gwei (gas_price / 10^9), cast to Int32.
-        data_type: Int32
-      - name: gas_price_median
-        description: Median gas price in Gwei (gas_price / 10^9), cast to Int32.
-        data_type: Int32
-      - name: fee_native_sum
-        description: Total transaction fees in native units (xDAI).
-        data_type: Float64
-      - name: fee_usd_sum
-        description: Total transaction fees converted to USD using the daily price.
-        data_type: Float64
-    config:
-      access: public
-      materialized: incremental
-      tags: [production, execution, transactions]
-
-  - name: int_execution_transactions_by_project_daily
-    description: Daily by-project rollup (tx_count, active_accounts, bitmap of users, fees) attributed by to_address label; unlabeled → 'Unknown'.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: tx_count
-        description: Number of transactions for the project on the day.
-        data_type: UInt64
-      - name: active_accounts
-        description: Distinct senders for the project on the day (per-day distinct).
-        data_type: UInt64
-      - name: ua_bitmap_state
-        description: Bitmap aggregate state of distinct senders for the project/day (AggregateFunction(groupBitmap, UInt64)).
-        data_type: AggregateFunction(groupBitmap, UInt64)
-      - name: fee_native_sum
-        description: Total fees in native units (xDAI) for the project on the day.
-        data_type: Float64
-      - name: fee_usd_sum
-        description: Total fees in USD for the project on the day.
-        data_type: Float64
-      - name: gas_used_sum
-        description: Total gas_used attributed to the project on the day (sum of tx gas_used).
-        data_type: Float64
-    config:
-      access: public
-      materialized: incremental
-      tags: [production, execution, transactions]
-
-  - name: int_execution_transactions_by_project_hourly_recent
-    description: Hourly by-project rollup (~48h) with tx_count, active_accounts, bitmap of users, and fees; used for 24h rolling APIs.
-    columns:
-      - name: hour
-        description: Hour bucket (UTC).
-        data_type: DateTime
-      - name: project
-        description: Project label (or 'Unknown').
-        data_type: String
-      - name: tx_count
-        description: Transactions in the hour for the project.
-        data_type: UInt64
-      - name: active_accounts
-        description: Distinct senders in the hour for the project.
-        data_type: UInt64
-      - name: ua_bitmap_state
-        description: Bitmap aggregate state of distinct senders for the project/hour (AggregateFunction(groupBitmap, UInt64)).
-        data_type: AggregateFunction(groupBitmap, UInt64)
-      - name: fee_native_sum
-        description: Total fees (xDAI) in the hour for the project.
-        data_type: Float64
-      - name: fee_usd_sum
-        description: Total fees (USD) in the hour for the project.
-        data_type: Float64
-    config:
-      access: public
-      materialized: incremental
-      tags: [production, execution, transactions, hourly]
+- name: int_execution_transactions_info_daily
+  description: Daily aggregated information on execution transactions including gas usage, transaction type, and success status.
+  columns:
+  - name: date
+    description: UTC date of the transaction.
+    data_type: DateTime
+  - name: transaction_type
+    description: Type of the transaction.
+    data_type: UInt32
+  - name: success
+    description: Indicator of transaction success (1 for success, 0 for failure).
+    data_type: UInt8
+  - name: n_txs
+    description: Total number of transactions.
+    data_type: UInt64
+  - name: xdai_value
+    description: Total value in native currency (XDAI).
+    data_type: Float64
+  - name: xdai_value_avg
+    description: Average value in native currency (XDAI).
+    data_type: Float64
+  - name: xdai_value_median
+    description: Median value in native currency (XDAI).
+    data_type: Float64
+  - name: gas_used
+    description: Total gas used in transactions.
+    data_type: UInt64
+  - name: gas_price_avg
+    description: Average gas price in Gwei.
+    data_type: Int32
+  - name: gas_price_median
+    description: Median gas price in Gwei.
+    data_type: Int32
+  - name: fee_native_sum
+    description: Total fee in native currency (XDAI).
+    data_type: Float64
+  - name: fee_usd_sum
+    description: Total fee in USD.
+    data_type: Float64
+  config:
+    materialized: incremental
+    unique_key: (date, transaction_type, success)
+    partition_by: toStartOfMonth(date)
+    tags:
+    - production
+    - execution
+    - transactions
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_transactions_by_project_daily
+  description: Model representing daily execution transactions grouped by project.
+  columns:
+  - name: date
+    description: Date of the transaction.
+    data_type: DateTime
+  - name: project
+    description: Project name associated with the transaction.
+    data_type: String
+  - name: tx_count
+    description: Total number of transactions.
+    data_type: BigInt
+  - name: active_accounts
+    description: Number of active accounts.
+    data_type: BigInt
+  - name: ua_bitmap_state
+    description: Bitmap state of user agents.
+    data_type: String
+  - name: gas_used_sum
+    description: Total gas used.
+    data_type: Float64
+  - name: fee_native_sum
+    description: Sum of native fees.
+    data_type: Float64
+  - name: fee_usd_sum
+    description: Sum of fees in USD.
+    data_type: Float64
+  config:
+    materialized: incremental
+    unique_key:
+    - date
+    - project
+    partition_by: toStartOfMonth(date)
+    tags:
+    - production
+    - execution
+    - transactions
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_transactions_by_project_hourly_recent
+  description: '"Aggregated execution transactions by project and hour, including transaction count, active accounts, user-agent bitmap state, and fee sums."'
+  columns:
+  - name: hour
+    description: Hour of the transaction (truncated to the nearest hour).
+    data_type: DateTime
+  - name: project
+    description: Project associated with the transaction, defaulting to 'Unknown' if not found.
+    data_type: String
+  - name: tx_count
+    description: Total number of transactions in the hour for the project.
+    data_type: Int64
+  - name: active_accounts
+    description: Count of unique sender addresses in the transactions.
+    data_type: Int64
+  - name: ua_bitmap_state
+    description: Bitmap state of user-agent hashes for the transactions.
+    data_type: String
+  - name: fee_native_sum
+    description: Sum of transaction fees in native currency (GNO/XDAI).
+    data_type: Float64
+  - name: fee_usd_sum
+    description: Sum of transaction fees converted to USD.
+    data_type: Float64
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    - hourly
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer

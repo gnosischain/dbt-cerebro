@@ -1,141 +1,203 @@
 version: 2
 models:
 
-  - name: execution_blocks_clients_daily
-    description: Aggregated daily data of execution blocks per client, including total value.
-    columns:
-      - name: date
-        description: Date of the daily aggregation (UTC).
-        data_type: DateTime
-        tests: [not_null]
-      - name: client
-        description: Client address involved in execution blocks.
-        data_type: String
-        tests: [not_null]
-      - name: value
-        description: Sum of values (wei) for the client on the given date.
-        data_type: UInt64
-    config:
-      access: public
-
-  - name: execution_blocks_clients_pct_daily
-    description: Business-facing metric representing the percentage of client activity within execution blocks on a daily basis.
-    columns:
-      - name: date
-        description: Date of the observation in YYYY-MM-DD format.
-        data_type: Date
-        tests: [not_null]
-      - name: client
-        description: Client identifier (e.g., address or unique client ID).
-        data_type: String
-        tests: [not_null]
-      - name: value
-        description: Total number of activity units associated with the client on the given date.
-        data_type: UInt64
-      - name: pct
-        description: Percentage of client activity relative to total activity on that date, rounded to four decimal places.
-        data_type: Float64
-    config:
-      access: public
-
-  - name: api_execution_blocks_clients_cnt_daily
-    description: Daily count of clients with execution blocks, aggregated by date. Provides business insights into client activity over time.
-    columns:
-      - name: date
-        description: Calendar date of the aggregation period.
-        data_type: Date
-      - name: client
-        description: Unique identifier for the client.
-        data_type: String
-      - name: value
-        description: Count of execution blocks for the client on the given date.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks]
-
-  - name: api_execution_blocks_clients_pct_daily
-    description: Business-facing metric representing the percentage of execution blocks associated with clients on a daily basis, derived from the raw execution data.
-    columns:
-      - name: date
-        description: Date of the data aggregation (UTC), in 'YYYY-MM-DD' format.
-        data_type: Date
-      - name: client
-        description: Client identifier (e.g., application or service name).
-        data_type: String
-      - name: value
-        description: Percentage of execution blocks associated with clients, as a decimal between 0 and 100.
-        data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks]
-
-  - name: fct_execution_blocks_clients_daily
-    description: Business-facing table aggregating daily client execution blocks with percentage calculations based on the raw data from int_execution_blocks_clients_version_daily.
-    columns:
-      - name: date
-        description: Date of the aggregation (YYYY-MM-DD).
-        data_type: Date
-      - name: client
-        description: Client identifier (e.g., address or name).
-        data_type: String
-      - name: cnt
-        description: Total count of execution blocks for the client on the given date.
-        data_type: UInt64
-      - name: pct
-        description: Percentage of total execution blocks for the date attributed to the client.
-        data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks]
-
-  - name: fct_execution_blocks_gas_usage_monthly
-    description: Monthly rollup from daily block gas sums with utilization ratio.
-    columns:
-      - name: month
-        description: Month (UTC).
-        data_type: Date
-      - name: gas_used_sum
-        description: Sum of gas_used across the month.
-        data_type: Float64
-      - name: gas_limit_sum
-        description: Sum of gas_limit across the month.
-        data_type: Float64
-      - name: used
-        description: Gas utilization ratio (used/limit).
-        data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks, gas]
-
-  - name: api_execution_blocks_gas_usage_pct_daily
-    description: Full daily gas utilization (used/limit).
-    columns:
-      - name: date
-        description: Day (UTC).
-        data_type: Date
-      - name: used
-        description: Gas utilization ratio for the day.
-        data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks, gas]
-
-  - name: api_execution_blocks_gas_usage_monthly
-    description: Full monthly gas utilization (used/limit).
-    columns:
-      - name: month
-        description: Month (UTC).
-        data_type: Date
-      - name: used
-        description: Gas utilization ratio for the month.
-        data_type: Float64
-    config:
-      access: public
-      materialized: view
-      tags: [production, execution, blocks, gas]
+- name: execution_blocks_clients_daily
+  description: Aggregated daily data of execution blocks per client, including total value.
+  columns:
+  - name: date
+    description: Date of the daily aggregation (UTC).
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: client
+    description: Client address involved in execution blocks.
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Sum of values (wei) for the client on the given date.
+    data_type: UInt64
+  config:
+    access: public
+- name: execution_blocks_clients_pct_daily
+  description: Business-facing metric representing the percentage of client activity within execution blocks on a daily basis.
+  columns:
+  - name: date
+    description: Date of the observation in YYYY-MM-DD format.
+    data_type: Date
+    tests:
+    - not_null
+  - name: client
+    description: Client identifier (e.g., address or unique client ID).
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Total number of activity units associated with the client on the given date.
+    data_type: UInt64
+  - name: pct
+    description: Percentage of client activity relative to total activity on that date, rounded to four decimal places.
+    data_type: Float64
+  config:
+    access: public
+- name: api_execution_blocks_clients_cnt_daily
+  description: Daily count of unique clients interacting with the API execution blocks.
+  columns:
+  - name: date
+    description: Date of the data.
+    data_type: DateTime
+  - name: client
+    description: Client identifier.
+    data_type: String
+  - name: value
+    description: Count of interactions.
+    data_type: String
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - blocks
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_blocks_clients_pct_daily
+  description: Percentage of execution blocks per client on a daily basis.
+  columns:
+  - name: date
+    description: Date of the data.
+    data_type: String
+  - name: client
+    description: Client identifier.
+    data_type: String
+  - name: value
+    description: Percentage value.
+    data_type: Float64
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - blocks
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_blocks_clients_daily
+  description: '"Daily aggregation of execution blocks by clients, including the fraction of blocks per client."'
+  columns:
+  - name: date
+    description: Date of the aggregation.
+    data_type: DateTime
+  - name: client
+    description: Client identifier.
+    data_type: String
+  - name: cnt
+    description: Total count of blocks for the client on the date.
+    data_type: UInt64
+  - name: fraq
+    description: Fraction of blocks for the client on the date.
+    data_type: Float64
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - blocks
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_blocks_gas_usage_monthly
+  description: '"Aggregated gas usage data on a monthly basis, including total gas used and gas limit."'
+  columns:
+  - name: month
+    description: UTC timestamp truncated to the month.
+    data_type: DateTime
+  - name: gas_used_sum_monthly
+    description: Total gas consumed in the month.
+    data_type: UInt64
+  - name: gas_limit_sum_monthly
+    description: Maximum gas allowed in the month.
+    data_type: UInt64
+  - name: used
+    description: Ratio of gas used to gas limit.
+    data_type: Float64
+  config:
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+    - gas
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_blocks_gas_usage_pct_daily
+  description: '"Daily percentage of gas usage in execution blocks."'
+  columns:
+  - name: date
+    description: Date of the data.
+    data_type: String
+  - name: value
+    description: Percentage of gas used.
+    data_type: Float64
+  config:
+    materialized: view
+    tags:
+    - production
+    - execution
+    - blocks
+    - gas
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_blocks_gas_usage_monthly
+  description: Full monthly gas utilization (used/limit).
+  columns:
+  - name: month
+    description: Month (UTC).
+    data_type: Date
+  - name: used
+    description: Gas utilization ratio for the month.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - blocks
+    - gas
+- name: api_execution_blocks_gas_usage_pct_monthly
+  description: Monthly percentage of gas usage for API execution blocks.
+  columns:
+  - name: date
+    description: Month of the data
+    data_type: DateTime
+  - name: value
+    description: Percentage of gas usage
+    data_type: Float64
+    relationships:
+      to: ref('fct_execution_blocks_gas_usage_monthly')
+      field: date
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - blocks
+    - gas
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer

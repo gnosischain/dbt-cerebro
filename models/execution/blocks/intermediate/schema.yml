@@ -1,80 +1,114 @@
 version: 2
 models:
 
-  - name: execution_blocks_clients_version_daily
-    description: Business-facing table summarizing client versions per day, derived from raw execution data.
-    columns:
-      - name: date
-        description: Date of the record in UTC (UTC date, no time component).
-        data_type: Date
-        tests: [not_null]
-      - name: client
-        description: Client identifier, normalized to known categories or 'Unknown'.
-        data_type: String
-        tests: [not_null]
-      - name: version
-        description: Client version string, may be empty if not specified.
-        data_type: String
-      - name: value
-        description: Aggregated count of occurrences for the client-version on the date.
-        data_type: UInt64
-        tests: [not_null]
-    config:
-      access: public
-      materialized: table
-      tags: [daily, client, version]
-
-  - name: execution_blocks_production
-    description: Data model representing execution blocks with associated metadata, transactions, logs, and related entities for Gnosis Chain analysis.
-    columns:
-      - name: block_timestamp
-        description: UTC timestamp of the block (materialized from `timestamp` in source).
-        data_type: DateTime
-        tests: [not_null]
-      - name: extra_data
-        description: Arbitrary extra-data bytes set by the block proposer (hex).
-        data_type: String
-    config:
-      access: public
-      materialized: incremental
-      tags: [gnosis, execution]
-
-  - name: int_execution_blocks_clients_version_daily
-    description: Business-facing table summarizing daily client versions extracted from execution blocks, including counts and version data for analysis of client adoption over time.
-    columns:
-      - name: date
-        description: Date representing the start of the day (UTC) for the client version snapshot.
-        data_type: DateTime
-      - name: client
-        description: Client identifier, normalized to lowercase, or 'Unknown' for missing/ambiguous data.
-        data_type: String
-      - name: version
-        description: Client version string, or empty if not available.
-        data_type: String
-      - name: cnt
-        description: Count of execution blocks associated with the client and version on the given date.
-        data_type: UInt64
-    config:
-      access: public
-      materialized: incremental
-      tags: [production, execution, blocks]
-
-  - name: int_execution_blocks_gas_usage_daily
-    description: Daily sums of block gas_used and gas_limit for utilization ratios.
-    columns:
-      - name: day
-        description: Day (UTC).
-        data_type: Date
-      - name: gas_used_sum
-        description: Sum of gas_used across blocks in the day.
-        data_type: Float64
-      - name: gas_limit_sum
-        description: Sum of gas_limit across blocks in the day.
-        data_type: Float64
-      - name: gas_used_fraq
-        description: Franction of gas used across blocks in the day.
-        data_type: Float64
-    config:
-      access: public
-      materialized: incremental
-      tags: [production, execution, blocks, gas]
+- name: execution_blocks_clients_version_daily
+  description: Business-facing table summarizing client versions per day, derived from raw execution data.
+  columns:
+  - name: date
+    description: Date of the record in UTC (UTC date, no time component).
+    data_type: Date
+    tests:
+    - not_null
+  - name: client
+    description: Client identifier, normalized to known categories or 'Unknown'.
+    data_type: String
+    tests:
+    - not_null
+  - name: version
+    description: Client version string, may be empty if not specified.
+    data_type: String
+  - name: value
+    description: Aggregated count of occurrences for the client-version on the date.
+    data_type: UInt64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: table
+    tags:
+    - daily
+    - client
+    - version
+- name: execution_blocks_production
+  description: Data model representing execution blocks with associated metadata, transactions, logs, and related entities for Gnosis Chain analysis.
+  columns:
+  - name: block_timestamp
+    description: UTC timestamp of the block (materialized from `timestamp` in source).
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: extra_data
+    description: Arbitrary extra-data bytes set by the block proposer (hex).
+    data_type: String
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - gnosis
+    - execution
+- name: int_execution_blocks_clients_version_daily
+  description: '"Model representing daily counts of execution blocks by clients and versions."'
+  columns:
+  - name: date
+    description: UTC date of the execution block.
+    data_type: DateTime
+  - name: client
+    description: Client name associated with the execution block.
+    data_type: String
+  - name: version
+    description: Version of the client software.
+    data_type: String
+  - name: cnt
+    description: Count of execution blocks for the client version on the date.
+    data_type: Int64
+  config:
+    materialized: incremental
+    incremental_strategy: delete+insert
+    engine: ReplacingMergeTree()
+    order_by:
+    - date
+    - client
+    - version
+    unique_key:
+    - date
+    - client
+    - version
+    partition_by: toStartOfMonth(date)
+    tags:
+    - production
+    - execution
+    - blocks
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_blocks_gas_usage_daily
+  description: Daily aggregation of gas usage statistics for execution blocks.
+  columns:
+  - name: date
+    description: Date of the aggregated data.
+    data_type: DateTime
+  - name: gas_used_sum
+    description: Total gas consumed by transactions in the block.
+    data_type: UInt64
+  - name: gas_limit_sum
+    description: Maximum gas allowed in the block.
+    data_type: UInt64
+  - name: gas_used_fraq
+    description: Fraction of gas used relative to gas limit.
+    data_type: Float64
+  config:
+    materialized: incremental
+    unique_key: date
+    partition_by: toStartOfMonth(date)
+    tags:
+    - production
+    - execution
+    - blocks
+    - gas
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
