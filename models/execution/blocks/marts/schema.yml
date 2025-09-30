@@ -41,17 +41,23 @@ models:
   config:
     access: public
 - name: api_execution_blocks_clients_cnt_daily
-  description: Daily count of unique clients interacting with the API execution blocks.
+  description: '"Model providing daily count of API execution blocks per client."'
   columns:
   - name: date
-    description: Date of the data.
+    description: Date of the API execution block.
     data_type: DateTime
+    tests:
+    - not_null
   - name: client
     description: Client identifier.
     data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Count of interactions.
+    description: Count of execution blocks.
     data_type: String
+    tests:
+    - not_null
   config:
     materialized: view
     access: public
@@ -64,7 +70,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_blocks_clients_pct_daily
-  description: Percentage of execution blocks per client on a daily basis.
+  description: Daily percentage of API execution blocks per client.
   columns:
   - name: date
     description: Date of the data.
@@ -75,6 +81,63 @@ models:
   - name: value
     description: Percentage value.
     data_type: Float64
+  - name: block_number
+    description: Height of the block containing the record.
+    data_type: UInt32
+  - name: block_hash
+    description: Keccak-256 hash of the block header.
+    data_type: String
+  - name: parent_hash
+    description: Hash of the parent block header.
+    data_type: String
+  - name: author
+    description: Address of the validator/miner that proposed the block.
+    data_type: String
+  - name: state_root
+    description: Root hash of the state trie.
+    data_type: String
+  - name: transactions_root
+    description: Root hash of the transactions trie.
+    data_type: String
+  - name: receipts_root
+    description: Root hash of the receipts trie.
+    data_type: String
+  - name: gas_used
+    description: Total gas consumed by transactions in the block.
+    data_type: UInt64
+  - name: gas_limit
+    description: Maximum gas allowed in the block.
+    data_type: UInt64
+  - name: extra_data
+    description: Arbitrary extra-data bytes set by the block proposer (hex).
+    data_type: String
+  - name: logs_bloom
+    description: Bloom filter for logs in this block.
+    data_type: String
+  - name: timestamp
+    description: Unix epoch seconds when the block was proposed.
+    data_type: UInt32
+  - name: size
+    description: Serialized block size in bytes.
+    data_type: UInt64
+  - name: mix_hash
+    description: Mix hash (pre-merge PoW) or random field.
+    data_type: String
+  - name: nonce
+    description: Block nonce (legacy field).
+    data_type: String
+  - name: base_fee_per_gas
+    description: Base fee per gas introduced by EIP-1559 (wei).
+    data_type: UInt64
+  - name: withdrawals_root
+    description: Root hash of withdrawals list (Shanghai+).
+    data_type: String
+  - name: chain_id
+    description: EVM chain identifier (100 for Gnosis).
+    data_type: UInt64
+  - name: insert_version
+    description: Monotonic ingestion version (nanoseconds).
+    data_type: UInt64
   config:
     materialized: view
     access: public
@@ -87,19 +150,25 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_blocks_clients_daily
-  description: '"Daily aggregation of execution blocks by clients, including the fraction of blocks per client."'
+  description: '"Daily aggregation of execution blocks by clients."'
   columns:
   - name: date
     description: Date of the aggregation.
     data_type: DateTime
+    tests:
+    - not_null
   - name: client
     description: Client identifier.
     data_type: String
+    tests:
+    - not_null
   - name: cnt
     description: Total count of blocks for the client on the date.
     data_type: UInt64
+    tests:
+    - not_null
   - name: fraq
-    description: Fraction of blocks for the client on the date.
+    description: Fraction of client's blocks out of total blocks on the date.
     data_type: Float64
   config:
     materialized: view
@@ -113,17 +182,21 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_blocks_gas_usage_monthly
-  description: '"Aggregated gas usage data on a monthly basis, including total gas used and gas limit."'
+  description: Monthly gas usage statistics aggregated from daily gas usage data.
   columns:
   - name: month
-    description: UTC timestamp truncated to the month.
+    description: Month of the data aggregation.
     data_type: DateTime
   - name: gas_used_sum_monthly
     description: Total gas consumed in the month.
     data_type: UInt64
+    tests:
+    - not_null
   - name: gas_limit_sum_monthly
-    description: Maximum gas allowed in the month.
+    description: Total gas limit for the month.
     data_type: UInt64
+    tests:
+    - not_null
   - name: used
     description: Ratio of gas used to gas limit.
     data_type: Float64
@@ -140,13 +213,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_blocks_gas_usage_pct_daily
-  description: '"Daily percentage of gas usage in execution blocks."'
+  description: Daily percentage of gas usage in execution blocks.
   columns:
   - name: date
-    description: Date of the data.
+    description: Date of the data entry.
     data_type: String
   - name: value
-    description: Percentage of gas used.
+    description: Percentage of gas used in the block.
     data_type: Float64
   config:
     materialized: view
@@ -161,22 +234,30 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_blocks_gas_usage_monthly
-  description: Full monthly gas utilization (used/limit).
+  description: Monthly gas usage for API execution blocks, represented as a percentage.
   columns:
-  - name: month
-    description: Month (UTC).
-    data_type: Date
-  - name: used
-    description: Gas utilization ratio for the month.
+  - name: date
+    description: Month of the data
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: value
+    description: Gas usage percentage
     data_type: Float64
+    tests:
+    - not_null
   config:
-    access: public
     materialized: view
+    access: public
     tags:
     - production
     - execution
     - blocks
     - gas
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
 - name: api_execution_blocks_gas_usage_pct_monthly
   description: Monthly percentage of gas usage for API execution blocks.
   columns:

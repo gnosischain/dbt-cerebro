@@ -112,14 +112,14 @@ models:
   config:
     access: public
 - name: fct_execution_transactions_active_accounts_daily
-  description: Daily count of active accounts involved in execution transactions.
+  description: '"Model capturing daily active accounts with execution transactions."'
   columns:
   - name: date
-    description: Date of the record.
+    description: Date of the data aggregation.
     data_type: String
   - name: active_accounts
-    description: Number of active accounts.
-    data_type: UInt64
+    description: Merged bitmap state of active accounts.
+    data_type: String
   config:
     materialized: view
     access: public
@@ -132,58 +132,52 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_transactions_active_accounts_hourly_recent
-  description: '"Model representing the hourly active accounts from recent execution transactions."'
+  description: '"Aggregated count of active accounts per hour."'
   columns:
   - name: hour
-    description: Hour of the day.
-    data_type: String
-  - name: ua_bitmap_state
-    description: Merged user account bitmap state.
-    data_type: String
+    description: Hour of the aggregation window.
+    data_type: UInt32
   - name: active_accounts
-    description: Number of active accounts.
-    data_type: UInt64
+    description: Merged bitmap state of active accounts.
+    data_type: String
   config:
     materialized: view
+    access: public
     tags:
     - production
     - execution
     - transactions
     - hourly
-    access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_transactions_active_accounts_monthly
-  description: '"Monthly count of active accounts involved in execution transactions."'
+  description: Monthly count of active accounts involved in execution transactions.
   columns:
   - name: month
-    description: Month of the data aggregation.
+    description: Month of the transactions.
     data_type: DateTime
   - name: active_accounts
-    description: Number of active accounts.
-    data_type: UInt64
+    description: Bitmap merge of active account states.
+    data_type: String
   config:
-    materialized: view
     access: public
-    tags:
-    - production
-    - execution
-    - transactions
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_daily
-  description: '"Aggregated daily execution transactions data from the Gnosis Chain, filtered for successful transactions."'
+  description: Daily summary of executed API transactions.
   columns:
   - name: date
-    description: Date of the aggregated transactions.
-    data_type: DateTime
+    description: Date of the transaction.
+    data_type: String
   - name: value
-    description: Total number of transactions executed on the date.
+    description: Total number of transactions executed.
     data_type: Float64
+    tests:
+    - not_null
   config:
     materialized: view
     access: public
@@ -196,37 +190,43 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_monthly
-  description: Monthly aggregation of successful API execution transactions.
+  description: Monthly sum of successful API execution transactions.
   columns:
   - name: date
-    description: Truncated month date of the transactions.
+    description: Truncated month of the transaction
     data_type: DateTime
   - name: value
-    description: Total number of transactions executed.
+    description: Total number of transactions
     data_type: Float64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - transactions
+    materialized: view
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_by_project_daily
-  description: Daily count of execution transactions by project.
+  description: Daily count of API execution transactions by project.
   columns:
   - name: date
     description: Date of the transaction.
-    data_type: String
+    data_type: DateTime
+    tests:
+    - not_null
   - name: label
     description: Project label.
     data_type: String
+    tests:
+    - not_null
   - name: value
     description: Number of transactions.
-    data_type: String
+    data_type: UInt64
+    tests:
+    - not_null
   config:
     materialized: view
     access: public
@@ -239,17 +239,23 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_by_project_24h
-  description: Hourly count of execution transactions by project over the last 24 hours.
+  description: Hourly count of execution transactions by project in the last 24 hours.
   columns:
-  - name: value
-    description: Sum of transaction count.
-    data_type: Float64
   - name: date
-    description: Date of the data.
+    description: Date of the data entry.
     data_type: DateTime
+    tests:
+    - not_null
   - name: label
     description: Project label.
     data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Total transaction count.
+    data_type: Float64
+    tests:
+    - not_null
   config:
     materialized: view
     tags:
@@ -263,14 +269,18 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_24h_unique
-  description: '"Model representing the count of unique active accounts with execution transactions in the last 24 hours."'
+  description: Output of active unique accounts with transactions executed in the last 24 hours.
   columns:
   - name: date
-    description: Date for the data aggregation.
-    data_type: String
+    description: Date when transactions were executed.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: value
-    description: Number of unique active accounts with execution transactions in the last 24 hours.
-    data_type: UInt64
+    description: Merged bitmap state of active accounts.
+    data_type: String
+    tests:
+    - not_null
   config:
     materialized: view
     tags:
@@ -284,14 +294,18 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_hourly_ma_24h
-  description: Hourly moving average of active accounts for API execution transactions over the last 24 hours.
+  description: Hourly moving average of active accounts participating in API execution transactions over the last 24 hours.
   columns:
   - name: date
-    description: Hourly timestamp.
+    description: Hourly timestamp representing the date.
     data_type: DateTime
+    tests:
+    - not_null
   - name: value
     description: Hourly moving average of active accounts.
     data_type: Float64
+    tests:
+    - not_null
   config:
     materialized: view
     tags:
@@ -305,80 +319,76 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_daily
-  description: Daily count of active accounts involved in API execution transactions.
+  description: Daily count of active accounts executing transactions through the API.
   columns:
   - name: date
-    description: Date of the data entry.
-    data_type: String
+    description: Date of the record.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: value
     description: Number of active accounts.
-    data_type: String
+    data_type: UInt64
+    tests:
+    - not_null
   config:
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
     access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_monthly
-  description: Monthly count of active accounts executing transactions.
+  description: Monthly count of active accounts interacting with the API.
   columns:
   - name: date
-    description: Month of the data.
+    description: Month of the data
     data_type: DateTime
   - name: value
-    description: Number of active accounts.
+    description: Number of active accounts
     data_type: UInt64
   config:
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
     access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_by_project_daily
-  description: Daily count of active accounts executing transactions by project.
+  description: '"Daily count of active accounts interacting with API transactions by project."'
   columns:
   - name: date
-    description: Date of the data.
-    data_type: String
+    description: Date of the data entry.
+    data_type: DateTime
   - name: label
-    description: Project label.
+    description: Project label associated with the active accounts.
     data_type: String
   - name: value
-    description: Number of active accounts.
-    data_type: UInt64
+    description: Merged group bitmap state of active accounts.
+    data_type: String
   config:
-    materialized: view
     access: public
-    tags:
-    - production
-    - execution
-    - transactions
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_by_project_24h
-  description: Hourly count of active accounts executing transactions by project in the last 24 hours.
+  description: '"Active accounts by project in the last 24 hours."'
   columns:
   - name: date
     description: Date of the data.
     data_type: DateTime
+    tests:
+    - not_null
   - name: label
     description: Project label.
     data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Number of active accounts.
-    data_type: UInt64
+    description: Merged group bitmap state value.
+    data_type: String
+    tests:
+    - not_null
+    - unique
   config:
     materialized: view
     tags:
@@ -392,32 +402,8 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_fees_24h
-  description: Hourly total fees from API execution transactions in native and USD tokens.
+  description: Hourly total fees from API execution transactions in native and USD currencies.
   columns:
-  - name: total_fee_native
-    description: Total fees in native tokens.
-    data_type: Float64
-  - name: total_fee_usd
-    description: Total fees in USD.
-    data_type: Float64
-  config:
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
-    - hourly
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_daily
-  description: Daily sum of native and USD fees from successful API execution transactions.
-  columns:
-  - name: day
-    description: Day of the transaction.
-    data_type: DateTime
   - name: total_fee_native
     description: Total fees in native currency.
     data_type: Float64
@@ -425,18 +411,48 @@ models:
     description: Total fees in USD.
     data_type: Float64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - transactions
+    - hourly
+    materialized: view
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_daily
+  description: Daily total fees from executed API transactions, split by native token and USD.
+  columns:
+  - name: day
+    description: Date of the transactions.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: total_fee_native
+    description: Total fees in native token.
+    data_type: Float64
+    tests:
+    - not_null
+  - name: total_fee_usd
+    description: Total fees in USD.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+    access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_fees_by_project_24h
-  description: '"Model aggregating the sum of native and USD fees by project over the last 24 hours."'
+  description: Hourly sum of transaction fees by project.
   columns:
   - name: project
     description: Project identifier.
@@ -460,44 +476,49 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_daily
-  description: Daily count of successful API execution transactions.
+  description: Daily count of API execution transactions.
   columns:
   - name: date
-    description: Date of the transaction
+    description: Date of the transaction.
     data_type: DateTime
+    tests:
+    - not_null
   - name: transaction_type
-    description: Type of the transaction
+    description: Type of the transaction.
     data_type: UInt32
   - name: value
-    description: Number of transactions
+    description: Number of transactions.
     data_type: UInt64
+    tests:
+    - not_null
   config:
     materialized: view
+    access: public
     tags:
     - production
     - execution
     - transactions
-    access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_total
-  description: Total count of API execution transactions by transaction type.
+  description: '"Model for counting the total number of API execution transactions."'
   columns:
   - name: transaction_type
     description: Envelope type (0 = legacy, 1 = access-list, 2 = EIP-1559).
     data_type: UInt32
   - name: value
-    description: Total count of transactions.
+    description: Total sum of transactions.
     data_type: Float64
+  - name: success
+    description: 1 if the transaction succeeded; 0 if it reverted.
+    data_type: UInt8
+  - name: n_txs
+    description: Number of transactions.
+    data_type: UInt64
   config:
-    materialized: view
     access: public
-    tags:
-    - production
-    - execution
-    - transactions
   meta:
     owner: analytics_engineer
     authoritative: false
@@ -507,48 +528,57 @@ models:
   columns:
   - name: date
     description: Date of the transaction.
-    data_type: String
+    data_type: DateTime
+    tests:
+    - not_null
   - name: transaction_type
     description: Type of the transaction.
     data_type: UInt32
   - name: gas_used
     description: Total gas consumed by the transaction.
     data_type: UInt64
+    tests:
+    - not_null
   - name: gas_price_avg
-    description: Average gas price for the transaction.
+    description: Average gas price of the transaction.
     data_type: UInt64
   - name: gas_price_median
-    description: Median gas price for the transaction.
+    description: Median gas price of the transaction.
     data_type: UInt64
   config:
-    materialized: view
     access: public
-    tags:
-    - production
-    - execution
-    - transactions
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_value_daily
-  description: Daily aggregated values of executed transactions on the API, including median, average, and total transaction values in xDAI.
+  description: '"Daily aggregated values of execution transactions on the xDai chain."'
   columns:
   - name: date
     description: Date of the transaction.
-    data_type: String
+    data_type: DateTime
+    tests:
+    - not_null
   - name: transaction_type
-    description: Type of the transaction.
+    description: Type of transaction.
     data_type: UInt32
+    tests:
+    - not_null
   - name: xdai_value
-    description: Total value of the transaction in xDAI.
-    data_type: String
+    description: Value in xDai.
+    data_type: Float64
+    tests:
+    - not_null
   - name: xdai_value_avg
-    description: Average value of the transaction in xDAI.
-    data_type: String
+    description: Average value in xDai.
+    data_type: Float64
+    tests:
+    - not_null
   - name: xdai_value_median
-    description: Median value of the transaction in xDAI.
-    data_type: String
+    description: Median value in xDai.
+    data_type: Float64
+    tests:
+    - not_null
   config:
     materialized: view
     access: public
@@ -585,23 +615,20 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_latest
-  description: '"Signed EVM transactions included in blocks. This model calculates the active accounts and their latest transactions, along with the percentage change in activity compared to the previous 7 days."'
+  description: '"Active accounts and their latest values along with percentage change from the previous week."'
   columns:
   - name: date
-    description: Date of the transaction.
+    description: UTC date of the data.
     data_type: UInt32
   - name: value
-    description: Active accounts value.
-    data_type: UInt32
+    description: Number of active accounts.
+    data_type: UInt64
+    tests:
+    - not_null
   - name: change_pct
-    description: Percentage change in active accounts compared to the previous 7 days.
+    description: Percentage change in active accounts from the previous week.
     data_type: Float64
   config:
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
     access: public
   meta:
     owner: analytics_engineer
@@ -611,7 +638,7 @@ models:
   description: Hourly sum of native token fees from execution transactions within the last 24 hours.
   columns:
   - name: date
-    description: Date when the fees were calculated.
+    description: Date of the hourly aggregation.
     data_type: DateTime
   - name: value
     description: Total sum of native token fees rounded to 6 decimal places.
@@ -629,14 +656,18 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_fees_24h_usd
-  description: Hourly sum of transaction fees in USD executed through the API within the last 24 hours.
+  description: '"Aggregated sum of transaction fees in USD over the last 24 hours."'
   columns:
   - name: date
-    description: Date when the transactions occurred.
+    description: Date for the aggregated sum.
     data_type: DateTime
+    tests:
+    - not_null
   - name: value
     description: Total transaction fees in USD.
     data_type: Float64
+    tests:
+    - not_null
   config:
     materialized: view
     tags:
@@ -653,7 +684,7 @@ models:
   description: Hourly sum of native token fees for execution transactions by project over the last 24 hours.
   columns:
   - name: date
-    description: Date of the data entry.
+    description: Date of the data aggregation.
     data_type: String
   - name: label
     description: Project label.
@@ -663,27 +694,27 @@ models:
     data_type: Float64
   config:
     materialized: view
-    access: public
     tags:
     - production
     - execution
     - transactions
     - hourly
+    access: public
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_fees_by_project_24h_usd
-  description: Hourly sum of transaction fees in USD by project executed in the last 24 hours.
+  description: Hourly sum of transaction fees in USD by project over the last 24 hours.
   columns:
   - name: date
-    description: Date when the transactions were executed.
+    description: Date of the data.
     data_type: DateTime
   - name: label
     description: Project label.
     data_type: String
   - name: value
-    description: Total transaction fees in USD rounded to 2 decimal places.
+    description: Total transaction fees in USD.
     data_type: Float64
   config:
     materialized: view
@@ -698,13 +729,52 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_fees_native_daily
-  description: Daily sum of native token fees for successful execution transactions.
+  description: '"Daily sum of native token fees paid for successful transactions."'
   columns:
   - name: date
-    description: Date of the transaction.
+    description: Date of the transactions.
     data_type: DateTime
   - name: value
     description: Total sum of native token fees.
+    data_type: Float64
+  config:
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_latest
+  description: Value and percentage change of native transaction fees compared to the previous 7 days.
+  columns:
+  - name: date
+    description: Date of the data entry.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: value
+    description: Total native transaction fees for the date.
+    data_type: Float64
+    tests:
+    - not_null
+  - name: change_pct
+    description: Percentage change in total fees compared to the previous 7 days.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_usd_daily
+  description: Daily sum of transaction fees in USD.
+  columns:
+  - name: date
+    description: Date of the transactions.
+    data_type: String
+  - name: value
+    description: Sum of transaction fees in USD.
     data_type: Float64
   config:
     materialized: view
@@ -717,50 +787,17 @@ models:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
-- name: api_execution_transactions_fees_native_latest
-  description: '"Value and percentage change of native transaction fees for the latest date compared to the previous 7 days."'
-  columns:
-  - name: date
-    description: Date of the data.
-    data_type: DateTime
-  - name: value
-    description: Total native transaction fees.
-    data_type: Float64
-  - name: change_pct
-    description: Percentage change in total fees compared to the previous 7 days.
-    data_type: Float64
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_usd_daily
-  description: Daily sum of transaction fees in USD converted from native tokens.
-  columns:
-  - name: date
-    description: Date of the transactions.
-    data_type: DateTime
-  - name: value
-    description: Total transaction fees in USD.
-    data_type: Float64
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
 - name: api_execution_transactions_fees_usd_latest
   description: '"Model providing the latest USD transaction fees for API execution transactions."'
   columns:
   - name: date
     description: Date of the transaction.
-    data_type: DateTime
+    data_type: UInt32
   - name: value
     description: Total fee in USD.
     data_type: Float64
   - name: change_pct
-    description: Percentage change in total fee compared to the previous 7 days.
+    description: Percentage change in fee compared to the previous 7 days.
     data_type: Float64
   config:
     access: public
@@ -769,16 +806,18 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_latest
-  description: Latest execution transactions data including date, total transactions, and percentage change.
+  description: '"Latest execution transactions data including date, total transactions, and percentage change from the previous week."'
   columns:
   - name: date
-    description: Date of the transaction.
+    description: Date of the data record.
     data_type: UInt32
   - name: value
     description: Total number of transactions.
     data_type: UInt64
+    tests:
+    - not_null
   - name: change_pct
-    description: Percentage change in total transactions compared to the previous 7 days.
+    description: Percentage change in total transactions from the previous week.
     data_type: Float64
   config:
     access: public
