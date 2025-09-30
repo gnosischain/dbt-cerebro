@@ -1,155 +1,147 @@
 version: 2
 models:
 
-- name: int_execution_transactions_info_daily
-  description: '"Daily aggregated information on execution transactions, including transaction type, success status, gas usage, and value."'
-  columns:
-  - name: block_timestamp
-    description: UTC timestamp of the block.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: date
-    description: Date of the transaction.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: gas_price
-    description: Price of gas in wei.
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of the transaction.
-    data_type: UInt32
-    tests:
-    - not_null
-  - name: value_native
-    description: Value in native tokens.
-    data_type: Float64
-  - name: success
-    description: Success status of the transaction.
-    data_type: UInt8
-    tests:
-    - not_null
-  config:
-    materialized: incremental
-    incremental_strategy: delete+insert
-    engine: ReplacingMergeTree()
-    order_by: (date, transaction_type, success)
-    unique_key: (date, transaction_type, success)
-    partition_by: toStartOfMonth(date)
-    settings:
-      allow_nullable_key: 1
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: int_execution_transactions_by_project_daily
-  description: Daily aggregated transactions by project, including counts, active accounts, gas usage, and fee sums.
-  columns:
-  - name: date
-    description: Date of the transactions.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: project
-    description: Project name or 'Unknown' if not classified.
-    data_type: String
-    tests:
-    - not_null
-  - name: tx_count
-    description: Total number of transactions.
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: active_accounts
-    description: Number of unique sender addresses.
-    data_type: UInt64
-  - name: ua_bitmap_state
-    description: Bitmap state of user-agent hashes.
-    data_type: String
-  - name: gas_used_sum
-    description: Total gas used in transactions.
-    data_type: Float64
-  - name: fee_native_sum
-    description: Total fees in native token.
-    data_type: Float64
-  - name: fee_usd_sum
-    description: Total fees in USD.
-    data_type: Float64
-  config:
-    materialized: incremental
-    incremental_strategy: delete+insert
-    engine: ReplacingMergeTree()
-    order_by: (date, project)
-    unique_key: (date, project)
-    partition_by: toStartOfMonth(date)
-    settings:
-      allow_nullable_key: 1
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: int_execution_transactions_by_project_hourly_recent
-  description: '"Aggregated hourly transaction data by project, including transaction count, active accounts, user-agent bitmap state, and fee sums."'
-  columns:
-  - name: hour
-    description: Hourly timestamp of the data.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: project
-    description: Project identifier or 'Unknown' if not found.
-    data_type: String
-    tests:
-    - not_null
-  - name: tx_count
-    description: Total number of transactions.
-    data_type: Int64
-    tests:
-    - not_null
-  - name: active_accounts
-    description: Count of unique sender addresses.
-    data_type: Int64
-    tests:
-    - not_null
-  - name: ua_bitmap_state
-    description: User-agent bitmap state.
-    data_type: String
-  - name: fee_native_sum
-    description: Sum of gas fees in native token.
-    data_type: Float64
-    tests:
-    - not_null
-  - name: fee_usd_sum
-    description: Sum of gas fees in USD.
-    data_type: Float64
-  config:
-    materialized: incremental
-    unique_key:
-    - hour
-    - project
-    partition_by: toStartOfDay(hour)
-    order_by:
-    - hour
-    - project
-    post_hook:
-    - ALTER TABLE {{ this }} DELETE WHERE hour < now() - INTERVAL 2 DAY SETTINGS mutations_sync=1
-    tags:
-    - production
-    - execution
-    - transactions
-    - hourly
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
+  - name: int_execution_transactions_info_daily
+    description: Daily aggregated information on execution transactions, including transaction type, success status, gas usage, and value.
+    columns:
+      - name: date
+        description: Day (UTC) derived from block_timestamp.
+        data_type: Date
+        tests: [not_null]
+      - name: transaction_type
+        description: Transaction envelope type as string.
+        data_type: String
+        tests: [not_null]
+      - name: success
+        description: 1 if tx succeeded, 0 otherwise.
+        data_type: UInt8
+        tests: [not_null]
+      - name: n_txs
+        description: Count of transactions for the group.
+        data_type: UInt64
+      - name: xdai_value
+        description: Sum of value (native units).
+        data_type: Float64
+      - name: xdai_value_avg
+        description: Average value per tx (native units).
+        data_type: Float64
+      - name: xdai_value_median
+        description: Median value per tx (native units).
+        data_type: Float64
+      - name: gas_used
+        description: Sum of gas units used.
+        data_type: Float64
+      - name: gas_price_avg
+        description: Average gas price in Gwei (cast to Int32).
+        data_type: Int32
+      - name: gas_price_median
+        description: Median gas price in Gwei (cast to Int32).
+        data_type: Int32
+      - name: fee_native_sum
+        description: Total fees in native units (gas_used * gas_price, /1e18).
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Total fees converted to USD using daily price.
+        data_type: Float64
+    config:
+      materialized: incremental
+      incremental_strategy: delete+insert
+      engine: ReplacingMergeTree()
+      order_by: (date, transaction_type, success)
+      unique_key: (date, transaction_type, success)
+      partition_by: toStartOfMonth(date)
+      settings:
+        allow_nullable_key: 1
+      tags: [production, execution, transactions]
+    meta:
+      owner: analytics_engineer
+      authoritative: false
+      generated_by: schema-writer
+
+  - name: int_execution_transactions_by_project_daily
+    description: Daily aggregated transactions by project, including counts, active accounts, gas usage, and fee sums.
+    columns:
+      - name: date
+        description: Day (UTC).
+        data_type: Date
+        tests: [not_null]
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+        tests: [not_null]
+      - name: tx_count
+        description: Transactions for the project/day.
+        data_type: UInt64
+        tests: [not_null]
+      - name: active_accounts
+        description: Distinct senders for the project/day.
+        data_type: UInt64
+      - name: ua_bitmap_state
+        description: Bitmap aggregate state of distinct senders.
+        data_type: "AggregateFunction(groupBitmap, UInt64)"
+      - name: gas_used_sum
+        description: Sum of gas units used for the project/day.
+        data_type: Float64
+      - name: fee_native_sum
+        description: Total fees (native units) for the project/day.
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Total fees (USD) for the project/day.
+        data_type: Float64
+    config:
+      materialized: incremental
+      incremental_strategy: delete+insert
+      engine: ReplacingMergeTree()
+      order_by: (date, project)
+      unique_key: (date, project)
+      partition_by: toStartOfMonth(date)
+      settings:
+        allow_nullable_key: 1
+      tags: [production, execution, transactions]
+    meta:
+      owner: analytics_engineer
+      authoritative: false
+      generated_by: schema-writer
+
+  - name: int_execution_transactions_by_project_hourly_recent
+    description: Aggregated hourly transaction data by project (~48h), including transaction count, active accounts, bitmap state, and fee sums.
+    columns:
+      - name: hour
+        description: Hour bucket (UTC).
+        data_type: DateTime
+        tests: [not_null]
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+        tests: [not_null]
+      - name: tx_count
+        description: Transactions in the hour for the project.
+        data_type: UInt64
+        tests: [not_null]
+      - name: active_accounts
+        description: Distinct senders in the hour for the project.
+        data_type: UInt64
+        tests: [not_null]
+      - name: ua_bitmap_state
+        description: Bitmap aggregate state of distinct senders (hour/project).
+        data_type: "AggregateFunction(groupBitmap, UInt64)"
+      - name: fee_native_sum
+        description: Fees (native units) in the hour for the project.
+        data_type: Float64
+      - name: fee_usd_sum
+        description: Fees (USD) in the hour for the project.
+        data_type: Float64
+    config:
+      materialized: incremental
+      incremental_strategy: delete+insert
+      engine: ReplacingMergeTree()
+      order_by: (hour, project)
+      unique_key: (hour, project)
+      partition_by: toStartOfDay(hour)
+      post_hook:
+        - "ALTER TABLE {{ this }} DELETE WHERE hour < now() - INTERVAL 2 DAY SETTINGS mutations_sync=1"
+      tags: [production, execution, transactions, hourly]
+    meta:
+      owner: analytics_engineer
+      authoritative: false
+      generated_by: schema-writer
