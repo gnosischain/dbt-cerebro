@@ -13,11 +13,11 @@
 
 WITH tx AS (
   SELECT
-    date_trunc('hour', block_timestamp) AS hour,
-    lower(from_address)                 AS from_address,
-    lower(to_address)                   AS to_address,
-    toFloat64OrZero(gas_used)           AS gas_used,
-    toFloat64OrZero(gas_price)          AS gas_price
+    date_trunc('hour', block_timestamp)  AS hour,
+    lower(from_address)                  AS from_address,
+    lower(to_address)                    AS to_address,
+    toFloat64(coalesce(gas_used, 0))     AS gas_used,
+    toFloat64(coalesce(gas_price, 0))    AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
   WHERE block_timestamp >= now() - INTERVAL 2 DAY
     AND from_address IS NOT NULL
@@ -50,6 +50,6 @@ SELECT
   c.active_accounts,
   c.ua_bitmap_state,
   c.fee_native_sum,
-  c.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum
+  c.fee_native_sum * coalesce(px.price_usd, 1.0) AS fee_usd_sum
 FROM classified c
 LEFT JOIN px ON px.price_date = toDate(c.hour)

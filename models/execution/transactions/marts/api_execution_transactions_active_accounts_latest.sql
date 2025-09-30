@@ -1,20 +1,17 @@
-{{
-  config(
-    materialized='view', 
-    tags=['production','execution','transactions']
-)
-}}
+{{ config(materialized='view', tags=['production','execution','transactions']) }}
 
 WITH totals AS (
   SELECT
     date,
     active_accounts
   FROM {{ ref('fct_execution_transactions_active_accounts_daily') }}
+  WHERE date < today()
 ),
 latest_date AS (
-  SELECT max(date) AS date
+  SELECT date
   FROM totals
-  WHERE date < today()        
+  ORDER BY date DESC
+  LIMIT 1
 ),
 curr AS (
   SELECT t.date, t.active_accounts
@@ -29,6 +26,6 @@ prev7 AS (
 SELECT
   c.date,
   c.active_accounts AS value,
-  ROUND( (COALESCE(c.active_accounts / NULLIF(p.active_accounts, 0), 0) - 1) * 100, 1) AS change_pct
+  ROUND((COALESCE(c.active_accounts / NULLIF(p.active_accounts, 0), 0) - 1) * 100, 1) AS change_pct
 FROM curr c
 CROSS JOIN prev7 p

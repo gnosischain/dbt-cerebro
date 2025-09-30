@@ -14,23 +14,21 @@
 WITH tx AS (
   SELECT
     block_timestamp,
-    toDate(block_timestamp)              AS date,
+    toDate(block_timestamp)               AS date,
     transaction_hash,
-    lower(from_address)                  AS from_address,
-    lower(to_address)                    AS to_address,
-    toFloat64OrZero(gas_used)            AS gas_used,
-    toFloat64OrZero(gas_price)           AS gas_price
+    lower(from_address)                   AS from_address,
+    lower(to_address)                     AS to_address,
+    toFloat64(coalesce(gas_used, 0))      AS gas_used,
+    toFloat64(coalesce(gas_price, 0))     AS gas_price
   FROM {{ ref('stg_execution__transactions') }}
   WHERE block_timestamp < today()
   {{ apply_monthly_incremental_filter('block_timestamp', 'date') }}
-  AND from_address IS NOT NULL
+    AND from_address IS NOT NULL
 ),
-
 lbl AS (
   SELECT lower(address) AS address, project
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
 ),
-
 classified AS (
   SELECT
     t.date,
@@ -41,11 +39,9 @@ classified AS (
     SUM(t.gas_used)                                  AS gas_used_sum,
     SUM(t.gas_used * t.gas_price) / 1e18             AS fee_native_sum
   FROM tx t
-  LEFT JOIN lbl l
-    ON t.to_address = l.address
+  LEFT JOIN lbl l ON t.to_address = l.address
   GROUP BY t.date, project
 ),
-
 px AS (
   SELECT
     price_date,
@@ -53,7 +49,6 @@ px AS (
   FROM {{ ref('stg_crawlers_data__dune_prices') }}
   GROUP BY price_date
 )
-
 SELECT
   c.date,
   c.project,
@@ -62,7 +57,6 @@ SELECT
   c.ua_bitmap_state,
   c.gas_used_sum,
   c.fee_native_sum,
-  c.fee_native_sum * COALESCE(px.price_usd, 1.0) AS fee_usd_sum
+  c.fee_native_sum * coalesce(px.price_usd, 1.0) AS fee_usd_sum
 FROM classified c
-LEFT JOIN px
-  ON px.price_date = c.date
+LEFT JOIN px ON px.price_date = c.date

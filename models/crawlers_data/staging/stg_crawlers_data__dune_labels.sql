@@ -5,18 +5,27 @@
   )
 }}
 
-WITH 
-src AS (
+WITH src AS (
   SELECT
-    lower(address) AS addr_raw,
-    IF(startsWith(lower(address), '0x'), lower(address), CONCAT('0x', lower(address))) AS address_norm,
+    lower(address)  AS address,
     label,
     introduced_at
   FROM {{ source('playground_max','dune_labels') }}
+),
+ranked AS (
+  SELECT
+    address,
+    label,
+    introduced_at,
+    row_number() OVER (
+      PARTITION BY address
+      ORDER BY introduced_at DESC
+    ) AS rn
+  FROM src
 )
 SELECT
-  anyHeavy(address_norm)               AS address,      
-  argMax(label, introduced_at)         AS project,      
-  MAX(introduced_at)                   AS introduced_at
-FROM src
-GROUP BY addr_raw
+  address,
+  label         AS project,
+  introduced_at
+FROM ranked
+WHERE rn = 1

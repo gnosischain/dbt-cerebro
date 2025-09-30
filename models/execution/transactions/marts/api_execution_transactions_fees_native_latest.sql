@@ -1,9 +1,4 @@
-{{
-  config(
-    materialized='view', 
-    tags=['production','execution','transactions']
-)
-}}
+{{ config(materialized='view', tags=['production','execution','transactions']) }}
 
 WITH totals AS (
   SELECT
@@ -11,12 +6,14 @@ WITH totals AS (
     SUM(fee_native_sum) AS total_fee_native
   FROM {{ ref('int_execution_transactions_info_daily') }}
   WHERE success = 1
+    AND date < today()
   GROUP BY date
 ),
 latest_date AS (
-  SELECT max(date) AS date
+  SELECT date
   FROM totals
-  WHERE date < today()        
+  ORDER BY date DESC
+  LIMIT 1
 ),
 curr AS (
   SELECT t.date, t.total_fee_native
@@ -31,6 +28,6 @@ prev7 AS (
 SELECT
   c.date,
   c.total_fee_native AS value,
-  ROUND( (COALESCE(c.total_fee_native / NULLIF(p.total_fee_native, 0), 0) - 1) * 100, 1) AS change_pct
+  ROUND((COALESCE(c.total_fee_native / NULLIF(p.total_fee_native, 0), 0) - 1) * 100, 1) AS change_pct
 FROM curr c
 CROSS JOIN prev7 p
