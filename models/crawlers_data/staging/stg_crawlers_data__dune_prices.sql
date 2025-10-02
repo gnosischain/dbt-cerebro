@@ -10,7 +10,7 @@ WITH base AS (
     toDate(block_date) AS price_date,
     upper(symbol)      AS symbol,
     toFloat64(price)   AS price
-  FROM {{ source('playground_max','dune_prices') }}
+  FROM {{ source('crawlers_data','dune_prices') }}
   WHERE upper(symbol) IN ('XDAI','DAI')
 ),
 xdai AS (

@@ -10,7 +10,7 @@ WITH src AS (
     lower(address)  AS address,
     label,
     introduced_at
-  FROM {{ source('playground_max','dune_labels') }}
+  FROM {{ source('crawlers_data','dune_labels') }}
 ),
 ranked AS (
   SELECT
