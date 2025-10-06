@@ -6,9 +6,9 @@
 }}
 
 SELECT
-  toDate(block_date)                    AS date,
-  upper(symbol)                         AS symbol,
-  argMax(toFloat64(price), block_date)  AS price   
+  toDate(block_date)        AS date,
+  upper(symbol)             AS symbol,
+  anyLast(toFloat64(price)) AS price  
 FROM {{ source('crawlers_data','dune_prices') }}
-GROUP BY price_date, symbol
-ORDER BY price_date, symbol
+GROUP BY date, symbol
+ORDER BY date, symbol
