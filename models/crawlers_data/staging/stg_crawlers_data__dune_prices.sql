@@ -6,7 +6,7 @@
 }}
 
 SELECT
-  toDate(block_date)                    AS price_date,
+  toDate(block_date)                    AS date,
   upper(symbol)                         AS symbol,
   argMax(toFloat64(price), block_date)  AS price   
 FROM {{ source('crawlers_data','dune_prices') }}
