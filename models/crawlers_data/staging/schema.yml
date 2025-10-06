@@ -23,31 +23,26 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__dune_prices
-  description: Raw data from the Dune crawler including prices for XDAI and DAI tokens.
+  description: Daily token prices per symbol from the Dune crawler (generic per-token table).
   columns:
-  - name: symbol
-    description: Symbol of the token.
-    data_type: String
-  - name: price_date
-    description: Date for the price data.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: price_xdai
-    description: Price of the token in XDAI.
-    data_type: Float64
-    tests:
-    - not_null
-  - name: price_dai
-    description: Price of the token in DAI.
-    data_type: Float64
-    tests:
-    - not_null
-  - name: price_usd
-    description: Price of the token in USD.
-    data_type: Float64
-    tests:
-    - not_null
+    - name: price_date
+      description: Date (UTC) for the price snapshot.
+      data_type: Date
+      tests:
+        - not_null
+    - name: symbol
+      description: Uppercased token symbol.
+      data_type: String
+      tests:
+        - not_null
+    - name: price
+      description: Latest observed price for the token on that day.
+      data_type: Float64
+      tests:
+        - not_null
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [price_date, symbol]
   config:
     access: public
   meta:
