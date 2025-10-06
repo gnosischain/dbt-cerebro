@@ -5,87 +5,29 @@
   )
 }}
 
-WITH src AS (
+WITH latest AS (
   SELECT
-    lower(address)  AS address,
-    label           AS label_raw,
-    introduced_at
+    lower(address) AS address,
+    argMax( (label, introduced_at), (introduced_at, label) ) AS agg
   FROM {{ source('crawlers_data','dune_labels') }}
+  GROUP BY address
 ),
 
-ranked AS (
+norm AS (
   SELECT
     address,
-    label_raw,
-    introduced_at,
-    row_number() OVER (
-      PARTITION BY address
-      ORDER BY introduced_at DESC, label_raw DESC
-    ) AS rn
-  FROM src
-),
+    tupleElement(agg, 1) AS label_raw,
+    tupleElement(agg, 2) AS introduced_at,
 
-latest AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at
-  FROM ranked
-  WHERE rn = 1
-),
+    trim(replaceRegexpAll(tupleElement(agg, 1), '\\s*([:/|>])\\s*', '\\1'))                                                  AS s1,
+    replaceRegexpAll(replaceRegexpAll(s1, '_0x[0-9a-fA-F]{40}$', ''), '_0x[0-9a-fA-F]{1,}…[0-9a-fA-F]{1,}$', '')             AS s2,
+    trim(extract(s2, '^([^:/|>]+)'))                                                                                          AS s3,
+    trim(replaceRegexpAll(s3, '\\s*[- ]?[Vv]\\d+(?:\\.\\d+)*\\b', ''))                                                        AS s4,
+    lowerUTF8(s4)                                                                                                             AS s4_l,
 
-step1 AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    trim(replaceRegexpAll(label_raw, '\\s*([:/|>])\\s*', '\\1')) AS s1
-  FROM latest
-),
-
-step2 AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    replaceRegexpAll(s1, '_0x\\S+$', '') AS s2
-  FROM step1
-),
-
-step3 AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    trim(extract(s2, '^([^:/|>]+)')) AS s3
-  FROM step2
-),
-
-step4 AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    trim(replaceRegexpAll(s3, '\\s*[- ]?[Vv]\\d+(?:\\.\\d+)*\\b', '')) AS s4
-  FROM step3
-),
-
-lowered AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    s4,
-    lowerUTF8(s4) AS s4_l
-  FROM step4
-),
-
-bucketed AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
     multiIf(
+      match(s4_l, '^(gnosis[\\s_-]*safe|safe(?:l2)?)\\b'), 'Safe',
+
       match(s4_l, '(^|[^a-z])balancer([^a-z]|$)'), 'Balancer',
       match(s4_l, '(^|[-_])gaug(e)?(\\b|_)'),      'Balancer',
       match(s4_l, '\\b\\d{1,3}%[a-z0-9._-]+'),     'Balancer',
@@ -109,52 +51,27 @@ bucketed AS (
       match(s4_l, '\\bswpr\\b'),                   'Swapr',
 
       match(s4_l, '\\bcow\\s*swap\\b|\\bcow[_\\s-]?protocol\\b'), 'CowSwap',
-
       match(s4_l, '^aave\\b'),                     'Aave',
       match(s4_l, '\\baave\\s*v?2\\b|\\baave\\s*v?3\\b'), 'Aave',
       match(s4_l, '^aavepool\\b'),                 'Aave',
 
       s4
-    ) AS s5
-  FROM lowered
-),
+    )                                                                                                                         AS s5,
 
-drop_roles AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    s5,
-    lowerUTF8(s5) AS s5_l,
+    lowerUTF8(s5)                                                                                                             AS s5_l,
     replaceRegexpAll(
-      lowerUTF8(s5),
-      '\\b(factory|router|vault|pool|implementation|proxy|token|bridge|aggregator|registry|controller|manager|oracle|staking|treasury|multisig|safe|gnosis\\s*safe|deployer|fee\\s*collector|minter|burner|timelock|governor|council|rewards?|distributor|airdrop)s?\\s*$',
+      s5_l,
+      '\\b(factory|router|vault|pool|implementation|proxy|token|bridge|aggregator|registry|controller|manager|oracle|staking|treasury|multisig|gnosis\\s*safe|deployer|fee\\s*collector|minter|burner|timelock|governor|council|rewards?|distributor|airdrop)s?\\s*$',
       ''
-    ) AS s5_l_stripped
-  FROM bucketed
-),
-
-roles_applied AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    left(s5, length(s5_l_stripped)) AS s6
-  FROM drop_roles
-),
-
-finalize AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    trim(replaceRegexpAll(replaceRegexpAll(s6, '\\s+', ' '), '[-_]+$', '')) AS s7
-  FROM roles_applied
+    )                                                                                                                         AS s5_l_stripped,
+    left(s5, length(s5_l_stripped))                                                                                           AS s6,
+    trim(replaceRegexpAll(replaceRegexpAll(s6, '\\s+', ' '), '[-_]+$', ''))                                                   AS s7
+  FROM latest
 )
 
 SELECT
   address,
-  if(positionCaseInsensitive(s7, '0x') > 0, 'Others', s7) AS label,
-  label_raw,
+  if(lengthUTF8(s7)=0 OR positionCaseInsensitive(s7, '0x') > 0, 'Others', s7) AS project,
+  label_raw AS project_raw,
   introduced_at
-FROM finalize
+FROM norm
