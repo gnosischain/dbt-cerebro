@@ -14,15 +14,10 @@
 }}
 
 WITH lbl AS (
-  -- de-dup labels
-  SELECT 
-    address, 
-    anyLast(project) AS project
-  FROM (
-    SELECT lower(address) AS address, project
-    FROM {{ ref('stg_crawlers_data__dune_labels') }}
-  )
-  GROUP BY address
+    SELECT 
+      address
+      ,project
+    FROM {{ ref('int_crawlers_data_labels') }}
 ),
 
 tx_labeled AS (
