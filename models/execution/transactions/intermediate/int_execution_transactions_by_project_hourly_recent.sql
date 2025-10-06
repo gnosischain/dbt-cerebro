@@ -1,12 +1,10 @@
 {{
   config(
-    materialized='incremental',
-    incremental_strategy='delete+insert',
+    materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(hour, project)',
     unique_key='(hour, project)',
     partition_by='toStartOfDay(hour)',
-    post_hook=["ALTER TABLE {{ this }} DELETE WHERE hour < now() - INTERVAL 2 DAY SETTINGS mutations_sync=1"],
     tags=['production','execution','transactions','hourly']
   )
 }}
@@ -39,9 +37,12 @@ classified AS (
   GROUP BY t.hour, project
 ),
 px AS (
-  SELECT price_date, anyLast(price_usd) AS price_usd
+  SELECT
+    date,
+    price
   FROM {{ ref('stg_crawlers_data__dune_prices') }}
-  GROUP BY price_date
+  WHERE symbol = 'XDAI'
+  AND date >= now() - INTERVAL 2 DAY
 )
 SELECT
   c.hour,
@@ -50,6 +51,6 @@ SELECT
   c.active_accounts,
   c.ua_bitmap_state,
   c.fee_native_sum,
-  c.fee_native_sum * coalesce(px.price_usd, 1.0) AS fee_usd_sum
+  c.fee_native_sum * coalesce(px.price, 1.0) AS fee_usd_sum
 FROM classified c
-LEFT JOIN px ON px.price_date = toDate(c.hour)
+LEFT JOIN px ON px.date = toDate(c.hour)

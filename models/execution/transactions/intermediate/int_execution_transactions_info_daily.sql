@@ -60,10 +60,11 @@ agg AS (
 
 px AS (
   SELECT
-    price_date,
-    anyLast(price_usd) AS price_usd
+    date,
+    price
   FROM {{ ref('stg_crawlers_data__dune_prices') }}
-  GROUP BY price_date
+  WHERE symbol = 'XDAI'
+  {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
 )
 
 SELECT
@@ -78,7 +79,7 @@ SELECT
   a.gas_price_avg,
   a.gas_price_median,
   a.fee_native_sum,
-  a.fee_native_sum * coalesce(px.price_usd, 1.0) AS fee_usd_sum
+  a.fee_native_sum * coalesce(px.price, 1.0) AS fee_usd_sum
 FROM agg a
 LEFT JOIN px
-  ON px.price_date = a.date
+  ON px.date = a.date
