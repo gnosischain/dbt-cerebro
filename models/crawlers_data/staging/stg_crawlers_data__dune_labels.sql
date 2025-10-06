@@ -48,16 +48,8 @@ step2 AS (
     address,
     label_raw,
     introduced_at,
-    replaceRegexpAll(s1, '_0x[0-9a-fA-F]{40}$', '') AS s2a      -
+    replaceRegexpAll(s1, '_0x\\S+$', '') AS s2
   FROM step1
-),
-step2b AS (
-  SELECT
-    address,
-    label_raw,
-    introduced_at,
-    replaceRegexpAll(s2a, '_0x[0-9a-fA-F]{1,}…[0-9a-fA-F]{1,}$', '') AS s2   
-  FROM step2
 ),
 
 step3 AS (
@@ -66,7 +58,7 @@ step3 AS (
     label_raw,
     introduced_at,
     trim(extract(s2, '^([^:/|>]+)')) AS s3
-  FROM step2b
+  FROM step2
 ),
 
 step4 AS (
@@ -94,7 +86,6 @@ bucketed AS (
     label_raw,
     introduced_at,
     multiIf(
-
       match(s4_l, '(^|[^a-z])balancer([^a-z]|$)'), 'Balancer',
       match(s4_l, '(^|[-_])gaug(e)?(\\b|_)'),      'Balancer',
       match(s4_l, '\\b\\d{1,3}%[a-z0-9._-]+'),     'Balancer',
@@ -118,7 +109,7 @@ bucketed AS (
       match(s4_l, '\\bswpr\\b'),                   'Swapr',
 
       match(s4_l, '\\bcow\\s*swap\\b|\\bcow[_\\s-]?protocol\\b'), 'CowSwap',
-/
+
       match(s4_l, '^aave\\b'),                     'Aave',
       match(s4_l, '\\baave\\s*v?2\\b|\\baave\\s*v?3\\b'), 'Aave',
       match(s4_l, '^aavepool\\b'),                 'Aave',
@@ -134,8 +125,12 @@ drop_roles AS (
     label_raw,
     introduced_at,
     s5,
-    lowerUTF8(s5)                                                        AS s5_l,
-    replaceRegexpAll(lowerUTF8(s5), '\\b(factory|router|vault|pool|implementation|proxy|token|bridge|aggregator|registry|controller|manager|oracle|staking|treasury|multisig|safe|gnosis\\s*safe|deployer|fee\\s*collector|minter|burner|timelock|governor|council|rewards?|distributor|airdrop)s?\\s*$', '') AS s5_l_stripped
+    lowerUTF8(s5) AS s5_l,
+    replaceRegexpAll(
+      lowerUTF8(s5),
+      '\\b(factory|router|vault|pool|implementation|proxy|token|bridge|aggregator|registry|controller|manager|oracle|staking|treasury|multisig|safe|gnosis\\s*safe|deployer|fee\\s*collector|minter|burner|timelock|governor|council|rewards?|distributor|airdrop)s?\\s*$',
+      ''
+    ) AS s5_l_stripped
   FROM bucketed
 ),
 
@@ -159,7 +154,7 @@ finalize AS (
 
 SELECT
   address,
-  if(positionCaseInsensitive(s7, '0x') > 0, 'Others', s7) AS label,  
+  if(positionCaseInsensitive(s7, '0x') > 0, 'Others', s7) AS label,
   label_raw,
   introduced_at
 FROM finalize
