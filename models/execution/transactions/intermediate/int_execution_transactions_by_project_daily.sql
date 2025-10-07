@@ -21,7 +21,6 @@ WITH lbl AS (
 ),
 
 tx_labeled AS (
-  -- map tx -> project first, then aggregate by (date, project)
   SELECT
     toDate(t.block_timestamp)                        AS date,
     coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
@@ -32,6 +31,7 @@ tx_labeled AS (
   ANY LEFT JOIN lbl l ON lower(t.to_address) = l.address
   WHERE t.block_timestamp < today()
     AND t.from_address IS NOT NULL
+    AND t.success = 1
     {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
 ),
 

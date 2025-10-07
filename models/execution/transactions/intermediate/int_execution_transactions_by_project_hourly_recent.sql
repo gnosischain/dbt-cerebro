@@ -19,6 +19,8 @@ WITH tx AS (
   FROM {{ ref('stg_execution__transactions') }}
   WHERE block_timestamp >= now() - INTERVAL 2 DAY
     AND from_address IS NOT NULL
+    AND success = 1
+
 ),
 lbl AS (
   SELECT 
