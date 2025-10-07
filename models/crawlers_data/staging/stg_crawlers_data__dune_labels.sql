@@ -5,153 +5,110 @@
   )
 }}
 
+
 WITH latest AS (
-  /* Get latest (label,introduced_at) per address, tiebreak by label */
   SELECT
     lower(address) AS address,
-    /* one aggregate that returns (label,introduced_at) chosen by (introduced_at,label) */
     argMax( (label, introduced_at), (introduced_at, label) ) AS agg
   FROM {{ source('crawlers_data','dune_labels') }}
   GROUP BY address
 ),
 
 clean AS (
-  /* Normalize, strip token tails, remove versions/decoration, prep token prefix */
   SELECT
     address,
     tupleElement(agg, 1) AS label_raw,
     tupleElement(agg, 2) AS introduced_at,
 
-    -- compact separators like " a / b : c | d " -> "a/b:c|d"
-    trim(replaceRegexpAll(label_raw, '\\s*([:/|>])\\s*', '\\1'))                                    AS s1,
+    trim(replaceRegexpAll(tupleElement(agg, 1), '\\s*([:/|>])\\s*', '\\1'))                           AS s1,
 
-    -- drop token address suffixes like "..._0xabc…def" or "..._0x<40-hex>"
     replaceRegexpAll(
       replaceRegexpAll(s1, '_0x[0-9a-fA-F]{40}$', ''),
       '_0x[0-9a-fA-F]{1,}…[0-9a-fA-F]{1,}$',
       ''
-    )                                                                                               AS s2,
+    )                                                                                                AS s2,
 
-    -- take the chunk before any of : / | >
-    trim(extract(s2, '^([^:/|>]+)'))                                                                AS s3,
+    trim(extract(s2, '^([^:/|>]+)'))                                                                 AS s3,
 
-    -- remove version-ish fragments like "-v2", "_V3.1", " v1-2"
-    trim(replaceRegexpAll(s3, '(?:\\s*[-_ ]?[Vv]\\d+(?:[._-]\\d+)*)\\b', ''))                       AS s4,
+    trim(replaceRegexpAll(s3, '(?:\\s*[-_ ]?[Vv]\\d+(?:[._-]\\d+)*)\\b', ''))                        AS s4,
 
-    lowerUTF8(s4)                                                                                   AS s4_l,
+    lowerUTF8(s4)                                                                                    AS s4_l,
 
-    /* token-tail flags + raw prefix (before tail) */
     (
       match(s1, '_0x[0-9a-fA-F]{40}$')
       OR match(s1, '_0x[0-9a-fA-F]{1,}…[0-9a-fA-F]{1,}$')
-    )                                                                                               AS looks_like_token_tail,
-
-    trim(
-      replaceRegexpOne(
-        replaceRegexpOne(s1, '_0x[0-9a-fA-F]{40}$', ''),
-        '_0x[0-9a-fA-F]{1,}…[0-9a-fA-F]{1,}$',
-        ''
-      )
-    )                                                                                               AS token_prefix_raw
+    )                                                                                                AS looks_like_token_tail
   FROM latest
 ),
 
-features AS (
-  /* Normalize token prefix variants, join whitelist, compute flags */
+wl AS (
   SELECT
-    c.*,
-    trim(replaceRegexpAll(token_prefix_raw, '\\s+', ' '))                                           AS token_prefix,
-    lowerUTF8(trim(replaceRegexpAll(token_prefix_raw, '\\s+', ' ')))                                AS token_prefix_l,
-    (w.token_label IS NOT NULL)                                                                     AS token_whitelisted,
-
-    (
-      match(lowerUTF8(token_prefix_raw), '\\b(https?://|bit\\.ly|t\\.ly)') OR
-      match(lowerUTF8(token_prefix_raw), '\\[[^\\]]+\\]') OR
-      match(lowerUTF8(token_prefix_raw), '(^|\\s)(claim|airdrop|reward|bonus|metawin|vanityeth|takeusdmoney)\\b') OR
-      match(lowerUTF8(token_prefix_raw), '([a-z0-9-]+\\.)+(cfd|lol|lat|biz|one|farm|icu|cc|org|com|net|xyz|top|link|site|info|online|store|click)\\b') OR
-      match(token_prefix_raw, '^\\s*\\$') OR
-      match(lowerUTF8(token_prefix_raw), '^[^a-z0-9]+$')
-    )                                                                                               AS looks_like_spam,
-
-    match(lowerUTF8(token_prefix_raw), '^(nf)')                     AS token_is_nf_family,
-    match(lowerUTF8(token_prefix_raw), '^(realtoken|realtokens)')   AS token_is_realtoken_family
-  FROM clean c
-  LEFT JOIN (
-    SELECT lowerUTF8(token_label) AS token_label
-    FROM {{ ref('tokens_whitelist') }}
-  ) w
-    ON lowerUTF8(c.token_prefix_raw) = w.token_label
+    lower(address) AS address,
+    symbol
+  FROM {{ ref('tokens_whitelist') }}
 ),
 
 bucketed AS (
-  /* First pass: pick family/project bucket (s5) */
+ 
   SELECT
-    address,
-    label_raw,
-    introduced_at,
-    s4,
-    s4_l,
-    looks_like_token_tail,
-    token_prefix,
-    token_prefix_l,
-    token_whitelisted,
-    looks_like_spam,
-    token_is_nf_family,
-    token_is_realtoken_family,
+    c.address,
+    c.label_raw,
+    c.introduced_at,
+    c.s4,
+    c.s4_l,
+    c.looks_like_token_tail,
+    w.symbol AS wl_symbol,
 
     coalesce(
-      if(looks_like_token_tail AND looks_like_spam, 'ERC20', NULL),
-      if(looks_like_token_tail AND token_is_nf_family, 'ERC20', NULL),
-      if(looks_like_token_tail AND token_is_realtoken_family, 'REALTOKEN', NULL),
-      if(
-        looks_like_token_tail,
-        if(token_whitelisted, token_prefix, 'ERC20'),
-        NULL
+      if(c.looks_like_token_tail,
+         if(w.symbol IS NOT NULL, w.symbol, 'ERC20'),
+         NULL
       ),
+
       multiIf(
-        match(s4_l, '^(realtoken|realtokens)\\b'),              'REALTOKEN',
-        match(lowerUTF8(label_raw), '(^|[^a-z0-9])gnosis[\\s_-]*safe(?:l2)?([^a-z0-9]|$)') OR match(s4_l, '^(safe(?:l2)?)\\b'), 'Safe',
+        match(c.s4_l, '^(realtoken|realtokens)\\b'),              'REALTOKEN',
+        match(lowerUTF8(c.label_raw), '(^|[^a-z0-9])gnosis[\\s_-]*safe(?:l2)?([^a-z0-9]|$)') OR match(c.s4_l, '^(safe(?:l2)?)\\b'), 'Safe',
 
-        match(s4_l, '(^|[^a-z])balancer([^a-z]|$)'),            'Balancer',
-        match(s4_l, '(^|[-_])gaug(e)?(\\b|_)'),                 'Balancer',
-        match(s4_l, '\\b\\d{1,3}%[a-z0-9._-]+'),                'Balancer',
-        match(s4_l, '\\b(w?moo)[a-z0-9]*balancer'),             'Balancer',
+        match(c.s4_l, '(^|[^a-z])balancer([^a-z]|$)'),            'Balancer',
+        match(c.s4_l, '(^|[-_])gaug(e)?(\\b|_)'),                 'Balancer',
+        match(c.s4_l, '\\b\\d{1,3}%[a-z0-9._-]+'),                'Balancer',
+        match(c.s4_l, '\\b(w?moo)[a-z0-9]*balancer'),             'Balancer',
 
-        match(s4_l, '(^|[^a-z])curve([^a-z]|$)'),               'Curve',
-        match(s4_l, '^(yv\\s*curve|yvcurve|y\\s*curve|ycurve)'), 'Curve',
-        match(s4_l, '^curvefi\\b'),                             'Curve',
+        match(c.s4_l, '(^|[^a-z])curve([^a-z]|$)'),               'Curve',
+        match(c.s4_l, '^(yv\\s*curve|yvcurve|y\\s*curve|ycurve)'), 'Curve',
+        match(c.s4_l, '^curvefi\\b'),                             'Curve',
 
-        match(s4_l, '\\buniswap\\b'),                           'Uniswap',
-        match(s4_l, '\\buni[- _]?v?3\\b'),                      'Uniswap',
-        match(s4_l, '\\buni[- _]?v?2\\b'),                      'Uniswap',
-        match(s4_l, '\\bnonfungiblepositionmanager\\b'),        'Uniswap',
-        match(s4_l, '\\bpositions?\\s*nft\\b'),                 'Uniswap',
-        match(s4_l, '\\b(rcow|cow|moo\\w*)\\s*uniswap'),        'Uniswap',
+        match(c.s4_l, '\\buniswap\\b'),                           'Uniswap',
+        match(c.s4_l, '\\buni[- _]?v?3\\b'),                      'Uniswap',
+        match(c.s4_l, '\\buni[- _]?v?2\\b'),                      'Uniswap',
+        match(c.s4_l, '\\bnonfungiblepositionmanager\\b'),        'Uniswap',
+        match(c.s4_l, '\\bpositions?\\s*nft\\b'),                 'Uniswap',
+        match(c.s4_l, '\\b(rcow|cow|moo\\w*)\\s*uniswap'),        'Uniswap',
 
-        match(s4_l, 'sushi'),                                   'Sushi',
+        match(c.s4_l, 'sushi'),                                   'Sushi',
 
-        match(s4_l, '\\bswapr\\b'),                             'Swapr',
-        match(s4_l, '^swaprv?3\\b'),                            'Swapr',
-        match(s4_l, '\\bswpr\\b'),                              'Swapr',
+        match(c.s4_l, '\\bswapr\\b'),                             'Swapr',
+        match(c.s4_l, '^swaprv?3\\b'),                            'Swapr',
+        match(c.s4_l, '\\bswpr\\b'),                              'Swapr',
 
-        match(s4_l, '\\bcow\\s*swap\\b|\\bcow[_\\s-]?protocol\\b|^b_cow_amm\\b'), 'CowSwap',
-        match(s4_l, '^aave\\b'),                                'Aave',
-        match(s4_l, '\\baave\\s*v?2\\b|\\baave\\s*v?3\\b'),     'Aave',
-        match(s4_l, '^aavepool\\b'),                            'Aave',
+        match(c.s4_l, '\\bcow\\s*swap\\b|\\bcow[_\\s-]?protocol\\b|^b_cow_amm\\b'), 'CowSwap',
+        match(c.s4_l, '^aave\\b'),                                'Aave',
+        match(c.s4_l, '\\baave\\s*v?2\\b|\\baave\\s*v?3\\b'),     'Aave',
+        match(c.s4_l, '^aavepool\\b'),                            'Aave',
 
-        s4
+        c.s4
       )
     ) AS s5
-  FROM features
+  FROM clean c
+  LEFT JOIN wl w
+    ON c.address = w.address
 ),
 
 tidy AS (
-  /* Strip trailing "roles", parens, ?, glue underscores/dashes to spaces -> s7 */
   SELECT
     address,
     label_raw,
     introduced_at,
-
     trim(
       replaceRegexpAll(
         replaceRegexpAll(
@@ -163,18 +120,17 @@ tidy AS (
                 ''
               )
             )),
-            '\\s*\\([^)]*\\)\\s*$', ''    -- drop trailing "(...)" blobs
+            '\\s*\\([^)]*\\)\\s*$', ''
           ),
-          '\\?+$', ''                     -- drop trailing ???/?
+          '\\?+$', ''
         ),
-        '[_\\s-]+', ' '                   -- normalize separators to single space
+        '[_\\s-]+', ' '
       )
     ) AS s7
   FROM bucketed
 ),
 
 canon AS (
-  /* Canonical project mapping */
   SELECT
     address,
     label_raw,
@@ -193,10 +149,7 @@ canon AS (
       match(lowerUTF8(s7), '^poap(\\s+top)?$'),                                                        'POAP',
       match(lowerUTF8(s7), '^merkly(\\s+onft)?$'),                                                     'Merkly',
       match(lowerUTF8(s7), '^circles(\\s*ubi)?$'),                                                     'Circles',
-
-      -- Hop (bridge) vs HOPR (privacy); keep HOPR as-is, map plain HOP to Hop Protocol
       match(lowerUTF8(s7), '^(hop|hop\\s*protocol)$'),                                                 'Hop Protocol',
-
       match(lowerUTF8(s7), '^opensea$'),                                                               'OpenSea',
       match(lowerUTF8(s7), '^paraswap$'),                                                              'ParaSwap',
       match(lowerUTF8(s7), '^realt(oken)?(\\s*money\\s*market)?$|^realtoken\\s*dao$|^realtyam$|^real_rmm$'), 'REALTOKEN',
