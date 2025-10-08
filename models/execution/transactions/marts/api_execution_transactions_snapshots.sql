@@ -1,0 +1,8 @@
+{{ config(materialized='view', tags=['production','execution','transactions']) }}
+
+SELECT
+  label,
+  window,
+  value,
+  change_pct
+FROM {{ ref('fct_execution_transactions_snapshots') }}
