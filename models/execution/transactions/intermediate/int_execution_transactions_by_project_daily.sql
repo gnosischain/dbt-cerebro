@@ -14,10 +14,8 @@
 }}
 
 WITH lbl AS (
-    SELECT 
-      address
-      ,project
-    FROM {{ ref('int_crawlers_data_labels') }}
+  SELECT address, project
+  FROM {{ ref('int_crawlers_data_labels') }}
 ),
 
 tx_labeled AS (
@@ -39,11 +37,11 @@ agg AS (
   SELECT
     date,
     project,
-    count()                                           AS tx_count,
-    groupBitmap(cityHash64(from_address))             AS active_accounts,
-    groupBitmapState(cityHash64(from_address))        AS ua_bitmap_state,
-    sum(gas_used)                                     AS gas_used_sum,
-    sum(gas_used * gas_price) / 1e18                  AS fee_native_sum
+    count()                                     AS tx_count,
+    -- groupBitmap(cityHash64(from_address))    AS active_accounts,
+    groupBitmapState(cityHash64(from_address))  AS ua_bitmap_state,
+    sum(gas_used)                               AS gas_used_sum,
+    sum(gas_used * gas_price) / 1e18            AS fee_native_sum
   FROM tx_labeled
   GROUP BY date, project
 ),
@@ -61,7 +59,7 @@ SELECT
   a.date                                     AS date,
   a.project                                  AS project,
   a.tx_count                                 AS tx_count,
-  a.active_accounts                          AS active_accounts,
+  -- derive counts downstream via bitmapCardinality(groupBitmapMerge(ua_bitmap_state))
   a.ua_bitmap_state                          AS ua_bitmap_state,
   a.gas_used_sum                             AS gas_used_sum,
   a.fee_native_sum                           AS fee_native_sum,
