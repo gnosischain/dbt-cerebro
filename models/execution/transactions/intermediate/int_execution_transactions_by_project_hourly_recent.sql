@@ -9,45 +9,53 @@
   )
 }}
 
-WITH tx AS (
-  SELECT
-    date_trunc('hour', block_timestamp)  AS hour,
-    lower(from_address)                  AS from_address,
-    lower(to_address)                    AS to_address,
-    toFloat64(coalesce(gas_used, 0))     AS gas_used,
-    toFloat64(coalesce(gas_price, 0))    AS gas_price
-  FROM {{ ref('stg_execution__transactions') }}
-  WHERE block_timestamp >= now() - INTERVAL 2 DAY
-    AND from_address IS NOT NULL
-    AND success = 1
-
-),
-lbl AS (
-  SELECT 
-    address
-    ,project
+WITH lbl AS (
+  SELECT address, project
   FROM {{ ref('int_crawlers_data_labels') }}
 ),
+
+wm AS (
+  SELECT toStartOfHour(max(block_timestamp)) AS max_hour
+  FROM {{ ref('stg_execution__transactions') }}
+),
+
+tx AS (
+  SELECT
+    date_trunc('hour', t.block_timestamp)      AS hour,
+    lower(t.from_address)                      AS from_address,
+    lower(t.to_address)                        AS to_address,
+    toFloat64(coalesce(t.gas_used, 0))         AS gas_used,
+    toFloat64(coalesce(t.gas_price, 0))        AS gas_price
+  FROM {{ ref('stg_execution__transactions') }} t
+  CROSS JOIN wm
+  WHERE t.block_timestamp >  subtractHours(max_hour, 47)
+    AND t.block_timestamp <= max_hour                  
+    AND t.from_address IS NOT NULL
+    AND t.success = 1
+),
+
 classified AS (
   SELECT
-    t.hour,
-    IF(l.project IS NOT NULL, l.project, 'Unknown') AS project,
-    COUNT()                                         AS tx_count,
-    countDistinct(t.from_address)                   AS active_accounts,
-    groupBitmapState(cityHash64(t.from_address))    AS ua_bitmap_state,
-    SUM(t.gas_used * t.gas_price) / 1e18            AS fee_native_sum
-  FROM tx t
-  LEFT JOIN lbl l ON t.to_address = l.address
-  GROUP BY t.hour, project
+    tx.hour,
+    coalesce(nullIf(trim(l.project), ''), 'Unknown')    AS project,
+    count()                                             AS tx_count,
+    countDistinct(tx.from_address)                      AS active_accounts,
+    groupBitmapState(cityHash64(tx.from_address))       AS ua_bitmap_state,
+    sum(tx.gas_used * tx.gas_price) / 1e18              AS fee_native_sum
+  FROM tx
+  ANY LEFT JOIN lbl l ON tx.to_address = l.address
+  GROUP BY tx.hour, project
 ),
+
 px AS (
-  SELECT
-    date,
-    price
-  FROM {{ ref('stg_crawlers_data__dune_prices') }}
-  WHERE symbol = 'XDAI'
-  AND date >= now() - INTERVAL 2 DAY
+  SELECT p.date, p.price
+  FROM {{ ref('stg_crawlers_data__dune_prices') }} p
+  CROSS JOIN wm
+  WHERE p.symbol = 'XDAI'
+    AND p.date >= toDate(subtractHours(max_hour, 47))
+    AND p.date <= toDate(max_hour)
 )
+
 SELECT
   c.hour,
   c.project,
