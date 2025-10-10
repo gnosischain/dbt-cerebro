@@ -6,9 +6,7 @@
     order_by='(date, project)',
     unique_key='(date, project)',
     partition_by='toStartOfMonth(date)',
-    settings={
-      'allow_nullable_key': 1
-    },
+    settings={'allow_nullable_key': 1},
     tags=['production','execution','transactions']
   )
 }}
@@ -37,11 +35,10 @@ agg AS (
   SELECT
     date,
     project,
-    count()                                     AS tx_count,
-    -- groupBitmap(cityHash64(from_address))    AS active_accounts,
-    groupBitmapState(cityHash64(from_address))  AS ua_bitmap_state,
-    sum(gas_used)                               AS gas_used_sum,
-    sum(gas_used * gas_price) / 1e18            AS fee_native_sum
+    count()                                        AS tx_count,
+    groupBitmapState(cityHash64(from_address))     AS ua_bitmap_state,
+    sum(gas_used)                                  AS gas_used_sum,
+    sum(gas_used * gas_price) / 1e18               AS fee_native_sum
   FROM tx_labeled
   GROUP BY date, project
 ),
@@ -53,16 +50,30 @@ px AS (
   FROM {{ ref('stg_crawlers_data__dune_prices') }}
   WHERE symbol = 'XDAI'
   {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+),
+
+proj_sector AS (
+  SELECT
+    project,
+    coalesce(nullIf(trim(sector), ''), 'Unknown') AS sector
+  FROM (
+    SELECT
+      project,
+      anyHeavy(sector) AS sector
+    FROM {{ ref('int_crawlers_data_labels') }}
+    GROUP BY project
+  )
 )
 
 SELECT
   a.date                                     AS date,
   a.project                                  AS project,
+  ps.sector                                  AS sector,
   a.tx_count                                 AS tx_count,
-  -- derive counts downstream via bitmapCardinality(groupBitmapMerge(ua_bitmap_state))
   a.ua_bitmap_state                          AS ua_bitmap_state,
   a.gas_used_sum                             AS gas_used_sum,
   a.fee_native_sum                           AS fee_native_sum,
   a.fee_native_sum * coalesce(px.price, 1.0) AS fee_usd_sum
 FROM agg a
-LEFT JOIN px ON px.date = a.date
+LEFT JOIN px  ON px.date = a.date
+LEFT JOIN proj_sector ps ON ps.project = a.project
