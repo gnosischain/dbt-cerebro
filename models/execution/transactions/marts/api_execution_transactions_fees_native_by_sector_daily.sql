@@ -5,7 +5,7 @@
 SELECT
   date,
   sector AS label,
-  sum(tx_count) AS value
+  sum(fee_native_sum) AS value
 FROM {{ ref('int_execution_transactions_by_project_daily') }}
 WHERE date < today()
 GROUP BY date, label
