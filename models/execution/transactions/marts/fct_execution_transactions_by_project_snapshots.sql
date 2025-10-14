@@ -108,7 +108,7 @@ SELECT
   'FeesNative',
   w.window,
   w.project,
-  round(toFloat64(w.fee_native), 2),
+  round(toFloat64(w.fee_native), 6),
   multiIf(
     w.window = 'All', NULL,
     round((coalesce(j.fee_curr / nullIf(j.fee_prev, 0), 0) - 1) * 100, 1)

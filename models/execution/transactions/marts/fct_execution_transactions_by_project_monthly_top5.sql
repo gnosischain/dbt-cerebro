@@ -46,14 +46,14 @@ monthly AS (
 SELECT * FROM (
   SELECT month AS date, project AS label, 'Transactions'  AS metric, toFloat64(txs)                              AS value FROM monthly
   UNION ALL
-  SELECT month AS date, project AS label, 'FeesNative'    AS metric, round(toFloat64(fee_native), 2)             AS value FROM monthly
+  SELECT month AS date, project AS label, 'FeesNative'    AS metric, round(toFloat64(fee_native), 6)             AS value FROM monthly
   UNION ALL
   SELECT month AS date, project AS label, 'GasUsed'       AS metric, toFloat64(gas_used)                         AS value FROM monthly
   UNION ALL
   SELECT
     month AS date,
     project AS label,
-    'ActiveSenders' AS metric,
+    'ActiveAccounts' AS metric,
     toFloat64(finalizeAggregation(active_state)) AS value
   FROM monthly
 )

@@ -85,7 +85,7 @@ UNION ALL
 SELECT
   'FeesNative',
   c.window,
-  round(toFloat64(c.fee_native), 2),
+  round(toFloat64(c.fee_native), 6),
   CASE
     WHEN c.window = 'All' THEN NULL
     ELSE round((coalesce(c.fee_native / nullIf(p.fee_native, 0), 0) - 1) * 100, 1)
