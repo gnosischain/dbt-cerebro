@@ -15,19 +15,18 @@
 
 WITH src AS (
   SELECT
-    toStartOfMonth(date)                         AS month,
+    toStartOfMonth(date)                   AS month,
     project,
-    sumState(tx_count)                           AS txs_state,
-    sumState(fee_native_sum)                     AS fee_state,
-    groupBitmapMergeState(ua_bitmap_state)       AS aa_state
+    sumState(tx_count)                     AS txs_state,
+    sumState(fee_native_sum)               AS fee_state,
+    groupBitmapMergeState(ua_bitmap_state) AS aa_state
   FROM {{ ref('int_execution_transactions_by_project_daily') }}
   WHERE 1 = 1
     {% if start_month and end_month %}
       AND toStartOfMonth(date) >= toDate('{{ start_month }}')
       AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-    {% endif %}
-    {% if is_incremental() and not (start_month and end_month) %}
-      AND toStartOfMonth(date) >= toStartOfMonth(addMonths(today(), -2))
+    {% else %}
+      AND {{ apply_monthly_incremental_filter('date') }}
     {% endif %}
   GROUP BY month, project
 )

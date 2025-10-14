@@ -3,8 +3,7 @@
 SELECT
   date,
   sector AS label,
-  groupBitmapMerge(ua_bitmap_state) AS value
-FROM {{ ref('int_execution_transactions_by_project_daily') }}
+  active_senders AS value
+FROM {{ ref('fct_execution_transactions_by_sector_daily') }}
 WHERE date < today()
-GROUP BY date, label
 ORDER BY date ASC, label ASC

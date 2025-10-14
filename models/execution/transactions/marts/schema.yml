@@ -781,3 +781,41 @@ models:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
+- name: fct_execution_transactions_by_sector_daily
+  description: >
+    Serving-grade daily fact at (date × sector) with finalized active sender counts
+    and pre-aggregated transactions, gas used, and native fees. Built from
+    int_execution_transactions_by_project_daily using monthly insert_overwrite.
+  columns:
+    - name: date
+      description: Calendar date (UTC).
+      data_type: Date
+      tests: [not_null]
+    - name: sector
+      description: Project sector label.
+      data_type: String
+      tests: [not_null]
+    - name: active_senders
+      description: Unique active senders (finalized bitmap cardinality).
+      data_type: UInt64
+      tests: [not_null]
+    - name: txs
+      description: Total transactions in the sector for the day.
+      data_type: UInt64
+      tests: [not_null]
+    - name: gas_used_sum
+      description: Total gas used in the sector for the day.
+      data_type: UInt64
+      tests: [not_null]
+    - name: fee_native_sum
+      description: Sum of native fees (e.g., xDAI/ETH) for the sector/day.
+      data_type: Float64
+      tests: [not_null]
+  config:
+    materialized: table
+    access: public
+    tags: [production, execution, transactions]
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
