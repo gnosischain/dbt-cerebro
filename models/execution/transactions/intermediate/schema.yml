@@ -149,3 +149,37 @@ models:
       owner: analytics_engineer
       authoritative: false
       generated_by: schema-writer
+
+  - name: int_execution_transactions_by_project_alltime_state
+    description: |
+      Monthly, per-project aggregate *states* for fast all-time rollups.Stores sumState() for txs/fees and groupBitmapMergeState() for active accounts.Downstream FCTs merge states to get 'All' without scanning all history.
+    columns:
+      - name: month
+        description: Month bucket (UTC) derived from date.
+        data_type: Date
+        tests: [not_null]
+      - name: project
+        description: Project label (or 'Unknown').
+        data_type: String
+        tests: [not_null]
+      - name: txs_state
+        description: sumState over tx_count (monthly/project).
+        data_type: "AggregateFunction(sum, UInt64)"
+      - name: fee_state
+        description: sumState over fee_native_sum (monthly/project).
+        data_type: "AggregateFunction(sum, Float64)"
+      - name: aa_state
+        description: groupBitmapMergeState over ua_bitmap_state (monthly/project).
+        data_type: "AggregateFunction(groupBitmap, UInt64)"
+    config:
+      materialized: incremental
+      incremental_strategy: insert_overwrite
+      engine: AggregatingMergeTree()
+      order_by: (project, month)
+      partition_by: toStartOfMonth(month)
+      unique_key: (project, month)
+      tags: [production, execution, transactions]
+    meta:
+      owner: analytics_engineer
+      authoritative: false
+      generated_by: schema-writer
