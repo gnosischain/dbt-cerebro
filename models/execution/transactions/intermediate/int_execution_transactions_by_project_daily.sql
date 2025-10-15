@@ -35,8 +35,9 @@ tx_labeled AS (
     {% if var('start_month', none) and var('end_month', none) %}
       AND toStartOfMonth(t.block_timestamp) >= toDate('{{ var("start_month") }}')
       AND toStartOfMonth(t.block_timestamp) <= toDate('{{ var("end_month") }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
     {% endif %}
-    {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
 ),
 
 agg AS (
