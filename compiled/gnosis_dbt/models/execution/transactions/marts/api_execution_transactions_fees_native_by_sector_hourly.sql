@@ -1,0 +1,9 @@
+
+
+SELECT
+  hour AS date,
+  sector AS label,
+  round(toFloat64(sum(fee_native_sum)), 2) AS value
+FROM `dbt`.`int_execution_transactions_by_project_hourly_recent`
+GROUP BY date, label
+ORDER BY date ASC, label ASC

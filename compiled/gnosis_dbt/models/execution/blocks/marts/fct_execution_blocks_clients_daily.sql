@@ -17,6 +17,6 @@ SELECT
     date
     ,client
     ,cnt
-    ,ROUND(cnt/(SUM(cnt) OVER (PARTITION BY date)),4) AS pct
+    ,cnt/(SUM(cnt) OVER (PARTITION BY date)) AS fraq
 FROM 
     clients_blocks
