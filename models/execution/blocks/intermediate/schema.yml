@@ -24,15 +24,11 @@ models:
     - not_null
   config:
     access: public
+    materialized: table
     tags:
     - daily
     - client
     - version
-    materialized: table
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
 - name: execution_blocks_production
   description: Data model representing execution blocks with associated metadata, transactions, logs, and related entities for Gnosis Chain analysis.
   columns:
@@ -50,33 +46,64 @@ models:
     tags:
     - gnosis
     - execution
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
 - name: int_execution_blocks_clients_version_daily
-  description: Business-facing table summarizing daily client versions extracted from execution blocks, including counts and version data for analysis of client adoption over time.
+  description: '"Model representing daily counts of unique clients per version."'
   columns:
-  - name: date
-    description: Date representing the start of the day (UTC) for the client version snapshot.
-    data_type: DateTime
-  - name: client
-    description: Client identifier, normalized to lowercase, or 'Unknown' for missing/ambiguous data.
-    data_type: String
   - name: version
-    description: Client version string, or empty if not available.
+    description: Client version string.
     data_type: String
   - name: cnt
-    description: Count of execution blocks associated with the client and version on the given date.
-    data_type: UInt64
+    description: Count of clients for the version on the date.
+    data_type: Int64
+  - name: date
+    description: Date of the data aggregation.
+    data_type: DateTime
+  - name: client
+    description: Client name or identifier.
+    data_type: String
   config:
+    materialized: view
     access: public
     tags:
     - production
     - execution
     - blocks
-    materialized: incremental
   meta:
-    owner: analytics-team
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_blocks_gas_usage_daily
+  description: Daily aggregation of gas usage statistics for execution blocks.
+  columns:
+  - name: date
+    description: Date of the execution block.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: gas_used_sum
+    description: Total gas consumed by transactions in the block.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: gas_limit_sum
+    description: Maximum gas allowed in the block.
+    data_type: UInt64
+    tests:
+    - not_null
+  - name: gas_used_fraq
+    description: Gas used fraction (gas_used_sum / gas_limit_sum).
+    data_type: Float64
+  config:
+    materialized: incremental
+    unique_key: date
+    partition_by: toStartOfMonth(date)
+    tags:
+    - production
+    - execution
+    - blocks
+    - gas
+    access: public
+  meta:
+    owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
