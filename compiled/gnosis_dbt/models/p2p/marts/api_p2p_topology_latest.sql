@@ -18,6 +18,6 @@ SELECT
     neighbor_lat,
     neighbor_lon,
     cnt
-FROM dbt.fct_p2p_topology_latest
-WHERE peer_lat != '' AND neighbor_lat != ''
+FROM `dbt`.`fct_p2p_topology_latest`
+WHERE peer_lat IS NOT NULL AND neighbor_lat IS NOT NULL
 ORDER BY protocol DESC
