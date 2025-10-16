@@ -5,9 +5,13 @@
     unique_key = 'address',
     incremental_strategy = 'delete+insert',
     engine = 'ReplacingMergeTree(introduced_at)',
-    order_by = ['address']
+    order_by = ['address'],
+    partition_by = 'toStartOfMonth(introduced_at)'
   )
 }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
 
 WITH src AS (
   SELECT
@@ -15,7 +19,12 @@ WITH src AS (
     project,
     introduced_at
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
-  {{ apply_monthly_incremental_filter('introduced_at') }}  
+  {% if start_month and end_month %}
+    WHERE toStartOfMonth(introduced_at) >= toDate('{{ var("start_month") }}')
+      AND toStartOfMonth(introduced_at) <= toDate('{{ var("end_month") }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter('introduced_at') }}
+  {% endif %}
 ),
 
 labeled AS (
