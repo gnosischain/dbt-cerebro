@@ -1,21 +1,28 @@
 {{
   config(
-    materialized='table',
-    tags=['production','crawlers_data','labels']
+    materialized = 'incremental',
+    tags = ['production','crawlers_data','labels'],
+    unique_key = 'address',
+    incremental_strategy = 'delete+insert',
+    engine = 'ReplacingMergeTree(introduced_at)',
+    order_by = ['address']
   )
 }}
 
 WITH src AS (
   SELECT
     lower(address) AS address,
-    project
+    project,
+    introduced_at
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
+  {{ apply_monthly_incremental_filter('introduced_at') }}  
 ),
 
 labeled AS (
   SELECT
     address,
     project,
+    introduced_at,
 
     multiIf(
 
@@ -72,7 +79,7 @@ labeled AS (
 
 SELECT
   address,
-  anyLast(project) AS project,
-  anyLast(sector)  AS sector
+  project,
+  sector,
+  introduced_at
 FROM labeled
-GROUP BY address
