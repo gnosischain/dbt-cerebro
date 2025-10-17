@@ -9,9 +9,8 @@
 WITH latest AS (
   SELECT
     lower(address) AS address,
-    argMax( (label, introduced_at), (introduced_at, label) ) AS agg
+    (label, introduced_at) AS agg
   FROM {{ source('crawlers_data','dune_labels') }}
-  GROUP BY address
 ),
 
 clean AS (
