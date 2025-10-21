@@ -8,6 +8,7 @@ WITH lbl AS (
 wm AS (
   SELECT toStartOfHour(max(block_timestamp)) AS max_hour
   FROM `dbt`.`stg_execution__transactions`
+  WHERE toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
 ),
 
 tx AS (
@@ -19,7 +20,9 @@ tx AS (
     toFloat64(coalesce(t.gas_price, 0))   AS gas_price
   FROM `dbt`.`stg_execution__transactions` t
   CROSS JOIN wm
-  WHERE t.block_timestamp >  subtractHours(max_hour, 47)
+  WHERE 
+    toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
+    AND t.block_timestamp >  subtractHours(max_hour, 47)
     AND t.block_timestamp <= max_hour
     AND t.from_address IS NOT NULL
     AND t.success = 1
