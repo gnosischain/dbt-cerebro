@@ -5,7 +5,10 @@
         unique_key='observation_date',
         partition_by='toStartOfMonth(observation_date)',
         order_by='observation_date',
-        tags=['production','esg','nodes']
+        tags=['production','esg','nodes'],
+        settings={
+            'allow_nullable_key': 1
+        }
     )
 }}
 
