@@ -2,16 +2,21 @@ version: 2
 models:
 
 - name: int_bridges_flows_daily
-  description: Daily flows of tokens between bridges on different chains.
+  description: Daily aggregated flows of tokens and USD volumes between bridges.
   columns:
   - name: txs
-    description: Number of transactions.
-    data_type: Int
+    description: Total number of transactions.
+    data_type: Numeric
     tests:
     - not_null
-  - name: volume_usd
-    description: Total volume in USD.
-    data_type: Float64
+  - name: net_usd
+    description: Net USD value.
+    data_type: Numeric
+    tests:
+    - not_null
+  - name: volume_token
+    description: Total volume of tokens.
+    data_type: Numeric
     tests:
     - not_null
   - name: bridge
@@ -19,22 +24,19 @@ models:
     data_type: String
     tests:
     - not_null
-  - name: dest_chain
-    description: Destination chain.
+  - name: source_chain
+    description: Source blockchain network.
     data_type: String
     tests:
     - not_null
-  - name: net_usd
-    description: Net volume in USD.
-    data_type: Float64
-  - name: date
-    description: Date of the transaction.
-    data_type: Date
+  - name: direction
+    description: Flow direction.
+    data_type: String
     tests:
     - not_null
-  - name: volume_token
-    description: Total volume in tokens.
-    data_type: Float64
+  - name: volume_usd
+    description: Total volume in USD.
+    data_type: Numeric
     tests:
     - not_null
   - name: token
@@ -42,22 +44,216 @@ models:
     data_type: String
     tests:
     - not_null
-  - name: source_chain
-    description: Source chain.
+  - name: dest_chain
+    description: Destination blockchain network.
     data_type: String
     tests:
     - not_null
-  tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - date
-            - bridge
-            - source_chain
-            - dest_chain
-            - token
+  - name: date
+    description: Date of the aggregation.
+    data_type: Date
+    tests:
+    - not_null
   config:
+    materialized: view
     access: public
   meta:
     owner: analytics
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_in_out_monthly_by_bridge
+  description: Monthly inflow and outflow USD volume by bridge.
+  columns:
+  - name: month
+    description: Month of the data
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: Identifier of the bridge
+    data_type: String
+    tests:
+    - not_null
+  - name: inflow_usd_month
+    description: Total USD volume inflow for the month
+    data_type: Float64
+    tests:
+    - not_null
+  - name: outflow_usd_month
+    description: Total USD volume outflow for the month
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_in_out_weekly_by_bridge
+  description: Weekly inflow and outflow USD volume for bridges.
+  columns:
+  - name: week
+    description: Week start date.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: Bridge identifier.
+    data_type: String
+    tests:
+    - not_null
+  - name: inflow_usd
+    description: Total USD volume flowing into the bridge.
+    data_type: Float64
+    tests:
+    - not_null
+  - name: outflow_usd
+    description: Total USD volume flowing out of the bridge.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - intermediate
+    - bridges
+  meta:
+    owner: null
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_netflow_monthly_by_bridge
+  description: Model containing monthly netflow data for bridges, including inflow, outflow, and netflow in USD.
+  columns:
+  - name: month
+    description: Month of the data
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: Identifier of the bridge
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_month
+    description: Netflow in USD for the month
+    data_type: Float64
+    tests:
+    - not_null
+  - name: cum_netflow_usd
+    description: Cumulative netflow in USD for the bridge
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_netflow_weekly_by_bridge
+  description: Model containing weekly netflow data for bridges, including inflow and outflow in USD.
+  columns:
+  - name: week
+    description: Week start date
+    data_type: Date
+    tests:
+    - not_null
+  - name: bridge
+    description: Identifier for the bridge
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_week
+    description: Netflow in USD for the week
+    data_type: Float64
+    tests:
+    - not_null
+  - name: cum_netflow_usd
+    description: Cumulative netflow in USD for the bridge
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_token_netflow_monthly
+  description: Monthly netflow USD for tokens in intermediate bridges.
+  columns:
+  - name: month
+    description: Start of the month
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: token
+    description: Token identifier
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_month
+    description: Monthly netflow in USD
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    materialized: incremental
+    unique_key: (month, token)
+    partition_by: month
+    tags:
+    - production
+    - intermediate
+    - bridges
+    access: public
+  meta:
+    owner: null
+    authoritative: false
+    generated_by: schema-writer
+- name: int_bridges_token_netflow_weekly
+  description: Weekly netflow USD for tokens in intermediate bridges.
+  columns:
+  - name: week
+    description: Week start date
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: token
+    description: Token identifier
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_week
+    description: Netflow USD for the week
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
