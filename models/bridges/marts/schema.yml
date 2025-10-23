@@ -2,68 +2,91 @@ version: 2
 models:
 
 - name: api_bridges_cum_netflow_monthly_by_bridge
-  description: Model showing cumulative netflow monthly data by bridge.
+  description: This model provides the cumulative net flow in USD for each bridge on a monthly basis. The data is organized by date and bridge series, allowing for analysis of net flow trends over time.
   columns:
   - name: date
-    description: Date of the data entry.
-    data_type: String
+    description: The month for which the cumulative net flow is calculated. This is the primary temporal dimension of the model.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: series
-    description: Identifier for the bridge series.
+    description: The bridge series identifier. This represents different bridge entities within the dataset.
     data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Cumulative netflow in USD.
+    description: The cumulative net flow in USD for the specified bridge and month. This value is used to analyze financial trends.
     data_type: Float64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: team@example.com
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_cum_netflow_monthly_total
-  description: Monthly total cumulative netflow in USD.
+  description: This model calculates the cumulative net flow in USD for bridges on a monthly basis. It aggregates the monthly net flow data and computes the cumulative sum over time, providing insights into the total net flow up to each month.
   columns:
   - name: date
-    description: Month of the data.
-    data_type: String
+    description: The month for which the cumulative net flow is calculated. Represents the end of the month date.
+    data_type: DateTime
     tests:
     - not_null
   - name: value
-    description: Total netflow in USD for the month.
+    description: The cumulative net flow in USD up to the specified month. Calculated as a running total of monthly net flows.
     data_type: Float64
-    tests:
-    - not_null
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_cum_netflow_weekly_by_bridge
-  description: Model showing cumulative netflow weekly by bridge.
+  description: This model provides the cumulative net flow in USD for each bridge on a weekly basis. It is organized by week and bridge, allowing users to analyze trends over time.
   columns:
   - name: date
-    description: Date of the week.
-    data_type: String
+    description: The week of the year for which the cumulative net flow is calculated.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: series
-    description: Identifier of the bridge.
+    description: The name of the bridge for which the cumulative net flow is reported.
     data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Cumulative netflow in USD.
+    description: The cumulative net flow in USD for the specified bridge and week.
     data_type: Float64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: data-team@example.com
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_cum_netflow_weekly_total
-  description: Cumulative total netflow in USD per week.
+  description: This model calculates the cumulative net flow of USD across bridges on a weekly basis. It aggregates the weekly net flow data from the source model and computes a running total ordered by week.
   columns:
   - name: date
-    description: Date of the week.
-    data_type: String
+    description: The week ending date for the cumulative net flow calculation. This represents the time period for which the cumulative net flow is calculated.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: value
-    description: Cumulative total netflow in USD per week.
+    description: The cumulative net flow of USD across bridges up to and including the specified week. This value is calculated as a running total.
     data_type: Float64
   config:
     materialized: view
@@ -73,124 +96,360 @@ models:
     - bridges
     - api
   meta:
-    owner: null
+    owner: data-team@example.com
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_inflow_outflow_monthly_by_bridge
-  description: Monthly inflow and outflow values in USD by bridge.
+  description: This model aggregates monthly inflow and outflow data for bridges in USD. It combines inflow and outflow series for each bridge and orders them by date, bridge, and series.
   columns:
   - name: date
-    description: Date of the data entry.
-    data_type: String
+    description: The month of the transaction in YYYY-MM format.
+    data_type: DateTime
     tests:
     - not_null
   - name: bridge
-    description: Name of the bridge.
+    description: The name of the bridge for which the inflow or outflow is recorded.
     data_type: String
     tests:
     - not_null
   - name: series
-    description: Type of flow (inflow/outflow).
+    description: Indicates whether the value represents 'inflow' or 'outflow'.
     data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Value in USD.
+    description: The USD amount of inflow or outflow for the given bridge and month.
     data_type: Float64
-    tests:
-    - not_null
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: data-team
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_inflow_outflow_weekly_by_bridge
-  description: Weekly inflow and outflow data by bridge.
+  description: This model provides a weekly summary of inflow and outflow values for each bridge, categorized by series type ('inflow' or 'outflow'). The data is aggregated on a weekly basis to facilitate trend analysis and reporting.
   columns:
   - name: date
-    description: Date of the week.
-    data_type: String
+    description: The week ending date for the inflow and outflow data, formatted as a date.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: bridge
-    description: Name of the bridge.
+    description: The name or identifier of the bridge for which the inflow and outflow data is reported.
     data_type: String
+    tests:
+    - not_null
   - name: series
-    description: Type of flow (inflow/outflow).
+    description: The type of data series, indicating whether the value represents 'inflow' or 'outflow'.
     data_type: String
   - name: value
-    description: Value in USD.
+    description: The monetary value of the inflow or outflow in USD for the specified week and bridge.
     data_type: Float64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_netflow_monthly_by_bridge
-  description: Monthly netflow data by bridge, aggregated by date and bridge.
+  description: This model aggregates the monthly net flow of USD across various bridges, providing a monthly summary by bridge. It is useful for analyzing trends and patterns in bridge usage over time.
   columns:
   - name: date
-    description: Date of the month
-    data_type: Date
+    description: The month for which the net flow is calculated, represented as a date.
+    data_type: DateTime
+    tests:
+    - not_null
   - name: series
-    description: Identifier of the bridge
+    description: The name of the bridge for which the net flow is aggregated.
     data_type: String
+    tests:
+    - not_null
   - name: value
-    description: Netflow value in USD
+    description: The net flow of USD for the given month and bridge, represented as a floating-point number.
     data_type: Float64
   config:
     access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
   meta:
-    owner: null
+    owner: data_team
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_token_netflow_monthly_stacked
-  description: Monthly netflow data for API bridges, stacked by token series.
+  description: This model provides a monthly stacked view of token netflows in USD across different series. It filters out zero netflows and orders the data by date and series for analysis.
   columns:
   - name: date
-    description: Date of the month
-    data_type: String
-  - name: series
-    description: Token series
-    data_type: String
-  - name: value
-    description: Netflow value in USD
-    data_type: Float64
+    description: The month of the netflow data, represented as the first day of the month.
+    data_type: DateTime
     tests:
     - not_null
+  - name: series
+    description: The token series for which the netflow is calculated.
+    data_type: String
+  - name: value
+    description: The netflow amount in USD for the given token series and month.
+    data_type: Float64
   config:
+    access: public
     materialized: view
     tags:
     - production
     - bridges
     - api
-    access: public
   meta:
-    owner: analytics
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: api_bridges_token_netflow_weekly_stacked
-  description: Weekly netflow USD values for tokens on bridges.
+  description: This model provides a weekly stacked view of token netflows in USD across bridges. It includes the date of the week, the token series, and the netflow value in USD.
   columns:
   - name: date
-    description: Date of the week.
-    data_type: String
-  - name: series
-    description: Token series.
-    data_type: String
-  - name: value
-    description: Netflow USD value.
-    data_type: Float64
+    description: The start date of the week for which the netflow is calculated.
+    data_type: DateTime
     tests:
     - not_null
+  - name: series
+    description: The token series identifier for which the netflow is calculated.
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: The netflow value in USD for the token series during the specified week.
+    data_type: Float64
   config:
-    materialized: view
     access: public
+    materialized: view
     tags:
     - production
     - bridges
     - api
   meta:
-    owner: analytics
+    owner: data-team
     authoritative: false
     generated_by: schema-writer
+- name: fct_bridges_in_out_monthly_by_bridge
+  description: This model aggregates the monthly inflow and outflow of USD volume for each bridge. It provides insights into the monthly financial activities of bridges, categorized by direction of flow ('in' or 'out').
+  columns:
+  - name: month
+    description: The starting date of the month for which the data is aggregated.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: The identifier for the bridge through which the transactions occurred.
+    data_type: String
+    tests:
+    - not_null
+  - name: inflow_usd_month
+    description: The total USD volume flowing into the bridge for the month.
+    data_type: Float64
+  - name: outflow_usd_month
+    description: The total USD volume flowing out of the bridge for the month.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - month
+      - bridge
+      severity: error
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - intermediate
+    - bridges
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Materialization and tags inferred from config block.
+- name: fct_bridges_in_out_weekly_by_bridge
+  description: This model aggregates daily bridge flow data into weekly summaries by bridge, calculating the total inflow and outflow in USD for each bridge per week.
+  columns:
+  - name: week
+    description: The starting date of the week for which the data is aggregated.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: The identifier for the bridge being analyzed.
+    data_type: String
+    tests:
+    - not_null
+  - name: inflow_usd
+    description: The total inflow volume in USD for the bridge during the specified week.
+    data_type: Float64
+  - name: outflow_usd
+    description: The total outflow volume in USD for the bridge during the specified week.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - week
+      - bridge
+      severity: error
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - intermediate
+    - bridges
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Materialization and tags inferred from config block.
+- name: fct_bridges_netflow_monthly_by_bridge
+  description: This model calculates the monthly net flow of USD volume for each bridge. It aggregates daily inflows and outflows of USD, computes the net flow for each month, and provides a cumulative net flow over time for each bridge.
+  columns:
+  - name: month
+    description: The start of the month for which the net flow is calculated.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: The identifier for the bridge for which the net flow is calculated.
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_month
+    description: The net flow of USD for the month, calculated as inflow minus outflow.
+    data_type: Float64
+  - name: cum_netflow_usd
+    description: The cumulative net flow of USD for the bridge up to the current month.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - month
+      - bridge
+      severity: error
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Columns inferred from SQL and context.
+- name: fct_bridges_netflow_weekly_by_bridge
+  description: This model calculates the weekly net flow of USD volume for each bridge, aggregating daily flows into weekly totals and computing cumulative net flow over time. It is used to analyze the financial activity and performance of different bridges on a weekly basis.
+  columns:
+  - name: week
+    description: The start of the week for which the net flow is calculated, represented as a date.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: bridge
+    description: The identifier for the bridge for which the net flow is calculated.
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_week
+    description: The net USD volume flow for the week, calculated as the difference between inflow and outflow.
+    data_type: Float64
+  - name: cum_netflow_usd
+    description: The cumulative net USD volume flow for the bridge up to and including the current week.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - week
+      - bridge
+      severity: error
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Materialization inferred from config block.
+- name: fct_bridges_token_netflow_monthly
+  description: This model calculates the monthly net flow of tokens in USD for bridges. It aggregates daily flows into monthly data, providing insights into the net movement of tokens in and out of the system.
+  columns:
+  - name: month
+    description: The month for which the net flow is calculated. This is the first day of the month, represented as a DateTime.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: token
+    description: The token for which the net flow is calculated. This is represented as a string identifier.
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_month
+    description: The net flow of the token in USD for the month. This is calculated as the difference between the sum of incoming and outgoing volumes in USD.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - month
+      - token
+      severity: error
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: data_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_bridges_token_netflow_weekly
+  description: This model calculates the weekly net flow of tokens in USD for bridges. It aggregates daily flows into weekly data, showing the net difference between incoming and outgoing volumes.
+  columns:
+  - name: week
+    description: The start of the week for which the net flow is calculated. This is derived from the date column and represents the first day of the week.
+    data_type: DateTime
+    tests:
+    - not_null
+  - name: token
+    description: The token for which the net flow is calculated. This represents the cryptocurrency or asset being transferred across bridges.
+    data_type: String
+    tests:
+    - not_null
+  - name: netflow_usd_week
+    description: The net flow of the token in USD for the week. This is the difference between the sum of incoming and outgoing volumes in USD.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - week
+      - token
+      severity: error
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: incremental
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Materialization and tags inferred from config block.

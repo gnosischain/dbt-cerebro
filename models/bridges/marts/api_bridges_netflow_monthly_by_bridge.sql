@@ -4,5 +4,5 @@ SELECT
   month AS date,
   bridge AS series,
   netflow_usd_month AS value
-FROM {{ ref('int_bridges_netflow_monthly_by_bridge') }}
+FROM {{ ref('fct_bridges_netflow_monthly_by_bridge') }}
 ORDER BY date, series

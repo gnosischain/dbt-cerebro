@@ -2,7 +2,7 @@
 
 WITH m AS (
   SELECT month, sum(netflow_usd_month) AS netflow_usd_month
-  FROM {{ ref('int_bridges_netflow_monthly_by_bridge') }}
+  FROM {{ ref('fct_bridges_netflow_monthly_by_bridge') }}
   GROUP BY month
 )
 SELECT

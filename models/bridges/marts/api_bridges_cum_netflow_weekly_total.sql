@@ -2,7 +2,7 @@
 
 WITH b AS (
   SELECT week, sum(netflow_usd_week) AS netflow_usd_week
-  FROM {{ ref('int_bridges_netflow_weekly_by_bridge') }}
+  FROM {{ ref('fct_bridges_netflow_weekly_by_bridge') }}
   GROUP BY week
 )
 SELECT
