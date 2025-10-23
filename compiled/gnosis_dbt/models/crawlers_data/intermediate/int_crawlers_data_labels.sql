@@ -1,16 +1,37 @@
 
 
+
+
+
 WITH src AS (
   SELECT
     lower(address) AS address,
-    project
+    project,
+    introduced_at
   FROM `dbt`.`stg_crawlers_data__dune_labels`
+  
+    
+  
+    
+      
+    
+
+    WHERE 
+    toStartOfMonth(toStartOfDay(introduced_at)) >= (
+      SELECT
+        max(toStartOfMonth(introduced_at))
+      FROM `dbt`.`int_crawlers_data_labels`
+    )
+  
+
+  
 ),
 
 labeled AS (
   SELECT
     address,
     project,
+    introduced_at,
 
     multiIf(
 
@@ -67,7 +88,7 @@ labeled AS (
 
 SELECT
   address,
-  anyLast(project) AS project,
-  anyLast(sector)  AS sector
+  project,
+  sector,
+  introduced_at
 FROM labeled
-GROUP BY address
