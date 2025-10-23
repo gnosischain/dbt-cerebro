@@ -1,21 +1,37 @@
 {{
   config(
-    materialized='table',
-    tags=['production','crawlers_data','labels']
+    materialized = 'incremental',
+    tags = ['production','crawlers_data','labels'],
+    unique_key = 'address',
+    incremental_strategy = 'delete+insert',
+    engine = 'ReplacingMergeTree(introduced_at)',
+    order_by = ['address'],
+    partition_by = 'toStartOfMonth(introduced_at)'
   )
 }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
 
 WITH src AS (
   SELECT
     lower(address) AS address,
-    project
+    project,
+    introduced_at
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
+  {% if start_month and end_month %}
+    WHERE toStartOfMonth(introduced_at) >= toDate('{{ var("start_month") }}')
+      AND toStartOfMonth(introduced_at) <= toDate('{{ var("end_month") }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter('introduced_at') }}
+  {% endif %}
 ),
 
 labeled AS (
   SELECT
     address,
     project,
+    introduced_at,
 
     multiIf(
 
@@ -72,7 +88,7 @@ labeled AS (
 
 SELECT
   address,
-  anyLast(project) AS project,
-  anyLast(sector)  AS sector
+  project,
+  sector,
+  introduced_at
 FROM labeled
-GROUP BY address
