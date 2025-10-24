@@ -4,9 +4,10 @@
     tags = ['production','crawlers_data','labels'],
     unique_key = 'address',
     incremental_strategy = 'delete+insert',
-    engine = 'ReplacingMergeTree(introduced_at)',
+    engine = 'MergeTree()',
     order_by = ['address'],
-    partition_by = 'toStartOfMonth(introduced_at)'
+    partition_by = 'toStartOfMonth(introduced_at)',
+    on_cluster=None
   )
 }}
 
