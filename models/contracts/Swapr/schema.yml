@@ -2,35 +2,47 @@ version: 2
 models:
 
 - name: contracts_Swapr_v3_AlgebraFactory_calls
-  description: This model captures swapr algebra factory call events, including transaction details, contract addresses, and call-specific data for analysis and reporting.
+  description: This model captures call data for the Swapr v3 AlgebraFactory contract, including transaction details and call parameters.
   columns:
   - name: transaction_hash
-    description: Unique identifier of the transaction; used as primary key.
+    description: Unique identifier for each transaction
     data_type: String
   - name: block_number
-    description: The block number in which the transaction was included.
+    description: Block number in which the transaction was included
     data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined; in UTC.
-    data_type: DateTime
+    description: Timestamp of the block in UTC
+    data_type: DateTime64(0, 'UTC')
   - name: contract_address
-    description: Address of the contract involved in the call.
-    data_type: String
-  - name: caller_address
-    description: Address initiating the call.
+    description: Address of the Swapr v3 AlgebraFactory contract
     data_type: String
   - name: call_data
-    description: Encoded call data payload.
+    description: Encoded call data for the contract call
     data_type: String
   - name: output_json_type
-    description: Indicates if the output is in JSON format; boolean.
+    description: Indicates if output is in JSON format (true/false)
+    data_type: UInt64
+  - name: output_data
+    description: Output data from the contract call, in JSON if applicable
+    data_type: JSON
+  - name: call_type
+    description: Type of call made to the contract (e.g., 'call', 'delegatecall')
     data_type: String
-  - name: output_type
-    description: Type of output returned by the call.
+  - name: gas_used
+    description: Gas used for the call in wei
     data_type: String
-  - name: output_value
-    description: Result of the call, in JSON or string format.
+  - name: caller_address
+    description: Address initiating the call
     data_type: String
+  - name: caller_balance
+    description: Balance of the caller at the time of call, in wei
+    data_type: String
+  - name: call_value
+    description: Ether value transferred in the call, in wei
+    data_type: String
+  - name: call_success
+    description: Whether the call was successful (1 for success, 0 for failure)
+    data_type: UInt64
   config:
     access: public
     materialized: incremental
@@ -44,7 +56,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Swapr_v3_AlgebraFactory_events
-  description: Events emitted by the Swapr v3 AlgebraFactory contract, including transaction details, block information, and event-specific data.
+  description: This model captures swapr algebra factory events, including transaction details, block information, and event-specific data for analysis and reporting.
   columns:
   - name: block_timestamp
     description: Timestamp of the block when the event was emitted.
@@ -59,13 +71,25 @@ models:
     description: Address of the contract emitting the event.
     data_type: String
   - name: event_name
-    description: Name of the emitted event.
+    description: Name of the event emitted.
+    data_type: String
+  - name: sender
+    description: Address of the sender initiating the transaction.
+    data_type: String
+  - name: recipient
+    description: Address of the recipient involved in the event.
+    data_type: String
+  - name: amount_in
+    description: Input amount in wei.
+    data_type: String
+  - name: amount_out
+    description: Output amount in wei.
     data_type: String
   - name: block_number
     description: Number of the block containing the event.
     data_type: UInt64
-  - name: args
-    description: JSON object containing event-specific arguments.
+  - name: event_data
+    description: Raw JSON data of the event.
     data_type: JSON
   config:
     access: public
@@ -80,44 +104,41 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Swapr_v3_AlgebraPool_calls
-  description: This model captures call data related to Swapr v3 Algebra Pools, including transaction details, block info, and call specifics for analysis.
+  description: This model captures swap pool call data for Swapr v3, including transaction details, pool addresses, and call specifics, used for analytics and reporting.
   columns:
+  - name: transaction_hash
+    description: Unique identifier for the transaction
+    data_type: String
   - name: block_number
-    description: The number of the block containing the call, indicating its position in the blockchain.
+    description: Block number in which the transaction was included
     data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the block was mined, in UTC.
-    data_type: DateTime
-  - name: transaction_hash
-    description: Unique hash identifying the transaction.
+    description: Timestamp when the block was mined
+    data_type: DateTime64(0, 'UTC')
+  - name: pool_address
+    description: Address of the swap pool contract
     data_type: String
-  - name: log_index
-    description: Index of the log within the transaction, indicating call order.
-    data_type: UInt64
   - name: caller_address
-    description: Address initiating the call, in hexadecimal format.
-    data_type: String
-  - name: contract_address
-    description: Address of the contract being called, in hexadecimal format.
+    description: Address initiating the call
     data_type: String
   - name: call_data
-    description: Encoded call data payload, in hexadecimal.
+    description: Encoded call data payload
     data_type: String
   - name: call_type
-    description: Type of call made, e.g., 'swap', 'addLiquidity'.
+    description: Type of call made (e.g., swap, addLiquidity)
     data_type: String
   - name: gas_used
-    description: Amount of gas used for the call, in wei.
+    description: Gas used for the transaction (in wei)
+    data_type: String
+  - name: gas_price
+    description: Gas price at the time of transaction (in wei)
+    data_type: String
+  - name: value
+    description: ETH value transferred in the call (wei)
     data_type: String
   - name: status
-    description: Call execution status, e.g., 'success' or 'failure'.
+    description: Transaction success status (true/false)
     data_type: String
-  - name: block_start_time
-    description: Start time of the block, in UTC.
-    data_type: DateTime
-  - name: block_end_time
-    description: End time of the block, in UTC.
-    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -127,29 +148,35 @@ models:
     - swapr
     - calls
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Swapr_v3_AlgebraPool_events
-  description: This model captures Swapr v3 Algebra Pool events, including transaction details, pool states, and event-specific data for analysis and reporting.
+  description: This model captures Swapr v3 Algebra Pool events, including transaction details, pool state changes, and event-specific data for analysis and reporting.
   columns:
   - name: block_number
-    description: Ethereum block number in which the event was included.
+    description: The block number at which the event was recorded.
     data_type: UInt64
   - name: block_timestamp
-    description: Timestamp of the block containing the event, in UTC.
-    data_type: DateTime64(0, 'UTC')
+    description: The timestamp when the block was mined, in UTC.
+    data_type: DateTime
   - name: transaction_hash
-    description: Hash of the transaction that emitted the event.
+    description: The hash of the transaction that triggered the event.
     data_type: String
   - name: log_index
-    description: Index of the event log within the block.
+    description: The index of the log within the block.
     data_type: UInt64
   - name: pool_address
     description: Address of the Algebra Pool contract involved in the event.
     data_type: String
   - name: event_type
-    description: Type of the event emitted, e.g., 'Swap', 'Mint', 'Burn'.
+    description: Type of the event (e.g., Swap, Mint, Burn).
+    data_type: String
+  - name: sender
+    description: Address initiating the transaction or event.
+    data_type: String
+  - name: recipient
+    description: Address receiving tokens or assets, if applicable.
     data_type: String
   - name: amount0
     description: Amount of token0 involved in the event, in wei.
@@ -158,22 +185,19 @@ models:
     description: Amount of token1 involved in the event, in wei.
     data_type: String
   - name: sqrt_price_x96
-    description: Square root price at the time of the event, scaled by 2^96.
+    description: Square root of the price, scaled by 2^96.
     data_type: String
   - name: liquidity
-    description: Total liquidity in the pool at the time of the event.
+    description: Liquidity of the pool at the time of the event.
     data_type: String
-  - name: sender
-    description: Address initiating the transaction.
+  - name: tick
+    description: Current tick of the pool.
+    data_type: Int32
+  - name: amount0_delta
+    description: Change in token0 amount during the event, in wei.
     data_type: String
-  - name: recipient
-    description: Address receiving tokens or involved in the event.
-    data_type: String
-  - name: amount0_scaled
-    description: Scaled amount of token0 (e.g., in decimal form).
-    data_type: String
-  - name: amount1_scaled
-    description: Scaled amount of token1 (e.g., in decimal form).
+  - name: amount1_delta
+    description: Change in token1 amount during the event, in wei.
     data_type: String
   config:
     access: public

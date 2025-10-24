@@ -244,16 +244,16 @@ models:
   description: Daily metrics for P2P Discv5 clients, including date, metric, label, and value.
   columns:
   - name: date
-    description: The date of the metrics in YYYY-MM-DD format.
+    description: The date of the metric in YYYY-MM-DD format.
     data_type: DateTime
   - name: metric
     description: The name of the metric being recorded.
     data_type: String
   - name: label
-    description: The label associated with the metric, e.g., client version or network.
+    description: Additional label or category for the metric.
     data_type: String
   - name: value
-    description: The numeric value of the metric.
+    description: Numeric value of the metric.
     data_type: Float64
   config:
     access: public
@@ -264,17 +264,17 @@ models:
     - clients
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_discv5_current_fork_daily
   description: Daily count of current forks in the Discv5 network, filtered by label 'Current Fork'.
   columns:
   - name: date
-    description: Date of the record in YYYY-MM-DD format.
+    description: The date of the record, in YYYY-MM-DD format.
     data_type: DateTime
   - name: fork
-    description: Identifier of the fork; string representing fork version or hash.
+    description: Identifier of the fork, as a string.
     data_type: String
   - name: cnt
     description: Count of occurrences for the specific fork on the given date.
@@ -288,7 +288,7 @@ models:
     - discv4
     - forks
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_discv5_geo_latest
@@ -319,16 +319,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_discv5_next_fork_daily
-  description: Daily count of the next fork in the Discv5 P2P network, filtered by label 'Next Fork' and ordered by date and fork.
+  description: Daily count of next forks in the Discv5 P2P network, filtered by label 'Next Fork' and ordered by date and fork.
   columns:
   - name: date
     description: The date of the record, in YYYY-MM-DD format.
     data_type: DateTime
   - name: fork
-    description: Identifier of the fork.
+    description: Identifier of the fork, as a string.
     data_type: String
   - name: cnt
-    description: Count of occurrences for the specific fork on the given date.
+    description: Count of occurrences for the specific date and fork.
     data_type: UInt64
   config:
     access: public
@@ -426,28 +426,29 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_p2p_discv5_forks_daily
-  description: Daily count of Discv5 forks identified, aggregated by date, fork, and label.
+  description: Daily count of Discv5 forks, aggregated by date and label, representing network fork events for P2P analysis.
   columns:
   - name: date
     description: Date of the record in YYYY-MM-DD format.
-    data_type: Date
+    data_type: DateTime
   - name: label
-    description: Label categorizing the fork type or status.
+    description: Label categorizing the fork event.
     data_type: String
   - name: fork
     description: Identifier for the specific fork.
     data_type: String
   - name: cnt
-    description: Count of forks observed on the given date.
+    description: Count of fork occurrences on the given date and label.
     data_type: UInt64
   config:
     access: public
     tags:
-    - analytics
+    - p2p
     - discv5
+    - forks
     materialized: table
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: fct_p2p_discv5_geo_daily
@@ -477,23 +478,26 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_clients_latest
-  description: A view aggregating the latest P2P client counts and percentage changes for Discv4 and Discv5 metrics based on daily client data.
+  description: A view aggregating latest P2P client counts and percentage changes for Discv4 and Discv5 metrics.
   columns:
   - name: discv4_count
-    description: Total number of Discv4 clients for the latest date.
+    description: Number of Discv4 clients for the latest date.
     data_type: UInt64
   - name: change_discv4_pct
-    description: Percentage change in Discv4 clients compared to 7 days prior, rounded to 1 decimal.
+    description: Percentage change in Discv4 clients compared to 7 days prior.
     data_type: Float64
   - name: discv5_count
-    description: Total number of Discv5 clients for the latest date.
+    description: Number of Discv5 clients for the latest date.
     data_type: UInt64
   - name: change_discv5_pct
-    description: Percentage change in Discv5 clients compared to 7 days prior, rounded to 1 decimal.
+    description: Percentage change in Discv5 clients compared to 7 days prior.
     data_type: Float64
+  - name: date
+    description: The date of the latest data point.
+    data_type: DateTime64(0, 'UTC')
   config:
-    materialized: view
     access: public
+    materialized: view
     tags:
     - production
     - p2p
@@ -506,41 +510,41 @@ models:
   description: Daily metrics data for P2P Discv4 clients, including date, metric, label, and value.
   columns:
   - name: date
-    description: Date of the metrics record (YYYY-MM-DD).
+    description: Date of the metric record in YYYY-MM-DD format.
     data_type: DateTime
   - name: metric
     description: Name of the metric being recorded.
     data_type: String
   - name: label
-    description: Label associated with the metric, e.g., client version or network.
+    description: Label or category associated with the metric.
     data_type: String
   - name: value
     description: Numeric value of the metric.
     data_type: Float64
   config:
     access: public
-    materialized: view
     tags:
     - production
     - p2p
     - discv4
     - clients
+    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_discv4_clients_latest
-  description: A view aggregating the latest P2P Discv4 client metrics, including labels and values, filtered for the most recent date.
+  description: A view aggregating the latest metrics, labels, and values from the int_p2p_discv4_clients_daily source, filtered to the most recent date.
   columns:
-  - name: label
-    description: Client label or identifier.
-    data_type: String
-  - name: metric
-    description: Metric name associated with the client.
-    data_type: String
   - name: value
-    description: Numeric value of the metric for the client.
+    description: Numeric value representing the metric measurement.
     data_type: Float64
+  - name: metric
+    description: Name of the metric being recorded.
+    data_type: String
+  - name: label
+    description: Label associated with the metric.
+    data_type: String
   config:
     access: public
     materialized: view
@@ -554,37 +558,37 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_discv5_clients_latest
-  description: A view summarizing the latest P2P Discv5 client metrics, including labels and values, filtered to the most recent date.
+  description: A view providing the latest metrics, labels, and values from the P2P Discv5 clients dataset, filtered to the most recent date.
   columns:
-  - name: label
-    description: Client label or identifier.
-    data_type: String
-  - name: metric
-    description: Metric name associated with the client.
-    data_type: String
   - name: value
-    description: Numeric value of the metric.
+    description: Numeric metric value in the dataset.
     data_type: Float64
+  - name: metric
+    description: Name of the metric.
+    data_type: String
+  - name: label
+    description: Label associated with the metric.
+    data_type: String
   config:
     access: public
-    materialized: view
     tags:
     - production
     - p2p
     - discv5
     - clients
+    materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_topology_latest
-  description: View containing the latest P2P topology data with peer and neighbor details, filtered for valid latitude entries.
+  description: View aggregating latest P2P topology data including protocol, geographic, and neighbor info.
   columns:
   - name: protocol
-    description: Protocol used in the P2P connection.
+    description: Communication protocol used, e.g., 'discv5', 'discv4'.
     data_type: String
   - name: date
-    description: Date of the topology snapshot.
+    description: Date of data snapshot in 'YYYY-MM-DD' format.
     data_type: DateTime
   - name: peer_discovery_id_prefix
     description: Unique prefix identifying the peer discovery.
@@ -593,81 +597,81 @@ models:
     description: Client software used by the peer.
     data_type: String
   - name: peer_city
-    description: City where the peer is located.
+    description: City location of the peer.
     data_type: String
   - name: peer_country
-    description: Country where the peer is located.
+    description: Country location of the peer.
     data_type: String
   - name: peer_org
     description: Organization associated with the peer.
     data_type: String
   - name: peer_lat
     description: Latitude coordinate of the peer's location.
-    data_type: String
+    data_type: Float64
   - name: peer_lon
     description: Longitude coordinate of the peer's location.
-    data_type: String
+    data_type: Float64
   - name: neighbor_discovery_id_prefix
-    description: Unique prefix identifying the neighbor discovery.
+    description: Unique prefix identifying the neighbor peer.
     data_type: UInt64
   - name: neighbor_client
-    description: Client software used by the neighbor.
+    description: Client software used by the neighbor peer.
     data_type: String
   - name: neighbor_city
-    description: City where the neighbor is located.
+    description: City location of the neighbor peer.
     data_type: String
   - name: neighbor_country
-    description: Country where the neighbor is located.
+    description: Country location of the neighbor peer.
     data_type: String
   - name: neighbor_org
-    description: Organization associated with the neighbor.
+    description: Organization associated with the neighbor peer.
     data_type: String
   - name: neighbor_lat
     description: Latitude coordinate of the neighbor's location.
-    data_type: String
+    data_type: Float64
   - name: neighbor_lon
     description: Longitude coordinate of the neighbor's location.
-    data_type: String
+    data_type: Float64
   - name: cnt
     description: Count of occurrences or connections.
     data_type: UInt64
   config:
-    materialized: view
     access: public
+    materialized: view
     tags:
     - production
     - p2p
     - topology
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_p2p_visits_latest
-  description: View aggregating latest P2P visit data, including counts and percentage success metrics for Discv4 and Discv5 crawls.
+  description: Aggregated latest P2P visit data including total visits, success percentages, and crawl metrics for Discv4 and Discv5 networks, comparing current and previous week data.
   columns:
   - name: discv4_total_visits
-    description: Total number of visits recorded in the latest Discv4 crawl.
+    description: Total number of Discv4 visits in the latest data snapshot.
     data_type: UInt64
   - name: discv4_pct_successful
-    description: Percentage of successful visits in the latest Discv4 crawl, rounded to one decimal.
+    description: Percentage of successful Discv4 visits, rounded to one decimal.
     data_type: Float64
   - name: discv4_crawls
-    description: Number of crawls in the latest Discv4 dataset.
+    description: Number of Discv4 crawl attempts in the latest data.
     data_type: UInt64
   - name: change_discv4_crawls_pct
-    description: Percentage change in crawls compared to the previous 7 days for Discv4.
+    description: Percentage change in Discv4 crawls compared to the previous week.
     data_type: Float64
   - name: discv5_total_visits
-    description: Total number of visits recorded in the latest Discv5 crawl.
+    description: Total number of Discv5 visits in the latest data snapshot.
     data_type: UInt64
   - name: discv5_pct_successful
-    description: Percentage of successful visits in the latest Discv5 crawl, rounded to one decimal.
+    description: Percentage of successful Discv5 visits, rounded to one decimal.
     data_type: Float64
   - name: discv5_crawls
-    description: Number of crawls in the latest Discv5 dataset.
+    description: Number of Discv5 crawl attempts in the latest data.
     data_type: UInt64
   - name: change_discv5_crawls_pct
-    description: Percentage change in crawls compared to the previous 7 days for Discv5.
+    description: Percentage change in Discv5 crawls compared to the previous week.
     data_type: Float64
   config:
     access: public
@@ -677,24 +681,22 @@ models:
     - p2p
     - discv4
     - discv5
+    - visits
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_p2p_topology_latest
-  description: Aggregated topology data combining DiscV4 and DiscV5 protocols, including peer and neighbor details with geographic coordinates.
+  description: Aggregated latest P2P topology data combining Discv4 and Discv5 protocols, including peer and neighbor details.
   columns:
-  - name: protocol
-    description: Protocol identifier indicating the topology source ('DiscV4' or 'DiscV5').
-    data_type: String
   - name: date
-    description: Date of the topology record.
-    data_type: DateTime64(0, 'UTC')
+    description: Date of the topology record in YYYY-MM-DD format.
+    data_type: DateTime
   - name: peer_ip
     description: IP address of the peer.
     data_type: String
   - name: peer_discovery_id_prefix
-    description: Numeric prefix used for peer discovery identification.
+    description: Discovery ID prefix for the peer.
     data_type: UInt64
   - name: peer_client
     description: Client software used by the peer.
@@ -712,16 +714,16 @@ models:
     description: Organization associated with the peer.
     data_type: String
   - name: peer_lat
-    description: Latitude coordinate of the peer's location.
-    data_type: String
+    description: Latitude coordinate of the peer location.
+    data_type: Float64
   - name: peer_lon
-    description: Longitude coordinate of the peer's location.
-    data_type: String
+    description: Longitude coordinate of the peer location.
+    data_type: Float64
   - name: neighbor_ip
     description: IP address of the neighbor peer.
     data_type: String
   - name: neighbor_discovery_id_prefix
-    description: Numeric prefix used for neighbor discovery identification.
+    description: Discovery ID prefix for the neighbor.
     data_type: UInt64
   - name: neighbor_client
     description: Client software used by the neighbor.
@@ -736,11 +738,11 @@ models:
     description: Organization associated with the neighbor.
     data_type: String
   - name: neighbor_lat
-    description: Latitude coordinate of the neighbor's location.
-    data_type: String
+    description: Latitude coordinate of the neighbor location.
+    data_type: Float64
   - name: neighbor_lon
-    description: Longitude coordinate of the neighbor's location.
-    data_type: String
+    description: Longitude coordinate of the neighbor location.
+    data_type: Float64
   - name: cnt
     description: Count of occurrences or connections.
     data_type: UInt64

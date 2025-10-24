@@ -15,6 +15,9 @@
     )
 }}
 
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 WITH
 
 -- Known fork digests → names
@@ -70,7 +73,7 @@ peers AS (
                                                     AS cl_next_fork_name,
 
     t1.agent_version,
-    t1.peer_properties,
+    --t1.peer_properties,
     t1.crawl_error,
     t1.dial_errors
   FROM {{ ref('stg_nebula_discv5__visits') }} AS t1
@@ -83,7 +86,12 @@ peers AS (
       toString(t1.peer_properties.fork_digest) IN (SELECT fork_digest FROM fork_digests)
       OR toString(t1.peer_properties.next_fork_version) LIKE '%064'
     )
-    {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
+    {% if start_month and end_month %}
+      AND toStartOfMonth(visit_ended_at) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(visit_ended_at) < toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
+    {% endif %}
 ),
 
 /* Split and locate version token via regex */
@@ -97,7 +105,7 @@ parsed AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+    --peer_properties,
     crawl_error,
     dial_errors,
     agent_version,
@@ -128,7 +136,7 @@ with_parts AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     agent_version,
@@ -165,7 +173,7 @@ exploded AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     client,
@@ -197,7 +205,7 @@ basic_info AS (
     cl_fork_name,
     cl_next_fork_name,
     next_fork_version,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     client,
@@ -224,7 +232,6 @@ SELECT
   t1.cl_fork_name,
   t1.cl_next_fork_name,
   t1.next_fork_version,
-  t1.peer_properties,
   t1.crawl_error,
   t1.dial_errors,
   t1.client,
