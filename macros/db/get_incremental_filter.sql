@@ -6,11 +6,14 @@
       {% set dest_field = destination_field %}
     {% endif %}
 
-    {{ "AND " if add_and else "WHERE " }}
+   {{ "AND " if add_and else "WHERE " }}
     toStartOfMonth(toStartOfDay({{ source_field }})) >= (
-      SELECT
-        max(toStartOfMonth({{ dest_field }}))
-      FROM {{ this }}
+      SELECT max(toStartOfMonth(t.{{ dest_field }}))
+      FROM {{ this }} AS t
+    )
+    AND toStartOfDay({{ source_field }}) >= (
+      SELECT max(toStartOfDay(t2.{{ dest_field }}, 'UTC'))
+      FROM {{ this }} AS t2
     )
   {% endif %}
 {% endmacro %}
