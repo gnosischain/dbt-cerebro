@@ -136,6 +136,7 @@ canon AS (
     introduced_at,
     s7,
     multiIf(
+       match(lowerUTF8(s7), '^erc\\s*-?\\s*4337(\\s*entry\\s*point)?$'), 'ERC-4337 Entry Point',
       match(lowerUTF8(s7), '^(aa\\s*entrypoint|erc-?4337\\s*entry\\s*point|entrypointsimulations|pimlicoentrypointsimulations)$'), 'ERC-4337 Entry Point',
       match(lowerUTF8(s7), '^(uni|uni\\s*v?3\\s*swaprouter02)$'),                                      'Uniswap',
       match(lowerUTF8(s7), '^(oneinch)$'),                                                             '1inch',
