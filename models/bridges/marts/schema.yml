@@ -453,3 +453,208 @@ models:
     authoritative: false
     generated_by: schema-writer
     inference_notes: Materialization and tags inferred from config block.
+- name: fct_bridges_routes_daily
+  description: Daily chain-to-chain routed bridge volume, net flow, and tx counts aggregated from the canonical daily flows table. Powers heatmaps, chain-network edges, and top-routes tables.
+  columns:
+  - name: date
+    description: The day of the aggregated flows.
+    data_type: Date
+    tests:
+    - not_null
+  - name: source_chain
+    description: Origin chain of the bridged volume.
+    data_type: String
+    tests:
+    - not_null
+  - name: dest_chain
+    description: Destination chain of the bridged volume.
+    data_type: String
+    tests:
+    - not_null
+  - name: volume_usd
+    description: Total bridged USD volume for the route on the given day.
+    data_type: Float64
+    tests:
+    - not_null
+  - name: net_usd
+    description: Net USD flow for the route on the given day (inflows minus outflows relative to destination).
+    data_type: Float64
+  - name: txs
+    description: Count of flows contributing to the aggregate for the day and route.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - bridges
+    - fct
+  meta:
+    owner: data_team
+    authoritative: false
+    generated_by: schema-writer
+
+- name: fct_bridges_edges_source_bridge_daily
+  description: Daily edge weights for Sankey left block (Source Chain → Bridge), summing bridged USD volume.
+  columns:
+  - name: date
+    description: The day of the aggregated flows.
+    data_type: Date
+    tests:
+    - not_null
+  - name: source_chain
+    description: Origin chain node (left column of Sankey).
+    data_type: String
+    tests:
+    - not_null
+  - name: bridge
+    description: Bridge node (middle column of Sankey).
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Aggregated USD volume from source_chain to bridge on the given day.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - bridges
+    - fct
+  meta:
+    owner: data_team
+    authoritative: false
+    generated_by: schema-writer
+
+- name: fct_bridges_edges_bridge_dest_daily
+  description: Daily edge weights for Sankey right block (Bridge → Destination Chain), summing bridged USD volume.
+  columns:
+  - name: date
+    description: The day of the aggregated flows.
+    data_type: Date
+    tests:
+    - not_null
+  - name: bridge
+    description: Bridge node (middle column of Sankey).
+    data_type: String
+    tests:
+    - not_null
+  - name: dest_chain
+    description: Destination chain node (right column of Sankey).
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Aggregated USD volume from bridge to dest_chain on the given day.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: incremental
+    tags:
+    - production
+    - bridges
+    - fct
+  meta:
+    owner: analytics
+    authoritative: false
+    generated_by: schema-writer
+
+- name: api_bridges__sankey_chain_bridge_chain_7d
+  description: Union of daily Sankey edges for the last 7 days, Source Chain → Bridge and Bridge → Destination Chain. Feeds the single-hop Sankey visualization.
+  columns:
+  - name: date
+    description: The day of the edge weight (filtered to the last 7 days).
+    data_type: Date
+    tests:
+    - not_null
+  - name: source
+    description: Source node label (chain or bridge depending on edge set).
+    data_type: String
+    tests:
+    - not_null
+  - name: target
+    description: Target node label (bridge or chain depending on edge set).
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: USD volume for the edge on the given day.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+
+- name: api_bridges__chain_network_edges_7d
+  description: Chain-to-chain edge list for the last 7 days, with edge weights equal to total bridged USD volume. Powers the chain network (graph) visualization.
+  columns:
+  - name: source
+    description: Origin chain for the corridor.
+    data_type: String
+    tests:
+    - not_null
+  - name: target
+    description: Destination chain for the corridor.
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Total bridged USD volume over the last 7 days for the corridor.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+
+- name: api_bridges__routes_heatmap_7d
+  description: Chain-to-chain matrix for the last 7 days, providing x/y/value triples for a heatmap of routed volumes.
+  columns:
+  - name: x
+    description: Origin chain (matrix X-axis).
+    data_type: String
+    tests:
+    - not_null
+  - name: y
+    description: Destination chain (matrix Y-axis).
+    data_type: String
+    tests:
+    - not_null
+  - name: value
+    description: Total bridged USD volume over the last 7 days for the (x,y) route.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: data_team
+    authoritative: false
+    generated_by: schema-writer
