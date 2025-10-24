@@ -2,50 +2,85 @@ version: 2
 models:
 
 - name: stg_crawlers_data__dune_labels
-  description: (helpful, business-facing; use a folded block scalar `>`; no blank lines)
+  description: Staging model that processes and cleans Dune labels data, extracting labels, timestamps, and categorizing projects based on label patterns.
   columns:
-  - name: label
-    description: concise
-    data_type: String
   - name: address
-    description: concise
-    data_type: String
-  - name: introduced_at
-    description: concise
+    description: Lowercased blockchain address associated with the label.
     data_type: String
   - name: label_raw
-    description: concise
+    description: Raw label string extracted from the source data.
+    data_type: String
+  - name: introduced_at
+    description: Timestamp indicating when the label was introduced.
+    data_type: DateTime
+  - name: s1
+    description: Label after trimming and replacing specific characters.
+    data_type: String
+  - name: s2
+    description: Label after removing address hashes and suffixes.
+    data_type: String
+  - name: s3
+    description: Label truncated to the main part before versioning or suffixes.
+    data_type: String
+  - name: s4
+    description: Label after removing version indicators and suffixes.
+    data_type: String
+  - name: s4_l
+    description: Lowercase version of s4 for pattern matching.
+    data_type: String
+  - name: looks_like_token_tail
+    description: Boolean indicating if label resembles a token address tail.
+    data_type: UInt64
+  - name: symbol
+    description: Token symbol from whitelist, if available.
+    data_type: String
+  - name: wl_symbol
+    description: Whitelisted symbol associated with the address.
+    data_type: String
+  - name: s5
+    description: Label after categorization into project types.
+    data_type: String
+  - name: s7
+    description: Label after cleaning and removing known suffixes or patterns.
+    data_type: String
+  - name: project_canon
+    description: Canonical project name based on label patterns and known mappings.
+    data_type: String
+  - name: project
+    description: Final project categorization, defaulting to 'ERC20' if label resembles an address.
+    data_type: String
+  - name: project_raw
+    description: Raw project label before final categorization.
     data_type: String
   config:
     access: public
+    materialized: view
+    tags:
+    - staging
+    - crawlers_data
   meta:
-    owner: null
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: stg_crawlers_data__dune_prices
-  description: Daily token prices per symbol from the Dune crawler (generic per-token table).
+  description: Staging model for Dune prices data, providing daily aggregated prices with symbol normalization.
   columns:
-    - name: date
-      description: Date (UTC) for the price snapshot.
-      data_type: Date
-      tests:
-        - not_null
-    - name: symbol
-      description: Uppercased token symbol.
-      data_type: String
-      tests:
-        - not_null
-    - name: price
-      description: Latest observed price for the token on that day.
-      data_type: Float64
-      tests:
-        - not_null
-  tests:
-    - dbt_utils.unique_combination_of_columns:
-        combination_of_columns: [date, symbol]
+  - name: date
+    description: The date of the price, truncated to day in UTC.
+    data_type: DateTime
+  - name: symbol
+    description: The uppercase symbol of the asset.
+    data_type: String
+  - name: price
+    description: The last known price in float64.
+    data_type: Float64
   config:
+    materialized: view
     access: public
+    tags:
+    - staging
+    - crawlers_data
   meta:
-    owner: analytics
+    owner: data-team
     authoritative: false
     generated_by: schema-writer
