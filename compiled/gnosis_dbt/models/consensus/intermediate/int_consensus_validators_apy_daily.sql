@@ -15,11 +15,14 @@ deposists AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 
@@ -39,11 +42,14 @@ deposists AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(date) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 
@@ -62,11 +68,14 @@ deposists_requests AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 
@@ -85,11 +94,14 @@ withdrawals AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 
@@ -108,11 +120,14 @@ withdrawals_requests AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 
@@ -139,11 +154,14 @@ validators AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_validators_apy_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_validators_apy_daily` AS t2
     )
   
 

@@ -25,11 +25,14 @@ clients_version AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_blocks_clients_version_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_blocks_clients_version_daily` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_blocks_clients_version_daily` AS t2
     )
   
 

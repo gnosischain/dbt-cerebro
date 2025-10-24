@@ -14,11 +14,14 @@ FROM `dbt`.`stg_consensus__validators`
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_credentials_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_credentials_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_credentials_daily` AS t2
     )
   
 

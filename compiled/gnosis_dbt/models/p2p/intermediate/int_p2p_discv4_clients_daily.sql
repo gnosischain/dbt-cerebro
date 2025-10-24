@@ -21,11 +21,14 @@ peers AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(visit_ended_at)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_p2p_discv4_clients_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_p2p_discv4_clients_daily` AS t
+    )
+    AND toStartOfDay(visit_ended_at) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_p2p_discv4_clients_daily` AS t2
     )
   
 

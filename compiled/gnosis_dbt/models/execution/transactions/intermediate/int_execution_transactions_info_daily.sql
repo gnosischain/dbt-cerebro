@@ -17,11 +17,14 @@ WITH tx AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_transactions_info_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_transactions_info_daily` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_transactions_info_daily` AS t2
     )
   
 
@@ -72,11 +75,14 @@ px AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_transactions_info_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_transactions_info_daily` AS t
+    )
+    AND toStartOfDay(date) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_transactions_info_daily` AS t2
     )
   
 

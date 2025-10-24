@@ -1,5 +1,8 @@
 
 
+
+
+
 WITH
 
   peers AS (
@@ -15,19 +18,24 @@ WITH
   WHERE
       toString(peer_properties.network_id) = '100'
       
+        
   
     
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(visit_ended_at)) >= (
-      SELECT
-        max(toStartOfMonth(visit_ended_at))
-      FROM `dbt`.`int_p2p_discv4_peers`
+      SELECT max(toStartOfMonth(t.visit_ended_at))
+      FROM `dbt`.`int_p2p_discv4_peers` AS t
+    )
+    AND toStartOfDay(visit_ended_at) >= (
+      SELECT max(toStartOfDay(t2.visit_ended_at, 'UTC'))
+      FROM `dbt`.`int_p2p_discv4_peers` AS t2
     )
   
 
+      
   ),
 
   parsed AS (

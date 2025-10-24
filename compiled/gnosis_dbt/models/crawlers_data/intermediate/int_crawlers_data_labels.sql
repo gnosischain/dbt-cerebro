@@ -16,11 +16,14 @@ WITH src AS (
       
     
 
-    WHERE 
+   WHERE 
     toStartOfMonth(toStartOfDay(introduced_at)) >= (
-      SELECT
-        max(toStartOfMonth(introduced_at))
-      FROM `dbt`.`int_crawlers_data_labels`
+      SELECT max(toStartOfMonth(t.introduced_at))
+      FROM `dbt`.`int_crawlers_data_labels` AS t
+    )
+    AND toStartOfDay(introduced_at) >= (
+      SELECT max(toStartOfDay(t2.introduced_at, 'UTC'))
+      FROM `dbt`.`int_crawlers_data_labels` AS t2
     )
   
 
@@ -60,7 +63,7 @@ labeled AS (
       match(project, '(?i)(chainlink|tellor|pyth|\\boracle\\b|origin\\s*trail|origintrail|marketview|analytics|\\bdata\\b|\\bindex\\b|mu\\s*exchange\\s*pythoracle)'),
       'Oracles & Data',
 
-      match(project, '(?i)(opensea|seaport|poap|nifty(ink|fair)?|\\bnft\\b|erc721|erc1155|foundation|eporio|marketplace|creator|mint|mech\\s*marketplace|ghost\\s*nft\\s*faucet|nfts2me|crypto\\s*stamp|nondescriptive\\s*1155)'),
+      match(project, '(?i)(opensea|seaport|poap|nifty(ink|fair)?|\\bnft\\b|erc721|erc1155|foundation|eporio|marketplace|creator|mint|mech\\s*marketplace|ghost\\s*nft\\s*faucet|nfts2me|crypto\\s*stamp|nondescriptive\\s*1155|unlock(\\s*protocol)?)'),
       'NFTs & Marketplaces',
 
       match(project, '(?i)(dark\\s*forest|conquest\\.eth|mithraeum|\\bgame\\b|gaming)'),
@@ -75,7 +78,7 @@ labeled AS (
       match(project, '(?i)(autonolas|gnosis\\s*ai|autonomous|agent)'),
       'AI & Agents',
 
-      match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem)'),
+      match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem|backed)'),
       'RWA & Tokenization',
 
       match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|vault|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),

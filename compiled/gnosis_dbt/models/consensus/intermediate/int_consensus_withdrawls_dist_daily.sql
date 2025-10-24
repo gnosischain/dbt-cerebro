@@ -31,11 +31,14 @@ FROM (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_withdrawls_dist_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_withdrawls_dist_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_withdrawls_dist_daily` AS t2
     )
   
 

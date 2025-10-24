@@ -73,11 +73,14 @@ final AS (
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_consensus_graffiti_daily`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_consensus_graffiti_daily` AS t
+    )
+    AND toStartOfDay(slot_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_graffiti_daily` AS t2
     )
   
 

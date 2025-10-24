@@ -1,5 +1,8 @@
 
 
+
+
+
 WITH
 
 -- Known fork digests → names
@@ -55,7 +58,7 @@ peers AS (
                                                     AS cl_next_fork_name,
 
     t1.agent_version,
-    t1.peer_properties,
+    --t1.peer_properties,
     t1.crawl_error,
     t1.dial_errors
   FROM `dbt`.`stg_nebula_discv5__visits` AS t1
@@ -69,19 +72,24 @@ peers AS (
       OR toString(t1.peer_properties.next_fork_version) LIKE '%064'
     )
     
+      
   
     
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(visit_ended_at)) >= (
-      SELECT
-        max(toStartOfMonth(visit_ended_at))
-      FROM `dbt`.`int_p2p_discv5_peers`
+      SELECT max(toStartOfMonth(t.visit_ended_at))
+      FROM `dbt`.`int_p2p_discv5_peers` AS t
+    )
+    AND toStartOfDay(visit_ended_at) >= (
+      SELECT max(toStartOfDay(t2.visit_ended_at, 'UTC'))
+      FROM `dbt`.`int_p2p_discv5_peers` AS t2
     )
   
 
+    
 ),
 
 /* Split and locate version token via regex */
@@ -95,7 +103,7 @@ parsed AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+    --peer_properties,
     crawl_error,
     dial_errors,
     agent_version,
@@ -126,7 +134,7 @@ with_parts AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     agent_version,
@@ -163,7 +171,7 @@ exploded AS (
     next_fork_version,
     cl_fork_name,
     cl_next_fork_name,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     client,
@@ -195,7 +203,7 @@ basic_info AS (
     cl_fork_name,
     cl_next_fork_name,
     next_fork_version,
-    peer_properties,
+   -- peer_properties,
     crawl_error,
     dial_errors,
     client,
@@ -222,7 +230,6 @@ SELECT
   t1.cl_fork_name,
   t1.cl_next_fork_name,
   t1.next_fork_version,
-  t1.peer_properties,
   t1.crawl_error,
   t1.dial_errors,
   t1.client,

@@ -8,7 +8,7 @@ gnosis_peers AS (
         peer_id,
         cl_fork_name,
         cl_next_fork_name,
-        peer_properties.ip AS ip,
+        ip,
         any(splitByChar('/', agent_version)[1]) AS client
     FROM `dbt`.`int_p2p_discv5_peers`
     WHERE

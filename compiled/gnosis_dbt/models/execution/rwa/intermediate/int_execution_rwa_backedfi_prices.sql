@@ -58,11 +58,14 @@
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -84,11 +87,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -110,11 +116,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -136,11 +145,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -162,11 +174,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -188,11 +203,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -214,11 +232,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -240,11 +261,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 
@@ -266,11 +290,14 @@ union all
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_rwa_backedfi_prices`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_rwa_backedfi_prices` AS t2
     )
   
 

@@ -25,11 +25,14 @@ WHERE
       
     
 
-    AND 
+   AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT
-        max(toStartOfMonth(date))
-      FROM `dbt`.`int_execution_circles_transitive_transfers`
+      SELECT max(toStartOfMonth(t.date))
+      FROM `dbt`.`int_execution_circles_transitive_transfers` AS t
+    )
+    AND toStartOfDay(block_timestamp) >= (
+      SELECT max(toStartOfDay(t2.date, 'UTC'))
+      FROM `dbt`.`int_execution_circles_transitive_transfers` AS t2
     )
   
 
