@@ -10,5 +10,5 @@ SELECT
     ,label
     ,cnt AS value
 FROM 
-    {{ ref('fct_consensus_deposits_withdrawls_daily') }}
+    {{ ref('int_consensus_deposits_withdrawals_daily') }}
 ORDER BY date, label

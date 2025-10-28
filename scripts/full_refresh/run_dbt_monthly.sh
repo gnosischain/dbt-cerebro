@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This script runs dbt month-by-month in batches.
-# It accepts EITHER of these forms:
-#   ./run_dbt_monthly.sh <model> 2022-08-01 2022-12-01 [batch_size]
-#   ./run_dbt_monthly.sh 2022-08-01 2022-12-01 [batch_size] <model>
+# run_dbt_monthly.sh - Run dbt month-by-month with optional field batching
+# Usage:
+#   ./run_dbt_monthly.sh <model> <start YYYY-MM-01> <end YYYY-MM-01> [batch_size] [field:min:max:batch_size]
+#   ./run_dbt_monthly.sh <start YYYY-MM-01> <end YYYY-MM-01> [batch_size] <model> [field:min:max:batch_size]
 #
-# Default model if omitted at the end: int_execution_transactions_by_project_daily
-# Dates MUST be exactly YYYY-MM-01 (first of month), no newlines.
+# Examples:
+#   ./run_dbt_monthly.sh my_model 2022-01-01 2022-12-01 1
+#   ./run_dbt_monthly.sh my_model 2022-01-01 2022-12-01 1 validator_index:0:500000:50000
 
 DEFAULT_MODEL="int_execution_transactions_by_project_daily"
 
@@ -15,13 +16,7 @@ is_month() {
   [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-01$ ]]
 }
 
-# ---- parse args (tolerant of order) ----
-MODEL=""
-START_MONTH=""
-END_MONTH=""
-BATCH_SIZE="1"
-
-# collect non-empty args
+# Parse arguments
 ARGS=()
 for a in "$@"; do
   [[ -n "${a// /}" ]] && ARGS+=("$a")
@@ -29,33 +24,49 @@ done
 
 if (( ${#ARGS[@]} < 2 )); then
   echo "Usage:"
-  echo "  $0 <model> <start YYYY-MM-01> <end YYYY-MM-01> [batch_size]"
-  echo "  $0 <start YYYY-MM-01> <end YYYY-MM-01> [batch_size] <model>"
+  echo "  $0 <model> <start YYYY-MM-01> <end YYYY-MM-01> [batch_size] [field:min:max:batch_size]"
+  echo "  $0 <start YYYY-MM-01> <end YYYY-MM-01> [batch_size] <model> [field:min:max:batch_size]"
   exit 1
 fi
 
-# Try to detect pattern
+MODEL=""
+START_MONTH=""
+END_MONTH=""
+BATCH_SIZE="1"
+FIELD_BATCH=""
+
+# Detect pattern
 if is_month "${ARGS[0]:-}" && is_month "${ARGS[1]:-}"; then
-  # form: START END [BATCH] [MODEL]
+  # Form: START END [BATCH] [MODEL] [FIELD]
   START_MONTH="${ARGS[0]}"
   END_MONTH="${ARGS[1]}"
+  
   if (( ${#ARGS[@]} >= 3 )) && [[ "${ARGS[2]}" =~ ^[0-9]+$ ]]; then
     BATCH_SIZE="${ARGS[2]}"
     MODEL="${ARGS[3]:-$DEFAULT_MODEL}"
+    FIELD_BATCH="${ARGS[4]:-}"
+  elif (( ${#ARGS[@]} >= 3 )) && [[ "${ARGS[2]}" =~ .*:.* ]]; then
+    FIELD_BATCH="${ARGS[2]}"
+    MODEL="${ARGS[3]:-$DEFAULT_MODEL}"
   else
     MODEL="${ARGS[2]:-$DEFAULT_MODEL}"
+    FIELD_BATCH="${ARGS[3]:-}"
   fi
 else
-  # form: MODEL START END [BATCH]
+  # Form: MODEL START END [BATCH] [FIELD]
   MODEL="${ARGS[0]}"
   START_MONTH="${ARGS[1]:-}"
   END_MONTH="${ARGS[2]:-}"
+  
   if (( ${#ARGS[@]} >= 4 )) && [[ "${ARGS[3]}" =~ ^[0-9]+$ ]]; then
     BATCH_SIZE="${ARGS[3]}"
+    FIELD_BATCH="${ARGS[4]:-}"
+  else
+    FIELD_BATCH="${ARGS[3]:-}"
   fi
 fi
 
-# ---- validate ----
+# Validate
 if ! is_month "$START_MONTH" || ! is_month "$END_MONTH"; then
   echo "Error: START/END must be in YYYY-MM-01 format."
   echo "Got: START='$START_MONTH' END='$END_MONTH'"
@@ -67,19 +78,46 @@ if ! [[ "$BATCH_SIZE" =~ ^[0-9]+$ ]] || (( BATCH_SIZE < 1 )); then
 fi
 if [[ -z "$MODEL" ]]; then MODEL="$DEFAULT_MODEL"; fi
 
+# Parse field batching if provided
+BATCH_FIELD=""
+FIELD_START=""
+FIELD_END=""
+FIELD_SIZE=""
+
+if [[ -n "$FIELD_BATCH" ]] && [[ "$FIELD_BATCH" =~ .*:.* ]]; then
+  IFS=':' read -r BATCH_FIELD FIELD_START FIELD_END FIELD_SIZE <<< "$FIELD_BATCH"
+  
+  # Validate field batch parameters
+  if [[ -z "$BATCH_FIELD" ]] || [[ -z "$FIELD_START" ]] || [[ -z "$FIELD_END" ]] || [[ -z "$FIELD_SIZE" ]]; then
+    echo "Error: Field batch format must be field_name:min:max:batch_size"
+    echo "Got: $FIELD_BATCH"
+    exit 1
+  fi
+  
+  if ! [[ "$FIELD_START" =~ ^[0-9]+$ ]] || ! [[ "$FIELD_END" =~ ^[0-9]+$ ]] || ! [[ "$FIELD_SIZE" =~ ^[0-9]+$ ]]; then
+    echo "Error: Field batch min, max, and size must be integers"
+    exit 1
+  fi
+  
+  echo "Field batching enabled:"
+  echo "  Field: $BATCH_FIELD"
+  echo "  Range: $FIELD_START to $FIELD_END"
+  echo "  Batch size: $FIELD_SIZE"
+fi
+
 echo "Model:        $MODEL"
 echo "Start month:  $START_MONTH"
 echo "End month:    $END_MONTH"
-echo "Batch size:   $BATCH_SIZE"
+echo "Batch size:   $BATCH_SIZE months"
 echo
 
-# ---- helpers ----
-to_int() { # "YYYY-MM-01" -> YYYYMM integer
+# Helper functions
+to_int() {
   local y="${1:0:4}" m="${1:5:2}"
   echo "$((10#$y * 100 + 10#$m))"
 }
 
-add_months() { # add N months to YYYY-MM-01
+add_months() {
   local date="$1" add="$2"
   local y="${date:0:4}" m="${date:5:2}"
   local yi=$((10#$y)) mi=$((10#$m))
@@ -88,33 +126,70 @@ add_months() { # add N months to YYYY-MM-01
   printf "%04d-%02d-01\n" "$ny" "$nm"
 }
 
-min_month() { # min by month
+min_month() {
   local a="$1" b="$2"
   if [[ "$(to_int "$a")" -le "$(to_int "$b")" ]]; then echo "$a"; else echo "$b"; fi
 }
 
-# ---- loop ----
+# Main processing loop
 cur="$START_MONTH"
 end="$END_MONTH"
 first_batch=1
+total_batches=0
 
 while [[ "$(to_int "$cur")" -le "$(to_int "$end")" ]]; do
   batch_end_candidate="$(add_months "$cur" $((BATCH_SIZE - 1)))"
   batch_end="$(min_month "$batch_end_candidate" "$end")"
-
-  echo "==> ${MODEL}: ${cur} -> ${batch_end}"
-
-  if (( first_batch )); then
-    dbt run -s "$MODEL" \
-      --full-refresh \
-      --vars "{\"start_month\": \"${cur}\", \"end_month\": \"${batch_end}\"}"
-    first_batch=0
+  
+  if [[ -n "$BATCH_FIELD" ]]; then
+    # Process with field batching
+    field_current=$FIELD_START
+    
+    while [ $field_current -lt $FIELD_END ]; do
+      field_batch_end=$((field_current + FIELD_SIZE))
+      if [ $field_batch_end -gt $FIELD_END ]; then
+        field_batch_end=$FIELD_END
+      fi
+      
+      echo "==> ${MODEL}: ${cur} -> ${batch_end}, ${BATCH_FIELD}: ${field_current} -> ${field_batch_end}"
+      
+      # Build vars string with field batching
+      vars="{\"start_month\": \"${cur}\", \"end_month\": \"${batch_end}\""
+      vars="${vars}, \"${BATCH_FIELD}_start\": ${field_current}"
+      vars="${vars}, \"${BATCH_FIELD}_end\": ${field_batch_end}}"
+      
+      if (( first_batch )); then
+        dbt run -s "$MODEL" --full-refresh --vars "$vars"
+        first_batch=0
+      else
+        dbt run -s "$MODEL" --vars "$vars"
+      fi
+      
+      total_batches=$((total_batches + 1))
+      field_current=$field_batch_end
+      
+      # Small pause to prevent overwhelming the system
+      sleep 1
+    done
+    
   else
-    dbt run -s "$MODEL" \
-      --vars "{\"start_month\": \"${cur}\", \"end_month\": \"${batch_end}\"}"
+    # Original behavior without field batching
+    echo "==> ${MODEL}: ${cur} -> ${batch_end}"
+    
+    if (( first_batch )); then
+      dbt run -s "$MODEL" \
+        --full-refresh \
+        --vars "{\"start_month\": \"${cur}\", \"end_month\": \"${batch_end}\"}"
+      first_batch=0
+    else
+      dbt run -s "$MODEL" \
+        --vars "{\"start_month\": \"${cur}\", \"end_month\": \"${batch_end}\"}"
+    fi
+    
+    total_batches=$((total_batches + 1))
   fi
-
+  
   cur="$(add_months "$batch_end" 1)"
 done
 
-echo "All batches completed for ${MODEL}."
+echo "All batches completed for ${MODEL}. Total batches processed: ${total_batches}"
