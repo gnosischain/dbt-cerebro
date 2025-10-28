@@ -207,7 +207,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv4_peers
-  description: A comprehensive view of peer visit data in the Discv4 network, including agent versions, connection addresses, peer properties, crawl errors, and enriched location info.
+  description: A comprehensive view of peer visit data from the Discv4 network crawl, including metadata, peer properties, and related IP information, used for analyzing peer behaviors and network topology.
   columns:
   - name: visit_ended_at
     description: Timestamp when the peer visit ended.
@@ -216,58 +216,58 @@ models:
     description: Unique identifier for the peer.
     data_type: String
   - name: agent_version
-    description: Version string of the agent software used by the peer.
+    description: Version string of the peer's agent software.
     data_type: String
   - name: connect_maddr
-    description: Multiaddress used to connect to the peer.
+    description: Multiaddr used for connection, may be null if not available.
     data_type: String
   - name: peer_properties
-    description: JSON object containing various properties of the peer, including network ID.
+    description: JSON object containing various properties of the peer.
     data_type: JSON
   - name: crawl_error
-    description: Error message if the crawl encountered issues.
+    description: Error message encountered during crawl, if any.
     data_type: LowCardinality(Nullable(String))
   - name: dial_errors
     description: Array of dial error messages encountered during connection attempts.
     data_type: Array(LowCardinality(String))
   - name: client
-    description: Client type extracted from peer's version info.
+    description: Client type or platform derived from peer properties.
     data_type: String
   - name: variant
-    description: Variant identifier parsed from version info, if available.
+    description: Variant identifier extracted from version string, if available.
     data_type: String
   - name: version
-    description: Peer software version extracted from version info.
+    description: Peer software version, parsed from version string.
     data_type: String
   - name: channel
-    description: Channel information parsed from version info.
+    description: Channel or release type derived from version string.
     data_type: String
   - name: build
-    description: Build identifier parsed from version info.
+    description: Build identifier extracted from version string.
     data_type: String
   - name: platform
-    description: Platform name derived from agent version parts.
+    description: Platform information parsed from agent version.
     data_type: String
   - name: runtime
-    description: Runtime environment derived from agent version parts.
+    description: Runtime environment information, if available.
     data_type: String
   - name: peer_hostname
-    description: Resolved hostname of the peer's IP address.
+    description: Hostname associated with the peer's IP address.
     data_type: String
   - name: peer_city
-    description: City location of the peer based on IP geolocation.
+    description: City location of the peer, inferred from IP.
     data_type: String
   - name: peer_country
-    description: Country location of the peer based on IP geolocation.
+    description: Country of the peer, inferred from IP.
     data_type: String
   - name: peer_org
     description: Organization associated with the peer's IP address.
     data_type: String
   - name: peer_loc
-    description: Geographical location string of the peer.
+    description: Geographical location details of the peer.
     data_type: String
   - name: generic_provider
-    description: Generic provider info from IP geolocation data.
+    description: Provider information associated with the peer's IP.
     data_type: String
   config:
     access: public
@@ -277,23 +277,23 @@ models:
     - discv4
     materialized: incremental
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv5_clients_daily
-  description: Aggregated daily counts of peers, platforms, providers, and countries based on Discv5 peer visit data, grouped by date and label.
+  description: Aggregated daily counts of peers, platforms, providers, and countries from Discv5 clients, grouped by date and label.
   columns:
   - name: date
-    description: The day of the peer visit, truncated to day level.
+    description: The day of the record, derived from visit_ended_at timestamp.
     data_type: DateTime64(0, 'UTC')
   - name: metric
-    description: The category of the count, e.g., 'Clients', 'Platform', 'Provider', 'Country'.
+    description: 'Type of metric: ''Clients'', ''Platform'', ''Provider'', or ''Country''.'
     data_type: String
   - name: label
-    description: The specific label within the metric category, e.g., client name, platform name, provider name, country code.
+    description: Label corresponding to the metric, e.g., client name, platform, provider, or country.
     data_type: String
   - name: value
-    description: The count of peers, platforms, providers, or countries for the given date and label.
+    description: Count of peers or occurrences for the given label on the specified date.
     data_type: UInt64
   config:
     access: public
@@ -307,16 +307,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv5_forks_daily
-  description: Aggregated daily counts of peers by current and next forks, derived from peer visit data, with grouping by date, label, and fork.
+  description: Aggregated daily counts of peers by current and next forks, derived from peer visit data, grouped by date.
   columns:
   - name: date
     description: The day of the peer visit, truncated to start of day.
-    data_type: DateTime
+    data_type: DateTime64(0, 'UTC')
   - name: label
-    description: Label indicating whether the row counts current or next forks.
+    description: Label indicating whether the record is for current or next fork.
     data_type: String
   - name: fork
-    description: The fork identifier associated with the peer visit.
+    description: The fork name associated with the peer visit.
     data_type: String
   - name: cnt
     description: Count of peer visits for the given date, label, and fork.
@@ -365,11 +365,11 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv5_peers
-  description: Contains detailed peer information extracted from Discv5 network crawl data, including version parsing, peer properties, and associated metadata for analysis.
+  description: Contains detailed information about peers discovered via Discv5, including version, platform, runtime, and network metadata, derived from crawl data.
   columns:
   - name: crawl_id
     description: Unique identifier for the crawl session.
-    data_type: String
+    data_type: UUID
   - name: visit_ended_at
     description: Timestamp when the peer visit ended.
     data_type: DateTime64(0, 'UTC')
@@ -380,43 +380,40 @@ models:
     description: Version string of the peer's agent software.
     data_type: String
   - name: ip
-    description: Peer IP address extracted from connect_maddr.
+    description: Extracted IPv4 address from connect_maddr.
     data_type: String
   - name: fork_digest
-    description: Fork digest hash representing the fork version.
+    description: Fork digest as a string, indicating the fork version.
     data_type: String
   - name: cl_fork_name
-    description: Human-readable name of the fork based on fork digest.
+    description: Human-readable name of the fork based on digest.
     data_type: String
   - name: cl_next_fork_name
     description: Human-readable name of the next fork version.
     data_type: String
   - name: next_fork_version
-    description: Hexadecimal string representing the next fork version.
+    description: String representation of the next fork version.
     data_type: String
-  - name: peer_properties
-    description: JSON object containing various peer properties.
-    data_type: JSON
   - name: crawl_error
-    description: Error message if the crawl encountered issues with this peer.
-    data_type: String
+    description: Error message encountered during crawling, if any.
+    data_type: LowCardinality(Nullable(String))
   - name: dial_errors
-    description: List of dial error messages encountered during connection attempts.
-    data_type: String
+    description: List of dial errors encountered.
+    data_type: Array(LowCardinality(String))
   - name: client
-    description: Client identifier extracted from the agent version.
+    description: Client identifier parsed from agent version.
     data_type: String
   - name: variant
-    description: Variant token parsed from the agent version string.
+    description: Variant token extracted from agent version.
     data_type: String
   - name: version
-    description: Version token parsed from the agent version string.
+    description: Version token extracted from agent version.
     data_type: String
   - name: channel
-    description: Channel information parsed from the version blob.
+    description: Channel information parsed from version string.
     data_type: String
   - name: build
-    description: Build identifier parsed from the version blob.
+    description: Build identifier derived from version string.
     data_type: String
   - name: platform
     description: Platform derived from agent version, normalized to known categories.
@@ -425,22 +422,22 @@ models:
     description: Runtime environment parsed from agent version.
     data_type: String
   - name: peer_hostname
-    description: Hostname associated with the peer's IP address.
+    description: Hostname of the peer, joined from external IP info.
     data_type: String
   - name: peer_city
-    description: City location derived from IP geolocation.
+    description: City location of the peer.
     data_type: String
   - name: peer_country
-    description: Country location derived from IP geolocation.
+    description: Country location of the peer.
     data_type: String
   - name: peer_org
-    description: Organization associated with the IP address.
+    description: Organization associated with the peer.
     data_type: String
   - name: peer_loc
-    description: Geographical location details.
+    description: Geographical location details of the peer.
     data_type: String
   - name: generic_provider
-    description: Generic provider information for the IP address.
+    description: Provider information for the peer.
     data_type: String
   config:
     access: public
@@ -454,70 +451,70 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv5_topology_latest
-  description: This model aggregates peer discovery and neighbor connection data from the Discv5 network, including peer properties, geographical info, and connection counts, to analyze network topology.
+  description: A comprehensive view of the latest Discv5 peer-to-peer network topology, including peer details, neighbor relationships, and geolocation info.
   columns:
   - name: date
-    description: The day of the crawl, in UTC.
+    description: The day of the crawl in UTC.
     data_type: DateTime
   - name: peer_ip
-    description: IP address of the peer node.
+    description: IP address of the peer.
     data_type: String
   - name: peer_discovery_id_prefix
-    description: Discovery ID prefix for the peer.
+    description: Discovery ID prefix of the peer.
     data_type: UInt64
   - name: peer_cl_fork_name
-    description: Client fork name of the peer.
+    description: Fork name of the peer client.
     data_type: String
   - name: peer_cl_next_fork_name
-    description: Next client fork name of the peer.
+    description: Next fork name of the peer client.
     data_type: String
   - name: peer_client
     description: Client software name of the peer.
     data_type: String
   - name: peer_hostname
-    description: Hostname of the peer, from IP info.
+    description: Hostname of the peer IP.
     data_type: String
   - name: peer_city
-    description: City location of the peer, from IP info.
+    description: City location of the peer IP.
     data_type: String
   - name: peer_country
-    description: Country of the peer, from IP info.
+    description: Country location of the peer IP.
     data_type: String
   - name: peer_org
-    description: Organization associated with the peer IP, from IP info.
+    description: Organization associated with the peer IP.
     data_type: String
   - name: peer_loc
-    description: Geographical coordinates of the peer, from IP info.
+    description: Geographical coordinates of the peer IP.
     data_type: String
   - name: neighbor_ip
-    description: IP address of the neighbor node.
+    description: IP address of the neighbor peer.
     data_type: String
   - name: neighbor_discovery_id_prefix
-    description: Discovery ID prefix for the neighbor.
+    description: Discovery ID prefix of the neighbor.
     data_type: UInt64
   - name: neighbor_cl_fork_name
-    description: Client fork name of the neighbor.
+    description: Fork name of the neighbor client.
     data_type: String
   - name: neighbor_cl_next_fork_name
-    description: Next client fork name of the neighbor.
+    description: Next fork name of the neighbor client.
     data_type: String
   - name: neighbor_client
     description: Client software name of the neighbor.
     data_type: String
   - name: neighbor_city
-    description: City location of the neighbor, from IP info.
+    description: City location of the neighbor IP.
     data_type: String
   - name: neighbor_country
-    description: Country of the neighbor, from IP info.
+    description: Country location of the neighbor IP.
     data_type: String
   - name: neighbor_org
-    description: Organization associated with neighbor IP, from IP info.
+    description: Organization associated with the neighbor IP.
     data_type: String
   - name: neighbor_loc
-    description: Geographical coordinates of neighbor, from IP info.
+    description: Geographical coordinates of the neighbor IP.
     data_type: String
   - name: cnt
-    description: Count of neighbor edges between peer and neighbor.
+    description: Count of edges between peer and neighbor for the day.
     data_type: UInt64
   config:
     access: public
@@ -531,19 +528,19 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv4_clients_daily
-  description: Aggregated daily counts of peers categorized by client, platform, provider, and country, based on Discv4 peer visit data.
+  description: Aggregated daily counts of peers, platforms, providers, and countries based on peer visit data from the Discv4 network.
   columns:
   - name: date
-    description: The day of the peer visit, truncated to day level.
+    description: The date of the peer visit, truncated to day.
     data_type: DateTime64(0, 'UTC')
   - name: metric
-    description: Category of the peer count, e.g., 'Clients', 'Platform', 'Provider', 'Country'.
+    description: Type of metric, e.g., 'Clients', 'Platform', 'Provider', 'Country'.
     data_type: String
   - name: label
-    description: Specific label within the metric category, e.g., client name, platform, provider, or country code.
+    description: Label for the metric, e.g., client name, platform, provider, or country.
     data_type: String
   - name: value
-    description: Count of peers for the given date, metric, and label.
+    description: Count of peers corresponding to the metric and label.
     data_type: UInt64
   config:
     access: public
@@ -553,11 +550,11 @@ models:
     - discv4
     materialized: incremental
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv4_topology_latest
-  description: A model representing the latest discovered peer-to-peer topology data, including peer and neighbor information with associated geolocation data and visit counts.
+  description: A model representing the latest discovered P2P topology, including peer and neighbor information, geolocation data, and connection counts.
   columns:
   - name: date
     description: The date of the crawl, truncated to day.
@@ -572,7 +569,7 @@ models:
     description: Client software used by the peer.
     data_type: String
   - name: peer_hostname
-    description: Hostname of the peer's IP address.
+    description: Hostname of the peer, if available.
     data_type: String
   - name: peer_city
     description: City location of the peer.
@@ -587,7 +584,7 @@ models:
     description: Geographical coordinates of the peer.
     data_type: String
   - name: neighbor_ip
-    description: IP address of the neighbor peer.
+    description: IP address of the neighbor.
     data_type: String
   - name: neighbor_discovery_id_prefix
     description: Discovery ID prefix of the neighbor.
@@ -622,51 +619,48 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv4_visits_daily
-  description: Daily aggregated count of visits with total, successful, and crawl count metrics, filtered by network ID and date.
+  description: Daily aggregated count of discv4 visits, including total, successful, and unique crawls, grouped by date.
   columns:
   - name: date
-    description: The day of the visit, truncated to start of day.
+    description: The day of the visits, truncated to day level.
     data_type: DateTime64(0, 'UTC')
   - name: total_visits
     description: Total number of visits on the date.
     data_type: UInt64
   - name: successful_visits
-    description: Count of successful visits where no dial errors or crawl errors are present.
+    description: Count of successful visits (excluding errors) on the date.
     data_type: UInt64
   - name: crawls
-    description: Number of distinct crawl IDs associated with the visits.
+    description: Number of distinct crawl IDs associated with the visits on the date.
     data_type: UInt64
   config:
     access: public
+    materialized: incremental
     tags:
     - production
     - p2p
     - discv4
-    materialized: incremental
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: int_p2p_discv5_visits_daily
-  description: Aggregated daily visit data for P2P network peers using Discv5, including counts of total and successful visits, with associated fork information.
+  description: Daily aggregated visits data from the Discv5 P2P network crawl, including counts of total and successful visits, with associated fork information.
   columns:
   - name: date
     description: The day for which the visit data is aggregated, in UTC.
     data_type: DateTime
   - name: fork_name
-    description: Name of the fork, e.g., 'Phase0', 'Altair', etc.
+    description: Name of the fork associated with the peer, e.g., 'Phase0', 'Altair'.
     data_type: String
   - name: fork_digest
-    description: Fork digest identifier as a hexadecimal string.
+    description: Unique identifier (digest) of the fork, represented as a hexadecimal string.
     data_type: String
   - name: total_visits
-    description: Total number of visits recorded on the date.
+    description: Total number of visits recorded on the given day.
     data_type: UInt64
   - name: successful_visits
-    description: Number of visits that were successful (no dial errors or null crawl_error).
-    data_type: UInt64
-  - name: crawls
-    description: Count of distinct crawl IDs associated with the visits.
+    description: Number of visits that were successful, excluding errors or failed attempts.
     data_type: UInt64
   config:
     access: public

@@ -1,7 +1,7 @@
 {{ 
   config(
     materialized='table',
-    engine='ReplacingMergeTree()',
+    engine='MergeTree()',
     order_by='(hour, project)',
     unique_key='(hour, project)',
     tags=['production','execution','transactions','hourly']
@@ -13,15 +13,16 @@ WITH lbl AS (
   FROM {{ ref('int_crawlers_data_labels') }}
 ),
 
+
 wm AS (
-  SELECT toStartOfHour(max(block_timestamp)) AS max_hour
+  SELECT toStartOfDay(max(block_timestamp), 'UTC') AS max_day
   FROM {{ ref('stg_execution__transactions') }}
   WHERE toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
 ),
 
 tx AS (
   SELECT
-    date_trunc('hour', t.block_timestamp) AS hour,
+    toStartOfHour(t.block_timestamp, 'UTC') AS hour,
     lower(t.from_address)                 AS from_address,
     lower(t.to_address)                   AS to_address,
     toFloat64(coalesce(t.gas_used, 0))    AS gas_used,
@@ -30,8 +31,8 @@ tx AS (
   CROSS JOIN wm
   WHERE 
     toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
-    AND t.block_timestamp >  subtractHours(max_hour, 47)
-    AND t.block_timestamp <= max_hour
+    AND toStartOfDay(t.block_timestamp, 'UTC') >= subtractDays(max_day, 2)
+    AND toStartOfDay(t.block_timestamp, 'UTC') < max_day
     AND t.from_address IS NOT NULL
     AND t.success = 1
 ),

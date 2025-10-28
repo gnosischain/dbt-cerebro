@@ -2,53 +2,44 @@ version: 2
 models:
 
 - name: contracts_FPMMDeterministicFactory_calls
-  description: This model captures call data for the FPMM Deterministic Factory contracts, including transaction details, block information, and call specifics, used for analysis of contract interactions.
+  description: This model processes deterministic factory call data related to FPMM contracts, capturing call details, timestamps, and related transaction info for business analysis.
   columns:
-  - name: block_number
-    description: The number of the block containing the transaction.
-    data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the block was mined.
-    data_type: DateTime64(0, 'UTC')
+    description: Timestamp of the block when the call occurred, in UTC.
+    data_type: DateTime
   - name: transaction_hash
     description: Unique hash identifying the transaction.
     data_type: String
-  - name: log_index
-    description: The index of the log within the transaction.
-    data_type: UInt64
   - name: contract_address
-    description: The address of the contract involved in the call.
-    data_type: String
-  - name: caller_address
-    description: The address initiating the call.
+    description: Address of the contract involved in the call.
     data_type: String
   - name: call_data
-    description: Encoded data payload of the call.
+    description: Encoded data of the call, in hexadecimal format.
     data_type: String
-  - name: call_type
-    description: The type of call (e.g., 'call', 'delegatecall').
+  - name: block_number
+    description: The block number in which the call was included.
+    data_type: UInt64
+  - name: caller_address
+    description: Address of the caller initiating the call.
     data_type: String
   - name: output_json_type
-    description: Indicates if the output is in JSON format (boolean).
+    description: Indicates if the output is in JSON format; boolean.
     data_type: String
   - name: output_data
-    description: The output data from the call, in JSON format.
-    data_type: String
-  - name: block_hash
-    description: Hash of the block containing the transaction.
-    data_type: String
-  - name: status
-    description: Transaction execution status (e.g., 'success', 'failure').
+    description: Output data from the call, in JSON or hex.
     data_type: String
   - name: gas_used
-    description: Gas used for the transaction.
-    data_type: UInt64
-  - name: gas_price
-    description: Gas price in wei.
+    description: Gas used for the call, in wei.
     data_type: String
-  - name: value
-    description: Value transferred in wei.
+  - name: status
+    description: Call execution status; e.g., success or failure.
     data_type: String
+  - name: created_at
+    description: Record creation timestamp in UTC.
+    data_type: DateTime
+  - name: updated_at
+    description: Record last update timestamp in UTC.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -62,7 +53,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: contracts_FPMMDeterministicFactory_events
-  description: This model processes deterministic factory event logs related to FPMM contracts, capturing event details for analysis and reporting.
+  description: This model captures deterministic factory event logs related to FPMM contracts, including transaction details, block info, and event-specific data.
   columns:
   - name: block_timestamp
     description: Timestamp of the block when the event was emitted
@@ -71,26 +62,20 @@ models:
     description: Index of the log within the block
     data_type: UInt64
   - name: transaction_hash
-    description: Unique hash of the transaction
+    description: Hash of the transaction that emitted the event
+    data_type: String
+  - name: contract_address
+    description: Address of the contract emitting the event
     data_type: String
   - name: event_type
     description: Type of the event emitted
     data_type: String
-  - name: factory_address
-    description: Address of the factory contract emitting the event
-    data_type: String
-  - name: token_address
-    description: Address of the token involved in the event
-    data_type: String
-  - name: amount
-    description: Amount involved in the event, in wei
+  - name: event_data
+    description: JSON object containing event-specific data
+    data_type: JSON
+  - name: block_number
+    description: Number of the block containing the event
     data_type: UInt64
-  - name: sender_address
-    description: Address of the sender initiating the event
-    data_type: String
-  - name: recipient_address
-    description: Address of the recipient involved in the event
-    data_type: String
   config:
     access: public
     materialized: incremental
@@ -100,6 +85,6 @@ models:
     - fpmm
     - events
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

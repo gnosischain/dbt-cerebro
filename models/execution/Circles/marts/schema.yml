@@ -2,40 +2,40 @@ version: 2
 models:
 
 - name: api_execution_circles_avatars
-  description: View summarizing API execution circles and avatars data, including counts and totals for each date and avatar type.
+  description: Provides aggregated data on avatar types and counts per date for execution circles, used for business analytics and reporting.
   columns:
   - name: date
-    description: Date of the data record (UTC).
+    description: The date for which the data is aggregated, in UTC.
     data_type: DateTime
   - name: avatar_type
-    description: Type/category of avatar.
+    description: Type/category of the avatar used in execution circles.
     data_type: String
   - name: cnt
-    description: Count of occurrences for the avatar type on the given date.
+    description: Count of avatars of the specified type on the given date.
     data_type: UInt64
   - name: total
-    description: Total number of executions or relevant metric for the date.
+    description: Total number of execution circle entries for the given date.
     data_type: UInt64
   config:
     access: public
-    materialized: view
     tags:
     - production
     - execution
     - circles
     - avatars
+    materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_circles_backers_cnt_latest
-  description: Business-facing metric representing the latest count of backers in execution circles, along with the percentage change compared to seven days prior.
+  description: Business-facing metric representing the latest count of backers in execution circles, along with the percentage change compared to the data from 7 days prior.
   columns:
   - name: total
     description: Total number of backers in the latest execution circles.
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in backers compared to seven days ago, rounded to one decimal.
+    description: Percentage change in backers count compared to 7 days ago, rounded to 1 decimal.
     data_type: Float64
   config:
     access: public
@@ -50,13 +50,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_circles_groups_cnt_latest
-  description: Business metric representing the latest count of execution circles for groups, along with the percentage change compared to the data from 7 days prior.
+  description: Business-facing view summarizing the latest total count of execution circles and their change percentage over the past 7 days.
   columns:
   - name: total
-    description: Total number of execution circles for groups in the latest data snapshot.
+    description: Total number of execution circles for the latest date.
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in execution circles compared to 7 days ago, rounded to 1 decimal.
+    description: Percentage change in total circles compared to 7 days prior, rounded to 1 decimal.
     data_type: Float64
   config:
     access: public
@@ -71,13 +71,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_circles_humans_cnt_latest
-  description: Business-facing metric representing the latest count of humans in execution circles, along with the percentage change compared to seven days prior.
+  description: Business-facing model providing the latest count of humans and the percentage change compared to the data from 7 days prior, derived from execution data.
   columns:
   - name: total
-    description: Total number of humans in execution circles at the latest timestamp.
+    description: Total number of humans in the latest data snapshot.
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in human count compared to seven days ago, rounded to one decimal.
+    description: Percentage change in human count compared to data from 7 days ago.
     data_type: Float64
   config:
     access: public
@@ -92,13 +92,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_circles_orgs_cnt_latest
-  description: Business-facing metric representing the latest count of organizations involved in execution circles, along with the percentage change compared to data from 7 days prior.
+  description: Business-facing model providing the latest count of organizations involved in API executions, along with the percentage change over the previous 7 days.
   columns:
   - name: total
-    description: Total count of organizations involved in execution circles at the latest timestamp.
+    description: Total number of organizations involved in API executions at the latest date.
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in organization count compared to data from 7 days ago, rounded to one decimal place.
+    description: Percentage change in organization count compared to 7 days prior, rounded to one decimal place.
     data_type: Float64
   config:
     access: public
@@ -109,30 +109,30 @@ models:
     - orgs
     materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_circles_avatars
-  description: A fact table aggregating execution data related to circles and avatars, including daily counts, totals, and related metrics for analysis.
+  description: Aggregated data representing execution circles and avatars, including temporal series, counts, totals, and related metadata for business analysis.
   columns:
-  - name: date
-    description: The date of the record, representing the day for which metrics are aggregated.
+  - name: min_date
+    description: Earliest date in the dataset.
     data_type: DateTime
+  - name: max_date
+    description: Latest date in the dataset.
+    data_type: DateTime
+  - name: date
+    description: Date in 'YYYY-MM-DD' format.
+    data_type: Date
   - name: avatar_type
-    description: The type/category of avatar involved in the execution.
+    description: Type/category of avatar.
     data_type: String
   - name: cnt
-    description: Count of executions for the given date and avatar type.
+    description: Count of avatars for given date and type.
     data_type: UInt64
   - name: total
     description: Cumulative sum of counts over time per avatar type.
     data_type: UInt64
-  - name: max_date
-    description: The maximum date present in the dataset, used for reference.
-    data_type: DateTime
-  - name: min_date
-    description: The minimum date present in the dataset, used for reference.
-    data_type: DateTime
   config:
     access: public
     tags:
@@ -146,22 +146,31 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_execution_circles_backing
-  description: Aggregated data on execution circles backing, including date series, total counts, and cumulative sums for analysis.
+  description: Aggregated data on execution circles backing, including date series, totals, and related metrics for analysis and reporting.
   columns:
-  - name: max_date
-    description: Maximum date in the dataset, representing the latest date processed.
-    data_type: DateTime
   - name: min_date
-    description: Minimum date in the dataset, representing the earliest date processed.
+    description: Earliest date in the dataset.
     data_type: DateTime
+  - name: max_date
+    description: Latest date in the dataset.
+    data_type: DateTime
+  - name: date
+    description: Date in the series generated from min_date to max_date.
+    data_type: DateTime
+  - name: cnt
+    description: Count of execution circles for the specific date.
+    data_type: UInt64
+  - name: total
+    description: Cumulative total of execution circles up to the current date.
+    data_type: UInt64
   config:
     access: public
-    materialized: view
     tags:
     - production
     - execution
     - circles
     - backing
+    materialized: view
   meta:
     owner: analytics_team
     authoritative: false

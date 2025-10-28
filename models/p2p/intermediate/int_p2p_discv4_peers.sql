@@ -13,6 +13,9 @@
     ) 
 }}
 
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 WITH
 
   peers AS (
@@ -27,7 +30,12 @@ WITH
   FROM {{ ref('stg_nebula_discv4__visits') }} A
   WHERE
       toString(peer_properties.network_id) = '100'
-      {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
+      {% if start_month and end_month %}
+      AND toStartOfMonth(visit_ended_at) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(visit_ended_at) < toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
+      {% endif %}
   ),
 
   parsed AS (

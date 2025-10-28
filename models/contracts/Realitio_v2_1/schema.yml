@@ -2,50 +2,44 @@ version: 2
 models:
 
 - name: contracts_Realitio_v2_1_calls
-  description: This model captures call data related to Realitio v2.1 contracts, including transaction details, block information, and call-specific metadata for analysis and reporting.
+  description: This model captures call data related to the Realitio v2.1 contracts, including transaction details, block information, and call-specific data, used for analysis and reporting.
   columns:
   - name: transaction_hash
-    description: Unique hash identifying the transaction.
+    description: Unique identifier for each transaction in the Ethereum network.
     data_type: String
   - name: block_number
-    description: The number of the block containing the transaction.
+    description: The block number containing the transaction.
     data_type: UInt64
   - name: block_timestamp
-    description: Timestamp when the block was mined.
+    description: The timestamp when the block was mined, in UTC.
     data_type: DateTime
-  - name: call_id
-    description: Unique identifier for each call record.
-    data_type: String
+  - name: log_index
+    description: The index of the log within the block.
+    data_type: UInt64
   - name: caller
-    description: Address initiating the call.
+    description: Address of the entity initiating the call.
     data_type: String
   - name: contract_address
     description: Address of the contract being called.
     data_type: String
-  - name: function_signature
-    description: Signature of the called function.
-    data_type: String
   - name: call_data
-    description: Encoded call data payload.
+    description: Encoded data payload of the call.
     data_type: String
   - name: response_data
     description: Response data returned from the call.
     data_type: String
-  - name: call_status
-    description: Status of the call (e.g., success, failure).
+  - name: call_type
+    description: Type of call made, e.g., 'call', 'delegatecall'.
     data_type: String
   - name: gas_used
-    description: Gas used for the call in wei.
-    data_type: String
-  - name: call_timestamp
-    description: Timestamp when the call was made.
-    data_type: DateTime
-  - name: output_json_type
-    description: Indicates if output is in JSON format.
+    description: Amount of gas used for the call, in wei.
     data_type: UInt64
-  - name: output_data
-    description: Output data from the call, in JSON or raw format.
+  - name: success
+    description: Whether the call was successful (true/false).
     data_type: String
+  - name: created_at
+    description: Timestamp when the record was created in the database.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -55,51 +49,54 @@ models:
     - realitio
     - calls
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: contracts_Realitio_v2_1_events
-  description: This model captures Realitio V2.1 event logs related to contract interactions, including block details, transaction hashes, event types, and associated metadata.
+  description: This model captures Realitio V2.1 event logs, including details about each event's block timestamp, log index, transaction hash, and related metadata.
   columns:
-  - name: block_number
-    description: The number of the block containing the event.
-    data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the block was mined.
+    description: Timestamp of the block when the event was recorded.
     data_type: DateTime
-  - name: transaction_hash
-    description: The hash of the transaction that emitted the event.
-    data_type: String
   - name: log_index
-    description: The index of the log within the block.
+    description: Index of the log within the block (order of logs).
     data_type: UInt64
-  - name: event_type
-    description: The type of the event emitted (e.g., 'QuestionCreated', 'AnswerSubmitted').
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: event_name
+    description: Name of the event emitted.
+    data_type: String
+  - name: contract_address
+    description: Address of the contract emitting the event.
     data_type: String
   - name: question_id
-    description: The unique identifier for the question associated with the event.
-    data_type: String
-  - name: question_content
-    description: The content or description of the question.
+    description: Unique identifier for the question associated with the event.
     data_type: String
   - name: answer
-    description: The answer submitted in the event, if applicable.
+    description: The answer provided in the event, if applicable.
     data_type: String
   - name: answerer
-    description: The address of the account that submitted the answer.
+    description: Address of the account that provided the answer.
     data_type: String
-  - name: question_creator
-    description: The address of the account that created the question.
+  - name: answer_timestamp
+    description: Timestamp when the answer was submitted.
+    data_type: DateTime
+  - name: question_content
+    description: Content of the question posed.
     data_type: String
-  - name: question_created_at
-    description: The timestamp when the question was created.
+  - name: question_timestamp
+    description: Timestamp when the question was created.
     data_type: DateTime
-  - name: answer_submitted_at
-    description: The timestamp when the answer was submitted.
+  - name: status
+    description: Current status of the question (e.g., open, answered, canceled).
+    data_type: String
+  - name: created_at
+    description: Record creation timestamp.
     data_type: DateTime
-  - name: event_metadata
-    description: Additional metadata related to the event in JSON format.
-    data_type: JSON
+  - name: updated_at
+    description: Record last update timestamp.
+    data_type: DateTime
   config:
     access: public
     materialized: incremental
@@ -109,6 +106,6 @@ models:
     - realitio
     - events
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
