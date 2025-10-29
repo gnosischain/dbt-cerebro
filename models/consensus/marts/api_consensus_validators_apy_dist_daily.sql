@@ -14,6 +14,7 @@ SELECT
     q50_apy AS q50,
     q75_apy AS q75,
     q90_apy AS q90,
-    q95_apy AS q95
+    q95_apy AS q95,
+    avg_apy AS average
 FROM {{ ref('int_consensus_validators_dists_daily') }}
 ORDER BY date ASC

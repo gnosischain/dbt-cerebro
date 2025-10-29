@@ -23,6 +23,8 @@ time_helpers AS (
 SELECT
     date
     ,cnt AS blocks_produced
+    ,total_blob_commitments
+    ,blocks_with_zero_blob_commitments
     ,CASE
         WHEN toStartOfDay(toDateTime(genesis_time_unix)) = date 
             THEN CAST((86400 - toUnixTimestamp(toDateTime(genesis_time_unix)) % 86400) / seconds_per_slot - cnt AS UInt64)
@@ -32,6 +34,8 @@ FROM (
     SELECT
         toStartOfDay(slot_timestamp) AS date
         ,COUNT(*) AS cnt
+        ,SUM(blob_kzg_commitments_count) AS total_blob_commitments
+        ,SUM(IF(blob_kzg_commitments_count = 0, 1, 0)) AS blocks_with_zero_blob_commitments
     FROM {{ ref('stg_consensus__blocks') }}
     WHERE
         slot_timestamp < today()
