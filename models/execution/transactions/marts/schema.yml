@@ -124,17 +124,17 @@ models:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
-- name: api_execution_transactions_active_accounts_by_sector_daily
-  description: Business-facing view summarizing daily active accounts by sector.
+- name: api_execution_transactions_active_accounts_by_sector_weekly
+  description: Business-facing view summarizing weekly active accounts by sector (excludes current week).
   columns:
   - name: date
-    description: Date of the transaction data in YYYY-MM-DD format.
-    data_type: DateTime
+    description: Start date of the ISO week (UTC).
+    data_type: Date
   - name: label
-    description: Sector label categorizing the account activity.
+    description: Sector label.
     data_type: String
   - name: value
-    description: Number of active accounts within the sector on the given date.
+    description: Unique active accounts in the sector for the given week.
     data_type: UInt64
   config:
     access: public
@@ -237,17 +237,17 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
-- name: api_execution_transactions_by_sector_daily
-  description: Business-facing view summarizing daily transaction counts by sector.
+- name: api_execution_transactions_by_sector_weekly
+  description: Business-facing view summarizing weekly transaction counts by sector (excludes current week).
   columns:
   - name: date
-    description: Calendar date of the transaction data (UTC).
-    data_type: DateTime
+    description: Start date of the ISO week (UTC).
+    data_type: Date
   - name: label
-    description: Sector label categorizing transactions.
+    description: Sector label.
     data_type: String
   - name: value
-    description: Number of transactions in the sector for the day.
+    description: Number of transactions in the sector for the given week.
     data_type: UInt64
   config:
     access: public
@@ -413,18 +413,18 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_sector_daily
-  description: Daily aggregated fees in native tokens, grouped by sector, derived from execution transactions.
+- name: api_execution_transactions_fees_native_by_sector_weekly
+  description: Weekly aggregated fees in native tokens, grouped by sector, derived from execution transactions (excludes current week).
   columns:
   - name: date
-    description: Date of the transaction aggregation (UTC).
-    data_type: DateTime
+    description: Start date of the ISO week (UTC).
+    data_type: Date
   - name: label
-    description: Sector label categorizing the transaction.
+    description: Sector label.
     data_type: String
   - name: value
-    description: Sum of native fees in wei for the sector on the given date.
-    data_type: UInt64
+    description: Sum of native fees for the sector in the given week.
+    data_type: Float64
   config:
     access: public
     tags:
@@ -681,26 +681,26 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
-- name: fct_execution_transactions_by_sector_daily
-  description: Aggregated daily execution transaction data grouped by sector, including active accounts, transaction counts, gas usage, and fees, sourced from the `int_execution_transactions_by_project_daily` table.
+- name: fct_execution_transactions_by_sector_weekly
+  description: Aggregated weekly execution transaction data grouped by sector, including active accounts, transaction counts, gas usage, and fees. Excludes the current (partial) week and is sourced from `int_execution_transactions_by_project_daily`.
   columns:
-  - name: date
-    description: Calendar date of the transaction aggregation (UTC).
-    data_type: DateTime
+  - name: week
+    description: Start date of the ISO week (UTC).
+    data_type: Date
   - name: sector
     description: Sector classification for the transactions (e.g., DeFi, NFT, etc.).
     data_type: String
   - name: active_accounts
-    description: Bitmap of active accounts during the day.
-    data_type: String
+    description: Finalized unique active accounts (bitmap cardinality) for the week/sector.
+    data_type: UInt64
   - name: txs
-    description: Total number of transactions executed on the given date and sector.
+    description: Total number of transactions in the week/sector.
     data_type: UInt64
   - name: gas_used_sum
-    description: Sum of gas used across all transactions for the date and sector.
+    description: Sum of gas used across all transactions in the week/sector.
     data_type: UInt64
   - name: fee_native_sum
-    description: Total native fees (in GNO/XDAI) paid, rounded to 6 decimal places.
+    description: Total native fees (e.g., GNO/XDAI) paid in the week/sector, rounded to 2 decimals.
     data_type: Float64
   config:
     access: public

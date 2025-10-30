@@ -8,20 +8,28 @@ WITH base AS (
   FROM {{ ref('fct_execution_transactions_by_project_snapshots') }} AS t
   WHERE t.label = 'ActiveAccounts'
     AND t.window IN ('All','7D','30D','90D')
+    AND t.bucket IS NOT NULL
+),
+ranked AS (
+  SELECT
+    window,
+    bucket,
+    value,
+    row_number() OVER (PARTITION BY window ORDER BY value DESC, bucket ASC) AS rn
+  FROM base
 ),
 top AS (
   SELECT window, bucket, value
-  FROM base
-  ORDER BY value DESC
-  LIMIT 20 BY window
+  FROM ranked
+  WHERE rn <= 20
 ),
 others AS (
   SELECT
     window,
     'Others' AS bucket,
     sum(value) AS value
-  FROM base
-  WHERE (window, bucket) NOT IN (SELECT window, bucket FROM top)
+  FROM ranked
+  WHERE rn > 20
   GROUP BY window
 )
 SELECT window AS range, bucket AS label, value FROM top
