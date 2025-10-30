@@ -32,7 +32,13 @@ others AS (
   WHERE rn > 20
   GROUP BY window
 )
-SELECT window AS range, bucket AS label, value FROM top
-UNION ALL
-SELECT window AS range, bucket AS label, value FROM others WHERE value > 0
-ORDER BY range, value DESC
+SELECT *
+FROM (
+  SELECT window AS range, bucket AS label, value FROM top
+  UNION ALL
+  SELECT window AS range, bucket AS label, value FROM others WHERE value > 0
+)
+ORDER BY
+  multiIf(range = 'All', 1, range = '90D', 2, range = '30D', 3, range = '7D', 4, 5),
+  value DESC,
+  label ASC
