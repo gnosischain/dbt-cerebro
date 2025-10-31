@@ -51,6 +51,7 @@ prev_balance AS (
     SELECT 
         t1.validator_index
         ,argMax(t1.balance, t1.date) AS balance
+        ,argMax(t1.withdrawaled_amount, t1.date) AS withdrawaled_amount
     FROM {{ this }} t1
     CROSS JOIN current_partition t2
     WHERE 
@@ -72,10 +73,6 @@ validators AS (
         t1.validator_index,
         t1.pubkey,
         t1.balance,
-        greatest(
-            t1.balance - MOD( t1.balance, 32000000000)
-            + toUInt64(roundBankers(MOD(t1.balance, 32000000000) / 32000000000) * 32000000000)
-            , 32000000000) AS balance_mod,
         COALESCE(
             lagInFrame(toNullable(t1.balance), 1, NULL) OVER (
                 PARTITION BY t1.validator_index
@@ -88,20 +85,29 @@ validators AS (
                 0--t1.effective_balance
             {% endif %}
         ) AS prev_balance,
-        IF(prev_balance=0, 
-            0, 
-            greatest(
-                prev_balance - MOD( prev_balance, 32000000000)
-                + toUInt64(roundBankers(MOD(prev_balance, 32000000000) / 32000000000) * 32000000000)
-                , 32000000000))  AS prev_balance_mod,
+        COALESCE(t3.amount,0) AS withdrawaled_amount,
+        COALESCE(
+            lagInFrame(toNullable(t3.amount), 1, NULL) OVER (
+                PARTITION BY t3.validator_index
+                ORDER BY date
+                ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
+            ),
+            {% if is_incremental() %}
+                t2.withdrawaled_amount
+            {% else %}
+                0
+            {% endif %}
+        ) AS prev_withdrawaled_amount,
         t1.balance - prev_balance AS balance_diff,
-        balance_mod - prev_balance_mod AS balance_mod_diff,
         t1.status AS status
     FROM {{ ref('stg_consensus__validators') }} t1
     {% if is_incremental() %}
     LEFT JOIN prev_balance t2
     ON t2.validator_index = t1.validator_index
     {% endif %}
+    LEFT JOIN withdrawals t3
+    ON t3.date = toStartOfDay(t1.slot_timestamp, 'UTC')
+    AND t3.validator_index = t1.validator_index
     WHERE
         (t1.status LIKE 'active_%' OR t1.status = 'pending_queued')
         {% if validator_index_start is not none and validator_index_end is not none %}
@@ -121,15 +127,23 @@ SELECT
     ,t1.validator_index AS validator_index
     ,t1.status AS status
     ,t1.balance AS balance
-    ,t1.balance_mod AS balance_mod
-    ,t1.balance_diff AS balance_diff_original
-    ,t1.balance_mod_diff AS deposited_amount
-    ,COALESCE(t3.amount,0)  AS withdrawaled_amount
+    ,t1.balance - t1.prev_balance AS balance_diff_original
+    ,t1.withdrawaled_amount AS withdrawaled_amount
+    ,greatest(
+            -- balance + withdrawaled_amount mod 32 mGNO ()
+            t1.balance + t1.withdrawaled_amount 
+            - MOD(t1.balance + t1.withdrawaled_amount,32000000000) 
+            + toUInt64(roundBankers(MOD(t1.balance + t1.withdrawaled_amount, 32000000000) / 32000000000) * 32000000000)
+
+        - (
+            -- balance + withdrawaled_amount mod 32 mGNO ()
+            t1.prev_balance + t1.prev_withdrawaled_amount 
+            - MOD(t1.prev_balance + t1.prev_withdrawaled_amount,32000000000)
+            + toUInt64(roundBankers(MOD(t1.prev_balance + t1.prev_withdrawaled_amount, 32000000000) / 32000000000) * 32000000000)
+        )
+    ,0) AS deposited_amount
     ,balance_diff_original - deposited_amount + withdrawaled_amount AS eff_balance_diff
-    ,eff_balance_diff/IF(t1.prev_balance=0, deposited_amount, toInt64(t1.prev_balance)) AS rate
+   -- ,eff_balance_diff/IF(t1.prev_balance=0, deposited_amount, toInt64(t1.prev_balance)) AS rate
+    ,eff_balance_diff/(toInt64(t1.prev_balance) + deposited_amount) AS rate
     ,ROUND((POWER((1+rate),365) - 1) * 100,2) AS apy
 FROM validators t1
-LEFT JOIN 
-    withdrawals t3
-    ON t3.date = t1.date
-    AND t3.validator_index = t1.validator_index

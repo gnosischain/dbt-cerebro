@@ -31,7 +31,7 @@ deposits_withdrawls_7d AS (
 
 apy_latest AS (
     SELECT
-        q50_apy AS apy
+        avg_apy AS apy
     FROM 
         {{ ref('int_consensus_validators_dists_daily') }}
     WHERE
@@ -40,7 +40,7 @@ apy_latest AS (
 
 apy_7d AS (
     SELECT
-       q50_apy AS apy
+       avg_apy AS apy
     FROM 
         {{ ref('int_consensus_validators_dists_daily') }}
     WHERE

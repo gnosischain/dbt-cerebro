@@ -40,6 +40,7 @@ FROM (
         )(apy) AS q_apy
         ,avg(apy) AS avg_apy
     FROM {{ ref('int_consensus_validators_per_index_apy_daily') }}
-    {{ apply_monthly_incremental_filter('date') }}
+    WHERE status != 'pending_queued' AND apy < 200 --outlier filter
+    {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
     GROUP BY date
 )
