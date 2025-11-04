@@ -2,25 +2,25 @@ version: 2
 models:
 
 - name: stg_crawlers_data__dune_labels
-  description: Staging model that processes and cleans Dune labels data, extracting labels, timestamps, and categorizing projects based on label patterns.
+  description: Staging model for Dune labels, processing raw label data, normalizing, and categorizing labels into known projects or generic ERC20 tokens.
   columns:
   - name: address
-    description: Lowercased blockchain address associated with the label.
+    description: Ethereum address in lowercase, used as primary key for labels.
     data_type: String
   - name: label_raw
-    description: Raw label string extracted from the source data.
+    description: Original label string extracted from source, before normalization.
     data_type: String
   - name: introduced_at
-    description: Timestamp indicating when the label was introduced.
+    description: Timestamp when the label was introduced, in UTC.
     data_type: DateTime
   - name: s1
-    description: Label after trimming and replacing specific characters.
+    description: Label after removing whitespace around delimiters.
     data_type: String
   - name: s2
-    description: Label after removing address hashes and suffixes.
+    description: Label after removing token tail patterns.
     data_type: String
   - name: s3
-    description: Label truncated to the main part before versioning or suffixes.
+    description: Label trimmed to the main part before suffixes.
     data_type: String
   - name: s4
     description: Label after removing version indicators and suffixes.
@@ -29,32 +29,32 @@ models:
     description: Lowercase version of s4 for pattern matching.
     data_type: String
   - name: looks_like_token_tail
-    description: Boolean indicating if label resembles a token address tail.
+    description: Boolean indicating if label resembles a token tail pattern.
     data_type: UInt64
-  - name: symbol
-    description: Token symbol from whitelist, if available.
-    data_type: String
   - name: wl_symbol
-    description: Whitelisted symbol associated with the address.
+    description: Whitelisted symbol associated with the address, if available.
     data_type: String
   - name: s5
-    description: Label after categorization into project types.
+    description: Label after categorizing into known project types based on s4_l.
     data_type: String
   - name: s7
     description: Label after cleaning and removing known suffixes or patterns.
     data_type: String
   - name: project_canon
-    description: Canonical project name based on label patterns and known mappings.
+    description: Canonical project name after mapping various label patterns to known categories.
     data_type: String
   - name: project
-    description: Final project categorization, defaulting to 'ERC20' if label resembles an address.
+    description: Final project classification, defaulting to 'ERC20' if label resembles a token.
     data_type: String
   - name: project_raw
-    description: Raw project label before final categorization.
+    description: Raw project label before final classification.
+    data_type: String
+  - name: label
+    description: Final label used for referencing the project, same as project_raw.
     data_type: String
   config:
-    access: public
     materialized: view
+    access: public
     tags:
     - staging
     - crawlers_data
@@ -82,5 +82,27 @@ models:
     - crawlers_data
   meta:
     owner: data-team
+    authoritative: false
+    generated_by: schema-writer
+- name: stg_crawlers_data__dune_gno_supply
+  description: Staging model for GNO supply data from Dune crawlers; includes label, block date, and supply figures.
+  columns:
+  - name: label
+    description: Identifier label for the supply data
+    data_type: String
+  - name: block_date
+    description: Date of the block in ISO format (UTC)
+    data_type: DateTime
+  - name: supply
+    description: Supply amount in GNO
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - staging
+    - crawlers_data
+  meta:
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
