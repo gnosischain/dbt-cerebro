@@ -17,27 +17,14 @@ ranked AS (
     value,
     row_number() OVER (PARTITION BY window ORDER BY value DESC, bucket ASC) AS rn
   FROM base
-),
-top AS (
-  SELECT window, bucket, value
-  FROM ranked
-  WHERE rn <= 20
-),
-others AS (
-  SELECT
-    window,
-    'Others' AS bucket,
-    sum(value) AS value
-  FROM ranked
-  WHERE rn > 20
-  GROUP BY window
 )
-SELECT *
-FROM (
-  SELECT window AS range, bucket AS label, value FROM top
-  UNION ALL
-  SELECT window AS range, bucket AS label, value FROM others WHERE value > 0
-)
+SELECT
+  window AS range,
+  if(rn <= 20, bucket, 'Others') AS label,
+  sum(value) AS value
+FROM ranked
+GROUP BY range, label
+HAVING value > 0
 ORDER BY
   multiIf(range = 'All', 1, range = '90D', 2, range = '30D', 3, range = '7D', 4, 5),
   value DESC,
