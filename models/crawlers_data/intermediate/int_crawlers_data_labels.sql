@@ -82,7 +82,7 @@ labeled AS (
       match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem|backed)'),
       'RWA & Tokenization',
 
-      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|vault|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
+      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
       'Infrastructure & DevTools',
 
       'Others'
