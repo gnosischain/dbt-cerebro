@@ -1,0 +1,78 @@
+version: 2
+models:
+
+- name: fct_crawlers_data_distinct_projects_sectors
+  description: 'Distinct (project, sector) pairs derived from label mappings. Used to serve simple project/sector counts to API views.
+
+    '
+  columns:
+  - name: project
+    description: Project identifier.
+    data_type: String
+    tests:
+    - not_null
+  - name: sector
+    description: Sector label for the project.
+    data_type: String
+    tests:
+    - not_null
+  config:
+    materialized: table
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_crawlers_data_distinct_projects_sectors_totals
+  description: 'Single-row API view with value1 = distinct projects and value2 = distinct sectors, computed from fct_projects_sectors.
+
+    '
+  columns:
+  - name: value1
+    description: Number of distinct projects.
+    data_type: Float64
+    tests:
+    - not_null
+  - name: value2
+    description: Number of distinct sectors.
+    data_type: Float64
+    tests:
+    - not_null
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: api_crawlers_data_gno_supply_daily
+  description: Daily supply data from GNO crawlers, including labels, dates, and supply amounts.
+  columns:
+  - name: label
+    description: Identifier label for the supply data.
+    data_type: String
+  - name: date
+    description: The date of the supply record in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: supply
+    description: Supply amount in GNO.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - crawlers_data
+    - supply
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
