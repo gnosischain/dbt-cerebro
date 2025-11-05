@@ -9,6 +9,7 @@ WITH base AS (
     sum(gas_used_sum)                       AS gas_used,
     groupBitmapMergeState(ua_bitmap_state)  AS active_state
   FROM `dbt`.`int_execution_transactions_by_project_daily`
+  WHERE date < toStartOfMonth(today())          
   GROUP BY month, project
 ),
 ranked AS (
@@ -37,11 +38,11 @@ monthly AS (
 )
 
 SELECT * FROM (
-  SELECT month AS date, project AS label, 'Transactions'  AS metric, toFloat64(txs)                              AS value FROM monthly
+  SELECT month AS date, project AS label, 'Transactions'  AS metric, toFloat64(txs)                  AS value FROM monthly
   UNION ALL
-  SELECT month AS date, project AS label, 'FeesNative'    AS metric, round(toFloat64(fee_native), 6)             AS value FROM monthly
+  SELECT month AS date, project AS label, 'FeesNative'    AS metric, round(toFloat64(fee_native), 6) AS value FROM monthly
   UNION ALL
-  SELECT month AS date, project AS label, 'GasUsed'       AS metric, toFloat64(gas_used)                         AS value FROM monthly
+  SELECT month AS date, project AS label, 'GasUsed'       AS metric, toFloat64(gas_used)             AS value FROM monthly
   UNION ALL
   SELECT
     month AS date,

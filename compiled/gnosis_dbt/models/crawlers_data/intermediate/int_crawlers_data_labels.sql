@@ -57,8 +57,11 @@ labeled AS (
       match(project, '(?i)(safe(?:\\s*l2)?|gnosis\\s*safe|ambirewallet|biconomy|erc[- ]?4337|erc\\s*4337\\s*entry\\s*point|entry\\s*point|wethgateway|tokenbound|delegatecash|rhinestone|apex\\s*smart\\s*wallet|zeroexsettlerdeployersafemodule)'),
       'Wallets & AA',
 
-      match(project, '(?i)(monerium(\\s*(iske|usde|blacklist))?|gnosis\\s*pay(\\s*(vip|spender|eiffel))?|\\bgpay\\b|request(\\s*network)?|\\busdc\\b|\\bsdai\\b|\\bxdai\\b|payments?|invoice|smart\\s*invoice|superfluid|sablier|swing\\s*xdai\\s*single\\s*chain)'),
-      'Payments & Stablecoins',
+      match(project, '(?i)(\\busdc\\b|\\busdt\\b|\\bsdai\\b|\\bdai\\b|\\bxdai\\b|ageur|angle|monerium(\\s*(iske|usde|blacklist))?|transmuter)'),
+      'Stablecoins & Fiat Ramps',
+
+      match(project, '(?i)(gnosis\\s*pay(\\s*(vip|spender|eiffel))?|\\bgpay\\b|request(\\s*network)?|payments?|invoice|smart\\s*invoice|superfluid|sablier|swing\\s*xdai\\s*single\\s*chain)'),
+      'Payments',
 
       match(project, '(?i)(chainlink|tellor|pyth|\\boracle\\b|origin\\s*trail|origintrail|marketview|analytics|\\bdata\\b|\\bindex\\b|mu\\s*exchange\\s*pythoracle)'),
       'Oracles & Data',
@@ -81,7 +84,7 @@ labeled AS (
       match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem|backed)'),
       'RWA & Tokenization',
 
-      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|vault|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
+      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
       'Infrastructure & DevTools',
 
       'Others'
