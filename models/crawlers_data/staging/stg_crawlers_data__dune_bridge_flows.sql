@@ -17,4 +17,4 @@ SELECT
     WHEN source_chain = 'gnosis' THEN 'out'
     ELSE 'xchain'
   END AS direction
-FROM {{ source('playground_max', 'dune_bridge_flows') }}
+FROM {{ source('crawlers_data', 'dune_bridge_flows') }}
