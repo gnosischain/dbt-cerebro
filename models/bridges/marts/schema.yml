@@ -564,7 +564,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 
-- name: api_bridges__sankey_chain_bridge_chain_7d
+- name: api_bridges_sankey_chain_bridge_chain_7d
   description: Union of daily Sankey edges for the last 7 days, Source Chain → Bridge and Bridge → Destination Chain. Feeds the single-hop Sankey visualization.
   columns:
   - name: date
@@ -599,37 +599,7 @@ models:
     authoritative: false
     generated_by: schema-writer
 
-- name: api_bridges__chain_network_edges_7d
-  description: Chain-to-chain edge list for the last 7 days, with edge weights equal to total bridged USD volume. Powers the chain network (graph) visualization.
-  columns:
-  - name: source
-    description: Origin chain for the corridor.
-    data_type: String
-    tests:
-    - not_null
-  - name: target
-    description: Destination chain for the corridor.
-    data_type: String
-    tests:
-    - not_null
-  - name: value
-    description: Total bridged USD volume over the last 7 days for the corridor.
-    data_type: Float64
-    tests:
-    - not_null
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - bridges
-    - api
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-
-- name: api_bridges__routes_heatmap_7d
+- name: api_bridges_routes_heatmap_7d
   description: Chain-to-chain matrix for the last 7 days, providing x/y/value triples for a heatmap of routed volumes.
   columns:
   - name: x
@@ -647,6 +617,65 @@ models:
     data_type: Float64
     tests:
     - not_null
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: data_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_sankey_gnosis_out_ranges
+  description: >
+      Outbound Sankey edges (Gnosis → Bridge → Other Chains) with selectable ranges
+      (All, 7D, 30D, 90D). Each row is a directed edge with USD value aggregated
+      over the chosen window.
+  columns:
+  - name: range
+    description: Selected range label (All, 7D, 30D, 90D).      
+    data_type: String
+  - name: source
+    description: Source node label (typically 'gnosis' or 'src:gnosis' if prefixes are kept).
+    data_type: String
+  - name: target
+    description: Target node label (bridge for left edges or destination chain for right edges).
+    data_type: String
+  - name: value
+    description: Aggregated USD volume for the edge within the selected range.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+      - production
+      - bridges
+      - api
+    meta:
+      owner: data_team
+      authoritative: false
+      generated_by: schema-writer
+
+- name: api_bridges_sankey_gnosis_in_ranges
+  description: >
+      Inbound Sankey edges (Other Chains → Bridge → Gnosis) with selectable ranges
+      (All, 7D, 30D, 90D). Each row is a directed edge with USD value aggregated
+      over the chosen window.
+  columns:
+  - name: range
+    description: Selected range label (All, 7D, 30D, 90D).
+    data_type: String
+  - name: source
+    description: Source node label (source chain for left edges or bridge for right edges; may include prefixes if kept).
+    data_type: String
+  - name: target
+    description: Target node label (bridge for left edges or 'gnosis' for right edges; may include prefixes if kept).
+    data_type: String
+  - name: value
+    description: Aggregated USD volume for the edge within the selected range.
+    data_type: Float64
   config:
     access: public
     materialized: view
