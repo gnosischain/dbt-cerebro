@@ -21,12 +21,12 @@ visits_info AS (
 
    AND 
     toStartOfMonth(toStartOfDay(visit_ended_at)) >= (
-      SELECT max(toStartOfMonth(t.date))
-      FROM `dbt`.`int_p2p_discv4_visits_daily` AS t
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_p2p_discv4_visits_daily` AS x1
     )
     AND toStartOfDay(visit_ended_at) >= (
-      SELECT max(toStartOfDay(t2.date, 'UTC'))
-      FROM `dbt`.`int_p2p_discv4_visits_daily` AS t2
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_p2p_discv4_visits_daily` AS x2
     )
   
 

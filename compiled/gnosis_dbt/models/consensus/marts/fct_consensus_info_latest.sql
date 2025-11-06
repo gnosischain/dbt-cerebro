@@ -8,9 +8,9 @@ deposits_withdrawls_latest AS (
         ,cnt
         ,total_amount
     FROM 
-        `dbt`.`fct_consensus_deposits_withdrawls_daily`
+        `dbt`.`int_consensus_deposits_withdrawals_daily`
     WHERE
-        date = (SELECT MAX(date) FROM `dbt`.`fct_consensus_deposits_withdrawls_daily`)
+        date = (SELECT MAX(date) FROM `dbt`.`int_consensus_deposits_withdrawals_daily`)
 ),
 
 deposits_withdrawls_7d AS (
@@ -19,27 +19,27 @@ deposits_withdrawls_7d AS (
         ,cnt
         ,total_amount
     FROM 
-        `dbt`.`fct_consensus_deposits_withdrawls_daily`
+        `dbt`.`int_consensus_deposits_withdrawals_daily`
     WHERE
-        date = subtractDays((SELECT MAX(date) FROM `dbt`.`int_p2p_discv4_clients_daily`), 7)
+        date = subtractDays((SELECT MAX(date) FROM `dbt`.`int_consensus_deposits_withdrawals_daily`), 7)
 ),
 
 apy_latest AS (
     SELECT
-        apy_7dma
+        avg_apy AS apy
     FROM 
-        `dbt`.`fct_consensus_validators_apy_daily`
+        `dbt`.`int_consensus_validators_dists_daily`
     WHERE
-        date = (SELECT MAX(date) FROM `dbt`.`fct_consensus_validators_apy_daily`)
+        date = (SELECT MAX(date) FROM `dbt`.`int_consensus_validators_dists_daily`)
 ),
 
 apy_7d AS (
     SELECT
-       apy_7dma
+       avg_apy AS apy
     FROM 
-        `dbt`.`fct_consensus_validators_apy_daily`
+        `dbt`.`int_consensus_validators_dists_daily`
     WHERE
-        date = subtractDays((SELECT MAX(date) FROM `dbt`.`fct_consensus_validators_apy_daily`), 7)
+        date = subtractDays((SELECT MAX(date) FROM `dbt`.`int_consensus_validators_dists_daily`), 7)
 ),
 
 status_latest AS (
@@ -87,27 +87,23 @@ staked_7d AS (
 info_latest AS ( 
     SELECT
         'deposits_cnt' AS label
-    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_latest WHERE label = 'deposits'), 0) AS value
+    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_latest WHERE label = 'Deposits'), 0) AS value
     UNION ALL
     SELECT
         'withdrawls_cnt' AS label
-    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_latest WHERE label = 'withdrawls'), 0) AS value
+    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_latest WHERE label = 'Withdrawals'), 0) AS value
     UNION ALL
     SELECT
         'deposits_total_amount' AS label 
-    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_latest WHERE label = 'deposits'), 0) AS value
+    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_latest WHERE label = 'Deposits'), 0) AS value
     UNION ALL
     SELECT
         'withdrawls_total_amount' AS label 
-    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_latest WHERE label = 'withdrawls'), 0) AS value
+    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_latest WHERE label = 'Withdrawals'), 0) AS value
     UNION ALL
     SELECT
-        'withdrawls_total_amount' AS label 
-    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_latest WHERE label = 'withdrawls'), 0) AS value
-    UNION ALL
-    SELECT
-        'APY7D' AS label 
-    ,COALESCE((SELECT ROUND(apy_7dma,2) FROM apy_latest),0) AS value
+        'APY' AS label 
+    ,COALESCE((SELECT ROUND(apy,2) FROM apy_latest),0) AS value
     UNION ALL
     SELECT
        label 
@@ -123,19 +119,23 @@ info_latest AS (
 info_7d AS ( 
     SELECT
         'deposits_cnt' AS label
-    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_7d WHERE label = 'deposits'), 0) AS value
+    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_7d WHERE label = 'Deposits'), 0) AS value
     UNION ALL
     SELECT
         'withdrawls_cnt' AS label
-    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_7d WHERE label = 'withdrawls'), 0) AS value
+    ,COALESCE( (SELECT CAST(cnt AS Float64) FROM deposits_withdrawls_7d WHERE label = 'Withdrawals'), 0) AS value
     UNION ALL
     SELECT
         'deposits_total_amount' AS label 
-    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_7d WHERE label = 'deposits'), 0) AS value
+    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_7d WHERE label = 'Deposits'), 0) AS value
+    UNION ALL
+     SELECT
+        'withdrawls_total_amount' AS label 
+    ,COALESCE( (SELECT ROUND(total_amount,2) FROM deposits_withdrawls_7d WHERE label = 'Withdrawals'), 0) AS value
     UNION ALL
     SELECT
-        'APY7D' AS label 
-    ,COALESCE((SELECT ROUND(apy_7dma,2) FROM apy_7d),0) AS value
+        'APY' AS label 
+    ,COALESCE((SELECT ROUND(apy,2) FROM apy_7d),0) AS value
     UNION ALL
     SELECT
        label 

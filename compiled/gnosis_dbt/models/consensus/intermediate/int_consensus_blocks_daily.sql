@@ -13,6 +13,8 @@ time_helpers AS (
 SELECT
     date
     ,cnt AS blocks_produced
+    ,total_blob_commitments
+    ,blocks_with_zero_blob_commitments
     ,CASE
         WHEN toStartOfDay(toDateTime(genesis_time_unix)) = date 
             THEN CAST((86400 - toUnixTimestamp(toDateTime(genesis_time_unix)) % 86400) / seconds_per_slot - cnt AS UInt64)
@@ -22,6 +24,8 @@ FROM (
     SELECT
         toStartOfDay(slot_timestamp) AS date
         ,COUNT(*) AS cnt
+        ,SUM(blob_kzg_commitments_count) AS total_blob_commitments
+        ,SUM(IF(blob_kzg_commitments_count = 0, 1, 0)) AS blocks_with_zero_blob_commitments
     FROM `dbt`.`stg_consensus__blocks`
     WHERE
         slot_timestamp < today()
@@ -33,12 +37,12 @@ FROM (
 
    AND 
     toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT max(toStartOfMonth(t.date))
-      FROM `dbt`.`int_consensus_blocks_daily` AS t
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_consensus_blocks_daily` AS x1
     )
     AND toStartOfDay(slot_timestamp) >= (
-      SELECT max(toStartOfDay(t2.date, 'UTC'))
-      FROM `dbt`.`int_consensus_blocks_daily` AS t2
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_consensus_blocks_daily` AS x2
     )
   
 

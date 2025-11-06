@@ -24,12 +24,12 @@ sdai_rate_sparse_daily AS (
 
    AND 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT max(toStartOfMonth(t.date))
-      FROM `dbt`.`int_yields_sdai_rate_daily` AS t
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_yields_sdai_rate_daily` AS x1
     )
     AND toStartOfDay(block_timestamp) >= (
-      SELECT max(toStartOfDay(t2.date, 'UTC'))
-      FROM `dbt`.`int_yields_sdai_rate_daily` AS t2
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_yields_sdai_rate_daily` AS x2
     )
   
 

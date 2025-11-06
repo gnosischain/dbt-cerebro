@@ -5,5 +5,5 @@ SELECT
     ,label
     ,total_amount AS value
 FROM 
-    `dbt`.`fct_consensus_deposits_withdrawls_daily`
+    `dbt`.`int_consensus_deposits_withdrawals_daily`
 ORDER BY date, label

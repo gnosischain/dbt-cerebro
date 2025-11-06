@@ -2,6 +2,6 @@
 
 SELECT
     date
-    ,cnt AS value
-FROM `dbt`.`int_consensus_blob_commitments_daily`
+    ,total_blob_commitments AS value
+FROM `dbt`.`int_consensus_blocks_daily`
 ORDER BY date

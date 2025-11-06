@@ -21,12 +21,12 @@ WITH src AS (
 
    AND 
     toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT max(toStartOfMonth(t.month))
-      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS t
+      SELECT max(toStartOfMonth(x1.month))
+      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x1
     )
     AND toStartOfDay(date) >= (
-      SELECT max(toStartOfDay(t2.month, 'UTC'))
-      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS t2
+      SELECT max(toStartOfDay(x2.month, 'UTC'))
+      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x2
     )
   
 

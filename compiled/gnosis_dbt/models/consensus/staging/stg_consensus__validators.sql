@@ -16,3 +16,4 @@ SELECT
     slot_timestamp
 FROM 
     `consensus`.`validators` FINAL
+WHERE balance > 0

@@ -14,12 +14,12 @@ FROM `dbt`.`stg_execution__blocks`
 
    WHERE 
     toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT max(toStartOfMonth(t.date))
-      FROM `dbt`.`int_execution_blocks_gas_usage_daily` AS t
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_execution_blocks_gas_usage_daily` AS x1
     )
     AND toStartOfDay(block_timestamp) >= (
-      SELECT max(toStartOfDay(t2.date, 'UTC'))
-      FROM `dbt`.`int_execution_blocks_gas_usage_daily` AS t2
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_execution_blocks_gas_usage_daily` AS x2
     )
   
 

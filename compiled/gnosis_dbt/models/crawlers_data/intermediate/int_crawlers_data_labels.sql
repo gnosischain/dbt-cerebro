@@ -18,12 +18,12 @@ WITH src AS (
 
    WHERE 
     toStartOfMonth(toStartOfDay(introduced_at)) >= (
-      SELECT max(toStartOfMonth(t.introduced_at))
-      FROM `dbt`.`int_crawlers_data_labels` AS t
+      SELECT max(toStartOfMonth(x1.introduced_at))
+      FROM `dbt`.`int_crawlers_data_labels` AS x1
     )
     AND toStartOfDay(introduced_at) >= (
-      SELECT max(toStartOfDay(t2.introduced_at, 'UTC'))
-      FROM `dbt`.`int_crawlers_data_labels` AS t2
+      SELECT max(toStartOfDay(x2.introduced_at, 'UTC'))
+      FROM `dbt`.`int_crawlers_data_labels` AS x2
     )
   
 
