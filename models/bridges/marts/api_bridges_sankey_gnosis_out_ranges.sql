@@ -5,11 +5,13 @@ WITH mx AS (
   FROM {{ ref('fct_bridges_edges_source_bridge_daily') }}
 ),
 ranges AS (
-  SELECT 'All' AS range, toDate('2024-01-01') AS start_d, mx.d AS end_d, 1 AS range_order FROM mx
-  UNION ALL SELECT '90D', subtractDays(mx.d, 90), mx.d, 2 FROM mx
-  UNION ALL SELECT '30D', subtractDays(mx.d, 30), mx.d, 3 FROM mx
-  UNION ALL SELECT '7D',  subtractDays(mx.d, 7),  mx.d, 4 FROM mx
+  SELECT '1D'  AS range, mx.d                             AS start_d, mx.d AS end_d, 1 AS range_order FROM mx
+  UNION ALL SELECT '7D',  subtractDays(mx.d,  6), mx.d, 2 FROM mx
+  UNION ALL SELECT '30D', subtractDays(mx.d, 29), mx.d, 3 FROM mx
+  UNION ALL SELECT '90D', subtractDays(mx.d, 89), mx.d, 4 FROM mx
+  UNION ALL SELECT 'All', toDate('2024-01-01'), mx.d,   5 FROM mx
 ),
+
 left_edges AS ( 
   SELECT
     r.range,
@@ -23,6 +25,7 @@ left_edges AS (
   GROUP BY r.range, r.range_order, target
   HAVING value > 0
 ),
+
 right_edges AS ( 
   SELECT
     r.range,
