@@ -14,6 +14,6 @@ SELECT
   sumIf(volume_usd, direction='in')  AS inflow_usd_month,
   sumIf(volume_usd, direction='out') AS outflow_usd_month
 FROM {{ ref('int_bridges_flows_daily') }}
-WHERE date < today()
+WHERE date < toStartOfMonth(today())
 {{ apply_monthly_incremental_filter('date', 'month', 'true') }}
 GROUP BY month, bridge
