@@ -11,6 +11,6 @@ SELECT
 FROM 
     {{ ref('fct_consensus_info_latest') }}
 WHERE
-    label = 'APY7D'
+    label = 'APY'
    
 
