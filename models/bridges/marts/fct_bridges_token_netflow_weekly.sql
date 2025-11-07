@@ -9,10 +9,10 @@
 ) }}
 
 SELECT
-  toStartOfWeek(date) AS week,
+  toStartOfWeek(date, 1) AS week,
   token,
-  sumIf(volume_usd, direction='in')  - sumIf(volume_usd, direction='out') AS netflow_usd_week
+  sumIf(volume_usd, direction='in') - sumIf(volume_usd, direction='out') AS netflow_usd_week
 FROM {{ ref('int_bridges_flows_daily') }}
-WHERE date < toStartOfWeek(today())
+WHERE date < toStartOfWeek(today(), 1)
 {{ apply_monthly_incremental_filter('date', 'week', 'true') }}
 GROUP BY week, token

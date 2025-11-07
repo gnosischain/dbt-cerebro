@@ -10,16 +10,15 @@
 
 WITH w AS (
   SELECT
-    toStartOfWeek(date)                      AS week,
-    bridge                                   AS bridge,  
-    sumIf(volume_usd, direction = 'in')      AS inflow_usd,
-    sumIf(volume_usd, direction = 'out')     AS outflow_usd
+    toStartOfWeek(date, 1)                 AS week,
+    bridge,
+    sumIf(volume_usd, direction='in')      AS inflow_usd,
+    sumIf(volume_usd, direction='out')     AS outflow_usd
   FROM {{ ref('int_bridges_flows_daily') }}
-  WHERE date < toStartOfWeek(today())
+  WHERE date < toStartOfWeek(today(), 1)
   {{ apply_monthly_incremental_filter('date', 'week', 'true') }}
   GROUP BY week, bridge
 ),
-
 n AS (
   SELECT
     week,
@@ -27,7 +26,6 @@ n AS (
     inflow_usd - outflow_usd AS netflow_usd_week
   FROM w
 ),
-
 bounds AS (
   SELECT min(week) AS minw, max(week) AS maxw FROM n
 ),
@@ -36,17 +34,14 @@ calendar AS (
   FROM bounds
   ARRAY JOIN range(dateDiff('week', minw, maxw) + 1) AS number
 ),
-
 bridges AS (
   SELECT DISTINCT bridge FROM n
 ),
-
 grid AS (
   SELECT b.bridge, c.week
   FROM bridges b
   CROSS JOIN calendar c
 ),
-
 filled AS (
   SELECT
     g.week,
@@ -57,7 +52,6 @@ filled AS (
     ON n.week = g.week
    AND n.bridge = g.bridge
 ),
-
 final AS (
   SELECT
     week,
