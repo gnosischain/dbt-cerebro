@@ -1,9 +1,7 @@
 {{ config(
-  materialized='incremental',
-  incremental_strategy='delete+insert',
-  engine='ReplacingMergeTree()',
+  materialized='table',
+  engine='MergeTree()',
   order_by='(week, token)',
-  unique_key='(week, token)',
   partition_by='toStartOfMonth(week)',
   tags=['production','intermediate','bridges']
 ) }}
@@ -11,8 +9,7 @@
 SELECT
   toStartOfWeek(date, 1) AS week,
   token,
-  sumIf(volume_usd, direction='in') - sumIf(volume_usd, direction='out') AS netflow_usd_week
+  sum(net_usd)           AS netflow_usd_week
 FROM {{ ref('int_bridges_flows_daily') }}
 WHERE date < toStartOfWeek(today(), 1)
-{{ apply_monthly_incremental_filter('date', 'week', 'true') }}
 GROUP BY week, token

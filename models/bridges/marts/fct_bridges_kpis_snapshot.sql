@@ -14,24 +14,24 @@ WITH mx AS (
 cum AS (
   SELECT
     sum(volume_usd) AS cum_vol_usd,
-    sumIf(volume_usd, direction='in') - sumIf(volume_usd, direction='out') AS cum_net_usd,
-    sum(txs) AS cum_txs
+    sum(net_usd)    AS cum_net_usd,
+    sum(txs)        AS cum_txs
   FROM {{ ref('int_bridges_flows_daily') }}, mx
   WHERE date <= mx.d
 ),
 cur7 AS (
   SELECT
     sum(volume_usd) AS vol_7d,
-    sumIf(volume_usd, direction='in') - sumIf(volume_usd, direction='out') AS net_7d,
-    sum(txs) AS txs_7d
+    sum(net_usd)    AS net_7d,
+    sum(txs)        AS txs_7d
   FROM {{ ref('int_bridges_flows_daily') }}, mx
   WHERE date BETWEEN subtractDays(mx.d, 6) AND mx.d
 ),
 prev7 AS (
   SELECT
     sum(volume_usd) AS vol_prev_7d,
-    sumIf(volume_usd, direction='in') - sumIf(volume_usd, direction='out') AS net_prev_7d,
-    sum(txs) AS txs_prev_7d
+    sum(net_usd)    AS net_prev_7d,
+    sum(txs)        AS txs_prev_7d
   FROM {{ ref('int_bridges_flows_daily') }}, mx
   WHERE date BETWEEN subtractDays(mx.d, 13) AND subtractDays(mx.d, 7)
 ),
