@@ -21,3 +21,4 @@ SELECT
     slot_timestamp
 FROM 
     {{ source('consensus', 'validators') }} FINAL
+WHERE balance > 0

@@ -2,16 +2,16 @@ version: 2
 models:
 
 - name: api_consensus_attestations_daily
-  description: Daily aggregated counts of consensus attestations, providing a business-facing overview of attestation activity.
+  description: Daily aggregated count of consensus attestations, providing a business-facing overview of attestation activity per day.
   columns:
   - name: date
-    description: Date of the aggregation, formatted as YYYY-MM-DD.
+    description: Date of the aggregation, in YYYY-MM-DD format.
     data_type: Date
   - name: inclusion_delay
-    description: Delay in slots between attestation inclusion and the target slot.
+    description: Delay in slots between the attestation inclusion and the target slot.
     data_type: UInt64
   - name: cnt
-    description: Total number of attestations included on the given date with the specified delay.
+    description: Count of attestations included on the given date with the specified inclusion delay.
     data_type: UInt64
   config:
     access: public
@@ -25,13 +25,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_blob_commitments_daily
-  description: Daily aggregated count of blob commitments in the consensus layer, used for monitoring blob commitment activity.
+  description: Daily aggregated count of blob commitments in the consensus layer, representing the number of blob commitments submitted each day.
   columns:
   - name: date
-    description: Date of the aggregation in YYYY-MM-DD format.
-    data_type: Date
+    description: Date of the aggregation, in UTC.
+    data_type: DateTime
   - name: value
-    description: Count of blob commitments for the given date.
+    description: Count of blob commitments submitted on the given date.
     data_type: UInt64
   config:
     access: public
@@ -45,42 +45,42 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_blocks_daily
-  description: Daily aggregation of consensus blocks data, including produced and missed blocks.
+  description: Business-facing view aggregating daily consensus block data, including produced and missed blocks, for Gnosis Chain beacon nodes.
   columns:
   - name: date
-    description: Date of the aggregation in YYYY-MM-DD format.
-    data_type: Date
+    description: Calendar date of the aggregation period.
+    data_type: DateTime
   - name: label
-    description: Label indicating 'produced' or 'missed' blocks.
+    description: 'Indicator of block type: ''produced'' or ''missed''.'
     data_type: String
   - name: value
     description: Count of blocks corresponding to the label for the given date.
     data_type: UInt64
   config:
     access: public
+    materialized: view
     tags:
     - production
     - consensus
     - blocks
-    materialized: view
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_credentials_daily
-  description: Daily aggregated data of consensus credentials, including counts and percentages, used for business insights and reporting.
+  description: Daily aggregated data on consensus credentials, including counts and percentages, for Gnosis Chain beacon nodes.
   columns:
   - name: date
-    description: Date of the record in YYYY-MM-DD format.
+    description: Date of the record in UTC.
     data_type: DateTime
   - name: credentials_type
-    description: Type/category of credentials, e.g., validator, proposer.
+    description: Type/category of the credentials.
     data_type: String
   - name: cnt
-    description: Count of credentials of the specified type for the date.
+    description: Count of credentials of this type on the given date.
     data_type: UInt64
   - name: pct
-    description: Percentage of credentials of this type relative to total on the date.
+    description: Percentage of total credentials for the date, rounded to 2 decimal places.
     data_type: Float64
   config:
     access: public
@@ -94,13 +94,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_credentials_latest
-  description: A model representing the latest consensus credentials, including credentials type and count, derived from the most recent date in the source data.
+  description: A view containing the latest consensus credentials data, including credentials type and count, aggregated from daily data.
   columns:
   - name: credentials_type
-    description: Type of credentials (e.g., API key, token).
+    description: Type of consensus credentials, e.g., validator, proposer.
     data_type: String
   - name: cnt
-    description: Count of credentials of this type.
+    description: Count of credentials of the given type.
     data_type: UInt64
   config:
     access: public
@@ -110,17 +110,17 @@ models:
     - consensus
     - credentials
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_deposits_withdrawls_cnt_daily
-  description: Daily count of deposits and withdrawals in the consensus layer, aggregated per date and label for business insights.
+  description: Business-facing view summarizing daily counts of deposits and withdrawals from the consensus layer, aggregated by date and label.
   columns:
   - name: date
-    description: Date of the aggregated data in YYYY-MM-DD format.
-    data_type: DateTime
+    description: Date of the deposit or withdrawal count, in UTC.
+    data_type: DateTime64(0, 'UTC')
   - name: label
-    description: Category label for the count, e.g., 'deposits' or 'withdrawals'.
+    description: Label categorizing the count, e.g., 'deposits' or 'withdrawals'.
     data_type: String
   - name: value
     description: Count of deposits or withdrawals for the given date and label.
@@ -137,16 +137,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_deposits_withdrawls_volume_daily
-  description: Daily volume of deposits and withdrawals in the consensus layer, aggregated by date and label.
+  description: Daily aggregated volume of deposits and withdrawals in the consensus layer, including total amounts and labels.
   columns:
   - name: date
-    description: The date of the record, in UTC.
+    description: The date of the volume record, in UTC.
     data_type: DateTime
   - name: label
-    description: Label categorizing the volume (e.g., 'deposits', 'withdrawals').
+    description: Descriptive label for the volume period or category.
     data_type: String
   - name: value
-    description: Total volume in wei for the given date and label.
+    description: Total volume amount in wei for the given date and label.
     data_type: UInt64
   config:
     access: public
@@ -160,60 +160,60 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_entry_queue_daily
-  description: Daily aggregated data on consensus entry queue metrics, including validator counts and quantile statistics.
+  description: Daily aggregated data on validator entry queue metrics, including quantiles, mean, and date, used for monitoring validator onboarding and queue status.
   columns:
   - name: date
-    description: Date of the aggregation in UTC.
-    data_type: DateTime
+    description: Date of the aggregation in ISO format.
+    data_type: DateTime64(0, 'UTC')
   - name: validator_count
-    description: Number of validators active on the given date.
+    description: Total number of validators counted on this date.
     data_type: UInt64
   - name: q05
-    description: 5th percentile of the queue length.
+    description: 5th percentile of validator queue length.
     data_type: Float64
   - name: q10
-    description: 10th percentile of the queue length.
+    description: 10th percentile of validator queue length.
     data_type: Float64
   - name: q25
-    description: 25th percentile of the queue length.
+    description: 25th percentile of validator queue length.
     data_type: Float64
   - name: q50
-    description: Median (50th percentile) of the queue length.
+    description: Median (50th percentile) of validator queue length.
     data_type: Float64
   - name: q75
-    description: 75th percentile of the queue length.
+    description: 75th percentile of validator queue length.
     data_type: Float64
   - name: q90
-    description: 90th percentile of the queue length.
+    description: 90th percentile of validator queue length.
     data_type: Float64
   - name: q95
-    description: 95th percentile of the queue length.
+    description: 95th percentile of validator queue length.
     data_type: Float64
   - name: mean
-    description: Average queue length.
+    description: Average validator queue length.
     data_type: Float64
   config:
     access: public
+    materialized: view
     tags:
     - production
     - consensus
     - entry_queue
-    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_forks
-  description: Model representing consensus forks with details such as name, version, digest, and epoch.
+  description: View aggregating consensus fork information including name, version, digest, and epoch for Gnosis Chain beacon nodes.
   columns:
   - name: fork_name
-    description: Name of the fork (e.g., "Bellatrix", "Capella").
+    description: Name of the fork (e.g., Bellatrix, Capella).
     data_type: String
   - name: fork_version
-    description: Version label of the fork.
+    description: Fork version label.
     data_type: String
   - name: fork_digest
-    description: Unique digest identifier for the fork.
+    description: Unique digest representing the fork.
     data_type: String
   - name: fork_epoch
     description: Epoch number at which the fork occurred.
@@ -230,16 +230,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_graffiti_cloud
-  description: View aggregating graffiti and label data from consensus layer, ordered by label and value.
+  description: View aggregating graffiti data with labels and values, ordered by label and value.
   columns:
   - name: label
-    description: Label associated with graffiti, used for categorization.
+    description: Label associated with the graffiti.
     data_type: String
   - name: graffiti
-    description: Graffiti content or tag.
+    description: Graffiti content.
     data_type: String
   - name: value
-    description: Numeric or descriptive value associated with graffiti.
+    description: Numeric value associated with graffiti, in units or raw form.
     data_type: String
   config:
     access: public
@@ -253,16 +253,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_graffiti_label_daily
-  description: Aggregated daily counts of graffiti labels from consensus data, grouped by date and label.
+  description: Daily aggregated counts of graffiti labels from consensus data, grouped by date and label.
   columns:
   - name: date
-    description: Date of the aggregation in YYYY-MM-DD format.
+    description: Date of aggregation in ISO format (UTC).
     data_type: DateTime
   - name: label
-    description: Graffiti label identifier.
+    description: Graffiti label string.
     data_type: String
   - name: value
-    description: Total count of graffiti labels for the given date and label.
+    description: Count of occurrences for the label on the given date.
     data_type: UInt64
   config:
     access: public
@@ -276,13 +276,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_info_active_ongoing_latest
-  description: View providing the latest active and ongoing consensus info filtered where label equals 'active_ongoing'. Contains value and change percentage.
+  description: View providing the latest active and ongoing consensus info with change percentage.
   columns:
   - name: value
-    description: The main value representing consensus info, as selected in the SQL.
+    description: The consensus info value for active ongoing status.
     data_type: String
   - name: change_pct
-    description: Percentage change of the consensus metric, numeric value.
+    description: Percentage change in the consensus info compared to previous measurement.
     data_type: Float64
   config:
     access: public
@@ -296,13 +296,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_info_apy_latest
-  description: View providing the latest APY7D consensus information, including value and change percentage.
+  description: View providing the latest APY7D consensus info, including value and change percentage.
   columns:
   - name: value
-    description: The APY7D value in percentage points.
+    description: The APY7D value in percentage terms.
     data_type: Float64
   - name: change_pct
-    description: Percentage change in APY7D from previous measurement.
+    description: Percentage change of APY7D from previous period.
     data_type: Float64
   config:
     access: public
@@ -316,49 +316,33 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_info_deposits_cnt_latest
-  description: Model providing the latest count of deposits with value and change percentage.
+  description: View summarizing the latest deposit count and value from the beacon chain where label is 'deposits_cnt'. Provides a business-facing overview of deposit metrics.
   columns:
   - name: value
-    description: The deposit count value.
+    description: Total deposit count as a numeric value.
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in deposits compared to previous period.
+    description: Percentage change in deposit count compared to previous measurement.
     data_type: Float64
   config:
     access: public
+    materialized: view
     tags:
     - production
     - consensus
     - info
-    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_info_withdrawls_cnt_latest
-  description: This model provides the latest count of withdrawals from the consensus layer, filtered where label equals 'withdrawls_cnt'. It aggregates data from the `fct_consensus_info_latest` source, focusing on the `value` and `change_pct` columns for business insights into withdrawal activity.
+  description: View containing the latest count of withdrawals from consensus API data filtered by label 'withdrawls_cnt'.
   columns:
   - name: value
-    description: The withdrawal count value for the latest consensus info.
-    data_type: String
+    description: The withdrawal count value from the consensus info dataset.
+    data_type: UInt32
   - name: change_pct
-    description: Percentage change in withdrawal count compared to previous period.
-    data_type: String
-  config:
-    access: public
-    materialized: view
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_consensus_staked_daily
-  description: Daily snapshot of staked validator balances, derived from the int_consensus_validators_balances_daily model, representing effective balances divided by 32 for business insights.
-  columns:
-  - name: date
-    description: Date of the snapshot.
-    data_type: DateTime
-  - name: value
-    description: Effective staked balance divided by 32 (validator count), in units.
+    description: Percentage change in withdrawal count compared to previous measurement.
     data_type: Float64
   config:
     access: public
@@ -366,19 +350,35 @@ models:
     tags:
     - production
     - consensus
-    - staked
+    - info
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_consensus_staked_daily
+  description: Daily aggregated data showing the effective balance of validators divided by 32, providing a business-facing metric of staked ETH on a daily basis.
+  columns:
+  - name: date
+    description: The date representing the day of the aggregation, in UTC.
+    data_type: DateTime
+  - name: value
+    description: Effective validator balance divided by 32, representing total staked ETH in units.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_active_daily
-  description: Daily count of active consensus validators filtered by status 'active_ongoing'.
+  description: Daily count of active consensus validators, filtered by status 'active_ongoing'.
   columns:
   - name: date
-    description: The date representing the day of the activity, in YYYY-MM-DD format.
-    data_type: Date
+    description: Calendar date of the record.
+    data_type: DateTime
   - name: cnt
-    description: Count of active validators for the given date.
+    description: Number of active validators on the date.
     data_type: UInt64
   config:
     access: public
@@ -392,26 +392,30 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_apy_daily
-  description: Daily and 7-day moving average APY data for consensus validators, used for performance and health monitoring.
+  description: Daily and 7-day moving average APY for consensus validators, aggregated by date and label.
   columns:
   - name: date
     description: Date of the APY measurement.
-    data_type: DateTime64(0, 'UTC')
+    data_type: DateTime
   - name: label
-    description: Label indicating the APY type, e.g., 'Daily' or '7DMA'.
+    description: Label indicating the APY period, e.g., 'Daily' or '7DMA'.
     data_type: String
   - name: apy
-    description: Annual Percentage Yield (APY) in percentage points.
+    description: APY percentage value (as a decimal or percentage string).
     data_type: Float64
   config:
     access: public
     materialized: view
+    tags:
+    - production
+    - consensus
+    - validators_apy
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_apy_dist
-  description: Distribution of validators' APY over time, based on consensus data.
+  description: Distribution of validators' APY over time, derived from consensus data.
   columns:
   - name: date
     description: Date of the APY distribution snapshot.
@@ -426,7 +430,7 @@ models:
     description: 25th percentile of validators' APY.
     data_type: Float64
   - name: q50
-    description: 50th percentile (median) of validators' APY.
+    description: Median (50th percentile) of validators' APY.
     data_type: Float64
   - name: q75
     description: 75th percentile of validators' APY.
@@ -449,16 +453,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_balances_daily
-  description: Daily aggregated balances and effective balances for consensus validators, combining current balances and effective balances for business insights.
+  description: Daily aggregated balances and labels for consensus validators, combining current balance and effective balance metrics for business analysis.
   columns:
   - name: date
-    description: The date of the balance snapshot in YYYY-MM-DD format.
+    description: The date of the balance snapshot in UTC.
     data_type: DateTime
   - name: label
-    description: Label indicating balance type ('balance' or 'eff. balance').
+    description: Label indicating balance type, e.g., 'balance' or 'eff. balance'.
     data_type: String
   - name: value
-    description: Numeric value of the balance in wei.
+    description: Numeric value of the balance in wei; range depends on validator balances.
     data_type: UInt64
   config:
     access: public
@@ -472,31 +476,31 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_balances_dist_daily
-  description: Daily distribution of validator balances derived from consensus data, including quantile metrics for analysis.
+  description: Daily distribution of validator balances derived from consensus data, including quantiles and date.
   columns:
   - name: date
-    description: Date of the recorded balances in YYYY-MM-DD format.
+    description: The date for which the balance distribution is calculated.
     data_type: DateTime
   - name: q05
-    description: 5th percentile of validator balances divided by 32, representing lower bound.
+    description: 5th percentile of validator balances (scaled by 32).
     data_type: Float64
   - name: q10
-    description: 10th percentile of validator balances divided by 32.
+    description: 10th percentile of validator balances (scaled by 32).
     data_type: Float64
   - name: q25
-    description: 25th percentile of validator balances divided by 32.
+    description: 25th percentile of validator balances (scaled by 32).
     data_type: Float64
   - name: q50
-    description: Median (50th percentile) of validator balances divided by 32.
+    description: Median (50th percentile) of validator balances (scaled by 32).
     data_type: Float64
   - name: q75
-    description: 75th percentile of validator balances divided by 32.
+    description: 75th percentile of validator balances (scaled by 32).
     data_type: Float64
   - name: q90
-    description: 90th percentile of validator balances divided by 32.
+    description: 90th percentile of validator balances (scaled by 32).
     data_type: Float64
   - name: q95
-    description: 95th percentile of validator balances divided by 32.
+    description: 95th percentile of validator balances (scaled by 32).
     data_type: Float64
   config:
     access: public
@@ -510,13 +514,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_validators_status_daily
-  description: Daily status summary of consensus validators, excluding 'active_ongoing' and 'withdrawal_done' statuses, aggregated by date.
+  description: Daily status of consensus validators, excluding ongoing and withdrawal done statuses, providing a business overview of validator states.
   columns:
   - name: date
     description: Date of the status record, in YYYY-MM-DD format.
     data_type: DateTime
   - name: status
-    description: Validator status category (e.g., 'pending', 'active', etc.).
+    description: Validator status (e.g., active, pending, exited).
     data_type: String
   - name: cnt
     description: Count of validators in the given status on the date.
@@ -533,31 +537,31 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_withdrawls_dist_daily
-  description: Daily distribution of consensus-layer withdrawal data, including quantiles and related metrics.
+  description: Daily distribution of consensus-layer withdrawls, including quantiles and date.
   columns:
   - name: date
-    description: Date of the distribution (YYYY-MM-DD).
+    description: Date of the recorded distribution.
     data_type: DateTime
   - name: q05
-    description: 5th percentile value of withdrawal distribution.
+    description: 5th percentile of withdrawls distribution.
     data_type: Float64
   - name: q10
-    description: 10th percentile value of withdrawal distribution.
+    description: 10th percentile of withdrawls distribution.
     data_type: Float64
   - name: q25
-    description: 25th percentile value of withdrawal distribution.
+    description: 25th percentile of withdrawls distribution.
     data_type: Float64
   - name: q50
-    description: Median (50th percentile) of withdrawal distribution.
+    description: Median (50th percentile) of withdrawls distribution.
     data_type: Float64
   - name: q75
-    description: 75th percentile value of withdrawal distribution.
+    description: 75th percentile of withdrawls distribution.
     data_type: Float64
   - name: q90
-    description: 90th percentile value of withdrawal distribution.
+    description: 90th percentile of withdrawls distribution.
     data_type: Float64
   - name: q95
-    description: 95th percentile value of withdrawal distribution.
+    description: 95th percentile of withdrawls distribution.
     data_type: Float64
   config:
     access: public
@@ -571,29 +575,33 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_deposits_withdrawls_daily
-  description: Business-facing table aggregating deposits and withdrawls per day with labels.
+  description: Aggregated daily data of deposits and withdrawals from the beacon chain, combining deposits and withdrawals with total amounts and counts for each date.
   columns:
   - name: date
-    description: Date of the aggregation (UTC).
+    description: The date for which the deposits and withdrawals are aggregated.
     data_type: DateTime
   - name: label
-    description: 'Type of transaction: ''deposits'' or ''withdrawls''.'
+    description: Indicator of the transaction type, either 'deposits' or 'withdrawls'.
     data_type: String
-  - name: cnt
-    description: Count of transactions for the given date and label.
-    data_type: UInt64
   - name: total_amount
-    description: Sum of amounts in wei for the transactions on the given date and label.
+    description: Sum of all deposit or withdrawal amounts for the given date.
+    data_type: UInt64
+  - name: cnt
+    description: Count of deposit or withdrawal transactions for the given date.
     data_type: UInt64
   config:
     access: public
     materialized: view
+    tags:
+    - production
+    - consensus
+    - deposits_withdrawls
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_forks
-  description: Business-facing table aggregating fork information, including fork name, version, digest, epoch, and fork time, derived from consensus data sources.
+  description: A fact table capturing consensus fork details, including fork name, digest, version, epoch, and fork time derived from various source tables.
   columns:
   - name: fork_name
     description: Name of the fork (e.g., Phase0, Altair, Bellatrix, Capella, Deneb, Electra, Fulu).
@@ -602,14 +610,14 @@ models:
     description: Unique digest identifier for the fork.
     data_type: String
   - name: fork_version
-    description: Fork version string (e.g., 'PHASE0', 'Altair', etc.).
+    description: Version string associated with the fork (e.g., 'PHASE0', 'Altair').
     data_type: String
   - name: fork_epoch
-    description: Epoch at which the fork occurred, represented as a string.
+    description: Epoch number at which the fork occurred.
     data_type: String
   - name: fork_time
-    description: UTC timestamp when the fork occurred, derived from genesis time and epoch.
-    data_type: DateTime
+    description: Estimated timestamp when the fork occurred, derived from genesis time and epoch.
+    data_type: DateTime64(0, 'UTC')
   config:
     access: public
     tags:
@@ -618,29 +626,29 @@ models:
     - forks
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_graffiti_cloud
-  description: Aggregated graffiti counts over different time windows, filtered to exclude 'None' graffiti entries.
+  description: Aggregated graffiti counts over different time windows, filtered to exclude 'None' graffiti.
   columns:
-  - name: label
-    description: Time window labels for graffiti counts ('7D', '30D', '90D', 'All').
-    data_type: String
   - name: graffiti
-    description: Graffiti string identifier.
+    description: Graffiti string identifier, excluding 'None'.
+    data_type: String
+  - name: label
+    description: 'Time window label: ''7D'', ''30D'', ''90D'', ''All''.'
     data_type: String
   - name: v_7d
-    description: Sum of graffiti occurrences in the last 7 days.
+    description: Sum of counts for the last 7 days.
     data_type: UInt64
   - name: v_30d
-    description: Sum of graffiti occurrences in the last 30 days.
+    description: Sum of counts for the last 30 days.
     data_type: UInt64
   - name: v_90d
-    description: Sum of graffiti occurrences in the last 90 days.
+    description: Sum of counts for the last 90 days.
     data_type: UInt64
   - name: v_all
-    description: Total sum of graffiti occurrences across all time.
+    description: Total count across all time.
     data_type: UInt64
   config:
     access: public
@@ -654,16 +662,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_info_latest
-  description: Aggregated latest consensus layer statistics including deposits, withdrawals, APY, validator status, and staked balances, with comparisons over 7-day periods.
+  description: Aggregated latest consensus data including deposits, withdrawals, APY, validator status, staked balances, and related metrics for business insights.
   columns:
   - name: label
-    description: Identifier for the metric, e.g., deposits_cnt, withdrawls_total_amount, APY7D.
+    description: Identifier for the metric or category, e.g., deposits, withdrawls, APY7D, validator status.
     data_type: String
   - name: value
-    description: Numeric value of the metric; units vary per label.
+    description: Numeric value of the metric; units vary (counts, amounts, percentages).
     data_type: Float64
   - name: change_pct
-    description: Percentage change over 7 days; null if denominator is zero.
+    description: Percentage change over 7 days; null if previous data is zero.
     data_type: Float64
   config:
     access: public
@@ -673,11 +681,11 @@ models:
     - info
     materialized: view
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: fct_consensus_validators_apy_daily
-  description: Daily computed APY and rate metrics for consensus validators, including 7-day moving averages and derived APY values, based on the latest data.
+  description: Daily calculated APY for consensus validators, including moving averages and derived metrics.
   columns:
   - name: date
     description: Date of the APY calculation in UTC.
@@ -686,13 +694,13 @@ models:
     description: Validator balance in wei.
     data_type: UInt64
   - name: rate
-    description: Daily rate of validator rewards (decimal, e.g., 0.0001 for 0.01%).
+    description: Daily rate of return (e.g., 0.05 for 5%).
     data_type: Float64
   - name: rate_7dma
-    description: 7-day moving average of the daily rate.
+    description: 7-day moving average of the rate.
     data_type: Float64
   - name: apy
-    description: Calculated APY based on the daily rate.
+    description: Calculated annual percentage yield based on rate.
     data_type: Float64
   - name: apy_7dma
     description: 7-day moving average of the APY.
@@ -709,13 +717,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_consensus_info_staked_latest
-  description: View providing the latest staked consensus information filtered where label is 'Staked'.
+  description: View containing the latest staked consensus information filtered by label 'Staked'.
   columns:
   - name: value
     description: Numeric value representing the staked amount (in wei or relevant units).
     data_type: UInt64
   - name: change_pct
-    description: Percentage change in the staked amount compared to previous measurement.
+    description: Percentage change in the staked amount since last measurement.
     data_type: Float64
   config:
     access: public

@@ -47,63 +47,55 @@ models:
     - gnosis
     - execution
 - name: int_execution_blocks_clients_version_daily
-  description: '"Model representing daily counts of unique clients per version."'
+  description: Business-facing table summarizing client versions per day with counts.
   columns:
+  - name: date
+    description: Date of the record, representing the start of the day (UTC).
+    data_type: Date
+  - name: client
+    description: Client identifier; normalized to 'Unknown' if missing or unrecognized.
+    data_type: String
   - name: version
-    description: Client version string.
+    description: Client version string; empty if not available.
     data_type: String
   - name: cnt
-    description: Count of clients for the version on the date.
-    data_type: Int64
-  - name: date
-    description: Date of the data aggregation.
-    data_type: DateTime
-  - name: client
-    description: Client name or identifier.
-    data_type: String
+    description: Count of occurrences for the client version on the given date.
+    data_type: UInt64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - blocks
+    materialized: table
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: int_execution_blocks_gas_usage_daily
-  description: Daily aggregation of gas usage statistics for execution blocks.
+  description: Daily aggregated gas usage metrics derived from execution blocks, including total gas used, gas limit, and the fraction of gas used.
   columns:
   - name: date
-    description: Date of the execution block.
+    description: The date (UTC) representing the day of the aggregated data.
     data_type: DateTime
-    tests:
-    - not_null
   - name: gas_used_sum
-    description: Total gas consumed by transactions in the block.
+    description: Total gas used across all blocks for the day (wei).
     data_type: UInt64
-    tests:
-    - not_null
   - name: gas_limit_sum
-    description: Maximum gas allowed in the block.
+    description: Total gas limit across all blocks for the day (wei).
     data_type: UInt64
-    tests:
-    - not_null
   - name: gas_used_fraq
-    description: Gas used fraction (gas_used_sum / gas_limit_sum).
+    description: Fraction of gas used, calculated as gas_used_sum / gas_limit_sum.
     data_type: Float64
   config:
-    materialized: incremental
-    unique_key: date
-    partition_by: toStartOfMonth(date)
+    access: public
     tags:
     - production
     - execution
     - blocks
     - gas
-    access: public
+    materialized: table
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

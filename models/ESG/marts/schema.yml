@@ -114,46 +114,14 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_carbon_emissions_annualised_latest
-  description: The latest annualized projected CO2 emissions in tonnes, filtered to include only data before the current month.
+  description: Model providing the latest annualized projected CO2 emissions in tonnes, filtered to include only data before the current month, ordered by date descending.
   columns:
   - name: annual_co2_tonnes_projected
     description: Projected annual CO2 emissions in tonnes for the latest available period.
     data_type: Float64
   config:
-    access: public
-    tags:
-    - production
-    - esg
-    - carbon_emissions
     materialized: view
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_esg_carbon_emissions_daily
-  description: Daily carbon emissions data with 7-day moving averages, derived from ESG footprint sources. Includes date and smoothed metrics for lower and upper bounds at 90% and 95% confidence levels.
-  columns:
-  - name: date
-    description: The date of the record, in UTC. Used as the primary temporal reference.
-    data_type: DateTime
-  - name: ma7_value
-    description: 7-day moving average of daily CO2 emissions in kg, smoothed over the past week.
-    data_type: Float64
-  - name: ma7_lower_90
-    description: Lower bound of the 90% confidence interval for the 7-day moving average.
-    data_type: Float64
-  - name: ma7_upper_90
-    description: Upper bound of the 90% confidence interval for the 7-day moving average.
-    data_type: Float64
-  - name: ma7_lower_95
-    description: Lower bound of the 95% confidence interval for the 7-day moving average.
-    data_type: Float64
-  - name: ma7_upper_95
-    description: Upper bound of the 95% confidence interval for the 7-day moving average.
-    data_type: Float64
-  config:
     access: public
-    materialized: view
     tags:
     - production
     - esg
@@ -162,41 +130,73 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
-- name: api_esg_carbon_timeseries_bands
-  description: A timeseries model providing daily ESG carbon footprint data with moving averages and month-to-date statistics.
+- name: api_esg_carbon_emissions_daily
+  description: Daily carbon emissions data with moving averages over 7 days, including lower and upper bounds of uncertainty. Data sourced from the ESG carbon footprint model, filtered to recent months.
   columns:
   - name: date
     description: The date of the record, in UTC.
     data_type: DateTime
-  - name: value
-    description: Daily mean of CO2 emissions in kg.
-    data_type: Float64
-  - name: lower_95
-    description: Lower bound of the 95% confidence interval for daily CO2 emissions in kg.
-    data_type: Float64
-  - name: upper_95
-    description: Upper bound of the 95% confidence interval for daily CO2 emissions in kg.
-    data_type: Float64
-  - name: lower_90
-    description: Lower bound of the 90% confidence interval for daily CO2 emissions in kg.
-    data_type: Float64
-  - name: upper_90
-    description: Upper bound of the 90% confidence interval for daily CO2 emissions in kg.
-    data_type: Float64
   - name: ma7_value
-    description: 7-day moving average of the daily CO2 mean in kg.
+    description: 7-day moving average of daily CO2 emissions in kg, representing central tendency.
+    data_type: Float64
+  - name: ma7_lower_90
+    description: 7-day moving average lower bound of 90% confidence interval in kg.
+    data_type: Float64
+  - name: ma7_upper_90
+    description: 7-day moving average upper bound of 90% confidence interval in kg.
     data_type: Float64
   - name: ma7_lower_95
-    description: 7-day moving average of the lower 95% confidence interval in kg.
+    description: 7-day moving average lower bound of 95% confidence interval in kg.
     data_type: Float64
   - name: ma7_upper_95
-    description: 7-day moving average of the upper 95% confidence interval in kg.
+    description: 7-day moving average upper bound of 95% confidence interval in kg.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - esg
+    - carbon_emissions
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_esg_carbon_timeseries_bands
+  description: A timeseries model providing daily CO2 emissions data with moving averages and month-to-date statistics.
+  columns:
+  - name: date
+    description: Date of the observation, in UTC.
+    data_type: DateTime
+  - name: value
+    description: Daily mean CO2 emissions in kilograms.
+    data_type: Float64
+  - name: lower_95
+    description: Lower bound of the 95% confidence interval for daily CO2 emissions.
+    data_type: Float64
+  - name: upper_95
+    description: Upper bound of the 95% confidence interval for daily CO2 emissions.
+    data_type: Float64
+  - name: lower_90
+    description: Lower bound of the 90% confidence interval for daily CO2 emissions.
+    data_type: Float64
+  - name: upper_90
+    description: Upper bound of the 90% confidence interval for daily CO2 emissions.
+    data_type: Float64
+  - name: ma7_value
+    description: 7-day moving average of daily CO2 emissions.
+    data_type: Float64
+  - name: ma7_lower_95
+    description: 7-day moving average of the lower 95% confidence interval.
+    data_type: Float64
+  - name: ma7_upper_95
+    description: 7-day moving average of the upper 95% confidence interval.
     data_type: Float64
   - name: mtd_avg
-    description: Month-to-date average of the daily CO2 mean in kg.
+    description: Month-to-date average of daily CO2 emissions.
     data_type: Float64
   - name: mtd_total
-    description: Month-to-date total of the daily CO2 mean in kg.
+    description: Month-to-date total of daily CO2 emissions in kilograms.
     data_type: Float64
   config:
     access: public
@@ -206,28 +206,28 @@ models:
     - esg
     - carbon_emissions
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_cif_network_vs_countries_daily
-  description: Daily carbon intensity values for network and selected countries, including comparison metrics and processed data.
+  description: Daily effective carbon intensity for network and selected countries, including comparison metrics.
   columns:
   - name: date
-    description: Date of the measurement in UTC.
+    description: The date of the measurement, in UTC.
     data_type: DateTime
   - name: entity_code
-    description: Identifier for the entity; 'GNOSIS' for network, country codes for countries.
+    description: Identifier for the network or country entity.
     data_type: String
   - name: carbon_intensity
-    description: Carbon intensity value in gCO2/kWh, rounded to one decimal place.
+    description: Carbon intensity value in gCO2/kWh, rounded to 1 decimal place.
     data_type: Float64
   config:
     access: public
+    materialized: view
     tags:
     - production
     - esg
     - cif
-    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
@@ -236,7 +236,7 @@ models:
   description: The latest projected annual energy consumption in MWh for the project, derived from ESG data.
   columns:
   - name: annual_energy_Mwh_projected
-    description: Projected annual energy consumption in megawatt-hours (MWh) for the latest period.
+    description: Projected annual energy consumption in megawatt-hours (MWh)
     data_type: Float64
   config:
     access: public
@@ -250,16 +250,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: fct_esg_carbon_footprint_uncertainty
-  description: Business-facing metrics on carbon footprint uncertainty, including energy, emissions, and node population estimates with confidence intervals, comparisons to Chao-1 population estimates, and network efficiency metrics.
+  description: Business-facing metrics and uncertainty estimates for ESG carbon footprint, including energy consumption, emissions, and network metrics with confidence intervals and comparison to Chao-1 population estimates.
   columns:
   - name: date
-    description: The date of the measurement or aggregation, in UTC.
+    description: Date of the measurement or aggregation in UTC.
     data_type: DateTime
   - name: daily_co2_kg_mean
-    description: Estimated daily CO2 emissions in kilograms, mean value.
+    description: Estimated daily CO2 emissions in kilograms.
     data_type: Float64
   - name: daily_co2_kg_std
-    description: Standard deviation of daily CO2 emissions in kilograms.
+    description: Standard deviation of daily CO2 emissions, representing uncertainty.
     data_type: Float64
   - name: daily_co2_kg_lower_95
     description: Lower bound of 95% confidence interval for daily CO2 emissions.
@@ -274,10 +274,10 @@ models:
     description: Upper bound of 90% confidence interval for daily CO2 emissions.
     data_type: Float64
   - name: annual_co2_tonnes_mean
-    description: Estimated annual CO2 emissions in metric tonnes.
+    description: Projected annual CO2 emissions in metric tonnes.
     data_type: Float64
   - name: annual_co2_tonnes_std
-    description: Standard deviation of annual CO2 emissions in metric tonnes.
+    description: Standard deviation of annual CO2 emissions projection.
     data_type: Float64
   - name: annual_co2_tonnes_lower_95
     description: Lower bound of 95% confidence interval for annual CO2 emissions.
@@ -285,14 +285,8 @@ models:
   - name: annual_co2_tonnes_upper_95
     description: Upper bound of 95% confidence interval for annual CO2 emissions.
     data_type: Float64
-  - name: annual_co2_tonnes_lower_90
-    description: Lower bound of 90% confidence interval for annual CO2 emissions.
-    data_type: Float64
-  - name: annual_co2_tonnes_upper_90
-    description: Upper bound of 90% confidence interval for annual CO2 emissions.
-    data_type: Float64
-  - name: daily_energy_kwh_mean
-    description: Estimated total daily energy consumption in kilowatt-hours.
+  - name: daily_energy_kwh_total
+    description: Total daily energy consumption in kilowatt-hours.
     data_type: Float64
   - name: daily_energy_kwh_std
     description: Standard deviation of daily energy consumption.
@@ -310,10 +304,10 @@ models:
     description: Upper bound of 90% confidence interval for daily energy.
     data_type: Float64
   - name: annual_energy_mwh_mean
-    description: Estimated annual energy consumption in megawatt-hours.
+    description: Projected annual energy consumption in megawatt-hours.
     data_type: Float64
   - name: annual_energy_mwh_std
-    description: Standard deviation of annual energy consumption.
+    description: Standard deviation of annual energy projection.
     data_type: Float64
   - name: annual_energy_mwh_lower_95
     description: Lower bound of 95% confidence interval for annual energy.
@@ -321,92 +315,125 @@ models:
   - name: annual_energy_mwh_upper_95
     description: Upper bound of 95% confidence interval for annual energy.
     data_type: Float64
-  - name: annual_energy_mwh_lower_90
-    description: Lower bound of 90% confidence interval for annual energy.
-    data_type: Float64
-  - name: annual_energy_mwh_upper_90
-    description: Upper bound of 90% confidence interval for annual energy.
-    data_type: Float64
   - name: network_weighted_cif
     description: Network effective carbon intensity in gCO2e per kWh.
     data_type: Float64
   - name: network_cif_std
-    description: Standard deviation of network carbon intensity.
+    description: Standard deviation of network carbon intensity estimate.
+    data_type: Float64
+  - name: network_carbon_intensity_lower_95
+    description: Lower bound of 95% confidence interval for network carbon intensity.
+    data_type: Float64
+  - name: network_carbon_intensity_upper_95
+    description: Upper bound of 95% confidence interval for network carbon intensity.
     data_type: Float64
   - name: total_estimated_nodes
     description: Total estimated number of nodes in the network.
-    data_type: UInt64
+    data_type: Float64
   - name: total_nodes_lower_95
     description: Lower bound of 95% confidence interval for total nodes.
-    data_type: UInt64
+    data_type: Float64
   - name: total_nodes_upper_95
     description: Upper bound of 95% confidence interval for total nodes.
-    data_type: UInt64
-  - name: home_staker_energy_kwh
-    description: Total energy consumption for home staker nodes in kWh.
     data_type: Float64
-  - name: professional_energy_kwh
-    description: Total energy consumption for professional operator nodes in kWh.
-    data_type: Float64
-  - name: cloud_energy_kwh
-    description: Total energy consumption for cloud hosted nodes in kWh.
-    data_type: Float64
-  - name: unknown_energy_kwh
-    description: Total energy consumption for unknown category nodes in kWh.
-    data_type: Float64
-  - name: home_staker_co2_kg
-    description: Total CO2 emissions for home staker nodes in kg.
-    data_type: Float64
-  - name: professional_co2_kg
-    description: Total CO2 emissions for professional operator nodes in kg.
-    data_type: Float64
-  - name: cloud_co2_kg
-    description: Total CO2 emissions for cloud hosted nodes in kg.
-    data_type: Float64
-  - name: unknown_co2_kg
-    description: Total CO2 emissions for unknown category nodes in kg.
-    data_type: Float64
-  - name: home_staker_nodes
-    description: Number of home staker nodes.
-    data_type: UInt64
-  - name: professional_nodes
-    description: Number of professional operator nodes.
-    data_type: UInt64
-  - name: cloud_nodes
-    description: Number of cloud hosted nodes.
-    data_type: UInt64
-  - name: unknown_nodes
-    description: Number of nodes with unknown category.
-    data_type: UInt64
-  - name: active_categories
-    description: Count of categories with active nodes.
-    data_type: UInt64
-  - name: max_countries_in_category
-    description: Maximum number of countries represented within a category.
-    data_type: UInt64
   - name: chao1_observed
     description: Number of successful nodes observed in Chao-1 estimate.
-    data_type: UInt64
+    data_type: Float64
   - name: chao1_estimated
-    description: Total reachable nodes estimated by Chao-1 method.
-    data_type: UInt64
+    description: Estimated total reachable nodes from Chao-1.
+    data_type: Float64
   - name: chao1_success_rate
-    description: Percentage of successful node discovery in Chao-1 estimate.
+    description: Percentage of successful nodes in Chao-1 estimate.
     data_type: Float64
   - name: chao1_coverage
-    description: Percentage of network coverage in Chao-1 estimate.
+    description: Reachability coverage percentage from Chao-1.
     data_type: Float64
   - name: node_estimate_vs_chao1_pct
-    description: Estimated nodes as percentage of Chao-1 estimate.
+    description: Percentage ratio of our total estimated nodes to Chao-1 estimate.
     data_type: Float64
   - name: applied_scaling_factor
-    description: Scaling factor applied to align estimates with Chao-1.
+    description: Scaling factor applied to our estimate based on Chao-1 comparison.
+    data_type: Float64
+  - name: active_categories
+    description: Count of active node categories with data.
+    data_type: Int64
+  - name: max_countries_in_category
+    description: Maximum number of countries represented in any category.
+    data_type: Int64
+  - name: home_staker_energy_kwh_daily
+    description: Daily energy consumption in kWh for home staker nodes.
+    data_type: Float64
+  - name: professional_energy_kwh_daily
+    description: Daily energy consumption in kWh for professional operator nodes.
+    data_type: Float64
+  - name: cloud_energy_kwh_daily
+    description: Daily energy consumption in kWh for cloud hosted nodes.
+    data_type: Float64
+  - name: unknown_energy_kwh_daily
+    description: Daily energy consumption in kWh for unknown node categories.
+    data_type: Float64
+  - name: home_staker_co2_kg_daily
+    description: Daily CO2 emissions in kg for home staker nodes.
+    data_type: Float64
+  - name: professional_co2_kg_daily
+    description: Daily CO2 emissions in kg for professional operator nodes.
+    data_type: Float64
+  - name: cloud_co2_kg_daily
+    description: Daily CO2 emissions in kg for cloud hosted nodes.
+    data_type: Float64
+  - name: unknown_co2_kg_daily
+    description: Daily CO2 emissions in kg for unknown node categories.
+    data_type: Float64
+  - name: home_staker_pct
+    description: Percentage of total CO2 emissions contributed by home staker nodes.
+    data_type: Float64
+  - name: professional_pct
+    description: Percentage of total CO2 emissions contributed by professional nodes.
+    data_type: Float64
+  - name: cloud_pct
+    description: Percentage of total CO2 emissions contributed by cloud nodes.
+    data_type: Float64
+  - name: home_staker_nodes
+    description: Total number of home staker nodes.
+    data_type: Float64
+  - name: professional_nodes
+    description: Total number of professional nodes.
+    data_type: Float64
+  - name: cloud_nodes
+    description: Total number of cloud nodes.
+    data_type: Float64
+  - name: unknown_nodes
+    description: Total number of nodes with unknown category.
+    data_type: Float64
+  - name: energy_relative_uncertainty_pct
+    description: Relative uncertainty percentage of total energy consumption.
+    data_type: Float64
+  - name: carbon_relative_uncertainty_pct
+    description: Relative uncertainty percentage of total CO2 emissions.
+    data_type: Float64
+  - name: node_categories_active
+    description: Number of node categories with active data.
+    data_type: Int64
+  - name: countries_with_nodes
+    description: Number of countries with nodes in the network.
+    data_type: Int64
+  - name: baseline_observed_nodes
+    description: Number of nodes observed in Chao-1 baseline.
+    data_type: Float64
+  - name: chao1_total_estimated
+    description: Total estimated reachable nodes from Chao-1.
+    data_type: Float64
+  - name: network_reachability_pct
+    description: Percentage of our estimate relative to Chao-1.
+    data_type: Float64
+  - name: discovery_completeness_pct
+    description: Coverage percentage of the network discovery.
     data_type: Float64
   - name: grams_co2_per_node_daily
-    description: CO2 emissions per node in grams for the day.
+    description: Daily grams of CO2 emitted per node.
     data_type: Float64
   - name: wh_per_node_daily
-    description: Energy consumption per node in watt-hours for the day.
+    description: Daily watt-hours per node.
     data_type: Float64
   - name: grams_co2_per_node_lower_95
     description: Lower bound of 95% confidence interval for grams CO2 per node.
@@ -432,13 +459,13 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_energy_monthly
-  description: Monthly aggregated energy data with total energy in kWh, grouped by month.
+  description: Monthly aggregated energy data with total energy in kWh, sourced from ESG carbon footprint calculations, filtered for dates before the current month.
   columns:
   - name: date
-    description: The first day of the month for the energy data, in UTC.
+    description: The first day of the month for the energy record (DateTime)
     data_type: DateTime
   - name: value
-    description: Total energy in kilowatt-hours for the month.
+    description: Total energy in kilowatt-hours for the month (Float64)
     data_type: Float64
   config:
     access: public
@@ -452,16 +479,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_estimated_nodes_daily
-  description: Daily estimates of ESG nodes with observed baseline, predicted nodes, and confidence intervals, aggregated by date.
+  description: Daily estimated ESG nodes data including observed, estimated, and confidence interval bounds.
   columns:
   - name: date
-    description: The date for the daily record, in UTC.
+    description: The date for the record, representing the day of observation.
     data_type: DateTime
   - name: baseline_observed_nodes
-    description: Observed number of nodes in the baseline scenario.
+    description: Number of nodes observed in the baseline, unitless count.
     data_type: UInt64
   - name: estimated_nodes
-    description: Estimated total number of nodes.
+    description: Estimated number of nodes, including model predictions, unitless count.
     data_type: UInt64
   - name: nodes_lower_95
     description: Lower bound of the 95% confidence interval for estimated nodes.
@@ -481,10 +508,10 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_info_annual_daily
-  description: A daily aggregated view of ESG metrics including energy and CO2e projections, combining data from carbon footprint uncertainty sources with date and label identifiers.
+  description: A daily aggregated view of ESG-related metrics, including energy and CO2e projections, with data filtered to dates before the current month.
   columns:
   - name: date
-    description: The date of the ESG measurement, stored as a timestamp.
+    description: The date for the ESG data point, in UTC.
     data_type: DateTime
   - name: label
     description: The metric label, e.g., 'Energy (MWh)' or 'CO2e (tonnes)'.
@@ -493,16 +520,16 @@ models:
     description: The projected annual mean value of the metric.
     data_type: Float64
   - name: lower_95
-    description: The lower bound of the 95% confidence interval for the metric.
+    description: The lower bound of the 95% confidence interval.
     data_type: Float64
   - name: upper_95
-    description: The upper bound of the 95% confidence interval for the metric.
+    description: The upper bound of the 95% confidence interval.
     data_type: Float64
   - name: lower_90
-    description: The lower bound of the 90% confidence interval for the metric.
+    description: The lower bound of the 90% confidence interval.
     data_type: Float64
   - name: upper_90
-    description: The upper bound of the 90% confidence interval for the metric.
+    description: The upper bound of the 90% confidence interval.
     data_type: Float64
   config:
     access: public
@@ -516,19 +543,19 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: api_esg_info_category_daily
-  description: Daily aggregated ESG information categorized by label and category, including CO2 emissions, energy consumption, and node counts for different entities.
+  description: Aggregated ESG data categorized by label and category, including CO2 emissions, energy consumption, and node counts, filtered for dates before the current month.
   columns:
   - name: date
-    description: The date of the record, in UTC, representing the day of data aggregation.
+    description: The date of the record, in DateTime format.
     data_type: DateTime
   - name: label
-    description: Entity label categorizing the data, e.g., 'Home Staker', 'Professional Validator'.
+    description: The label categorizing the data source, such as 'Home Staker' or 'Cloud Provider'.
     data_type: String
   - name: category
-    description: The category of ESG data, e.g., 'CO2e (kg)', 'Energy (kWh)', 'Nodes'.
+    description: The category of the ESG metric, such as 'CO2e (kg)', 'Energy (kWh)', or 'Nodes'.
     data_type: String
   - name: value
-    description: Numeric value of the metric, representing emissions, energy, or node count.
+    description: The numerical value of the metric, representing emissions, energy, or node counts.
     data_type: Float64
   config:
     access: public

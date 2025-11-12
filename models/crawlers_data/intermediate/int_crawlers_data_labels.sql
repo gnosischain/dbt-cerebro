@@ -1,21 +1,38 @@
 {{
   config(
-    materialized='table',
-    tags=['production','crawlers_data','labels']
+    materialized = 'incremental',
+    tags = ['production','crawlers_data','labels'],
+    unique_key = 'address',
+    incremental_strategy = 'delete+insert',
+    engine = 'MergeTree()',
+    order_by = ['address'],
+    partition_by = 'toStartOfMonth(introduced_at)',
+    on_cluster=None
   )
 }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
 
 WITH src AS (
   SELECT
     lower(address) AS address,
-    project
+    project,
+    introduced_at
   FROM {{ ref('stg_crawlers_data__dune_labels') }}
+  {% if start_month and end_month %}
+    WHERE toStartOfMonth(introduced_at) >= toDate('{{ var("start_month") }}')
+      AND toStartOfMonth(introduced_at) <= toDate('{{ var("end_month") }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter('introduced_at') }}
+  {% endif %}
 ),
 
 labeled AS (
   SELECT
     address,
     project,
+    introduced_at,
 
     multiIf(
 
@@ -38,13 +55,16 @@ labeled AS (
       match(project, '(?i)(safe(?:\\s*l2)?|gnosis\\s*safe|ambirewallet|biconomy|erc[- ]?4337|erc\\s*4337\\s*entry\\s*point|entry\\s*point|wethgateway|tokenbound|delegatecash|rhinestone|apex\\s*smart\\s*wallet|zeroexsettlerdeployersafemodule)'),
       'Wallets & AA',
 
-      match(project, '(?i)(monerium(\\s*(iske|usde|blacklist))?|gnosis\\s*pay(\\s*(vip|spender|eiffel))?|\\bgpay\\b|request(\\s*network)?|\\busdc\\b|\\bsdai\\b|\\bxdai\\b|payments?|invoice|smart\\s*invoice|superfluid|sablier|swing\\s*xdai\\s*single\\s*chain)'),
-      'Payments & Stablecoins',
+      match(project, '(?i)(\\busdc\\b|\\busdt\\b|\\bsdai\\b|\\bdai\\b|\\bxdai\\b|ageur|angle|monerium(\\s*(iske|usde|blacklist))?|transmuter)'),
+      'Stablecoins & Fiat Ramps',
+
+      match(project, '(?i)(gnosis\\s*pay(\\s*(vip|spender|eiffel))?|\\bgpay\\b|request(\\s*network)?|payments?|invoice|smart\\s*invoice|superfluid|sablier|swing\\s*xdai\\s*single\\s*chain)'),
+      'Payments',
 
       match(project, '(?i)(chainlink|tellor|pyth|\\boracle\\b|origin\\s*trail|origintrail|marketview|analytics|\\bdata\\b|\\bindex\\b|mu\\s*exchange\\s*pythoracle)'),
       'Oracles & Data',
 
-      match(project, '(?i)(opensea|seaport|poap|nifty(ink|fair)?|\\bnft\\b|erc721|erc1155|foundation|eporio|marketplace|creator|mint|mech\\s*marketplace|ghost\\s*nft\\s*faucet|nfts2me|crypto\\s*stamp|nondescriptive\\s*1155)'),
+      match(project, '(?i)(opensea|seaport|poap|nifty(ink|fair)?|\\bnft\\b|erc721|erc1155|foundation|eporio|marketplace|creator|mint|mech\\s*marketplace|ghost\\s*nft\\s*faucet|nfts2me|crypto\\s*stamp|nondescriptive\\s*1155|unlock(\\s*protocol)?)'),
       'NFTs & Marketplaces',
 
       match(project, '(?i)(dark\\s*forest|conquest\\.eth|mithraeum|\\bgame\\b|gaming)'),
@@ -59,10 +79,10 @@ labeled AS (
       match(project, '(?i)(autonolas|gnosis\\s*ai|autonomous|agent)'),
       'AI & Agents',
 
-      match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem)'),
+      match(project, '(?i)(real\\s*token|realtoken|real\\s*rmm|\\brmm\\b|emblem|backed)'),
       'RWA & Tokenization',
 
-      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|vault|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
+      match(project, '(?i)(^infrastructure$|gelato|opengsn|obol|ankr|shutter|infra(structure)?|registry|deployer|factory|controller|manager|router|pool|proxy|multisig|gnosis\\s*protocol|gnosis\\s*chain|xdai\\s*posdao|swarm|ethswarm|address\\s*tag\\s*registry|judicialassetfactory|hopr(\\s*(token|network|protocol))?)'),
       'Infrastructure & DevTools',
 
       'Others'
@@ -72,7 +92,7 @@ labeled AS (
 
 SELECT
   address,
-  anyLast(project) AS project,
-  anyLast(sector)  AS sector
+  project,
+  sector,
+  introduced_at
 FROM labeled
-GROUP BY address

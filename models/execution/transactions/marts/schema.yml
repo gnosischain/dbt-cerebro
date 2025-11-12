@@ -2,695 +2,277 @@ version: 2
 models:
 
 - name: api_execution_transactions_7d
-  description: '"Signed EVM transactions included in blocks for the last 7 days."'
+  description: View representing transaction data from the last 7 days, including value and change percentage, derived from the execution snapshots.
   columns:
   - name: value
-    description: Value of the transaction.
+    description: Transaction value in wei (smallest denomination; 256-bit integer).
     data_type: String
   - name: change_pct
-    description: Percentage change in the transaction value.
+    description: Percentage change in transaction value over the 7-day window.
     data_type: Float64
   config:
+    materialized: view
     access: public
+    tags:
+    - production
+    - execution
+    - transactions
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_7d
-  description: '"Signed EVM transactions included in blocks where label is ''ActiveAccounts'' and window is ''7D''."'
+  description: View capturing the value and change percentage of active accounts over a 7-day window, derived from execution transactions data.
   columns:
   - name: value
-    description: Transaction value.
+    description: Total value of active accounts in wei.
     data_type: String
   - name: change_pct
-    description: Change percentage.
-    data_type: String
+    description: Percentage change in active account value over the 7-day window.
+    data_type: Float64
   config:
-    materialized: view
     access: public
+    materialized: view
     tags:
     - production
     - execution
     - transactions
   meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_active_accounts_by_project_7d
-  description: '"Model providing data on active accounts by project for the last 7 days."'
-  columns:
-  - name: label
-    description: Bucket label.
-    data_type: String
-  - name: value
-    description: Value associated with the label.
-    data_type: String
-  - name: change_pct
-    description: Percentage change in value.
-    data_type: String
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_by_project_total
-  description: (helpful, business-facing; use a folded block scalar `>`; no blank lines)
+  description: View summarizing total active accounts per project within the execution data.
   columns:
   - name: label
-    description: Bucket as label
+    description: Label identifying the transaction category, e.g., 'ActiveAccounts'.
     data_type: String
   - name: value
-    description: Value
-    data_type: String
-  - name: change_pct
-    description: Change percentage
-    data_type: String
+    description: Total count of active accounts for the project.
+    data_type: UInt64
   config:
     access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
   meta:
-    owner: null
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_total
-  description: (helpful, business-facing; use a folded block scalar `>`; no blank lines)
+  description: Total number of active accounts involved in execution transactions, aggregated over all relevant data.
   columns:
   - name: value
-    description: Value of the active accounts.
-    data_type: String
-  - name: change_pct
-    description: Percentage change of active accounts.
-    data_type: String
+    description: Count of active accounts involved in execution transactions (aggregated total)
+    data_type: UInt64
   config:
     access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
   meta:
-    owner: null
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_by_project_monthly_top5
-  description: '"Model listing the top 5 active senders of API execution transactions by project on a monthly basis."'
+  description: Business-facing view summarizing active accounts by project and month, focusing on the top 5 projects based on transaction activity.
   columns:
   - name: date
-    description: Date of the transaction
+    description: The month date for aggregation (YYYY-MM-DD).
     data_type: DateTime
-    tests:
-    - not_null
   - name: label
-    description: Label of the project
+    description: Project label or identifier.
     data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Transaction value
-    data_type: String
-    tests:
-    - not_null
+    description: Count of active accounts for the project in the given month.
+    data_type: UInt64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - transactions
+    materialized: view
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
-- name: api_execution_transactions_active_accounts_by_sector_daily
-  description: '"Model providing the count of active senders by sector on a daily basis."'
+- name: api_execution_transactions_active_accounts_by_sector_weekly
+  description: Business-facing view summarizing weekly active accounts by sector (excludes current week).
   columns:
   - name: date
-    description: Date of the data entry.
-    data_type: String
+    description: Start date of the ISO week (UTC).
+    data_type: Date
   - name: label
     description: Sector label.
     data_type: String
   - name: value
-    description: Merged group bitmap state value.
-    data_type: String
+    description: Unique active accounts in the sector for the given week.
+    data_type: UInt64
   config:
     access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_active_accounts_by_sector_hourly
-  description: Hourly aggregation of active senders by sector based on API execution transactions.
+  description: Business-facing view aggregating active accounts by sector and hour, derived from execution data. Provides insights into account activity levels segmented by sector on an hourly basis.
   columns:
-  - name: date
-    description: Hourly timestamp of the data.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: label
-    description: Sector label.
-    data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Merged group bitmap state of active senders.
+    description: Merged bitmap of active accounts for each sector during the hour.
+    data_type: UInt64
+  - name: date
+    description: Hourly timestamp representing the start of the hour.
+    data_type: DateTime
+  - name: label
+    description: Sector label categorizing the accounts.
     data_type: String
-    tests:
-    - not_null
   config:
-    materialized: view
+    access: public
     tags:
     - production
     - execution
     - transactions
     - hourly
-    access: public
+    materialized: view
   meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_by_project_7d
-  description: '"View aggregating execution.indexing_state into per-(mode,dataset) stats."'
-  columns:
-  - name: label
-    description: Bucket label.
-    data_type: String
-  - name: value
-    description: Value.
-    data_type: String
-  - name: change_pct
-    description: Percentage change.
-    data_type: String
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_by_project_monthly_top5
-  description: '"Model listing the top 5 execution transactions by project on a monthly basis."'
+  description: Business-facing view summarizing top 5 projects' transaction counts per month.
   columns:
   - name: date
-    description: Date of the transaction.
+    description: The month date (YYYY-MM-01) representing the period.
     data_type: DateTime
   - name: label
-    description: Label identifying the project.
+    description: Project label or identifier.
     data_type: String
   - name: value
-    description: Value of the transaction.
-    data_type: String
+    description: Number of transactions for the project in the given month.
+    data_type: UInt64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - transactions
+    materialized: view
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_by_project_total
-  description: Signed EVM transactions included in blocks.
+  description: Summarizes total number of transactions per project, including labels and values, ordered by value.
   columns:
-  - name: block_number
-    description: Height of the block containing the transaction.
-    data_type: UInt32
-  - name: transaction_index
-    description: Zero-based index of the transaction within the block.
-    data_type: UInt64
-  - name: transaction_hash
-    description: Keccak-256 hash identifying the transaction.
-    data_type: String
-  - name: nonce
-    description: Transaction count of the sender before this transaction.
-    data_type: UInt64
-  - name: from_address
-    description: Sender address (EOA or contract) that signed the transaction.
-    data_type: String
-  - name: to_address
-    description: Recipient address (null for contract creation).
-    data_type: String
-  - name: value_binary
-    description: Value (native token) as 32-byte big-endian binary.
-    data_type: String
-  - name: value_string
-    description: Value as a decimal string.
-    data_type: String
-  - name: value_f64
-    description: Value converted to floating-point GNO/XDAI (may lose precision).
-    data_type: Float64
-  - name: input
-    description: Calldata / input data supplied with the transaction (hex).
-    data_type: String
-  - name: gas_limit
-    description: Gas limit provided by the sender.
-    data_type: UInt64
-  - name: gas_used
-    description: Actual gas used by the transaction.
-    data_type: UInt64
-  - name: gas_price
-    description: Legacy gas price (wei) for pre-EIP-1559 txs.
-    data_type: UInt64
-  - name: transaction_type
-    description: Envelope type (0 = legacy, 1 = access-list, 2 = EIP-1559).
-    data_type: UInt32
-  - name: max_priority_fee_per_gas
-    description: Maximum miner tip per gas (wei) for EIP-1559.
-    data_type: UInt64
-  - name: max_fee_per_gas
-    description: Maximum total fee per gas (wei) under EIP-1559.
-    data_type: UInt64
-  - name: success
-    description: 1 if the transaction succeeded; 0 if it reverted.
-    data_type: UInt8
-  - name: n_input_bytes
-    description: Byte length of the input data.
-    data_type: UInt32
-  - name: n_input_zero_bytes
-    description: Number of zero bytes in the input.
-    data_type: UInt32
-  - name: n_input_nonzero_bytes
-    description: Number of non-zero bytes in the input.
-    data_type: UInt32
-  - name: n_rlp_bytes
-    description: Total RLP-encoded payload size (bytes) if available.
-    data_type: UInt32
-  - name: timestamp
-    description: Block timestamp (seconds since epoch).
-    data_type: UInt32
-  - name: r
-    description: ECDSA signature r.
-    data_type: String
-  - name: s
-    description: ECDSA signature s.
-    data_type: String
-  - name: v
-    description: ECDSA recovery id / y-parity.
-    data_type: UInt32
-  - name: block_hash
-    description: Hash of the enclosing block.
-    data_type: String
-  - name: chain_id
-    description: EVM chain identifier.
-    data_type: UInt64
-  - name: block_timestamp
-    description: UTC timestamp of the enclosing block.
-    data_type: DateTime64(0, 'UTC')
-  - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
-    data_type: UInt64
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_by_sector_daily
-  description: '"Model providing daily execution transactions by sector, aggregated from the int_execution_transactions_by_project_daily model."'
-  columns:
-  - name: date
-    description: Date of the transaction.
-    data_type: DateTime
-    tests:
-    - not_null
   - name: label
-    description: Sector label.
+    description: Label categorizing the transaction data, e.g., 'Transactions'.
     data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Total transaction count.
-    data_type: Float64
-    tests:
-    - not_null
+    description: Total count of transactions associated with the label.
+    data_type: UInt64
   config:
-    materialized: view
     access: public
     tags:
     - production
     - execution
     - transactions
+    materialized: view
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_by_sector_weekly
+  description: Business-facing view summarizing weekly transaction counts by sector (excludes current week).
+  columns:
+  - name: date
+    description: Start date of the ISO week (UTC).
+    data_type: Date
+  - name: label
+    description: Sector label.
+    data_type: String
+  - name: value
+    description: Number of transactions in the sector for the given week.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
+  meta:
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_by_sector_hourly
-  description: Hourly aggregated execution transactions by sector.
+  description: Aggregates transaction counts grouped by sector and hour, providing business-facing insights into transaction volume trends over time.
   columns:
-  - name: date
-    description: Hourly date of the transactions.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: label
-    description: Sector label for the transactions.
-    data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Sum of transaction counts.
+    description: Sum of transaction counts for each sector-hour group.
     data_type: Float64
-    tests:
-    - not_null
+  - name: date
+    description: The hour timestamp representing the start of the hour window (UTC).
+    data_type: DateTime
+  - name: label
+    description: Sector label categorizing the transaction data.
+    data_type: String
   config:
+    access: public
     materialized: view
     tags:
     - production
     - execution
     - transactions
     - hourly
-    access: public
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_daily
-  description: Daily count of API execution transactions.
+  description: Business-facing table summarizing the count of API execution transactions per day, including transaction type and total count.
   columns:
   - name: date
-    description: Date of the transaction.
-    data_type: String
-    tests:
-    - not_null
+    description: Date of the transaction count, in UTC (YYYY-MM-DD).
+    data_type: Date
   - name: transaction_type
-    description: Type of the transaction.
+    description: Type of transaction (e.g., transfer, approval).
     data_type: String
-    tests:
-    - not_null
   - name: value
-    description: Number of transactions.
+    description: Count of transactions of the given type on the date.
     data_type: UInt64
-    tests:
-    - not_null
   config:
-    materialized: view
     access: public
+    materialized: view
     tags:
     - production
     - execution
     - transactions
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: api_execution_transactions_cnt_total
-  description: Total count of API execution transactions by transaction type.
+  description: Aggregated count of transactions grouped by transaction type, representing total number of transactions per type for business analysis.
   columns:
   - name: transaction_type
-    description: Envelope type (0 = legacy, 1 = access-list, 2 = EIP-1559).
-    data_type: UInt32
-  - name: value
-    description: Total number of transactions.
-    data_type: Float64
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_7d
-  description: '"View aggregating execution.indexing_state into per-(mode,dataset) stats."'
-  columns:
-  - name: value
-    description: Value of the transaction.
-    data_type: String
-  - name: change_pct
-    description: Percentage change of the transaction.
-    data_type: String
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_project_7d
-  description: '"Value of native token fees paid in the last 7 days for API execution transactions by project."'
-  columns:
-  - name: label
-    description: Bucket representing the fee category.
+    description: Type of transaction (e.g., transfer, contract call) as categorized in the source.
     data_type: String
   - name: value
-    description: Value of the fee.
-    data_type: Float64
-  - name: change_pct
-    description: Percentage change in fee value.
-    data_type: Float64
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_project_monthly_top5
-  description: Monthly top 5 projects by native transaction fees executed through the API.
-  columns:
-  - name: date
-    description: Date of the transaction.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: label
-    description: Project label.
-    data_type: String
-    tests:
-    - not_null
-  - name: value
-    description: Transaction fee value.
-    data_type: Float64
-    tests:
-    - not_null
-  - name: block_number
-    description: Height of the block.
-    data_type: UInt32
-  - name: block_hash
-    description: Hash of the block.
-    data_type: String
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_project_total
-  description: '"Value (XDAI) transfers decoded from transactions."'
-  columns:
-  - name: block_number
-    description: Height of the block.
-    data_type: UInt32
-  - name: block_hash
-    description: Block hash.
-    data_type: String
-  - name: transaction_index
-    description: Index of the transaction within the block.
-    data_type: UInt32
-  - name: transfer_index
-    description: Zero-based native-transfer index within the tx.
-    data_type: UInt32
-  - name: transaction_hash
-    description: Transaction hash.
-    data_type: String
-  - name: from_address
-    description: Sender address.
-    data_type: String
-  - name: to_address
-    description: Recipient address.
-    data_type: String
-  - name: value_binary
-    description: Transfer value as 32-byte big-endian binary.
-    data_type: String
-  - name: value_string
-    description: Transfer value as decimal string.
-    data_type: String
-  - name: value_f64
-    description: Transfer value as floating-point ether.
-    data_type: Float64
-  - name: chain_id
-    description: EVM chain identifier.
-    data_type: UInt64
-  - name: block_timestamp
-    description: UTC timestamp of the enclosing block.
-    data_type: DateTime64(0, 'UTC')
-  - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
+    description: Total number of transactions for the given transaction type.
     data_type: UInt64
   config:
     access: public
-  meta:
-    owner: null
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_sector_daily
-  description: '"Model providing daily sum of native token fees by sector based on execution transactions."'
-  columns:
-  - name: date
-    description: Date of the data entry.
-    data_type: String
-  - name: label
-    description: Sector label.
-    data_type: String
-  - name: value
-    description: Sum of native token fees.
-    data_type: Float64
-  config:
     materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_by_sector_hourly
-  description: Hourly sum of native fee values by sector label.
-  columns:
-  - name: date
-    description: Hourly timestamp.
-    data_type: DateTime
-  - name: label
-    description: Sector label.
-    data_type: String
-  - name: value
-    description: Sum of native fee values.
-    data_type: Float64
-  config:
-    materialized: view
-    tags:
-    - production
-    - execution
-    - transactions
-    - hourly
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_fees_native_total
-  description: (helpful, business-facing; use a folded block scalar `>`; no blank lines)
-  columns:
-  - name: value
-    description: Value (native token) as 32-byte big-endian binary.
-    data_type: String
-  - name: change_pct
-    description: Change percentage.
-    data_type: Float64
-  config:
-    access: public
-  meta:
-    owner: null
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_gas_share_by_project_daily
-  description: '"Daily gas share of execution transactions by project, calculated as a percentage of gas used in each project relative to the total gas used daily."'
-  columns:
-  - name: date
-    description: Date of the data record.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: label
-    description: Project name.
-    data_type: String
-    tests:
-    - not_null
-  - name: value
-    description: Percentage of gas used by the project relative to the total daily gas used.
-    data_type: Float64
-    tests:
-    - not_null
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    - gas
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_gas_used_daily
-  description: Daily aggregation of gas used in executed transactions.
-  columns:
-  - name: date
-    description: Date of the transaction.
-    data_type: String
-    tests:
-    - not_null
-  - name: transaction_type
-    description: Type of the transaction.
-    data_type: UInt32
-  - name: gas_used
-    description: Total gas consumed by the transaction.
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: gas_price_avg
-    description: Average gas price for the transaction.
-    data_type: UInt64
-  - name: gas_price_median
-    description: Median gas price for the transaction.
-    data_type: UInt64
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_total
-  description: '"Total number of API execution transactions."'
-  columns:
-  - name: value
-    description: Value of the transaction.
-    data_type: String
-  - name: change_pct
-    description: Percentage change of the transaction.
-    data_type: String
-  config:
-    access: public
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_execution_transactions_value_daily
-  description: Daily aggregated values of executed transactions on the API layer.
-  columns:
-  - name: date
-    description: Date of the transaction
-    data_type: String
-  - name: transaction_type
-    description: Type of the transaction
-    data_type: UInt32
-  - name: xdai_value
-    description: Value of the transaction in xDAI
-    data_type: String
-  - name: xdai_value_avg
-    description: Average value of transactions in xDAI
-    data_type: String
-  - name: xdai_value_median
-    description: Median value of transactions in xDAI
-    data_type: String
-  config:
-    materialized: view
-    access: public
     tags:
     - production
     - execution
@@ -699,27 +281,383 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
-- name: fct_execution_transactions_by_project_monthly_top5
-  description: Monthly aggregated execution transactions by project, with top 5 projects by transaction count and fees, and 'Others' category for the rest.
+- name: api_execution_transactions_fees_native_7d
+  description: View of transaction fees and related data for the 7-day window, filtered for native fees, aggregating relevant transaction, log, transfer, and index information to support business analysis of fee patterns over a week.
   columns:
-  - name: month
-    description: Start of the month
+  - name: value
+    description: Total fee value in wei for the 7-day window, representing the sum of native transaction fees.
+    data_type: String
+  - name: change_pct
+    description: Percentage change in fees compared to the previous period, expressed as a decimal (e.g., 0.05 for 5% increase).
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_by_project_monthly_top5
+  description: Business-facing view of native fee transactions aggregated by project and month, highlighting the top 5 projects based on fee value.
+  columns:
+  - name: date
+    description: The date representing the month of transaction aggregation, in UTC.
+    data_type: DateTime
+  - name: label
+    description: Identifier label for the project or category.
+    data_type: String
+  - name: value
+    description: Total fee value in wei for the project in the given month.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_by_project_total
+  description: Business-facing summary of total native fees per project based on execution transactions.
+  columns:
+  - name: value
+    description: Total native fees value aggregated from execution transactions.
+    data_type: Float64
+  - name: label
+    description: Project label associated with the fee total.
+    data_type: String
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_by_sector_weekly
+  description: Weekly aggregated fees in native tokens, grouped by sector, derived from execution transactions (excludes current week).
+  columns:
+  - name: date
+    description: Start date of the ISO week (UTC).
+    data_type: Date
+  - name: label
+    description: Sector label.
+    data_type: String
+  - name: value
+    description: Sum of native fees for the sector in the given week.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_by_sector_hourly
+  description: Business-facing view aggregating native transaction fees by sector on an hourly basis.
+  columns:
+  - name: date
+    description: Hourly timestamp representing the start of the hour.
+    data_type: DateTime
+  - name: label
+    description: Sector label categorizing the transaction fees.
+    data_type: String
+  - name: value
+    description: Total native transaction fees in wei, rounded to two decimal places.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+    - hourly
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_fees_native_total
+  description: Total native transaction fees collected during API execution, aggregated for business analysis and reporting.
+  columns:
+  - name: value
+    description: Total native transaction fees (wei) collected, aggregated across relevant transactions.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: view
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_gas_share_by_project_daily
+  description: Business-facing view summarizing daily gas share per project based on execution transactions.
+  columns:
+  - name: date
+    description: Date of the transaction data (YYYY-MM-DD).
+    data_type: DateTime
+  - name: label
+    description: Project label or name associated with the transaction.
+    data_type: String
+  - name: value
+    description: Percentage of gas share for the project on the given date, rounded to 2 decimal places.
+    data_type: Float64
+  - name: day_gas_used
+    description: Total gas used across all projects on the date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+    - gas
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_gas_used_daily
+  description: Daily aggregated data on gas used in API execution transactions, including transaction type, gas price metrics, and related metadata for business analysis.
+  columns:
+  - name: date
+    description: Date of the transaction (UTC), in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: transaction_type
+    description: Type/category of the transaction (e.g., transfer, contract call).
+    data_type: String
+  - name: gas_used
+    description: Total gas used in transactions on this date.
+    data_type: UInt64
+  - name: gas_price_avg
+    description: Average gas price (wei) across transactions on this date.
+    data_type: UInt64
+  - name: gas_price_median
+    description: Median gas price (wei) across transactions on this date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_total
+  description: Business-facing metric representing the total number of API execution transactions aggregated over the specified period. This metric helps monitor transaction volume and API usage patterns.
+  columns:
+  - name: value
+    description: Total count of API execution transactions in the current period.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_value_daily
+  description: Daily aggregated values of API execution transactions, including metrics such as average, median, and total transaction value, segmented by date and transaction type.
+  columns:
+  - name: date
+    description: Calendar date of the transaction aggregation (UTC).
+    data_type: DateTime
+  - name: transaction_type
+    description: Type/category of transaction (e.g., transfer, contract call).
+    data_type: String
+  - name: xdai_value
+    description: Total transaction value in wei for the day and type.
+    data_type: UInt64
+  - name: xdai_value_avg
+    description: Average transaction value in wei for the day and type.
+    data_type: Float64
+  - name: xdai_value_median
+    description: Median transaction value in wei for the day and type.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_by_project_monthly_top5
+  description: Business-facing table aggregating transaction data by project and month, including top 5 projects per month and various transaction metrics.
+  columns:
+  - name: date
+    description: The month start date for the aggregated data (UTC).
     data_type: DateTime
   - name: project
-    description: Project identifier
+    description: The project name or identifier.
     data_type: String
   - name: txs
-    description: Total number of transactions
-    data_type: Float64
+    description: Total number of transactions in the project for the month.
+    data_type: UInt64
   - name: fee_native
-    description: Total native fees
-    data_type: Float64
+    description: Sum of native fees (wei) paid in the transactions during the month.
+    data_type: UInt64
   - name: gas_used
-    description: Total gas used
-    data_type: Float64
+    description: Total gas used by transactions in the project for the month.
+    data_type: UInt64
   - name: active_state
-    description: Merged active state
+    description: Bitmap state representing active accounts during the month.
     data_type: String
+  - name: label
+    description: Project label, with 'Others' for projects outside top 5.
+    data_type: String
+  - name: metric
+    description: Metric name identifier (e.g., 'Transactions', 'FeesNative', 'GasUsed', 'ActiveAccounts').
+    data_type: String
+  - name: value
+    description: Corresponding metric value for the project and month.
+    data_type: Float64
+  config:
+    access: public
+    materialized: table
+    tags:
+    - production
+    - execution
+    - transactions
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_by_project_snapshots
+  description: Aggregated transaction and fee data by project over various time windows, including current, previous, and all-time, with change percentages and activity metrics.
+  columns:
+  - name: max_date
+    description: The most recent date available in the source data.
+    data_type: DateTime
+  - name: label
+    description: The label indicating the metric type, e.g., 'Transactions', 'FeesNative', 'ActiveAccounts'.
+    data_type: String
+  - name: window
+    description: The time window identifier, e.g., '1D', '7D', '30D', '90D', or 'All'.
+    data_type: String
+  - name: bucket
+    description: The project or bucket identifier.
+    data_type: String
+  - name: value
+    description: The metric value, converted to float64 for numerical analysis.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change from previous window, null if not applicable.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_snapshots
+  description: Snapshot table capturing execution transaction metrics, change percentages, and related metadata for analysis and reporting.
+  columns:
+  - name: max_date
+    description: The latest date from the source table 'int_execution_transactions_by_project_daily'.
+    data_type: DateTime
+  - name: label
+    description: Label categorizing the metric, e.g., 'Transactions', 'FeesNative', 'ActiveAccounts'.
+    data_type: String
+  - name: window
+    description: Time window identifier, e.g., '1D', '7D', '30D', '90D', or 'All'.
+    data_type: String
+  - name: value
+    description: Numeric value of the metric for the given window.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change compared to previous window; null if not applicable.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_execution_transactions_by_sector_weekly
+  description: Aggregated weekly execution transaction data grouped by sector, including active accounts, transaction counts, gas usage, and fees. Excludes the current (partial) week and is sourced from `int_execution_transactions_by_project_daily`.
+  columns:
+  - name: week
+    description: Start date of the ISO week (UTC).
+    data_type: Date
+  - name: sector
+    description: Sector classification for the transactions (e.g., DeFi, NFT, etc.).
+    data_type: String
+  - name: active_accounts
+    description: Finalized unique active accounts (bitmap cardinality) for the week/sector.
+    data_type: UInt64
+  - name: txs
+    description: Total number of transactions in the week/sector.
+    data_type: UInt64
+  - name: gas_used_sum
+    description: Sum of gas used across all transactions in the week/sector.
+    data_type: UInt64
+  - name: fee_native_sum
+    description: Total native fees (e.g., GNO/XDAI) paid in the week/sector, rounded to 2 decimals.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_execution_transactions_by_project_ranges_top20
+  description: >
+    Top 20 projects by transactions for each available range (All, 7D, 30D, 90D),
+    with remaining projects grouped into "Others" to keep responses lightweight.
+  columns:
+  - name: range
+    description: Aggregation window (All, 7D, 30D, 90D).
+    data_type: String
+  - name: label
+    description: Project label (or "Others").
+    data_type: String
+  - name: value
+    description: Transactions.
+    data_type: Float64
   config:
     materialized: view
     access: public
@@ -731,26 +669,23 @@ models:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
-- name: fct_execution_transactions_by_project_snapshots
-  description: '"Snapshot of execution transactions aggregated by project and time window, including transaction counts, native fee sums, and unique user activity."'
+
+- name: api_execution_transactions_active_accounts_by_project_ranges_top20
+  description: >
+    Top 20 projects by active accounts for each available range (All, 7D, 30D, 90D),
+    with remaining projects grouped into "Others" to keep responses lightweight.
   columns:
+  - name: range
+    description: Aggregation window (All, 7D, 30D, 90D).
+    data_type: String
   - name: label
-    description: Type of metric (e.g., Transactions, FeesNative, ActiveAccounts).
-    data_type: String
-  - name: window
-    description: Time window for aggregation (e.g., 1D, 7D, 30D, 90D, All).
-    data_type: String
-  - name: bucket
-    description: Project identifier or bucket for the metric.
+    description: Project label (or "Others").
     data_type: String
   - name: value
-    description: Aggregated metric value (e.g., transaction count, fee sum, unique users).
-    data_type: Float64
-  - name: change_pct
-    description: Percentage change in metric value compared to the previous window.
+    description: Active accounts.
     data_type: Float64
   config:
-    materialized: table
+    materialized: view
     access: public
     tags:
     - production
@@ -760,62 +695,52 @@ models:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
-- name: fct_execution_transactions_snapshots
-  description: '"Snapshot of execution transactions data including total transactions, native fees, and active accounts."'
+
+- name: api_execution_transactions_fees_native_by_project_ranges_top20
+  description: >
+    Top 20 projects by native fees for each available range (All, 7D, 30D, 90D),
+    with remaining projects grouped into "Others" to keep responses lightweight.
   columns:
-  - name: label
-    description: Type of data snapshot (e.g., Transactions, FeesNative, ActiveAccounts).
+  - name: range
+    description: Aggregation window (All, 7D, 30D, 90D).
     data_type: String
-  - name: window
-    description: Time window for the snapshot (e.g., '1D', '7D', '30D', '90D', 'All').
+  - name: label
+    description: Project label (or "Others").
     data_type: String
   - name: value
-    description: Value associated with the snapshot.
-    data_type: Float64
-  - name: change_pct
-    description: Percentage change compared to the previous window.
+    description: Native fees (float).
     data_type: Float64
   config:
+    materialized: view
     access: public
+    tags:
+    - production
+    - execution
+    - transactions
   meta:
     owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
-- name: fct_execution_transactions_by_sector_daily
-  description: >
-    Serving-grade daily fact at (date × sector) with finalized active sender counts
-    and pre-aggregated transactions, gas used, and native fees. Built from
-    int_execution_transactions_by_project_daily using monthly insert_overwrite.
+- name: api_execution_transactions_gas_used_weekly
+  description: Weekly aggregated data on gas used in API execution transactions, including transaction type, gas used.
   columns:
-    - name: date
-      description: Calendar date (UTC).
-      data_type: Date
-      tests: [not_null]
-    - name: sector
-      description: Project sector label.
-      data_type: String
-      tests: [not_null]
-    - name: active_accounts
-      description: Unique active senders (finalized bitmap cardinality).
-      data_type: UInt64
-      tests: [not_null]
-    - name: txs
-      description: Total transactions in the sector for the day.
-      data_type: UInt64
-      tests: [not_null]
-    - name: gas_used_sum
-      description: Total gas used in the sector for the day.
-      data_type: UInt64
-      tests: [not_null]
-    - name: fee_native_sum
-      description: Sum of native fees (e.g., xDAI/ETH) for the sector/day.
-      data_type: Float64
-      tests: [not_null]
+  - name: date
+    description: Date of the transaction (UTC), in YYYY-MM-DD format.
+    data_type: DateTime
+  - name: label
+    description: Type/category of the transaction (e.g., transfer, contract call).
+    data_type: String
+  - name: value
+    description: Total gas used in transactions on this date.
+    data_type: UInt64
   config:
-    materialized: table
     access: public
-    tags: [production, execution, transactions]
+    materialized: view
+    tags:
+    - production
+    - execution
+    - transactions
   meta:
-    owner: analytics_engineer
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer

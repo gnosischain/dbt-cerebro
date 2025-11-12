@@ -2,43 +2,43 @@ version: 2
 models:
 
 - name: int_execution_circles_backing
-  description: Business-facing model representing execution data related to circles backing activities, aggregated by date with counts of relevant events.
+  description: Aggregated data related to circles backing events, including daily counts.
   columns:
   - name: date
-    description: Date truncated to day from block timestamp, representing the day of the event.
+    description: Date truncated to day for aggregation purposes.
     data_type: DateTime
   - name: cnt
-    description: Count of 'CirclesBackingCompleted' events on the given date.
+    description: Count of 'CirclesBackingCompleted' events per day.
     data_type: UInt64
   config:
     access: public
-    materialized: incremental
     tags:
     - production
     - execution
     - circles
     - backing
+    materialized: incremental
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
 - name: int_execution_circles_transitive_transfers
-  description: This model aggregates transitive transfer data within execution circles, capturing transfer amounts, involved avatars, and related metadata for analysis.
+  description: This model aggregates transitive transfer data within execution circles, providing insights into transfer flows and related metadata for analysis.
   columns:
   - name: date
-    description: Date truncated to day from block timestamp, representing the day of the transfer.
+    description: Date truncated to day from block timestamp (UTC).
     data_type: DateTime
   - name: from_avatar
-    description: Originating avatar address involved in the transfer.
+    description: Originator address extracted from decoded parameters.
     data_type: String
   - name: to_avatar
-    description: Destination avatar address involved in the transfer.
+    description: Recipient address extracted from decoded parameters.
     data_type: String
   - name: total_amount
-    description: Sum of transfer amounts in wei for the given from-to pair.
+    description: Sum of amounts (in wei) transferred within the circle.
     data_type: UInt64
   - name: cnt
-    description: Count of transfer events between the from and to avatars.
+    description: Count of transfer events aggregated.
     data_type: UInt64
   config:
     access: public
@@ -53,16 +53,16 @@ models:
     authoritative: false
     generated_by: schema-writer
 - name: int_execution_circles_v1_avatars
-  description: Business-facing model representing avatars in execution circles, including user and inviter addresses, timestamps, and related metadata.
+  description: This model captures avatar-related execution data, including user addresses and inviter addresses, derived from the contracts_circles_v2_Hub_events table filtered on 'RegisterHuman' events.
   columns:
   - name: block_timestamp
-    description: UTC timestamp when the event was recorded.
+    description: UTC timestamp of the event occurrence, materialized from the source.
     data_type: DateTime
   - name: user_address
-    description: Decoded avatar address of the user (hex string).
+    description: Address of the user associated with the avatar, extracted from decoded_params['avatar'].
     data_type: String
   - name: inviter_address
-    description: Decoded inviter address (hex string).
+    description: Address of the inviter, extracted from decoded_params['inviter'].
     data_type: String
   config:
     access: public
@@ -73,21 +73,42 @@ models:
     - avatars
     materialized: incremental
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
 - name: int_execution_circles_v2_avatars
-  description: Business-facing model representing avatar data derived from execution layer tables, including registration events, counts, and associated metadata.
+  description: Business-facing model representing avatar data derived from execution layer tables, including registration events, transfers, and associated metadata.
   columns:
   - name: date
-    description: Date truncated to day from block timestamps, representing the day of the event.
+    description: Date truncated to day from block timestamp (UTC).
     data_type: DateTime
   - name: avatar_type
-    description: 'Type of avatar based on registration event: ''Human'', ''Group'', ''Org'', or ''Unknown''.'
+    description: 'Type of avatar: ''Human'', ''Group'', ''Org'', or ''Unknown''.'
     data_type: String
   - name: cnt
-    description: Count of registration events for the given avatar type on the specific date.
+    description: Count of registration events per date and avatar type.
     data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime
+  - name: event_name
+    description: Name of the registration event ('RegisterHuman', 'RegisterGroup', 'RegisterOrganization').
+    data_type: String
+  - name: transaction_hash
+    description: Hash of the transaction that triggered the event.
+    data_type: String
+  - name: from_address
+    description: Address that initiated the registration.
+    data_type: String
+  - name: to_address
+    description: Recipient address associated with the registration.
+    data_type: String
+  - name: registration_event_id
+    description: Unique identifier for the registration event.
+    data_type: String
+  - name: source_table
+    description: Source table name for lineage tracking.
+    data_type: String
   config:
     access: public
     tags:
@@ -97,6 +118,6 @@ models:
     - avatars
     materialized: incremental
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     generated_by: schema-writer
