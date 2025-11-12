@@ -9,8 +9,8 @@
 
 SELECT
   date,
-  trim(bridge)           AS bridge,
-  upper(trim(token))     AS token,
+  bridge                 AS bridge,
+  token                  AS token,
   sum(net_usd)           AS value
 FROM {{ ref('int_bridges_flows_daily') }}
 WHERE date < today()               
