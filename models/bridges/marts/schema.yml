@@ -1,0 +1,426 @@
+version: 2
+models:
+
+- name: api_bridges_cum_netflow_weekly_by_bridge
+  description: This model provides the cumulative net flow of USD by bridge on a weekly basis. It aggregates data from the `fct_bridges_netflow_weekly_by_bridge` model and organizes it by week and bridge series.
+  columns:
+  - name: date
+    description: The week of the net flow calculation, represented as a date.
+    data_type: DateTime
+  - name: series
+    description: The bridge series identifier for which the net flow is calculated.
+    data_type: String
+  - name: value
+    description: The cumulative net flow of USD for the specified bridge and week.
+    data_type: Float64
+  config:
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+    access: public
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_kpi_distinct_bridges_all_time
+  description: This model provides the distinct count of bridges over all time, representing a key performance indicator for bridge usage. It is derived from the latest snapshot of bridge KPIs.
+  columns:
+  - name: value
+    description: The distinct count of bridges recorded in the latest snapshot.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - api
+    materialized: view
+  meta:
+    owner: Data Team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_kpi_distinct_chains_all_time
+  description: This model provides the distinct count of blockchain networks that have been interacted with over all time through the API. It retrieves the latest snapshot of this metric from the `fct_bridges_kpis_snapshot` table.
+  columns:
+  - name: value
+    description: The distinct count of blockchain networks interacted with. This is a numeric value representing the total count.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - api
+    materialized: view
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_kpi_netflow_7d
+  description: This model provides a snapshot of the net flow KPIs for bridges over a 7-day period. It includes the current net flow value, the previous period's net flow, and the percentage change.
+  columns:
+  - name: value
+    description: The net flow value for the current 7-day period, rounded to two decimal places.
+    data_type: Float64
+  - name: prev_value
+    description: The net flow value for the previous 7-day period, rounded to two decimal places.
+    data_type: Float64
+  - name: change_pct
+    description: The percentage change in net flow from the previous 7-day period to the current period.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - api
+    materialized: view
+  meta:
+    owner: data-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_kpi_total_netflow_all_time
+  description: This model provides the total net flow of USD across bridges, rounded to two decimal places. It retrieves the most recent cumulative net USD value from the bridge KPIs snapshot.
+  columns:
+  - name: value
+    description: The cumulative net flow of USD across bridges, rounded to two decimal places.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+    inference_notes: Materialization inferred from config.
+- name: api_bridges_kpi_total_volume_all_time
+  description: This model provides the total volume of bridge transactions in USD, rounded to two decimal places, as of the most recent snapshot date.
+  columns:
+  - name: value
+    description: The total volume of bridge transactions in USD, rounded to two decimal places.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_kpi_volume_7d
+  description: This model provides a snapshot of the 7-day volume key performance indicators (KPIs) for bridges. It includes the current 7-day volume, the previous 7-day volume, and the percentage change between them.
+  columns:
+  - name: value
+    description: The rounded current 7-day volume in the bridges KPI dataset. This value is a floating-point number rounded to two decimal places.
+    data_type: Float64
+  - name: prev_value
+    description: The rounded previous 7-day volume in the bridges KPI dataset. This value is a floating-point number rounded to two decimal places.
+    data_type: Float64
+  - name: change_pct
+    description: The percentage change in volume over the past 7 days compared to the previous 7 days. This value is a floating-point number.
+    data_type: Float64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_sankey_gnosis_in_by_token_7d
+  description: This model aggregates bridge transaction data over the past 7 days for the Gnosis chain, focusing on inbound token flows. It groups data by token, source, and target, summing the transaction values and filtering for positive values only.
+  columns:
+  - name: token
+    description: The token involved in the bridge transaction, represented by its symbol or contract address.
+    data_type: String
+  - name: source
+    description: The originating source of the token flow in the bridge transaction.
+    data_type: String
+  - name: target
+    description: The destination target of the token flow in the bridge transaction.
+    data_type: String
+  - name: value
+    description: The total value of the token flow in the bridge transaction over the past 7 days, measured in the smallest unit of the token.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: data-team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_sankey_gnosis_in_ranges
+  description: This model aggregates bridge transactions from the Gnosis chain over specified time ranges, focusing on inbound directions. It summarizes the total value transferred from source to target within each range.
+  columns:
+  - name: range
+    description: The time range over which the transactions are aggregated. Possible values include '1D', '7D', '30D', '90D', and 'All'.
+    data_type: String
+  - name: source
+    description: The originating address or identifier from which the value is transferred.
+    data_type: String
+  - name: target
+    description: The destination address or identifier to which the value is transferred.
+    data_type: String
+  - name: value
+    description: The total value transferred from source to target within the specified range. Measured in wei.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_sankey_gnosis_out_by_token_7d
+  description: This model aggregates bridge transactions over the past seven days, filtering for outgoing transactions. It groups by token, source, and target, and sums the transaction values, providing insights into token flow across different bridges.
+  columns:
+  - name: token
+    description: The token involved in the bridge transaction, identified by its symbol.
+    data_type: String
+  - name: source
+    description: The originating bridge or network of the transaction.
+    data_type: String
+  - name: target
+    description: The destination bridge or network of the transaction.
+    data_type: String
+  - name: value
+    description: The total value of the transactions in the smallest unit of the token, aggregated over the past seven days.
+    data_type: UInt64
+  config:
+    materialized: view
+    access: public
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_sankey_gnosis_out_ranges
+  description: This model aggregates bridge transaction data over various time ranges, focusing on outbound transactions. It groups data by source and target, summing the transaction values for each pair within specified date ranges.
+  columns:
+  - name: range
+    description: The time range for which the transaction data is aggregated. Possible values include '1D', '7D', '30D', '90D', and 'All'.
+    data_type: String
+  - name: source
+    description: The originating point of the bridge transaction, typically an address or identifier for the source network or entity.
+    data_type: String
+  - name: target
+    description: The destination point of the bridge transaction, typically an address or identifier for the target network or entity.
+    data_type: String
+  - name: value
+    description: The total value of transactions from the source to the target within the specified range, measured in the smallest unit of the currency.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: api_bridges_token_netflow_daily_by_bridge
+  description: This model aggregates daily token netflow data by bridge. It includes both specific bridge data and an aggregated 'All' category, allowing for comprehensive analysis of token movements across bridges.
+  columns:
+  - name: date
+    description: The date of the token netflow record, representing the day of aggregation.
+    data_type: DateTime
+  - name: bridge
+    description: The name of the bridge for which the token netflow is recorded. Includes a special 'All' category for aggregated data.
+    data_type: String
+  - name: token
+    description: The token for which the netflow is measured, identified by its unique symbol or name.
+    data_type: String
+  - name: value
+    description: The netflow value of the token for the specified bridge and date, represented as a sum of token movements.
+    data_type: Float64
+  - name: bridge_order
+    description: An order indicator used to prioritize specific bridge data over the 'All' category in sorting operations.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - bridges
+    - api
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_bridges_kpis_snapshot
+  description: This model provides a snapshot of key performance indicators (KPIs) for bridges, including cumulative and weekly volume and net values in USD, transaction counts, and distinct counts of bridges and chains. It also calculates changes in volume, net values, and rates over a 7-day period.
+  columns:
+  - name: as_of_date
+    description: The date for which the KPIs are calculated, representing the most recent date in the data.
+    data_type: DateTime
+  - name: cum_vol_usd
+    description: Cumulative volume in USD up to the as_of_date.
+    data_type: Float64
+  - name: cum_net_usd
+    description: Cumulative net value in USD up to the as_of_date.
+    data_type: Float64
+  - name: cum_txs
+    description: Cumulative number of transactions up to the as_of_date.
+    data_type: UInt64
+  - name: vol_7d
+    description: Volume in USD over the last 7 days ending on the as_of_date.
+    data_type: Float64
+  - name: net_7d
+    description: Net value in USD over the last 7 days ending on the as_of_date.
+    data_type: Float64
+  - name: txs_7d
+    description: Number of transactions over the last 7 days ending on the as_of_date.
+    data_type: UInt64
+  - name: vol_prev_7d
+    description: Volume in USD over the 7 days preceding the last 7 days ending on the as_of_date.
+    data_type: Float64
+  - name: net_prev_7d
+    description: Net value in USD over the 7 days preceding the last 7 days ending on the as_of_date.
+    data_type: Float64
+  - name: txs_prev_7d
+    description: Number of transactions over the 7 days preceding the last 7 days ending on the as_of_date.
+    data_type: UInt64
+  - name: rate_7d
+    description: Rate calculated as net_7d divided by vol_7d, representing the net-to-volume ratio over the last 7 days.
+    data_type: Float64
+  - name: rate_prev_7d
+    description: Rate calculated as net_prev_7d divided by vol_prev_7d, representing the net-to-volume ratio over the previous 7 days.
+    data_type: Float64
+  - name: chg_vol_7d
+    description: Change in volume over the last 7 days compared to the previous 7 days, expressed as a percentage.
+    data_type: Float64
+  - name: chg_net_7d
+    description: Change in net value over the last 7 days compared to the previous 7 days, expressed as a percentage.
+    data_type: Float64
+  - name: chg_rate_7d
+    description: Change in rate over the last 7 days compared to the previous 7 days, expressed as a percentage.
+    data_type: Float64
+  - name: distinct_bridges
+    description: The number of distinct bridges involved in transactions up to the as_of_date.
+    data_type: UInt64
+  - name: distinct_chains
+    description: The number of distinct chains involved in transactions up to the as_of_date.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - fct
+    materialized: table
+  meta:
+    owner: data-team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_bridges_netflow_weekly_by_bridge
+  description: This model aggregates weekly net flow of USD for each bridge, providing both weekly and cumulative net flow metrics. It is designed to support analysis of bridge activity over time.
+  columns:
+  - name: week
+    description: The start of the week for which the net flow is calculated, aligned to Monday. Format is YYYY-MM-DD.
+    data_type: DateTime
+  - name: bridge
+    description: The identifier for the bridge over which the net flow is measured.
+    data_type: String
+  - name: netflow_usd_week
+    description: The net flow of USD for the bridge during the specified week. Calculated as the sum of net USD flows for the week.
+    data_type: Float64
+  - name: cum_netflow_usd
+    description: The cumulative net flow of USD for the bridge from the earliest available data up to the specified week.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - intermediate
+    - bridges
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_bridges_sankey_edges_token_daily
+  description: This model aggregates daily token flow data across different blockchain bridges, categorizing them by direction and side. It provides insights into the volume of tokens transferred in USD, segmented by source and target chains.
+  columns:
+  - name: date
+    description: The date of the token flow event, formatted as YYYY-MM-DD.
+    data_type: DateTime
+  - name: direction
+    description: The direction of the token flow, either 'in' or 'out'.
+    data_type: String
+  - name: side
+    description: The side of the token flow, either 'left' or 'right'.
+    data_type: String
+  - name: source
+    description: The originating chain or bridge in the token flow.
+    data_type: String
+  - name: target
+    description: The destination chain or bridge in the token flow.
+    data_type: String
+  - name: token
+    description: The token involved in the flow, identified by its symbol.
+    data_type: String
+  - name: value
+    description: The total volume of the token transferred, measured in USD.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - fct
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
+- name: fct_bridges_token_netflow_daily_by_bridge
+  description: This model aggregates daily net flow of tokens by bridge, providing a summary of token movements across bridges in USD value. It is useful for analyzing token flow patterns and identifying key bridges in the network.
+  columns:
+  - name: date
+    description: 'The date of the token net flow record, representing the day the data was aggregated. Format: YYYY-MM-DD.'
+    data_type: DateTime
+  - name: bridge
+    description: The name of the bridge through which the token flow occurred. This field is trimmed of whitespace.
+    data_type: String
+  - name: token
+    description: The token symbol involved in the net flow, converted to uppercase and trimmed of whitespace.
+    data_type: String
+  - name: value
+    description: The net flow value of the token in USD, representing the sum of net USD flows for the day.
+    data_type: Float64
+  config:
+    access: public
+    tags:
+    - production
+    - bridges
+    - fct
+    materialized: table
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: schema-writer
