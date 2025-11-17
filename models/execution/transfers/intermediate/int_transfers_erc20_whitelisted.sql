@@ -17,12 +17,12 @@
 
 WITH tokens AS (
     SELECT
-        lower(address)                            AS token_address,      
-        lower(replaceAll(address, '0x', ''))      AS token_address_raw,  
+        lower(address)                       AS token_address,      
+        lower(replaceAll(address, '0x', '')) AS token_address_raw,  
         decimals,
         symbol,
-        date_start,                               
-        date_end                                  
+        date_start,                          
+        date_end                             
     FROM {{ ref('tokens_whitelist') }}
 ),
 
@@ -49,7 +49,7 @@ raw_whitelisted_logs AS (
     INNER JOIN tokens t
         ON lower(l.address) = t.token_address_raw
     WHERE
-        l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+        l.topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
         {% if var('start_month', none) and var('end_month', none) %}
           AND toStartOfMonth(l.block_timestamp) >= toDate('{{ var("start_month") }}')
           AND toStartOfMonth(l.block_timestamp) <= toDate('{{ var("end_month") }}')
