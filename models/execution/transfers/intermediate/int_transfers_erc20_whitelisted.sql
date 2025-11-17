@@ -11,18 +11,20 @@
     )
 }}
 
-{% set month       = var('month', none) %}
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
+{% set start_month      = var('start_month', none) %}
+{% set end_month        = var('end_month', none) %}
+{% set day_index_start  = var('day_index_start', none) %}
+{% set day_index_end    = var('day_index_end', none) %}
 
 WITH tokens AS (
     SELECT
-        lower(address)                       AS token_address,      
-        lower(replaceAll(address, '0x', '')) AS token_address_raw,  
+        lower(address)                           AS token_address,      
+        lower(replaceAll(address, '0x', ''))     AS token_address_raw,  
         decimals,
         symbol,
-        date_start,                          
-        date_end                             
+        upper(symbol)                            AS symbol_upper,       
+        date_start,                              
+        date_end                                 
     FROM {{ ref('tokens_whitelist') }}
 ),
 
@@ -32,9 +34,10 @@ raw_whitelisted_logs AS (
         l.block_timestamp,
         l.transaction_index,
         l.log_index,
-        l.transaction_hash,
+        concat('0x', lower(replaceAll(l.transaction_hash, '0x', ''))) AS transaction_hash,
         t.token_address,
         t.symbol,
+        t.symbol_upper,
         t.decimals,
         t.date_start,
         t.date_end,
@@ -49,16 +52,52 @@ raw_whitelisted_logs AS (
     INNER JOIN tokens t
         ON lower(l.address) = t.token_address_raw
     WHERE
-        l.topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        {% if var('start_month', none) and var('end_month', none) %}
-          AND toStartOfMonth(l.block_timestamp) >= toDate('{{ var("start_month") }}')
-          AND toStartOfMonth(l.block_timestamp) <= toDate('{{ var("end_month") }}')
+        lower(replaceAll(l.topic0, '0x', '')) =
+          'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+        {% if start_month and end_month %}
+          AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
+          AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
         {% else %}
           {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
         {% endif %}
+        {% if day_index_start and day_index_end %}
+          AND toDayOfMonth(l.block_timestamp) >= {{ day_index_start }}
+          AND toDayOfMonth(l.block_timestamp) <= {{ day_index_end }}
+        {% endif %}
 ),
 
-filtered_active_tokens AS (
+prices_rwa AS (
+    SELECT
+        toDate(date)             AS date,
+        upper(bticker)           AS symbol_upper,
+        price
+    FROM {{ ref('api_execution_rwa_backedfi_prices_daily') }}
+),
+
+prices_dune_raw AS (
+    SELECT
+        date,
+        upper(symbol)            AS symbol_upper,
+        price
+    FROM {{ ref('stg_crawlers_data__dune_prices') }}
+),
+
+prices_dune AS (
+    SELECT date, symbol_upper, price
+    FROM prices_dune_raw
+    UNION ALL
+    SELECT date, 'WXDAI' AS symbol_upper, price
+    FROM prices_dune_raw
+    WHERE symbol_upper = 'XDAI'
+),
+
+prices AS (
+    SELECT date, symbol_upper, price FROM prices_rwa
+    UNION ALL
+    SELECT date, symbol_upper, price FROM prices_dune
+),
+
+enriched AS (
     SELECT
         r.block_number,
         r.block_timestamp,
@@ -69,16 +108,24 @@ filtered_active_tokens AS (
         r."to",
         r.token_address,
         r.symbol,
+        r.symbol_upper,
         r.decimals,
         r.value_raw,
         r.date_start,
         r.date_end,
-        CASE
-            WHEN r.block_timestamp < r.date_start THEN 0
-            WHEN r.date_end IS NOT NULL AND r.block_timestamp > r.date_end THEN 0
-            ELSE 1
-        END AS is_active_token
+        toFloat64OrZero(r.value_raw) / pow(10, r.decimals) AS amount,
+        coalesce(
+            p.price,
+            case
+              when r.symbol_upper IN ('USDC','USDT') then 1.0
+              when r.symbol_upper = 'WXDAI'          then 1.0   
+              else null
+            end
+        ) AS price
     FROM raw_whitelisted_logs r
+    LEFT JOIN prices p
+      ON p.date = toDate(r.block_timestamp)
+     AND p.symbol_upper = r.symbol_upper
 )
 
 SELECT
@@ -92,9 +139,8 @@ SELECT
     token_address,
     symbol,
     decimals,
-    toFloat64OrZero(value_raw) / pow(10, decimals) AS amount,
-    value_raw,
-    date_start,
-    date_end
-FROM filtered_active_tokens
-WHERE is_active_token = 1
+    amount,
+    price,
+    amount * price AS amount_usd,
+    value_raw
+FROM enriched
