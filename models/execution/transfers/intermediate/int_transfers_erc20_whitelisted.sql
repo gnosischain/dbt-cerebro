@@ -54,6 +54,7 @@ raw_whitelisted_logs AS (
     WHERE
         lower(replaceAll(l.topic0, '0x', '')) =
           'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+        AND l.block_timestamp < today()
         {% if start_month and end_month %}
           AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
@@ -117,8 +118,8 @@ enriched AS (
         coalesce(
             p.price,
             case
-              when r.symbol_upper IN ('USDC','USDT') then 1.0
-              when r.symbol_upper = 'WXDAI'          then 1.0   
+              when r.symbol_upper IN ('USDC','USDC.E','USDT') then 1.0
+              when r.symbol_upper = 'WXDAI'                   then 1.0   
               else null
             end
         ) AS price
