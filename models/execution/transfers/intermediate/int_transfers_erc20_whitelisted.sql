@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='append',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index)',
         unique_key='(block_number, transaction_index, log_index)',
