@@ -16,21 +16,21 @@
 
 WITH base AS (
     SELECT
-        toDate(t.block_timestamp)      AS date,
-        t.block_timestamp,
-        lower(t.token_address)         AS token_address,
-        t.symbol                       AS symbol,
-        t.amount                       AS amount,
-        t.amount_usd                   AS amount_usd,
-        lower(t."from")                AS from_address,
-        lower(t."to")                  AS to_address
-    FROM {{ ref('int_transfers_erc20_whitelisted') }} t
-    WHERE t.block_timestamp < today()
+        date,
+        lower(token_address) AS token_address,
+        symbol,
+        lower("from")        AS from_address,
+        lower("to")          AS to_address,
+        amount               AS amount,
+        amount_usd           AS amount_usd,
+        transfer_count       AS transfer_count
+    FROM {{ ref('int_transfers_erc20_whitelisted_daily') }}
+    WHERE date < today()
       {% if start_month and end_month %}
-        AND toStartOfMonth(t.block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(t.block_timestamp) <= toDate('{{ end_month }}')
+        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('t.block_timestamp', 'date', true) }}
+        {{ apply_monthly_incremental_filter('date', 'date', true) }}
       {% endif %}
 ),
 
@@ -43,7 +43,8 @@ with_class AS (
         b.amount,
         b.amount_usd,
         b.from_address,
-        b.to_address
+        b.to_address,
+        b.transfer_count
     FROM base b
     LEFT JOIN {{ ref('tokens_whitelist') }} w
       ON lower(w.address) = b.token_address
@@ -55,20 +56,14 @@ agg AS (
         token_address,
         any(symbol)      AS symbol,
         any(token_class) AS token_class,
-
         sum(amount)      AS volume_token,
         sum(amount_usd)  AS volume_usd,
-
-        count()          AS transfer_count,
-
+        sum(transfer_count) AS transfer_count,
         groupBitmapState(cityHash64(from_address)) AS ua_bitmap_state,
         uniqExact(from_address)                    AS active_senders,
-
         uniqExact(to_address)                      AS unique_receivers
     FROM with_class
-    GROUP BY
-        date,
-        token_address
+    GROUP BY date, token_address
 )
 
 SELECT
