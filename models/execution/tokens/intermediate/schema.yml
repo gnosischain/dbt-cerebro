@@ -1,0 +1,185 @@
+version: 2
+models:
+
+- name: int_execution_tokens_address_diffs_daily
+  description: '"Balance changes for accounts caused by each transaction."'
+  columns:
+  - name: date
+    description: Height of the block.
+    data_type: UInt32
+  - name: token_address
+    description: Address of the account whose balance changed.
+    data_type: String
+  - name: symbol
+    description: Symbol of the token.
+    data_type: String
+  - name: token_class
+    description: Class of the token.
+    data_type: String
+  - name: address
+    description: Account address whose balance changed.
+    data_type: String
+  - name: net_delta
+    description: Net change in the account balance.
+    data_type: Float64
+  config:
+    access: public
+  meta:
+    owner: null
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_tokens_balances_daily
+  description: '"Balance changes for accounts caused by each transaction. Daily aggregation of token balances for execution layer."'
+  columns:
+  - name: date
+    description: Date of the balance change.
+    data_type: DateTime
+  - name: token_address
+    description: Address of the token.
+    data_type: String
+  - name: address
+    description: Account address whose balance changed.
+    data_type: String
+  - name: from_value_binary
+    description: Balance before change as 32-byte binary.
+    data_type: String
+  - name: from_value_string
+    description: Balance before change as decimal string.
+    data_type: String
+  - name: from_value_f64
+    description: Balance before change as floating-point ether.
+    data_type: Float64
+  - name: to_value_binary
+    description: Balance after change as 32-byte binary.
+    data_type: String
+  - name: to_value_string
+    description: Balance after change as decimal string.
+    data_type: String
+  - name: to_value_f64
+    description: Balance after change as floating-point ether.
+    data_type: Float64
+  - name: chain_id
+    description: EVM chain identifier.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the enclosing block.
+    data_type: DateTime64(0, 'UTC')
+  - name: insert_version
+    description: Monotonic ingestion version (nanoseconds).
+    data_type: UInt64
+  config:
+    materialized: incremental
+    unique_key: (date, token_address, address)
+    tags:
+    - production
+    - execution
+    - tokens
+    - balances_daily
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_tokens_transfers_daily
+  description: '"Value (XDAI) transfers decoded from transactions aggregated daily."'
+  columns:
+  - name: date
+    description: Date of the transfer.
+    data_type: DateTime
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: symbol
+    description: Symbol of the token.
+    data_type: String
+  - name: token_class
+    description: Class of the token.
+    data_type: String
+  - name: volume_token
+    description: Total volume of tokens transferred.
+    data_type: Float64
+  - name: volume_usd
+    description: Total volume in USD.
+    data_type: Float64
+  - name: transfer_count
+    description: Number of transfers.
+    data_type: UInt64
+  - name: ua_bitmap_state
+    description: Bitmap state of user agents.
+    data_type: String
+  - name: active_senders
+    description: Number of unique senders.
+    data_type: UInt64
+  - name: unique_receivers
+    description: Number of unique receivers.
+    data_type: UInt64
+  config:
+    access: public
+    tags:
+    - production
+    - execution
+    - tokens
+    - transfers_daily
+    materialized: incremental
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer
+- name: int_execution_tokens_value_daily
+  description: '"Value of execution tokens on a daily basis, including supply, holders, price, and transaction details."'
+  columns:
+  - name: date
+    description: Date of the data entry.
+    data_type: DateTime
+  - name: token_address
+    description: Address of the token.
+    data_type: String
+  - name: symbol
+    description: Symbol of the token.
+    data_type: String
+  - name: token_class
+    description: Class of the token.
+    data_type: String
+  - name: supply
+    description: Total supply of the token.
+    data_type: Float64
+  - name: holders
+    description: Number of unique holders.
+    data_type: Int64
+  - name: price_usd
+    description: Price of the token in USD.
+    data_type: Float64
+  - name: value_usd
+    description: Total value of the token in USD.
+    data_type: Float64
+  - name: volume_token
+    description: Volume of the token.
+    data_type: String
+  - name: volume_usd
+    description: Volume of the token in USD.
+    data_type: String
+  - name: transfer_count
+    description: Number of transfers.
+    data_type: String
+  - name: ua_bitmap_state
+    description: UA bitmap state.
+    data_type: String
+  - name: active_senders
+    description: Number of active senders.
+    data_type: String
+  - name: unique_receivers
+    description: Number of unique receivers.
+    data_type: String
+  config:
+    materialized: incremental
+    unique_key: (date, token_address)
+    tags:
+    - production
+    - execution
+    - tokens
+    - value_daily
+    access: public
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: schema-writer

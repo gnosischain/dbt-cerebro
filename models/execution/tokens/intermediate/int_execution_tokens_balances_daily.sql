@@ -22,7 +22,7 @@ WITH deltas AS (
         token_class,
         address,
         net_delta
-    FROM {{ ref('int_execution_tokens_address_deltas_daily') }}
+    FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
     WHERE date < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')

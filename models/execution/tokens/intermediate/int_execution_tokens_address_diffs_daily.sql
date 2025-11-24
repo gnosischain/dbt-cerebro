@@ -22,7 +22,7 @@ WITH base AS (
         lower("from")        AS from_address,
         lower("to")          AS to_address,
         amount               AS amount
-    FROM {{ ref('int_transfers_erc20_whitelisted_daily') }}
+    FROM {{ ref('int_execution_transfers_whitelisted_daily') }}
     WHERE date < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')

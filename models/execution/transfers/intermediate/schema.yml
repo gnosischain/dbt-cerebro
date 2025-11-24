@@ -1,235 +1,110 @@
 version: 2
 models:
 
-- name: transfers_erc20_bluechips
-  description: This model captures ERC20 token transfer events involving bluechip tokens, including transaction details, token addresses, transfer amounts, and related metadata.
+- name: int_execution_transfers_whitelisted_daily
+  description: Value (XDAI) transfers decoded from transactions, with daily aggregation.
   columns:
-  - name: block_number
-    description: Height of the block containing the transfer event.
-    data_type: UInt32
-    tests:
-    - not_null
-  - name: block_timestamp
-    description: UTC timestamp when the block was proposed.
+  - name: date
+    description: Date of the transfer.
     data_type: DateTime
-    tests:
-    - not_null
-  - name: transaction_index
-    description: Zero-based index of the transaction within the block.
-    data_type: UInt64
-    tests:
-    - not_null
-  - name: log_index
-    description: Zero-based index of the log within the transaction.
-    data_type: UInt32
-    tests:
-    - not_null
-  - name: transaction_hash
-    description: Unique hash identifying the transaction.
-    data_type: String
-    tests:
-    - not_null
-    - unique
   - name: token_address
-    description: Address of the ERC20 token contract involved in the transfer.
+    description: Address of the token.
     data_type: String
-    tests:
-    - not_null
+  - name: symbol
+    description: Symbol of the token.
+    data_type: String
   - name: from
-    description: Address of the sender in the transfer.
+    description: Sender address.
     data_type: String
-    tests:
-    - not_null
   - name: to
-    description: Address of the recipient in the transfer.
+    description: Recipient address.
     data_type: String
-    tests:
-    - not_null
-  - name: value
-    description: Transfer amount in wei (token units).
-    data_type: String
-  - name: value_f64
-    description: Transfer amount as floating-point number in token units.
+  - name: amount
+    description: Amount of the token transferred.
     data_type: Float64
-  - name: value_hex
-    description: Transfer amount in hexadecimal (for overflow or precise binary handling).
+  - name: amount_usd
+    description: Amount in USD.
+    data_type: Float64
+  - name: transfer_count
+    description: Number of transfers.
     data_type: String
-  - name: chain_id
-    description: Identifier of the blockchain network.
-    data_type: UInt64
-  - name: insert_version
-    description: Monotonically increasing version number for ingestion.
-    data_type: UInt64
   config:
-    access: public
     materialized: incremental
+    unique_key: (date, token_address, "from", "to")
+    partition_by: toStartOfMonth(date)
     tags:
-    - erc20
-    - bluechips
+    - production
+    - execution
     - transfers
+    - erc20
+    - whitelisted
+    - daily
+    access: public
   meta:
-    owner: analytics-team
+    owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
-- name: int_transfers_erc20
-  description: This table captures ERC20 token transfer events including sender, recipient, transfer amount, transaction details, and associated block information.
+- name: int_execution_transfers_whitelisted_raw
+  description: Value (XDAI) transfers decoded from transactions. This model contains information about XDAI transfers decoded from transactions, including block number, block timestamp, transaction index, transfer index, transaction hash, sender address, recipient address, transfer value as binary, decimal string, and floating-point ether, EVM chain identifier, and monotonic ingestion version.
   columns:
   - name: block_number
-    description: Height of the block containing the transfer event.
+    description: Height of the block.
     data_type: UInt32
-    tests:
-    - not_null
-  - name: from
-    description: Address (0x...) of the sender.
-    data_type: String
-  - name: to
-    description: Address (0x...) of the recipient.
-    data_type: String
-  - name: value
-    description: Transfer amount in wei (unsigned 256-bit integer).
-    data_type: String
-  - name: token_address
-    description: ERC20 token contract address (0x...).
-    data_type: String
+  - name: block_timestamp
+    description: UTC timestamp of the enclosing block.
+    data_type: DateTime64(0, 'UTC')
   - name: transaction_index
     description: Index of the transaction within the block.
-    data_type: UInt64
-  - name: transaction_hash
-    description: Hash of the transaction emitting the event.
-    data_type: String
-    tests:
-    - not_null
-    - unique
-  - name: block_timestamp
-    description: UTC timestamp of the block when the event was emitted.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: log_index
-    description: Index of the log within the transaction.
     data_type: UInt32
-  - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
-    data_type: UInt64
-  config:
-    access: public
-    tags:
-    - erc20
-    - transfers
-    materialized: table
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: int_transfers_erc20_bluechips
-  description: Transfers of ERC20 tokens on Gnosis Chain filtered for bluechip tokens with detailed transaction, log, and transfer data, including related contract and trace information.
-  columns:
-  - name: block_number
-    description: Height of the block containing the transfer.
-    data_type: UInt32
-    tests:
-    - not_null
-  - name: block_timestamp
-    description: UTC timestamp when the block was proposed.
-    data_type: DateTime
-    tests:
-    - not_null
-  - name: transaction_index
-    description: Zero-based index of the transaction within the block.
-    data_type: UInt64
-    tests:
-    - not_null
   - name: log_index
-    description: Zero-based index of the log within the transaction.
+    description: Zero-based index of the log within the receipt.
     data_type: UInt32
   - name: transaction_hash
-    description: Hash of the transaction that included the transfer.
+    description: Transaction hash.
     data_type: String
-    tests:
-    - not_null
-    quote: true
-  - name: token_address
-    description: Address of the ERC20 token contract.
-    data_type: String
-    tests:
-    - not_null
-    quote: true
   - name: from
-    description: Address sending the tokens.
+    description: Sender address.
     data_type: String
-    tests:
-    - not_null
-    quote: true
   - name: to
-    description: Address receiving the tokens.
+    description: Recipient address.
     data_type: String
-    tests:
-    - not_null
-    quote: true
-  - name: value
-    description: Amount of tokens transferred (in token units).
+  - name: token_address
+    description: Token address.
     data_type: String
-  - name: block_hash
-    description: Hash of the block containing the transfer.
+  - name: symbol
+    description: Token symbol.
     data_type: String
-    quote: true
-  - name: chain_id
-    description: Chain identifier (e.g., 100 for Gnosis).
-    data_type: UInt64
-  - name: contract_name
-    description: Name of the token contract, if available.
-    data_type: String
-  - name: contract_symbol
-    description: Symbol of the token, if available.
-    data_type: String
-  - name: contract_decimals
-    description: Number of decimals used by the token.
-    data_type: UInt8
-  - name: contract_address
-    description: Address of the token contract.
-    data_type: String
-    quote: true
-  - name: transfer_type
-    description: Type of transfer (e.g., 'transfer').
-    data_type: String
-  - name: transfer_timestamp
-    description: UTC timestamp when the transfer was processed.
-    data_type: DateTime
-  - name: transfer_value_wei
-    description: Transfer amount in wei (big integer as string).
-    data_type: String
-  - name: transfer_value_gwei
-    description: Transfer amount in gwei (floating point).
+  - name: decimals
+    description: Decimals for the token.
+    data_type: UInt32
+  - name: amount
+    description: Transfer amount as floating-point ether.
     data_type: Float64
-  - name: from_contract
-    description: Boolean indicating if 'from' is a contract address.
-    data_type: UInt8
-  - name: to_contract
-    description: Boolean indicating if 'to' is a contract address.
-    data_type: UInt8
-  - name: transfer_event_signature
-    description: Event signature hash for the transfer event.
-    data_type: String
-  - name: transfer_event_topic0
-    description: First topic (event signature hash).
-    data_type: String
-  - name: transfer_event_topic1
-    description: Second topic, if indexed.
-    data_type: String
-  - name: transfer_event_topic2
-    description: Third topic, if indexed.
-    data_type: String
-  - name: transfer_event_topic3
-    description: Fourth topic, if indexed.
+  - name: price
+    description: Price information.
+    data_type: Float64
+  - name: amount_usd
+    description: Amount in USD.
+    data_type: Float64
+  - name: value_raw
+    description: Raw value.
     data_type: String
   config:
-    access: public
     materialized: incremental
+    incremental_strategy: append
+    engine: ReplacingMergeTree()
+    order_by: (block_timestamp, transaction_hash, log_index)
+    unique_key: (block_number, transaction_index, log_index)
+    partition_by: toStartOfMonth(block_timestamp)
+    settings:
+      allow_nullable_key: 1
     tags:
-    - erc20
-    - bluechips
+    - dev
+    - execution
     - transfers
+    - erc20
+    - whitelisted
   meta:
-    owner: analytics-team
+    owner: analytics_engineer
     authoritative: false
     generated_by: schema-writer
