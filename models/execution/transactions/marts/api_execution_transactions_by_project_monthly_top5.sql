@@ -1,5 +1,5 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions'])
+  config(materialized='view', tags=['production','execution','transactions', 'tier1', 'api: cnt_by_project_m_top5'])
 }}
 SELECT
   date,

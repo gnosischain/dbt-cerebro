@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ config(materialized='view', tags=['production','execution','transactions', 'tier0', 'api: initiator_accounts_by_project_ranges_top20']) }}
 
 WITH base AS (
   SELECT

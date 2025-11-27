@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production', 'execution', 'transactions']
+        tags=['production', 'execution', 'transactions', 'gas', 'tier1', 'api: gas_used_d']
     )
 }}
 

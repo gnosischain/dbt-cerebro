@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production', 'execution', 'transactions']
+        tags=['production', 'execution', 'transactions', 'tier0', 'api: cnt_by_transaction_type_total']
     )
 }}
 

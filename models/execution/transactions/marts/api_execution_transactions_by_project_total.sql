@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ config(materialized='view', tags=['production','execution','transactions', 'tier0', 'api: cnt_by_project_total']) }}
 SELECT t.bucket AS label, t.value
 FROM {{ ref('fct_execution_transactions_by_project_snapshots') }} AS t
 WHERE t.label = 'Transactions' AND t.window = 'All'

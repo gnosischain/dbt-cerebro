@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ config(materialized='view', tags=['production','execution','transactions', 'tier1', 'api: initiator_accounts_by_sector_d']) }}
 
 SELECT
   date,

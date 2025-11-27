@@ -1,5 +1,5 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions','hourly'])
+  config(materialized='view', tags=['production','execution','transactions','hourly', 'tier1', 'api: cnt_by_sector_h'])
 }}
 
 SELECT

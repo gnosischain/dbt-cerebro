@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ config(materialized='view', tags=['production','execution','transactions', 'tier1', 'api: cnt_by_sector_w']) }}
 
 SELECT
   week AS date,
