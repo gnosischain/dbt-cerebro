@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "blob_commitments"]
+        tags=["production", "consensus", "blob_commitments", 'tier1', 'api: zero_blob_commitments_d']
     )
 }}
 

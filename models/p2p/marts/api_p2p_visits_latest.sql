@@ -2,7 +2,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','p2p','discv4','discv5','visits']
+        tags=['production','p2p','discv4','discv5','visits', 'tier0', 'api: visits_latest']
     ) 
 }}
 

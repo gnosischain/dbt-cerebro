@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','esg','cif']
+        tags=['production','esg','cif', 'tier1', 'api: cif_network_vs_countries_d']
     )
 }}
 

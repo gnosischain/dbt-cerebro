@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','blocks']
+        tags=['production','execution','blocks', 'tier1', 'api: clients_pct_d']
     )
 }}
 

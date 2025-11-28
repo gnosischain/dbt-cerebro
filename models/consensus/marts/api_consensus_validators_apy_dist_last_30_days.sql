@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "validators_apy"]
+        tags=["production", "consensus", "validators_apy", 'tier0', 'api: validators_apy_dist_30d']
     )
 }}
 

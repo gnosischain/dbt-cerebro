@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','p2p','discv4','clients']
+        tags=['production','p2p','discv4','clients', 'tier0', 'api: discv4_clients_latest']
     ) 
 }}
 

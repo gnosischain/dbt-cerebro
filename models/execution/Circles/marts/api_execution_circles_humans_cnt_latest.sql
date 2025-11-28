@@ -2,7 +2,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','circles','humans']
+        tags=['production','execution','circles','humans', 'tier0', 'api: humans_cnt_latest']
     )
 }}
 

@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','crawlers_data','supply']) }}
+{{ config(materialized='view', tags=['production','crawlers_data','supply', 'tier1', 'api: gno_supply_d']) }}
 
 SELECT
   label,

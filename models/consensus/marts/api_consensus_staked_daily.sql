@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "staked"]
+        tags=["production", "consensus", "staked", 'tier1', 'api: staked_d']
     )
 }}
 

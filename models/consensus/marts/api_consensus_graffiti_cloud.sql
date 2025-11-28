@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "graffiti"]
+        tags=["production", "consensus", "graffiti", 'tier0', 'api: graffiti_cloud']
     )
 }}
 

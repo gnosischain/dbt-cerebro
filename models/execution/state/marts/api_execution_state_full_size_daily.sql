@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','state','size']
+        tags=['production','execution','state','size', 'tier1', 'api: state_full_size_d']
     )
 }}
 

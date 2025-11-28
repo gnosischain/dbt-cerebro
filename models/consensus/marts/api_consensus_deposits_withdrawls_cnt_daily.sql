@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "deposits_withdrawals"]
+        tags=["production", "consensus", "deposits_withdrawals", 'tier1', 'api: deposits_withdrawals_d']
     )
 }}
 

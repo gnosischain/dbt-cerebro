@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "info"]
+        tags=["production", "consensus", "info", 'tier1', 'api: withdrawal_credentials_freq_d']
     )
 }}
 SELECT 

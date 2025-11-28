@@ -2,7 +2,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','circles','orgs']
+        tags=['production','execution','circles','orgs', 'tier0', 'api: orgs_cnt_latest']
     )
 }}
 
