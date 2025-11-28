@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','bridges','api']) }}
+{{ config(materialized='view', tags=['production','bridges', 'tier0', 'api: outflow_by_token_7d']) }}
 
 WITH mx AS (SELECT max(date) AS d FROM {{ ref('fct_bridges_sankey_edges_token_daily') }})
 

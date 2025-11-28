@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','bridges','api']) }}
+{{ config(materialized='view', tags=['production','bridges', 'tier1', 'api: token_netflow_by_bridge_d']) }}
 
 WITH base AS (
   SELECT date, bridge, token, value
