@@ -3,9 +3,9 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     engine='ReplacingMergeTree()',
-    order_by='(date, token_address, balance_bucket)',
+    order_by='(date, token_address, balance_bucket, address_bucket)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, token_address, balance_bucket)',
+    unique_key='(date, token_address, balance_bucket, address_bucket)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','tokens','balance_cohorts_daily']
   )
@@ -21,10 +21,11 @@ WITH
 balances_filtered AS (
     SELECT
         b.date,
-        lower(b.token_address)        AS token_address,
-        upper(b.symbol)               AS symbol,
+        lower(b.token_address)                     AS token_address,
+        upper(b.symbol)                            AS symbol,
         b.token_class,
-        lower(b.address)              AS address,
+        lower(b.address)                           AS address,
+        cityHash64(lower(b.address)) % 1000        AS address_bucket,
         b.balance
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
     WHERE b.date < today()
@@ -59,11 +60,12 @@ bounds AS (
 prev_state AS (
     {% if is_incremental() %}
     SELECT
-        lower(b.token_address)        AS token_address,
-        upper(b.symbol)               AS symbol,
+        lower(b.token_address)                     AS token_address,
+        upper(b.symbol)                            AS symbol,
         b.token_class,
-        lower(b.address)              AS address,
-        argMax(b.balance, b.date)     AS balance
+        lower(b.address)                           AS address,
+        cityHash64(lower(b.address)) % 1000        AS address_bucket,
+        argMax(b.balance, b.date)                  AS balance
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
     WHERE b.date < (SELECT min_date FROM bounds)
       AND b.balance != 0
@@ -75,13 +77,15 @@ prev_state AS (
         token_address,
         symbol,
         b.token_class,
-        address
+        address,
+        address_bucket
     {% else %}
     SELECT
         cast('' AS String)  AS token_address,
         cast('' AS String)  AS symbol,
         cast('' AS String)  AS token_class,
         cast('' AS String)  AS address,
+        toInt32(0)          AS address_bucket,
         cast(0  AS Float64) AS balance
     WHERE 0
     {% endif %}
@@ -94,6 +98,7 @@ seed_sparse AS (
         symbol,
         token_class,
         address,
+        address_bucket,
         balance
     FROM balances_filtered
 
@@ -105,6 +110,7 @@ seed_sparse AS (
         p.symbol,
         p.token_class,
         p.address,
+        p.address_bucket,
         p.balance
     FROM prev_state p
     CROSS JOIN bounds b
@@ -115,13 +121,15 @@ addr_pairs AS (
         token_address,
         symbol,
         token_class,
-        address
+        address,
+        address_bucket
     FROM seed_sparse
     GROUP BY
         token_address,
         symbol,
         token_class,
-        address
+        address,
+        address_bucket
 ),
 
 calendar AS (
@@ -143,7 +151,8 @@ addr_calendar AS (
         a.token_address,
         a.symbol,
         a.token_class,
-        a.address
+        a.address,
+        a.address_bucket
     FROM calendar c
     CROSS JOIN addr_pairs a
 ),
@@ -155,6 +164,7 @@ dense_balances AS (
         ac.symbol,
         ac.token_class,
         ac.address,
+        ac.address_bucket,
         last_value(s.balance) IGNORE NULLS
           OVER (
             PARTITION BY ac.token_address, ac.address
@@ -175,6 +185,7 @@ priced AS (
         d.symbol,
         d.token_class,
         d.address,
+        d.address_bucket,
         d.balance,
         p.price                          AS price_usd,
         d.balance * p.price              AS balance_usd
@@ -195,6 +206,7 @@ bucketed AS (
         symbol,
         token_class,
         address,
+        address_bucket,
         balance_usd,
         CASE
             WHEN balance_usd <       10       THEN '0-10'
@@ -216,6 +228,7 @@ agg AS (
         symbol,
         token_class,
         balance_bucket,
+        address_bucket,
         countDistinct(address) AS holders_in_bucket,
         sum(balance_usd)       AS value_usd_in_bucket
     FROM bucketed
@@ -224,7 +237,8 @@ agg AS (
         token_address,
         symbol,
         token_class,
-        balance_bucket
+        balance_bucket,
+        address_bucket
 )
 
 SELECT
@@ -233,6 +247,7 @@ SELECT
     symbol,
     token_class,
     balance_bucket,
+    address_bucket,
     holders_in_bucket,
     value_usd_in_bucket
 FROM agg
