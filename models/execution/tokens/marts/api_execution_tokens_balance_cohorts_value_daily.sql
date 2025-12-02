@@ -7,15 +7,11 @@
 
 SELECT
   date,
-  symbol                         AS token,           
-  balance_bucket                 AS label,           
-  sum(value_usd_in_bucket)       AS value            
-FROM {{ ref('fct_execution_tokens_balance_cohorts_daily') }}
+  symbol                         AS token,   
+  balance_bucket                 AS label,   
+  value_usd_in_bucket            AS value    
+FROM {{ ref('fct_execution_tokens_balance_cohorts_daily_agg') }}
 WHERE date < today()
-GROUP BY
-  date,
-  token,
-  label
 ORDER BY
   date,
   token,
