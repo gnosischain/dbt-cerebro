@@ -105,7 +105,7 @@ seed_sparse AS (
     UNION ALL
 
     SELECT
-        addDays(b.min_date, -1) AS date,
+        addDays(b.min_date, -1) AS date,   
         p.token_address,
         p.symbol,
         p.token_class,
@@ -137,8 +137,8 @@ calendar AS (
         toDate(
           arrayJoin(
             range(
-              toUInt32(min_date),
-              toUInt32(max_date) + 1
+              toUInt32(addDays(min_date, -1)),  
+              toUInt32(max_date) + 1           
             )
           )
         ) AS date
@@ -194,7 +194,7 @@ priced AS (
       ON p.date   = d.date
      AND p.symbol = d.symbol
     WHERE d.balance > 0
-      AND d.date >= (SELECT min_date FROM bounds)
+      AND d.date >= (SELECT min_date FROM bounds)  
       AND d.date <= (SELECT max_date FROM bounds)
       AND lower(d.address) != '0x0000000000000000000000000000000000000000'
 ),
