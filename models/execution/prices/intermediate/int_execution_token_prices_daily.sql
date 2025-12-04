@@ -26,7 +26,7 @@ backedfi AS (
 wxdai_from_xdai AS (
     SELECT
         date,
-        'WXDAI' AS symbol,
+        'WXDAI',
         price
     FROM dune
     WHERE symbol = 'XDAI'
@@ -35,7 +35,7 @@ wxdai_from_xdai AS (
 agnosdai_from_sdai AS (
     SELECT
         date,
-        'AGNOSDAI' AS symbol,
+        'AGNOSDAI',
         price
     FROM dune
     WHERE symbol = 'SDAI'
@@ -56,9 +56,9 @@ SELECT date, symbol, price FROM dune
 UNION ALL
 SELECT date, symbol, price FROM backedfi
 UNION ALL
-SELECT date, symbol, price FROM wxdai_from_xdai
+SELECT * FROM wxdai_from_xdai
 UNION ALL
-SELECT date, symbol, price FROM agnosdai_from_sdai
+SELECT * FROM agnosdai_from_sdai
 UNION ALL
 SELECT date, symbol, price FROM usd_pegs
 ORDER BY date, symbol
