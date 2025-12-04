@@ -73,11 +73,19 @@ latest_per_token AS (
   GROUP BY token_address
 ),
 
+latest_values AS (
+  SELECT
+    sum(supply)                      AS supply,
+    sum(holders)                    AS holders,
+    sum(value_usd)                  AS value_usd
+  FROM latest_per_token
+),
+
 alltime_flows AS (
   SELECT
-    sum(volume_usd)                 AS volume_usd,
-    sum(transfer_count)             AS transfer_count,
-    groupBitmapMergeState(ua_bitmap_state) AS ua_bitmap_state
+    sum(volume_usd)                                AS volume_usd,
+    sum(transfer_count)                            AS transfer_count,
+    toUInt64(groupBitmapMerge(ua_bitmap_state))    AS active_senders
   FROM {{ ref('int_execution_tokens_value_daily') }}
   WHERE date < today()
 ),
@@ -85,14 +93,14 @@ alltime_flows AS (
 curr_all AS (
   SELECT
     'All' AS window,
-    sum(l.supply)                      AS supply,
-    sum(l.holders)                    AS holders,
-    sum(l.value_usd)                  AS value_usd,
-    a.volume_usd                      AS volume_usd,
-    a.transfer_count                  AS transfer_count,
-    toUInt64(groupBitmapMerge(a.ua_bitmap_state)) AS active_senders
-  FROM latest_per_token l
-  CROSS JOIN alltime_flows a
+    l.supply,
+    l.holders,
+    l.value_usd,
+    f.volume_usd,
+    f.transfer_count,
+    f.active_senders
+  FROM latest_values l
+  CROSS JOIN alltime_flows f
 ),
 
 curr AS (
