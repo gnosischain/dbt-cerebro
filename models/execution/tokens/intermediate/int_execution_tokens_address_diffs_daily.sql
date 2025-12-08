@@ -21,7 +21,7 @@ WITH base AS (
         symbol,
         lower("from")        AS from_address,
         lower("to")          AS to_address,
-        amount               AS amount
+        amount_raw               AS amount_raw
     FROM {{ ref('int_execution_transfers_whitelisted_daily') }}
     WHERE date < today()
       {% if start_month and end_month %}
@@ -40,7 +40,7 @@ with_class AS (
         coalesce(w.token_class, 'OTHER') AS token_class,
         b.from_address,
         b.to_address,
-        b.amount
+        b.amount_raw
     FROM base b
     LEFT JOIN {{ ref('tokens_whitelist') }} w
       ON lower(w.address) = b.token_address
@@ -53,7 +53,7 @@ deltas AS (
         symbol,
         token_class,
         from_address AS address,
-        -amount      AS delta
+        -amount_raw      AS delta_raw
     FROM with_class
 
     UNION ALL
@@ -64,7 +64,7 @@ deltas AS (
         symbol,
         token_class,
         to_address   AS address,
-        amount       AS delta
+        amount_raw       AS delta_raw
     FROM with_class
 ),
 
@@ -75,7 +75,7 @@ agg AS (
         symbol,
         token_class,
         lower(address) AS address,
-        sum(delta)     AS net_delta
+        sum(delta_raw)     AS net_delta_raw
     FROM deltas
     GROUP BY date, token_address, symbol, token_class, address
 )
@@ -86,6 +86,6 @@ SELECT
     symbol,
     token_class,
     address,
-    net_delta
+    net_delta_raw
 FROM agg
-ORDER BY date, token_address, address
+WHERE net_delta_raw != 0
