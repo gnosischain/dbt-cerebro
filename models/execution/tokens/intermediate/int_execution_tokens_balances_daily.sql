@@ -47,7 +47,12 @@ WITH deltas AS (
 
 overall_max_date AS (
     SELECT 
-        max(date) AS max_date
+        --max(date) AS max_date
+    {% if end_month %}
+        toDate('{{ end_month }}')
+    {% else %} 
+    SELECT max(toDate(date)) FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
+    {% endif %} AS max_date
     FROM deltas
 ),
 
