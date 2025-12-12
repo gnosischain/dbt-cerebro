@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','blocks','gas', 'tier1', 'api: gas_usage_pct_m']
+    tags=['production','execution', 'tier1', 'api:blocks_gas_usage_pct', 'granularity:monthly']
   )
 }}
 

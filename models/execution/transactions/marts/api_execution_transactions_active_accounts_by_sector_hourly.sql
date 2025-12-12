@@ -1,4 +1,7 @@
-{{ config(materialized='view', tags=['production','execution','transactions','hourly', 'tier1', 'api: initiator_accounts_by_sector_h']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_initiators_count_per_sector', 'granularity:hourly' ]) }}
 
 SELECT
   hour AS date,

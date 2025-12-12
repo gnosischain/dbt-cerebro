@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','blocks', 'tier1', 'api: clients_pct_d']
+        tags=['production','execution', 'tier1', 'api:blocks_per_clients_pct', 'granularity:daily']
     )
 }}
 

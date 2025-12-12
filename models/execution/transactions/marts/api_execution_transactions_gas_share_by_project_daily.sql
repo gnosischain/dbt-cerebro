@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view', 
-    tags=['production','execution','transactions','gas', 'tier1', 'api: gas_share_by_project_d']
+    tags=['production','execution', 'tier1', 'api:transactions_gas_share_per_project', 'granularity:daily']
   )
 }}
 

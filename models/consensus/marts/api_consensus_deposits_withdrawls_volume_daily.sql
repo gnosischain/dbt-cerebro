@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "deposits_withdrawals", 'tier1', 'api: deposits_withdrawals_volume_d']
+        tags=["production", "consensus", 'tier1', 'api: deposits_and_withdrawals_volume', 'granularity:daily']
     )
 }}
 

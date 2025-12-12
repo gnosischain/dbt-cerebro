@@ -1,4 +1,8 @@
-{{ config(materialized='view', tags=['production','execution','transactions', 'tier0', 'api: distinct_projects_sectors_total']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier0', 'api:projects_and_sectors_count', 'granularity:total']) 
+}}
 
 SELECT
   toFloat64(countDistinct(project)) AS value1,  

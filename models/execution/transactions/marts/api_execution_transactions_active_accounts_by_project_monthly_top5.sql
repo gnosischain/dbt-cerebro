@@ -1,5 +1,7 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions', 'tier1', 'api: initiator_accounts_by_project_m_top5'])
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_initiators_count_per_project_top5', 'granularity:monthly'])
 }}
 SELECT
   date,

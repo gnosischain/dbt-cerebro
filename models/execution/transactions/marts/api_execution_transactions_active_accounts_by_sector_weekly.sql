@@ -1,4 +1,8 @@
-{{ config(materialized='view', tags=['production','execution','transactions', 'tier1', 'api: initiator_accounts_by_sector_w']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_initiators_count_per_sector', 'granularity:weekly']) 
+}}
 
 SELECT
   week AS date,

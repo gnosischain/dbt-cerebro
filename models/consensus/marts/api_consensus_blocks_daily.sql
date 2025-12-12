@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "blocks", 'tier1', 'api: blocks_d']
+        tags=["production", "consensus", 'tier1', 'api:blocks', 'granularity:daily']
     )
 }}
 

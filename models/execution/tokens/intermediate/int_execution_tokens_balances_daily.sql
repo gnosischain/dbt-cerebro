@@ -7,7 +7,7 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','tokens','balances_daily']
+    tags=['dev','execution','tokens','balances_daily']
   ) 
 }}
 

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tokens','supply_latest','api']
+    tags=['dev','execution','tier1','api:tokens_supply', 'granularity:latest']
   )
 }}
 

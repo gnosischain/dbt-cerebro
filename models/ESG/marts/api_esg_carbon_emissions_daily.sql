@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','esg','carbon_emissions', 'tier1', 'api: carbon_emissions_d']
+        tags=['production','esg', 'tier1', 'api:carbon_emissions', 'granularity:daily']
     )
 }}
 

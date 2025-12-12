@@ -1,5 +1,7 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions','hourly', 'tier1', 'api: fees_by_sector_h'])
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_fees_per_sector', 'granularity:hourly'])
 }}
 
 SELECT

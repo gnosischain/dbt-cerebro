@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "info", 'tier0', 'api: info_deposits_cnt_latest']
+        tags=["production", "consensus", 'tier0', 'api:deposits_cnt', 'granularity:latest']
     )
 }}
 

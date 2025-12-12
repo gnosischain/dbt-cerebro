@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','esg','carbon_emissions', 'tier1', 'api: carbon_emissions_timeseries_bands_d']
+        tags=['production','esg', 'tier1', 'api:carbon_emissions_distribution', 'granularity:daily']
     )
 }}
 

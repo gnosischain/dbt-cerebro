@@ -6,7 +6,7 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, balance_bucket)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','tokens','balance_cohorts_daily_agg']
+    tags=['dev','execution','tokens','balance_cohorts_daily_agg']
   )
 }}
 

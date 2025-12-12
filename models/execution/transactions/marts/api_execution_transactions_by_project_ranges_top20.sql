@@ -1,4 +1,7 @@
-{{ config(materialized='view', tags=['production','execution','transactions', 'tier0', 'api: cnt_by_project_ranges_top20']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier0', 'api:transactions_count_per_project_top20', 'granularity:in_ranges']) }}
 
 WITH base AS (
   SELECT

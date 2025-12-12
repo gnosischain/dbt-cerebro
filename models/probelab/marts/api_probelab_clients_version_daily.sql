@@ -2,7 +2,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','probelab', 'clients', 'tier1', 'api: clients_version_d']
+        tags=['production','probelab', 'clients', 'tier1']
     ) 
 }}
 

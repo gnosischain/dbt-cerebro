@@ -1,4 +1,7 @@
-{{ config(materialized='view', tags=['production','bridges', 'tier1', 'api: cum_netflow_by_bridge_w', ]) }}
+{{ config(
+    materialized='view', 
+    tags=['production','bridges', 'tier1', 'api:cum_netflow_per_bridge', 'granularity:weekly']) 
+}}
 
 SELECT
   week  AS date,
