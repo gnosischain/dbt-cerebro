@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "attestations"]
+        tags=["production", "consensus", 'tier1', 'api:attestations', 'granularity:daily']
     )
 }}
 SELECT

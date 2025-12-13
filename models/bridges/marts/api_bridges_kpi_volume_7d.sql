@@ -1,4 +1,9 @@
-{{ config(materialized='view', tags=['production','bridges','api']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','bridges', 'tier0', 'api:volume', 'granularity:last_7d']) 
+}}
+
 SELECT
   round(vol_7d, 2)        AS value,
   round(vol_prev_7d, 2)   AS prev_value,

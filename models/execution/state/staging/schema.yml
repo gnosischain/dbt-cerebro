@@ -2,32 +2,50 @@ version: 2
 models:
 
 - name: stg_execution__storage_diffs
-  description: This table captures storage slot mutations produced by each transaction, enabling detailed analysis of contract state changes on the chain.
+  description: The stg_execution__storage_diffs model captures storage difference events from blockchain execution transactions, enabling analysis of state changes at the storage level during contract execution.
   columns:
-  - name: transaction_hash
-    description: Concatenated '0x' prefix with the transaction hash, serving as a unique identifier.
-    data_type: String
-  - name: transaction_index
-    description: Zero-based index of the transaction within its block.
+
+  - name: block_number
+    description: The number identifying the block in which the transaction was included.
     data_type: UInt64
+
+  - name: transaction_index
+    description: The position of the transaction within the block, indicating its execution order.
+    data_type: UInt64
+    tests:
+    - not_null
+
+  - name: transaction_hash
+    description: The unique hash identifier for the transaction, prefixed with '0x'.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+
   - name: address
-    description: Contract address (hex string) whose storage changed.
+    description: The blockchain address involved in the storage difference, formatted with '0x' prefix.
     data_type: String
+
   - name: slot
-    description: 32-byte storage slot key in hex format.
-    data_type: String
+    description: The specific storage slot affected by the transaction, indicating the location of the storage change.
+    data_type: UInt64
+
   - name: from_value
     description: Hex-encoded value before the change.
     data_type: String
+
   - name: to_value
     description: Hex-encoded value after the change.
     data_type: String
+
   - name: chain_id
     description: EVM chain identifier (e.g., 100 for Gnosis).
     data_type: UInt64
+
   - name: block_timestamp
     description: UTC timestamp of the block when the storage change occurred.
     data_type: DateTime64(0, 'UTC')
+
   - name: insert_version
     description: Monotonically increasing version number indicating ingestion order.
     data_type: UInt64
@@ -42,4 +60,19 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.785967'
+    _generated_fields:
+    - description
+    - columns.address.description
+    - columns.transaction_hash.description
+    - columns.slot.description
+    - config.tags
+    - config.materialized
+    - columns.block_number.data_type
+    - columns.address.data_type
+    - columns.slot.data_type
+    - columns.block_number.description
+    - columns.transaction_index.description
+    - columns.transaction_index.data_type
+    - columns.transaction_hash.data_type

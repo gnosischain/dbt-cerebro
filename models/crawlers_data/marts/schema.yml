@@ -2,43 +2,52 @@ version: 2
 models:
 
 - name: fct_crawlers_data_distinct_projects_sectors
-  description: 'Distinct (project, sector) pairs derived from label mappings. Used to serve simple project/sector counts to API views.
-
-    '
+  description: This model identifies unique combinations of projects and sectors from crawler data, supporting analysis of project-sector relationships.
   columns:
+
   - name: project
-    description: Project identifier.
+    description: Identifier for the specific project, representing a distinct initiative or effort.
     data_type: String
     tests:
     - not_null
+
   - name: sector
-    description: Sector label for the project.
+    description: Identifier for the sector associated with the project, indicating the industry or domain.
     data_type: String
     tests:
     - not_null
+  meta:
+    owner: analytics_engineer
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.596531'
+    _generated_fields:
+    - description
+    - columns.project.description
+    - columns.sector.description
+    - config.tags
+    - config.materialized
+    - columns.sector.data_type
+    - columns.project.data_type
   config:
-    materialized: table
-    access: public
     tags:
     - production
     - execution
     - transactions
-  meta:
-    owner: analytics_engineer
-    authoritative: false
-    generated_by: schema-writer
-- name: api_crawlers_data_distinct_projects_sectors_totals
-  description: 'Single-row API view with value1 = distinct projects and value2 = distinct sectors, computed from fct_projects_sectors.
+    materialized: table
 
-    '
+- name: api_crawlers_data_distinct_projects_sectors_totals
+  description: This view aggregates the total number of distinct projects and sectors crawled, providing a high-level overview of data coverage for the API.
   columns:
+
   - name: value1
-    description: Number of distinct projects.
+    description: The total count of unique projects identified in the dataset.
     data_type: Float64
     tests:
     - not_null
+
   - name: value2
-    description: Number of distinct sectors.
+    description: The total count of unique sectors associated with the projects.
     data_type: Float64
     tests:
     - not_null
@@ -48,31 +57,61 @@ models:
     tags:
     - production
     - execution
-    - transactions
+    - tier0
+    - api:projects_and_sectors_count
+    - granularity:total
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.596439'
+    _generated_fields:
+    - columns.value1.description
+    - description
+    - columns.value2.data_type
+    - columns.value1.data_type
+    - config.tags
+    - config.materialized
+    - columns.value2.description
+
 - name: api_crawlers_data_gno_supply_daily
-  description: Daily supply data from GNO crawlers, including labels, dates, and supply amounts.
+  description: The api_crawlers_data_gno_supply_daily model aggregates daily GNO supply data from crawler sources to support trend analysis and reporting.
   columns:
+
   - name: label
-    description: Identifier label for the supply data.
+    description: Identifier for the specific GNO supply data source or category.
     data_type: String
+
   - name: date
-    description: The date of the supply record in YYYY-MM-DD format.
-    data_type: DateTime
+    description: The date corresponding to the supply data, formatted as YYYY-MM-DD.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: supply
-    description: Supply amount in GNO.
-    data_type: UInt64
+    description: The amount of GNO supply recorded on the given date, measured in units consistent with blockchain token quantities.
+    data_type: Float64
   config:
     access: public
     tags:
     - production
     - crawlers_data
-    - supply
+    - tier1
+    - api:gno_supply
+    - granularity:daily
     materialized: view
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.596496'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.supply.description
+    - columns.label.data_type
+    - config.tags
+    - config.materialized
+    - columns.supply.data_type
+    - columns.label.description
+    - columns.date.data_type

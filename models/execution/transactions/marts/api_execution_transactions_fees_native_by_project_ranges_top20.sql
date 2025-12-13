@@ -1,4 +1,8 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier0', 'api:transactions_fees_per_project_top20', 'granularity:in_ranges']) 
+  }}
 
 WITH base AS (
   SELECT

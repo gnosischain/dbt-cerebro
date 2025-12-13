@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','esg','estimated_nodes']
+        tags=['production','esg', 'tier1', 'api:estimated_nodes', 'granularity:daily']
     )
 }}
 

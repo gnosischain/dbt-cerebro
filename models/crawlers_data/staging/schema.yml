@@ -2,53 +2,73 @@ version: 2
 models:
 
 - name: stg_crawlers_data__dune_labels
-  description: Staging model for Dune labels, processing raw label data, normalizing, and categorizing labels into known projects or generic ERC20 tokens.
+  description: This staging model processes and standardizes crawler-derived labels from Dune, facilitating consistent categorization and analysis of blockchain tokens and protocols.
   columns:
+
   - name: address
-    description: Ethereum address in lowercase, used as primary key for labels.
+    description: The lowercase blockchain address associated with the label, serving as a unique identifier.
     data_type: String
+
+  - name: agg
+    description: A tuple containing the original label string and its introduction timestamp, representing the raw label data and when it was first observed.
+    data_type: Tuple(String, DateTime64(0, 'UTC'))
+
   - name: label_raw
     description: Original label string extracted from source, before normalization.
     data_type: String
+
   - name: introduced_at
     description: Timestamp when the label was introduced, in UTC.
     data_type: DateTime
+
   - name: s1
     description: Label after removing whitespace around delimiters.
     data_type: String
+
   - name: s2
     description: Label after removing token tail patterns.
     data_type: String
+
   - name: s3
     description: Label trimmed to the main part before suffixes.
     data_type: String
+
   - name: s4
     description: Label after removing version indicators and suffixes.
     data_type: String
+
   - name: s4_l
     description: Lowercase version of s4 for pattern matching.
     data_type: String
+
   - name: looks_like_token_tail
     description: Boolean indicating if label resembles a token tail pattern.
     data_type: UInt64
+
   - name: wl_symbol
     description: Whitelisted symbol associated with the address, if available.
     data_type: String
+
   - name: s5
     description: Label after categorizing into known project types based on s4_l.
     data_type: String
+
   - name: s7
     description: Label after cleaning and removing known suffixes or patterns.
     data_type: String
+
   - name: project_canon
     description: Canonical project name after mapping various label patterns to known categories.
     data_type: String
+
   - name: project
     description: Final project classification, defaulting to 'ERC20' if label resembles a token.
     data_type: String
+
   - name: project_raw
     description: Raw project label before final classification.
     data_type: String
+
   - name: label
     description: Final label used for referencing the project, same as project_raw.
     data_type: String
@@ -61,18 +81,33 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.612334'
+    _generated_fields:
+    - description
+    - columns.address.description
+    - columns.agg.data_type
+    - config.tags
+    - config.materialized
+    - columns.address.data_type
+    - columns.agg.description
+
 - name: stg_crawlers_data__dune_prices
-  description: Staging model for Dune prices data, providing daily aggregated prices with symbol normalization.
+  description: This staging model consolidates and standardizes Dune price data for various symbols, facilitating downstream analysis of price trends over time.
   columns:
+
   - name: date
-    description: The date of the price, truncated to day in UTC.
-    data_type: DateTime
+    description: The date of the price record, formatted as a date type.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: symbol
-    description: The uppercase symbol of the asset.
+    description: The uppercase identifier of the asset or security.
     data_type: String
+
   - name: price
-    description: The last known price in float64.
+    description: The last recorded price for the symbol on the given date, represented as a floating-point number.
     data_type: Float64
   config:
     materialized: view
@@ -83,19 +118,34 @@ models:
   meta:
     owner: data-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.612378'
+    _generated_fields:
+    - description
+    - columns.price.description
+    - columns.symbol.data_type
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.symbol.description
+    - columns.price.data_type
+    - columns.date.data_type
+
 - name: stg_crawlers_data__dune_gno_supply
-  description: Staging model for GNO supply data from Dune crawlers; includes label, block date, and supply figures.
+  description: This model aggregates supply data from the Dune GNO crawler, providing a staging view for analysis of supply metrics over time.
   columns:
+
   - name: label
-    description: Identifier label for the supply data
+    description: Identifier or category label associated with the supply data.
     data_type: String
+
   - name: block_date
-    description: Date of the block in ISO format (UTC)
-    data_type: DateTime
+    description: The date corresponding to the data point, formatted as a date string.
+    data_type: Date
+
   - name: supply
-    description: Supply amount in GNO
-    data_type: UInt64
+    description: The supply quantity, representing the total amount available at the given block date.
+    data_type: Float64
   config:
     access: public
     materialized: view
@@ -105,56 +155,100 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.612263'
+    _generated_fields:
+    - description
+    - columns.block_date.description
+    - columns.supply.description
+    - columns.label.data_type
+    - config.tags
+    - config.materialized
+    - columns.block_date.data_type
+    - columns.supply.data_type
+    - columns.label.description
+
 - name: stg_crawlers_data__dune_bridge_flows
-  description: >
-    Ledger of bridge transfers (from Dune MV) loaded into ClickHouse and exposed
-    as a staging view. One row ≈ one flow between source_chain and dest_chain via a bridge.
+  description: This view aggregates and standardizes data on cross-chain bridge flows from Dune, enabling analysis of token movements and net transfers across different blockchain networks.
   columns:
-    - name: timestamp
-      description: UTC timestamp of the flow.
-      data_type: DateTime
-      tests:
-        - not_null
-    - name: bridge
-      description: Bridge name/identifier.
-      data_type: String
-      tests:
-        - not_null
-    - name: source_chain
-      description: Origin chain name.
-      data_type: String
-      tests:
-        - not_null
-    - name: dest_chain
-      description: Destination chain name.
-      data_type: String
-      tests:
-        - not_null
-    - name: token
-      description: Token symbol involved in the transfer.
-      data_type: String
-      tests:
-        - not_null
-    - name: amount_token
-      description: Amount of tokens transferred (native token units).
-      data_type: Float64
-    - name: amount_usd
-      description: USD value of the transfer at the time recorded.
-      data_type: Float64
-    - name: direction
-      description: >
-        Flow direction relative to Gnosis:
-        'in'  if dest_chain = 'Gnosis',
-        'out' if source_chain = 'Gnosis',
-        else 'xchain'.
-      data_type: String
-    - name: net_usd
-      description: Signed USD flow relative to Gnosis (in = +amount_usd, out = -amount_usd, xchain = 0).
-      data_type: Float64
+
+  - name: timestamp
+    description: The timestamp indicating when the bridge flow data was recorded.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: bridge
+    description: Identifier for the specific bridge used for the token transfer.
+    data_type: String
+    tests:
+    - not_null
+
+  - name: source_chain
+    description: Name of the originating blockchain network.
+    data_type: String
+    tests:
+    - not_null
+
+  - name: dest_chain
+    description: Name of the destination blockchain network.
+    data_type: String
+    tests:
+    - not_null
+
+  - name: token
+    description: The symbol or identifier of the token being transferred.
+    data_type: String
+    tests:
+    - not_null
+
+  - name: amount_token
+    description: The amount of tokens transferred, expressed as a float.
+    data_type: Float64
+
+  - name: amount_usd
+    description: The USD value of the transferred tokens, expressed as a float.
+    data_type: Float64
+
+  - name: net_usd
+    description: The net USD value of the transfer, accounting for inflows and outflows, expressed as a float.
+    data_type: Float64
+
+  - name: direction
+    description: 'Indicates transfer direction: ''in'' for inbound to Gnosis, ''out'' for outbound from Gnosis, ''xchain'' for cross-chain transfers not involving Gnosis.'
+    data_type: String
   config:
     access: public
+    tags:
+    - production
+    - staging
+    - dune
+    - bridges
+    materialized: view
   meta:
     owner: analytics
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.612207'
+    _generated_fields:
+    - columns.direction.data_type
+    - columns.amount_token.description
+    - config.tags
+    - columns.source_chain.description
+    - columns.dest_chain.description
+    - columns.dest_chain.data_type
+    - columns.bridge.data_type
+    - columns.source_chain.data_type
+    - description
+    - columns.token.data_type
+    - columns.net_usd.data_type
+    - columns.timestamp.description
+    - columns.amount_usd.data_type
+    - columns.timestamp.data_type
+    - columns.bridge.description
+    - columns.amount_usd.description
+    - columns.token.description
+    - columns.direction.description
+    - config.materialized
+    - columns.net_usd.description
+    - columns.amount_token.data_type

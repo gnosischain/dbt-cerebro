@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "forks"]
+        tags=["production", "consensus", 'tier0', 'api:forks_info']
     )
 }}
 

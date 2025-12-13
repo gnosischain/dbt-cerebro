@@ -2,46 +2,69 @@ version: 2
 models:
 
 - name: stg_nebula_discv4__visits
-  description: Staging model for visits data from nebula_discv4, including peer and protocol metadata.
+  description: The stg_nebula_discv4__visits model captures detailed information about network discovery visits, including connection attempts and errors, to support analysis of peer connectivity and network health.
   columns:
+
   - name: crawl_id
-    description: Identifier for the crawl; nullable if not available.
-    data_type: UUID
+    description: Unique identifier for each crawl session.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: peer_id
-    description: Unique identifier for the peer.
-    data_type: String
+    description: Unique identifier for the peer involved in the visit.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: agent_version
-    description: Version string of the peer's agent software.
+    description: Version of the agent software used during the visit.
     data_type: String
+
   - name: protocols
-    description: List of protocols supported by the peer.
-    data_type: Array(LowCardinality(String))
+    description: Protocols employed during the discovery process.
+    data_type: Array(String)
+
   - name: dial_maddrs
-    description: Array of multi-addresses used for dialing.
+    description: Multiaddr addresses used for dialing peers.
     data_type: Array(String)
+
   - name: filtered_maddrs
-    description: Array of filtered multi-addresses.
+    description: Multiaddr addresses filtered out during processing.
     data_type: Array(String)
+
   - name: extra_maddrs
-    description: Array of extra multi-addresses.
+    description: Additional multiaddr addresses associated with the peer.
     data_type: Array(String)
+
   - name: dial_errors
-    description: Array of dial error messages.
-    data_type: Array(LowCardinality(String))
+    description: Errors encountered during dialing attempts.
+    data_type: Array(String)
+
   - name: connect_maddr
-    description: Multi-address used for connection; nullable if not connected.
-    data_type: Nullable(String)
+    description: Multiaddr address used for successful connection.
+    data_type: String
+
   - name: crawl_error
-    description: Error message during crawl; nullable if no error.
-    data_type: LowCardinality(Nullable(String))
+    description: Errors encountered during the crawl process.
+    data_type: String
+
   - name: visit_started_at
-    description: Timestamp when the visit started.
-    data_type: DateTime64(0, 'UTC')
+    description: Timestamp marking the start of the visit.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: visit_ended_at
-    description: Timestamp when the visit ended.
-    data_type: DateTime64(0, 'UTC')
+    description: Timestamp marking the end of the visit.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: peer_properties
-    description: JSON object containing peer properties.
+    description: Additional properties or metadata related to the peer.
     data_type: JSON
   config:
     access: public
@@ -53,48 +76,102 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403637'
+    _generated_fields:
+    - columns.filtered_maddrs.data_type
+    - config.tags
+    - columns.crawl_id.description
+    - columns.dial_maddrs.description
+    - columns.peer_id.description
+    - columns.dial_errors.description
+    - columns.visit_started_at.description
+    - columns.connect_maddr.data_type
+    - columns.crawl_error.description
+    - description
+    - columns.crawl_error.data_type
+    - columns.protocols.description
+    - columns.dial_errors.data_type
+    - columns.visit_ended_at.description
+    - columns.visit_started_at.data_type
+    - columns.agent_version.description
+    - columns.extra_maddrs.data_type
+    - columns.agent_version.data_type
+    - columns.visit_ended_at.data_type
+    - columns.peer_properties.data_type
+    - columns.connect_maddr.description
+    - columns.protocols.data_type
+    - columns.crawl_id.data_type
+    - columns.dial_maddrs.data_type
+    - columns.extra_maddrs.description
+    - columns.peer_id.data_type
+    - columns.peer_properties.description
+    - columns.filtered_maddrs.description
+
 - name: stg_nebula_discv5__visits
-  description: Staging model for visits data from nebula_discv5 source, including peer and protocol metadata.
+  description: The stg_nebula_discv5__visits model captures detailed information about network discovery visits, including connection attempts and peer properties, to support network analysis and troubleshooting.
   columns:
+
   - name: crawl_id
-    description: Identifier for the crawl session; nullable if not available.
-    data_type: String
+    description: Unique identifier for each crawl session during which the visit occurred.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: peer_id
-    description: Unique identifier for the peer; primary key component.
-    data_type: String
+    description: Identifier for the peer involved in the visit, typically a peer ID or hash.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: agent_version
-    description: Version string of the peer's agent software.
+    description: Version string of the agent software used during the visit.
     data_type: String
+
   - name: protocols
-    description: Array of protocols supported by the peer.
-    data_type: Array
+    description: List or description of protocols negotiated or used during the visit.
+    data_type: Array(String)
+
   - name: dial_maddrs
-    description: List of multiaddresses used for dialing.
-    data_type: Array
+    description: Multiaddr addresses attempted for dialing, representing potential connection endpoints.
+    data_type: Array(String)
+
   - name: filtered_maddrs
-    description: List of filtered multiaddresses.
-    data_type: Array
+    description: Multiaddr addresses filtered out or deemed unsuitable for connection attempts.
+    data_type: Array(String)
+
   - name: extra_maddrs
-    description: Additional multiaddresses associated with the peer.
-    data_type: Array
+    description: Additional multiaddr addresses associated with the peer, beyond initial dial addresses.
+    data_type: Array(String)
+
   - name: dial_errors
-    description: List of errors encountered during dialing attempts.
-    data_type: Array
+    description: Errors encountered during dialing attempts, if any.
+    data_type: Array(String)
+
   - name: connect_maddr
-    description: Multiaddress used for the connection; nullable if not connected.
+    description: Multiaddr address successfully connected to, if connection was established.
     data_type: String
+
   - name: crawl_error
-    description: Error message if crawl failed; nullable.
+    description: Error message or code indicating issues during the visit, if any.
     data_type: String
+
   - name: visit_started_at
-    description: Timestamp when the visit started.
-    data_type: DateTime
+    description: Timestamp marking the start of the visit.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: visit_ended_at
-    description: Timestamp when the visit ended.
-    data_type: DateTime
+    description: Timestamp marking the end of the visit.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: peer_properties
-    description: JSON object containing additional peer properties.
+    description: JSON or structured data containing additional properties of the peer.
     data_type: JSON
   config:
     access: public
@@ -105,54 +182,100 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403829'
+    _generated_fields:
+    - columns.filtered_maddrs.data_type
+    - config.tags
+    - columns.crawl_id.description
+    - columns.dial_maddrs.description
+    - columns.peer_id.description
+    - columns.dial_errors.description
+    - columns.visit_started_at.description
+    - columns.connect_maddr.data_type
+    - columns.crawl_error.description
+    - description
+    - columns.crawl_error.data_type
+    - columns.protocols.description
+    - columns.dial_errors.data_type
+    - columns.visit_ended_at.description
+    - columns.visit_started_at.data_type
+    - columns.agent_version.description
+    - columns.extra_maddrs.data_type
+    - columns.agent_version.data_type
+    - columns.visit_ended_at.data_type
+    - columns.peer_properties.data_type
+    - columns.connect_maddr.description
+    - columns.protocols.data_type
+    - columns.crawl_id.data_type
+    - columns.dial_maddrs.data_type
+    - columns.extra_maddrs.description
+    - columns.peer_id.data_type
+    - columns.peer_properties.description
+    - columns.filtered_maddrs.description
+
 - name: stg_crawlers_data__ipinfo
-  description: Staging model transforming raw IP info data into a structured format for analysis.
+  description: The stg_crawlers_data__ipinfo model aggregates and standardizes IP geolocation and organization data to support analytics on network infrastructure and traffic sources.
   columns:
-  - name: loc
-    description: Geographical location information, typically in "latitude,longitude" format.
+
+  - name: ip
+    description: The IP address associated with the network entity.
     data_type: String
-  - name: carrier
-    description: Carrier or network provider name.
+
+  - name: hostname
+    description: The DNS hostname linked to the IP address.
     data_type: String
-  - name: company
-    description: Company associated with the IP address.
+
+  - name: city
+    description: The city where the IP address is located.
     data_type: String
+
   - name: region
-    description: Administrative region or state.
+    description: The administrative region or state of the IP location.
     data_type: String
+
+  - name: country
+    description: The country code or name where the IP is registered.
+    data_type: String
+
+  - name: loc
+    description: Geographical coordinates (latitude,longitude) of the IP location.
+    data_type: String
+
+  - name: org
+    description: The organization or entity that owns or manages the IP address.
+    data_type: String
+
+  - name: postal
+    description: The postal or ZIP code of the IP location.
+    data_type: String
+
+  - name: timezone
+    description: The time zone of the IP location.
+    data_type: String
+
   - name: asn
     description: Autonomous System Number associated with the IP.
     data_type: String
-  - name: generic_provider
-    description: Categorized provider type based on organization name.
+
+  - name: company
+    description: The company name linked to the IP's organization.
     data_type: String
+
+  - name: carrier
+    description: The network carrier providing connectivity for the IP.
+    data_type: String
+
   - name: is_bogon
-    description: Indicator if the IP is part of a bogon (invalid or reserved IP space).
-    data_type: UInt64
-  - name: timezone
-    description: Time zone of the IP location.
-    data_type: String
-  - name: city
-    description: City name corresponding to the IP.
-    data_type: String
+    description: Boolean indicating if the IP is part of a bogon (unallocated or invalid IP space).
+    data_type: UInt8
+
   - name: is_mobile
-    description: Indicator if the IP is associated with mobile networks.
-    data_type: UInt64
-  - name: ip
-    description: IP address.
-    data_type: String
-  - name: country
-    description: Country name.
-    data_type: String
-  - name: org
-    description: Organization name associated with the IP.
-    data_type: String
-  - name: postal
-    description: Postal code.
-    data_type: String
-  - name: hostname
-    description: Resolved hostname for the IP address.
+    description: Boolean indicating if the IP belongs to a mobile network provider.
+    data_type: UInt8
+
+  - name: generic_provider
+    description: A categorized label representing the type of network provider or hosting service based on organization data.
     data_type: String
   config:
     access: public
@@ -164,16 +287,57 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403426'
+    _generated_fields:
+    - columns.postal.data_type
+    - columns.carrier.description
+    - columns.postal.description
+    - config.tags
+    - columns.loc.description
+    - columns.country.data_type
+    - columns.asn.data_type
+    - description
+    - columns.country.description
+    - columns.asn.description
+    - columns.company.description
+    - columns.generic_provider.description
+    - columns.city.description
+    - columns.timezone.description
+    - columns.hostname.data_type
+    - columns.region.description
+    - columns.generic_provider.data_type
+    - columns.timezone.data_type
+    - columns.org.description
+    - columns.hostname.description
+    - columns.city.data_type
+    - columns.org.data_type
+    - columns.carrier.data_type
+    - columns.ip.description
+    - columns.is_mobile.description
+    - columns.loc.data_type
+    - columns.company.data_type
+    - columns.is_bogon.description
+    - columns.region.data_type
+    - config.materialized
+    - columns.is_mobile.data_type
+    - columns.is_bogon.data_type
+    - columns.ip.data_type
+
 - name: stg_nebula_discv4__discovery_id_prefixes_x_peer_ids
-  description: Mapping from discovery ID prefix to peer_id, sourced from the nebula_discv4 database.
+  description: This view maps discovery ID prefixes to their associated peer IDs within the Nebula DiscV4 dataset, facilitating analysis of prefix-peer relationships.
   columns:
+
   - name: discovery_id_prefix
-    description: The prefix of the discovery ID used to identify peers, type UInt64.
-    data_type: UInt64
-  - name: peer_id
-    description: The unique identifier of the peer, typically a string address.
+    description: The prefix portion of a discovery ID used to categorize or identify related discovery events.
     data_type: String
+
+  - name: peer_id
+    description: The unique identifier for a peer associated with the given discovery ID prefix.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
   config:
     access: public
     tags:
@@ -184,25 +348,45 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403475'
+    _generated_fields:
+    - description
+    - columns.peer_id.description
+    - columns.discovery_id_prefix.data_type
+    - config.tags
+    - config.materialized
+    - columns.peer_id.data_type
+    - columns.discovery_id_prefix.description
+
 - name: stg_nebula_discv4__neighbors
-  description: Edges discovered between peers from neighbors responses in the nebula_discv4 network.
+  description: The stg_nebula_discv4__neighbors view captures neighbor discovery data from the Nebula v4 network, facilitating analysis of peer relationships and network topology.
   columns:
+
   - name: crawl_id
-    description: Unique identifier for the crawl session.
-    data_type: UUID
+    description: Unique identifier for each crawl session, used to track and differentiate data collection instances.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: crawl_created_at
-    description: Timestamp when the crawl was initiated.
-    data_type: DateTime64(0, 'UTC')
+    description: Timestamp indicating when the crawl was initiated, in UTC.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: peer_discovery_id_prefix
-    description: Prefix of the peer discovery ID, representing the peer.
-    data_type: UInt64
+    description: Prefix identifying the peer's discovery ID, used to group related peer records.
+    data_type: String
+
   - name: neighbor_discovery_id_prefix
-    description: Prefix of the neighbor discovery ID, representing the neighboring peer.
-    data_type: UInt64
+    description: Prefix identifying the neighbor's discovery ID, used to group related neighbor records.
+    data_type: String
+
   - name: error_bits
-    description: Bitfield indicating errors encountered during neighbor discovery.
-    data_type: UInt16
+    description: Bitmask representing error states encountered during neighbor discovery, indicating specific issues.
+    data_type: UInt64
   config:
     access: public
     materialized: view
@@ -213,16 +397,37 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403530'
+    _generated_fields:
+    - description
+    - columns.neighbor_discovery_id_prefix.data_type
+    - columns.error_bits.description
+    - columns.crawl_id.data_type
+    - columns.peer_discovery_id_prefix.data_type
+    - config.tags
+    - config.materialized
+    - columns.crawl_created_at.description
+    - columns.crawl_id.description
+    - columns.crawl_created_at.data_type
+    - columns.neighbor_discovery_id_prefix.description
+    - columns.error_bits.data_type
+    - columns.peer_discovery_id_prefix.description
+
 - name: stg_nebula_discv5__discovery_id_prefixes_x_peer_ids
-  description: Mapping from discovery ID prefix to peer_id, sourced from the nebula_discv5 database.
+  description: This view maps discovery ID prefixes to their associated peer IDs within the Nebula DiscV5 dataset, facilitating analysis of prefix-peer relationships.
   columns:
+
   - name: discovery_id_prefix
-    description: The prefix of the discovery ID used to identify peers, stored as an unsigned 64-bit integer.
-    data_type: UInt64
-  - name: peer_id
-    description: Unique identifier for a peer, represented as a string.
+    description: The prefix segment of a discovery ID used to categorize or group related discovery events.
     data_type: String
+
+  - name: peer_id
+    description: The unique identifier for a peer involved in the discovery process.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
   config:
     access: public
     tags:
@@ -233,25 +438,45 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403671'
+    _generated_fields:
+    - description
+    - columns.peer_id.description
+    - columns.discovery_id_prefix.data_type
+    - config.tags
+    - config.materialized
+    - columns.peer_id.data_type
+    - columns.discovery_id_prefix.description
+
 - name: stg_nebula_discv5__neighbors
-  description: Discovered neighbor relationships between peers in the Nebula Discv5 network crawl.
+  description: This model captures neighbor discovery data from the Nebula DISCv5 protocol, facilitating analysis of peer relationships and network topology.
   columns:
+
   - name: crawl_id
-    description: Identifier for the specific crawl session.
-    data_type: String
+    description: Unique identifier for each crawl session, used to group related data entries.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: crawl_created_at
-    description: Timestamp when the crawl was initiated.
-    data_type: DateTime64(0, 'UTC')
+    description: Timestamp indicating when the crawl was performed, in UTC.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: peer_discovery_id_prefix
-    description: Unique prefix identifying the discovered peer.
-    data_type: UInt64
+    description: Prefix identifier for the peer's DISCv5 discovery ID, representing the source node.
+    data_type: String
+
   - name: neighbor_discovery_id_prefix
-    description: Unique prefix identifying the neighbor peer.
-    data_type: UInt64
+    description: Prefix identifier for the neighbor's DISCv5 discovery ID, representing the connected node.
+    data_type: String
+
   - name: error_bits
-    description: Error bits indicating issues during neighbor discovery (bitmask).
-    data_type: UInt16
+    description: Bitmask indicating errors encountered during neighbor discovery, with specific bits representing different error types.
+    data_type: UInt64
   config:
     access: public
     tags:
@@ -262,4 +487,19 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.403725'
+    _generated_fields:
+    - description
+    - columns.neighbor_discovery_id_prefix.data_type
+    - columns.error_bits.description
+    - columns.crawl_id.data_type
+    - columns.peer_discovery_id_prefix.data_type
+    - config.tags
+    - config.materialized
+    - columns.crawl_created_at.description
+    - columns.crawl_id.description
+    - columns.crawl_created_at.data_type
+    - columns.neighbor_discovery_id_prefix.description
+    - columns.error_bits.data_type
+    - columns.peer_discovery_id_prefix.description

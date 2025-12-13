@@ -4,12 +4,14 @@ models:
 - name: execution_state_address_current
   description: Current execution state of addresses, aggregating relevant data from execution layer tables.
   columns:
+
   - name: address
     description: Ethereum address (20-byte hex string) representing the account or contract.
     data_type: String
     tests:
     - not_null
     - unique
+
   - name: bytes
     description: Sum of bytes_diff values (total bytes changed) for the address.
     data_type: UInt64
@@ -20,14 +22,17 @@ models:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+
 - name: execution_state_size_daily
   description: Daily snapshot of execution state size metrics, including bytes difference and cumulative size.
   columns:
+
   - name: date
     description: Date of the snapshot in 'YYYY-MM-DD' format.
     data_type: Date
     tests:
     - not_null
+
   - name: bytes_diff
     description: Difference in execution state size bytes compared to previous day.
     data_type: UInt64
@@ -37,14 +42,19 @@ models:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
+
 - name: api_execution_state_full_size_daily
-  description: Daily snapshot of the full size of API execution state in bytes, aggregated from the raw data sources for business analysis.
+  description: The api_execution_state_full_size_daily model provides daily aggregated data on the size of API execution states, facilitating trend analysis and capacity planning.
   columns:
+
   - name: date
-    description: Date of the snapshot in YYYY-MM-DD format.
+    description: The specific calendar date for the recorded data point.
     data_type: Date
+    tests:
+    - not_null
+
   - name: value
-    description: Size of the API execution state in gigabytes.
+    description: The size of the execution state in gigabytes, calculated by dividing bytes by 10^9.
     data_type: Float64
   config:
     access: public
@@ -52,20 +62,35 @@ models:
     tags:
     - production
     - execution
-    - state
-    - size
+    - tier1
+    - api:state_size
+    - granularity:daily
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.777030'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.date.data_type
+
 - name: fct_execution_state_full_size_daily
-  description: Business-facing table summarizing daily total bytes of execution state size.
+  description: The fct_execution_state_full_size_daily model aggregates daily cumulative bytes of execution state data, providing insights into storage size trends over time for operational monitoring.
   columns:
+
   - name: date
-    description: Date of the record (YYYY-MM-DD).
+    description: The date for which the size data is recorded, representing a daily timestamp.
     data_type: Date
+    tests:
+    - not_null
+
   - name: bytes
-    description: Cumulative sum of bytes_diff over time (bytes).
+    description: The total cumulative size in bytes of execution state data up to the specified date.
     data_type: UInt64
   config:
     access: public
@@ -78,4 +103,13 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.777076'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.bytes.data_type
+    - config.tags
+    - config.materialized
+    - columns.bytes.description
+    - columns.date.data_type

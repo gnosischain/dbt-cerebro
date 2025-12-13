@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','circles','backers']
+        tags=['production','execution','circles','backers', 'tier0', 'api: backers_cnt_latest']
     )
 }}
 

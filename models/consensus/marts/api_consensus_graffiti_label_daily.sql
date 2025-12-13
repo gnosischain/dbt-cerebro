@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", "graffiti"]
+        tags=["production", "consensus", 'tier1', 'api:graffities_labels', 'granularity:daily']
     )
 }}
 

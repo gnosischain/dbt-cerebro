@@ -2,7 +2,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','p2p','topology']
+        tags=['production','p2p', 'tier0', 'api:network_topology', 'granularity:latest']
     )
 }}
 

@@ -2,13 +2,17 @@ version: 2
 models:
 
 - name: int_execution_circles_backing
-  description: Aggregated data related to circles backing events, including daily counts.
+  description: The `int_execution_circles_backing` model aggregates daily counts of completed circles backing events to monitor execution volume and trends over time.
   columns:
+
   - name: date
-    description: Date truncated to day for aggregation purposes.
-    data_type: DateTime
+    description: The start of the day (UTC) for which the backing event counts are aggregated.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: cnt
-    description: Count of 'CirclesBackingCompleted' events per day.
+    description: The total number of 'CirclesBackingCompleted' events recorded on the given date.
     data_type: UInt64
   config:
     access: public
@@ -21,22 +25,43 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.630512'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.cnt.data_type
+    - columns.cnt.description
+    - columns.date.data_type
+
 - name: int_execution_circles_transitive_transfers
-  description: This model aggregates transitive transfer data within execution circles, providing insights into transfer flows and related metadata for analysis.
+  description: The model calculates daily transitive transfer volumes between avatars involved in circle-based contracts, aggregating total amounts and transfer counts for each avatar pair.
   columns:
+
   - name: date
-    description: Date truncated to day from block timestamp (UTC).
-    data_type: DateTime
+    description: The date (at day granularity) when the transfer event occurred.
+    data_type: Date
+    tests:
+    - not_null
+
+  - name: AS
+    description: ''
+    data_type: ''
+
   - name: from_avatar
     description: Originator address extracted from decoded parameters.
     data_type: String
+
   - name: to_avatar
     description: Recipient address extracted from decoded parameters.
     data_type: String
+
   - name: total_amount
     description: Sum of amounts (in wei) transferred within the circle.
     data_type: UInt64
+
   - name: cnt
     description: Count of transfer events aggregated.
     data_type: UInt64
@@ -47,22 +72,37 @@ models:
     - execution
     - circles
     - transitive_transfers
-    materialized: table
+    materialized: incremental
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.630571'
+    _generated_fields:
+    - description
+    - columns.AS.data_type
+    - columns.date.description
+    - columns.AS.description
+    - config.tags
+    - config.materialized
+    - columns.date.data_type
+
 - name: int_execution_circles_v1_avatars
-  description: This model captures avatar-related execution data, including user addresses and inviter addresses, derived from the contracts_circles_v2_Hub_events table filtered on 'RegisterHuman' events.
+  description: The model tracks user registration events related to avatars within the execution circles, capturing registration timestamps, user addresses, and inviter information for analytical purposes.
   columns:
+
   - name: block_timestamp
-    description: UTC timestamp of the event occurrence, materialized from the source.
-    data_type: DateTime
+    description: The timestamp when the registration event occurred, indicating the exact time of user registration.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: user_address
-    description: Address of the user associated with the avatar, extracted from decoded_params['avatar'].
+    description: The blockchain address of the user who registered an avatar, decoded from event parameters.
     data_type: String
+
   - name: inviter_address
-    description: Address of the inviter, extracted from decoded_params['inviter'].
+    description: The blockchain address of the inviter who referred the new user, decoded from event parameters.
     data_type: String
   config:
     access: public
@@ -75,37 +115,61 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.630614'
+    _generated_fields:
+    - description
+    - columns.inviter_address.description
+    - config.tags
+    - config.materialized
+    - columns.inviter_address.data_type
+    - columns.block_timestamp.data_type
+    - columns.block_timestamp.description
+    - columns.user_address.data_type
+    - columns.user_address.description
+
 - name: int_execution_circles_v2_avatars
-  description: Business-facing model representing avatar data derived from execution layer tables, including registration events, transfers, and associated metadata.
+  description: This model aggregates daily counts of avatar registrations by type (Human, Group, Organization) to monitor user onboarding activities within the platform.
   columns:
+
   - name: date
-    description: Date truncated to day from block timestamp (UTC).
-    data_type: DateTime
+    description: The date (at day granularity) when the registration events occurred.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: avatar_type
-    description: 'Type of avatar: ''Human'', ''Group'', ''Org'', or ''Unknown''.'
+    description: The category of the registered avatar, classified as Human, Group, or Organization.
     data_type: String
+
   - name: cnt
-    description: Count of registration events per date and avatar type.
+    description: The total number of registration events for the given avatar type on the specified date.
     data_type: UInt64
+
   - name: block_timestamp
     description: UTC timestamp of the block containing the event.
     data_type: DateTime
+
   - name: event_name
     description: Name of the registration event ('RegisterHuman', 'RegisterGroup', 'RegisterOrganization').
     data_type: String
+
   - name: transaction_hash
     description: Hash of the transaction that triggered the event.
     data_type: String
+
   - name: from_address
     description: Address that initiated the registration.
     data_type: String
+
   - name: to_address
     description: Recipient address associated with the registration.
     data_type: String
+
   - name: registration_event_id
     description: Unique identifier for the registration event.
     data_type: String
+
   - name: source_table
     description: Source table name for lineage tracking.
     data_type: String
@@ -120,4 +184,15 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.630669'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.cnt.data_type
+    - columns.avatar_type.data_type
+    - columns.avatar_type.description
+    - columns.cnt.description
+    - columns.date.data_type

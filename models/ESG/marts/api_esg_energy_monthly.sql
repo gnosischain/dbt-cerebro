@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','esg','energy']
+        tags=['production','esg', 'tier1', 'api:energy_consumption', 'granularity:monthly']
     )
 }}
 

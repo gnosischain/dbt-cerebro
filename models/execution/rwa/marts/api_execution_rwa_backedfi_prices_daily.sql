@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','rwa','backedfi','prices']
+        tags=['production','execution', 'tier1', 'api:rwa_backedfi_prices', 'granularity:daily']
     )
 }}
 

@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','circles','avatars']
+        tags=['production','execution','circles','avatars', 'tier0', 'api: avatars']
     )
 }}
 

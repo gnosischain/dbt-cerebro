@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production', 'execution', 'transactions']
+        tags=['production', 'execution', 'tier1', 'api:transactions_xdai_value', 'granularity:daily']
     )
 }}
 

@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','p2p','discv4','forks']
+        tags=['production','p2p', 'tier1', 'api:discv5_next_fork_count', 'granularity:daily']
     ) 
 }}
 

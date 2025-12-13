@@ -1,4 +1,8 @@
-{{ config(materialized='view', tags=['production','execution','transactions']) }}
+{{ 
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_count_per_sector', 'granularity:daily']) 
+}}
 
 SELECT
   date,

@@ -1,5 +1,7 @@
 {{
-  config(materialized='view', tags=['production','execution','transactions'])
+  config(
+    materialized='view', 
+    tags=['production','execution', 'tier1', 'api:transactions_fees_per_project_top5', 'granularity:monthly'])
 }}
 SELECT
   date,
