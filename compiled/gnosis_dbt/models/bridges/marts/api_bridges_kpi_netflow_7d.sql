@@ -1,4 +1,5 @@
 
+
 SELECT
   round(net_7d, 2)        AS value,
   round(net_prev_7d, 2)   AS prev_value,

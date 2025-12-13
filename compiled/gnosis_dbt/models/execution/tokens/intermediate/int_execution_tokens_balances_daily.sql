@@ -1,0 +1,207 @@
+
+
+
+
+
+
+
+WITH deltas AS (
+    SELECT
+        date,
+        token_address,
+        symbol,
+        token_class,
+        address,
+        net_delta_raw
+    FROM `dbt`.`int_execution_tokens_address_diffs_daily`
+    WHERE date < today()
+      
+        
+  
+    
+      
+    
+
+   AND 
+    toStartOfMonth(toStartOfDay(date)) >= (
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+    )
+    AND toStartOfDay(date) >= (
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+    )
+  
+
+      
+      
+      
+      
+),
+
+overall_max_date AS (
+    SELECT 
+        --max(date) AS max_date
+     
+    SELECT max(toDate(date)) FROM `dbt`.`int_execution_tokens_address_diffs_daily`
+     AS max_date
+    FROM deltas
+),
+
+
+current_partition AS (
+    SELECT 
+        max(toStartOfMonth(date)) AS month
+        ,max(date)  AS max_date
+    FROM `dbt`.`int_execution_tokens_balances_daily`
+    WHERE 1
+      
+      
+),
+prev_balances AS (
+    SELECT 
+        t1.token_address,
+        t1.symbol,
+        t1.token_class,
+        t1.address,
+        t1.balance_raw
+    FROM `dbt`.`int_execution_tokens_balances_daily` t1
+    CROSS JOIN current_partition t2
+    WHERE 
+        t1.date = t2.max_date
+        
+        
+),
+
+keys AS (
+    SELECT DISTINCT 
+        token_address,
+        symbol,
+        token_class,
+        address
+    FROM (
+        SELECT
+            token_address,
+            symbol,
+            token_class,
+            address
+        FROM prev_balances
+
+        UNION ALL
+
+        SELECT
+            token_address,
+            symbol,
+            token_class,
+            address
+        FROM deltas
+    )
+),
+
+calendar AS (
+    SELECT
+        k.token_address,
+        k.symbol,
+        k.token_class,
+        k.address,
+        addDays(cp.max_date + 1, offset) AS date
+    FROM keys k
+    CROSS JOIN current_partition cp
+    CROSS JOIN overall_max_date o
+    ARRAY JOIN range(
+        dateDiff('day', cp.max_date, o.max_date)
+    ) AS offset
+),
+
+
+
+
+balances AS (
+    SELECT
+        c.date AS date,
+        c.token_address AS token_address,
+        c.symbol AS symbol,
+        c.token_class AS token_class,
+        c.address AS address,
+
+        sum(COALESCE(d.net_delta_raw,toInt256(0))) OVER (
+            PARTITION BY c.token_address, c.address
+            ORDER BY c.date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )
+        
+            + coalesce(p.balance_raw, toInt256(0)) 
+        
+        AS balance_raw
+    FROM calendar c
+    LEFT JOIN deltas d
+      ON d.token_address = c.token_address
+     AND d.address       = c.address
+     AND d.date          = c.date
+    
+    LEFT JOIN prev_balances p
+      ON p.token_address = c.token_address
+     AND p.address       = c.address
+    
+),
+
+prices AS (
+    SELECT
+        p.date
+        ,p.symbol
+        ,t.decimals
+        ,p.price
+    FROM `dbt`.`int_execution_token_prices_daily` p
+    INNER JOIN `dbt`.`tokens_whitelist` t
+        ON upper(p.symbol) = upper(t.symbol)
+    WHERE date < today()
+      
+        
+  
+    
+      
+    
+
+   AND 
+    toStartOfMonth(toStartOfDay(date)) >= (
+      SELECT max(toStartOfMonth(x1.date))
+      FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+    )
+    AND toStartOfDay(date) >= (
+      SELECT max(toStartOfDay(x2.date, 'UTC'))
+      FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+    )
+  
+
+      
+      
+      
+),
+
+final AS (
+    SELECT
+        b.date AS date,
+        b.token_address AS token_address,
+        b.symbol AS symbol,
+        b.token_class AS token_class,
+        b.address AS address,
+        b.balance_raw AS balance_raw,
+        b.balance_raw/POWER(10,p.decimals) AS balance,
+        balance * p.price AS balance_usd
+    FROM balances b
+    LEFT JOIN prices p
+      ON p.date = b.date
+     AND upper(p.symbol) = upper(b.symbol)
+    WHERE b.balance_raw != 0
+)
+
+SELECT
+    date,
+    token_address,
+    symbol,
+    token_class,
+    address,
+    balance_raw,
+    balance,
+    balance_usd
+FROM final

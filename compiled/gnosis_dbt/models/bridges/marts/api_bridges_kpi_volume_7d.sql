@@ -1,4 +1,5 @@
 
+
 SELECT
   round(vol_7d, 2)        AS value,
   round(vol_prev_7d, 2)   AS prev_value,
