@@ -2,68 +2,127 @@ version: 2
 models:
 
 - name: int_execution_tokens_address_diffs_daily
-  description: '"Balance changes for accounts caused by each transaction."'
+  description: This model calculates daily net address-level token transfer deltas, capturing inflows and outflows for each address to support analysis of token movement patterns and address activity over time.
   columns:
+
   - name: date
-    description: Height of the block.
-    data_type: UInt32
+    description: The specific calendar date for the recorded token transfer net delta.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: token_address
-    description: Address of the account whose balance changed.
+    description: The lowercase hexadecimal address of the token involved in the transfer.
     data_type: String
+
   - name: symbol
-    description: Symbol of the token.
+    description: The token's symbol, representing its identifier in a human-readable format.
     data_type: String
+
+  - name: AS
+    description: The recipient address in the transfer, stored in lowercase, representing the address receiving tokens.
+    data_type: ''
+
   - name: token_class
     description: Class of the token.
     data_type: String
+
   - name: address
     description: Account address whose balance changed.
     data_type: String
+
   - name: net_delta
     description: Net change in the account balance.
     data_type: Float64
   config:
     access: public
+    tags:
+    - dev
+    - execution
+    - tokens
+    - address_deltas
+    materialized: incremental
   meta:
-    owner: null
+    owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.808910'
+    _generated_fields:
+    - meta.owner
+    - description
+    - columns.token_address.description
+    - columns.AS.data_type
+    - columns.symbol.data_type
+    - columns.date.description
+    - columns.AS.description
+    - config.tags
+    - config.materialized
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date.data_type
+
 - name: int_execution_tokens_balances_daily
-  description: '"Balance changes for accounts caused by each transaction. Daily aggregation of token balances for execution layer."'
+  description: The int_execution_tokens_balances_daily model tracks the daily balances of tokens for various addresses, incorporating net delta changes to maintain an up-to-date view of token holdings over time.
   columns:
+
   - name: date
-    description: Date of the balance change.
-    data_type: DateTime
+    description: The specific date for which the token balances are recorded, representing a daily snapshot.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: token_address
-    description: Address of the token.
+    description: The blockchain address of the token contract associated with the balance.
     data_type: String
+
+  - name: symbol
+    description: The token's symbol, serving as a human-readable identifier.
+    data_type: String
+
+  - name: token_class
+    description: The classification or category of the token, such as ERC20 or other types.
+    data_type: String
+
   - name: address
-    description: Account address whose balance changed.
+    description: The blockchain address holding the token balance.
     data_type: String
+
+  - name: net_delta_raw
+    description: The raw net change in token quantity for the address on the given date, measured in token units.
+    data_type: Float64
+
   - name: from_value_binary
     description: Balance before change as 32-byte binary.
     data_type: String
+
   - name: from_value_string
     description: Balance before change as decimal string.
     data_type: String
+
   - name: from_value_f64
     description: Balance before change as floating-point ether.
     data_type: Float64
+
   - name: to_value_binary
     description: Balance after change as 32-byte binary.
     data_type: String
+
   - name: to_value_string
     description: Balance after change as decimal string.
     data_type: String
+
   - name: to_value_f64
     description: Balance after change as floating-point ether.
     data_type: Float64
+
   - name: chain_id
     description: EVM chain identifier.
     data_type: UInt64
+
   - name: block_timestamp
     description: UTC timestamp of the enclosing block.
     data_type: DateTime64(0, 'UTC')
+
   - name: insert_version
     description: Monotonic ingestion version (nanoseconds).
     data_type: UInt64
@@ -71,7 +130,7 @@ models:
     materialized: incremental
     unique_key: (date, token_address, address)
     tags:
-    - production
+    - dev
     - execution
     - tokens
     - balances_daily
@@ -79,44 +138,78 @@ models:
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.809006'
+    _generated_fields:
+    - columns.token_address.description
+    - description
+    - columns.token_class.data_type
+    - columns.address.description
+    - columns.symbol.data_type
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.net_delta_raw.data_type
+    - columns.address.data_type
+    - columns.net_delta_raw.description
+    - columns.token_class.description
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date.data_type
+
 - name: int_execution_tokens_transfers_daily
-  description: '"Value (XDAI) transfers decoded from transactions aggregated daily."'
+  description: The int_execution_tokens_transfers_daily model aggregates daily transfer metrics for tokens, providing insights into token transfer volumes, counts, and user activity for analytics and reporting purposes.
   columns:
+
   - name: date
-    description: Date of the transfer.
-    data_type: DateTime
+    description: The date of the transfer data, representing the day for which metrics are aggregated.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: token_address
-    description: Address of the token contract.
+    description: The lowercase blockchain address of the token involved in transfers.
     data_type: String
+
   - name: symbol
-    description: Symbol of the token.
+    description: The token's symbol, representing its identifier in the ecosystem.
     data_type: String
+
+  - name: AS
+    description: The alias used for the symbol column in the SQL query, representing the token's symbol.
+    data_type: ''
+
   - name: token_class
     description: Class of the token.
     data_type: String
+
   - name: volume_token
     description: Total volume of tokens transferred.
     data_type: Float64
+
   - name: volume_usd
     description: Total volume in USD.
     data_type: Float64
+
   - name: transfer_count
     description: Number of transfers.
     data_type: UInt64
+
   - name: ua_bitmap_state
     description: Bitmap state of user agents.
     data_type: String
+
   - name: active_senders
     description: Number of unique senders.
     data_type: UInt64
+
   - name: unique_receivers
     description: Number of unique receivers.
     data_type: UInt64
   config:
     access: public
     tags:
-    - production
+    - dev
     - execution
     - tokens
     - transfers_daily
@@ -124,49 +217,79 @@ models:
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.809071'
+    _generated_fields:
+    - columns.token_address.description
+    - description
+    - columns.AS.data_type
+    - columns.symbol.data_type
+    - columns.date.description
+    - columns.AS.description
+    - config.tags
+    - config.materialized
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date.data_type
+
 - name: int_execution_tokens_value_daily
-  description: '"Value of execution tokens on a daily basis, including supply, holders, price, and transaction details."'
+  description: The int_execution_tokens_value_daily model aggregates daily supply and holder data for tokens, enabling analysis of token circulation and distribution trends over time.
   columns:
+
   - name: date
-    description: Date of the data entry.
-    data_type: DateTime
+    description: The specific date for which the token data is recorded, represented as a date type.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: token_address
-    description: Address of the token.
+    description: The unique blockchain address identifying the token, stored as a string.
     data_type: String
+
   - name: symbol
-    description: Symbol of the token.
+    description: The token's trading symbol or abbreviation, represented as a string.
     data_type: String
+
   - name: token_class
-    description: Class of the token.
+    description: The classification or category of the token, such as governance or utility, stored as a string.
     data_type: String
+
   - name: supply
-    description: Total supply of the token.
+    description: The total circulating supply of the token on the given date, measured in token units.
     data_type: Float64
+
   - name: holders
-    description: Number of unique holders.
-    data_type: Int64
+    description: The number of unique addresses holding a positive balance of the token on the given date.
+    data_type: UInt64
+
   - name: price_usd
     description: Price of the token in USD.
     data_type: Float64
+
   - name: value_usd
     description: Total value of the token in USD.
     data_type: Float64
+
   - name: volume_token
     description: Volume of the token.
     data_type: String
+
   - name: volume_usd
     description: Volume of the token in USD.
     data_type: String
+
   - name: transfer_count
     description: Number of transfers.
     data_type: String
+
   - name: ua_bitmap_state
     description: UA bitmap state.
     data_type: String
+
   - name: active_senders
     description: Number of active senders.
     data_type: String
+
   - name: unique_receivers
     description: Number of unique receivers.
     data_type: String
@@ -174,7 +297,7 @@ models:
     materialized: incremental
     unique_key: (date, token_address)
     tags:
-    - production
+    - dev
     - execution
     - tokens
     - value_daily
@@ -182,4 +305,21 @@ models:
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.809162'
+    _generated_fields:
+    - columns.token_address.description
+    - description
+    - columns.token_class.data_type
+    - columns.symbol.data_type
+    - columns.holders.data_type
+    - columns.date.description
+    - columns.supply.description
+    - config.tags
+    - config.materialized
+    - columns.holders.description
+    - columns.supply.data_type
+    - columns.token_class.description
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date.data_type

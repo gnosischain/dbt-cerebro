@@ -4,17 +4,20 @@ models:
 - name: execution_state_size_diff_daily
   description: Daily summary of execution state size differences, including bytes diff per address and date.
   columns:
+
   - name: address
     description: Ethereum address (20-byte hex string) involved in the size diff.
     data_type: String
     tests:
     - not_null
     - unique
+
   - name: date
     description: Date for which the size difference is calculated, in UTC.
     data_type: DateTime
     tests:
     - not_null
+
   - name: bytes_diff
     description: Sum of size difference in bytes for the address on the given date.
     data_type: Int64
@@ -29,15 +32,20 @@ models:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
+
 - name: int_execution_state_size_full_diff_daily
-  description: Daily snapshot of execution state size differences, aggregated by date, to monitor changes in storage size.
+  description: This model calculates the daily net change in storage size for execution states by aggregating storage diffs, supporting incremental updates for performance analysis.
   columns:
+
   - name: date
-    description: Date representing the start of the day for which the size difference is calculated.
-    data_type: DateTime
+    description: The specific day for which the storage size difference is calculated, truncated to the start of the day.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: bytes_diff
-    description: Sum of byte size differences for storage over the day (signed integer, in bytes).
-    data_type: Int64
+    description: The net change in storage size in bytes for the day, where positive indicates an increase and negative indicates a decrease.
+    data_type: UInt64
   config:
     access: public
     tags:
@@ -45,8 +53,17 @@ models:
     - execution
     - state
     - size
-    materialized: table
+    materialized: incremental
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.768350'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.bytes_diff.description
+    - config.tags
+    - config.materialized
+    - columns.bytes_diff.data_type
+    - columns.date.data_type

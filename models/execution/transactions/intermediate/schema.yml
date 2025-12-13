@@ -2,155 +2,262 @@ version: 2
 models:
 
 - name: int_execution_transactions_info_daily
-  description: Business-facing summary of daily transaction execution data, including counts, values, fees, and related metrics aggregated per day and transaction type.
+  description: The `int_execution_transactions_info_daily` model aggregates daily transaction data from the execution layer, providing insights into transaction counts, success rates, gas consumption, and value metrics for analysis and reporting.
   columns:
+
   - name: block_timestamp
-    description: UTC timestamp of the block (materialized from `timestamp` in source).
-    data_type: DateTime
+    description: The exact timestamp when the transaction was recorded on the blockchain.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: date
-    description: Date derived from `block_timestamp` for daily aggregation.
+    description: The date (YYYY-MM-DD) extracted from `block_timestamp`, used for daily aggregation.
     data_type: Date
+    tests:
+    - not_null
+
   - name: transaction_type
-    description: Type of transaction (e.g., legacy, EIP-1559, access list).
+    description: The category or type of transaction, represented as a string.
     data_type: String
+
   - name: success
-    description: Indicator if transaction succeeded (1) or reverted (0).
+    description: Indicator (0 or 1) denoting whether the transaction was successful.
     data_type: UInt8
+
+  - name: value_native
+    description: The transaction value in native token units (xDai), expressed as a float with decimal precision.
+    data_type: Float64
+
+  - name: gas_used
+    description: The total amount of gas units consumed by the transaction, as a float.
+    data_type: UInt64
+
+  - name: gas_price
+    description: The gas price paid per gas unit in wei, represented as a float.
+    data_type: UInt64
+
   - name: n_txs
     description: Total number of transactions of this type on the day.
     data_type: UInt64
+
   - name: xdai_value
     description: Sum of transaction values in native units (XDAI).
     data_type: Float64
+
   - name: xdai_value_avg
     description: Average transaction value in native units.
     data_type: Float64
+
   - name: xdai_value_median
     description: Median transaction value in native units.
     data_type: Float64
-  - name: gas_used
-    description: Total gas used by transactions of this type.
-    data_type: Float64
+
   - name: gas_price_avg
     description: Average gas price in Gwei.
     data_type: Float64
+
   - name: gas_price_median
     description: Median gas price in Gwei.
     data_type: Float64
+
   - name: fee_native_sum
     description: Total fee paid in native units (XDAI).
     data_type: Float64
+
   - name: fee_usd_sum
     description: Total fee in USD, calculated using price data.
     data_type: Float64
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - transactions
-    materialized: table
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
-- name: int_execution_transactions_by_project_daily
-  description: Aggregated daily transaction data grouped by project and sector, including counts, gas usage, fees, and sector information for business analysis.
-  columns:
-  - name: date
-    description: The date of the transactions, formatted as DateTime.
-    data_type: DateTime
-  - name: project
-    description: The project name associated with the transactions.
-    data_type: String
-  - name: sector
-    description: The sector classification of the project.
-    data_type: String
-  - name: tx_count
-    description: Total number of transactions for the project on the given date.
-    data_type: UInt64
-  - name: ua_bitmap_state
-    description: Bitmap state representing unique addresses involved in transactions.
-    data_type: String
-  - name: gas_used_sum
-    description: Sum of gas used across all transactions, in native units.
-    data_type: Float64
-  - name: fee_native_sum
-    description: Total fees paid in native tokens (wei converted to GNO/XDAI).
-    data_type: Float64
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.877674'
+    _generated_fields:
+    - description
+    - columns.value_native.description
+    - columns.transaction_type.data_type
+    - columns.date.description
+    - columns.gas_price.data_type
+    - config.tags
+    - config.materialized
+    - columns.gas_used.description
+    - columns.success.data_type
+    - columns.block_timestamp.data_type
+    - columns.block_timestamp.description
+    - columns.transaction_type.description
+    - columns.value_native.data_type
+    - columns.success.description
+    - columns.gas_used.data_type
+    - columns.gas_price.description
+    - columns.date.data_type
   config:
-    access: public
-    materialized: incremental
     tags:
     - production
     - execution
     - transactions
+    materialized: incremental
+
+- name: int_execution_transactions_by_project_daily
+  description: This model aggregates daily execution transaction data by project, providing insights into transaction volume, user engagement, and fees associated with each project over time.
+  columns:
+
+  - name: address
+    description: The blockchain address associated with the crawler label, used for linking transaction data to project labels.
+    data_type: String
+
+  - name: project
+    description: The name or identifier of the project associated with the transaction, defaulting to 'Unknown' if not specified.
+    data_type: String
+
+  - name: sector
+    description: The business sector or category assigned to the project, with 'Unknown' used when sector information is missing.
+    data_type: String
+
+  - name: date
+    description: The date of the transactions, formatted as DateTime.
+    data_type: DateTime
+
+  - name: tx_count
+    description: Total number of transactions for the project on the given date.
+    data_type: UInt64
+
+  - name: ua_bitmap_state
+    description: Bitmap state representing unique addresses involved in transactions.
+    data_type: String
+
+  - name: gas_used_sum
+    description: Sum of gas used across all transactions, in native units.
+    data_type: Float64
+
+  - name: fee_native_sum
+    description: Total fees paid in native tokens (wei converted to GNO/XDAI).
+    data_type: Float64
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.877455'
+    _generated_fields:
+    - description
+    - columns.address.description
+    - columns.project.description
+    - columns.sector.description
+    - config.tags
+    - config.materialized
+    - columns.sector.data_type
+    - columns.project.data_type
+    - columns.address.data_type
+  config:
+    tags:
+    - production
+    - execution
+    - transactions
+    materialized: incremental
+
 - name: int_execution_transactions_by_project_hourly_recent
-  description: Aggregated transaction data grouped by project and hour for recent periods, including sector information and transaction counts, active accounts, and fees.
+  description: This model aggregates hourly execution transaction data by project for the recent two-day period, providing insights into transaction volume, active accounts, and associated fees for business analysis.
   columns:
+
+  - name: address
+    description: The blockchain address associated with a transaction, used for label mapping.
+    data_type: String
+
+  - name: project
+    description: The name of the project associated with the transaction, or 'Unknown' if not labeled.
+    data_type: String
+
+  - name: sector
+    description: The sector classification of the project, or 'Unknown' if not labeled.
+    data_type: String
+
   - name: hour
     description: The start of the hour period for the aggregated data.
     data_type: DateTime
-  - name: project
-    description: The project associated with the transactions; defaults to 'Unknown' if missing.
-    data_type: String
-  - name: sector
-    description: Sector classification for the project; defaults to 'Unknown' if missing.
-    data_type: String
+
   - name: tx_count
     description: Total number of transactions in the hour for the project.
     data_type: UInt64
+
   - name: active_accounts
     description: Count of distinct active sender addresses during the hour.
     data_type: UInt64
+
   - name: ua_bitmap_state
     description: Bitmap state representing unique active addresses for the project.
     data_type: String
+
   - name: fee_native_sum
     description: Sum of gas used multiplied by gas price, converted to native units (e.g., ETH).
     data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.877540'
+    _generated_fields:
+    - description
+    - columns.address.description
+    - columns.project.description
+    - columns.sector.description
+    - config.tags
+    - config.materialized
+    - columns.sector.data_type
+    - columns.project.data_type
+    - columns.address.data_type
   config:
-    access: public
-    materialized: table
     tags:
     - production
     - execution
     - transactions
     - hourly
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: table
+
 - name: int_execution_transactions_by_project_alltime_state
-  description: Aggregated state of execution transactions by project over all time, including transaction counts, fees, and bitmap states, grouped by project and month.
+  description: This model aggregates execution transaction data by project and month, providing insights into transaction volume, fees, and user activity for comprehensive project-level analysis over time.
   columns:
-  - name: project
-    description: Identifier of the project associated with the transactions.
-    data_type: String
+
   - name: month
-    description: The start of the month for the aggregated data (UTC).
-    data_type: DateTime
-  - name: txs_state
-    description: Sum of transaction counts state (aggregated).
-    data_type: UInt64
-  - name: fee_state
-    description: Sum of fee native sum state (aggregated).
-    data_type: UInt64
-  - name: aa_state
-    description: Merged bitmap state representing user activity.
+    description: The start date of the month for which the aggregated data is calculated, formatted as a date.
+    data_type: DateTime64
+
+  - name: project
+    description: Identifier for the project associated with the transaction data.
     data_type: String
+
+  - name: txs_state
+    description: The total number of transactions for the project within the month, represented as a summed state value.
+    data_type: UInt64
+
+  - name: fee_state
+    description: The total sum of native fees associated with transactions for the project in the month, measured in the native currency units.
+    data_type: Float64
+
+  - name: aa_state
+    description: A bitmap representing unique active users or accounts involved in transactions for the project during the month.
+    data_type: String
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.877262'
+    _generated_fields:
+    - description
+    - columns.project.description
+    - columns.fee_state.data_type
+    - columns.aa_state.data_type
+    - columns.txs_state.description
+    - columns.month.description
+    - config.tags
+    - config.materialized
+    - columns.txs_state.data_type
+    - columns.aa_state.description
+    - columns.project.data_type
+    - columns.month.data_type
+    - columns.fee_state.description
   config:
-    access: public
     tags:
     - production
     - execution
     - transactions
     materialized: incremental
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer

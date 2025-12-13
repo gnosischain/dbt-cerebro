@@ -2,29 +2,49 @@ version: 2
 models:
 
 - name: int_execution_transfers_whitelisted_daily
-  description: Value (XDAI) transfers decoded from transactions, with daily aggregation.
+  description: The `int_execution_transfers_whitelisted_daily` model aggregates daily whitelisted token transfer data, including deposits, withdrawals, and transfers involving specific tokens, to support analysis of token movement activity within a defined time range.
   columns:
+
+  - name: token_address
+    description: The lowercase hexadecimal address identifying the token involved in the transfer.
+    data_type: String
+
+  - name: decimals
+    description: The number of decimal places used by the token, indicating its divisibility.
+    data_type: UInt64
+
+  - name: symbol
+    description: The ticker symbol representing the token, e.g., 'USDT'.
+    data_type: String
+
+  - name: date_start
+    description: The start date when the token was added to the whitelist.
+    data_type: Date
+
+  - name: date_end
+    description: The end date when the token was removed from the whitelist, if applicable.
+    data_type: Date
+
   - name: date
     description: Date of the transfer.
     data_type: DateTime
-  - name: token_address
-    description: Address of the token.
-    data_type: String
-  - name: symbol
-    description: Symbol of the token.
-    data_type: String
+
   - name: from
     description: Sender address.
     data_type: String
+
   - name: to
     description: Recipient address.
     data_type: String
+
   - name: amount
     description: Amount of the token transferred.
     data_type: Float64
+
   - name: amount_usd
     description: Amount in USD.
     data_type: Float64
+
   - name: transfer_count
     description: Number of transfers.
     data_type: String
@@ -33,7 +53,7 @@ models:
     unique_key: (date, token_address, "from", "to")
     partition_by: toStartOfMonth(date)
     tags:
-    - production
+    - dev
     - execution
     - transfers
     - erc20
@@ -43,49 +63,95 @@ models:
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.136114'
+    _generated_fields:
+    - columns.token_address.description
+    - description
+    - columns.decimals.data_type
+    - columns.symbol.data_type
+    - columns.date_end.data_type
+    - columns.decimals.description
+    - config.tags
+    - config.materialized
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date_start.data_type
+    - columns.date_end.description
+    - columns.date_start.description
+
 - name: int_execution_transfers_whitelisted_raw
-  description: Value (XDAI) transfers decoded from transactions. This model contains information about XDAI transfers decoded from transactions, including block number, block timestamp, transaction index, transfer index, transaction hash, sender address, recipient address, transfer value as binary, decimal string, and floating-point ether, EVM chain identifier, and monotonic ingestion version.
+  description: This dbt model processes and enriches whitelisted ERC20 token transfer logs, integrating token metadata and price data to facilitate detailed transfer analysis within a specified date range.
   columns:
+
+  - name: token_address
+    description: Lowercase hexadecimal address of the token contract associated with the transfer.
+    data_type: String
+
+  - name: token_address_raw
+    description: Hexadecimal token address without the '0x' prefix, used for join operations.
+    data_type: String
+
+  - name: decimals
+    description: Number of decimal places the token uses, indicating token divisibility.
+    data_type: Int64
+
+  - name: symbol
+    description: Token symbol in its original case, representing the token's identifier.
+    data_type: String
+
+  - name: symbol_upper
+    description: Uppercase version of the token symbol for standardized comparisons.
+    data_type: String
+
+  - name: date_start
+    description: Start date when the token was whitelisted, indicating its valid trading period.
+    data_type: Date
+
+  - name: date_end
+    description: End date when the token was delisted or no longer whitelisted.
+    data_type: Date
+
   - name: block_number
     description: Height of the block.
     data_type: UInt32
+
   - name: block_timestamp
     description: UTC timestamp of the enclosing block.
     data_type: DateTime64(0, 'UTC')
+
   - name: transaction_index
     description: Index of the transaction within the block.
     data_type: UInt32
+
   - name: log_index
     description: Zero-based index of the log within the receipt.
     data_type: UInt32
+
   - name: transaction_hash
     description: Transaction hash.
     data_type: String
+
   - name: from
     description: Sender address.
     data_type: String
+
   - name: to
     description: Recipient address.
     data_type: String
-  - name: token_address
-    description: Token address.
-    data_type: String
-  - name: symbol
-    description: Token symbol.
-    data_type: String
-  - name: decimals
-    description: Decimals for the token.
-    data_type: UInt32
+
   - name: amount
     description: Transfer amount as floating-point ether.
     data_type: Float64
+
   - name: price
     description: Price information.
     data_type: Float64
+
   - name: amount_usd
     description: Amount in USD.
     data_type: Float64
+
   - name: value_raw
     description: Raw value.
     data_type: String
@@ -107,4 +173,23 @@ models:
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.136219'
+    _generated_fields:
+    - columns.token_address.description
+    - description
+    - columns.decimals.data_type
+    - columns.token_address_raw.description
+    - columns.symbol.data_type
+    - columns.symbol_upper.description
+    - columns.decimals.description
+    - columns.date_end.data_type
+    - config.tags
+    - config.materialized
+    - columns.token_address.data_type
+    - columns.symbol.description
+    - columns.date_start.data_type
+    - columns.symbol_upper.data_type
+    - columns.date_end.description
+    - columns.date_start.description
+    - columns.token_address_raw.data_type

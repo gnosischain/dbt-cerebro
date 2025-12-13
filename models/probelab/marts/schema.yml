@@ -2,116 +2,25 @@ version: 2
 models:
 
 - name: api_probelab_clients_cloud_daily
-  description: Daily aggregated data on cloud clients, including counts and provider info, derived from crawlers.
+  description: The `api_probelab_clients_cloud_daily` view aggregates daily counts of crawler instances by client type and cloud provider, supporting operational monitoring and capacity planning for Probelab clients.
   columns:
+
   - name: date
-    description: The start of the day for the aggregated data, in UTC.
-    data_type: DateTime
+    description: The date representing the start of the day for the aggregated data, in UTC.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: client
-    description: The client version type associated with the data.
+    description: The version type of the client agent, indicating different client categories or versions.
     data_type: String
+
   - name: cloud
-    description: The cloud provider name.
+    description: The cloud provider where the crawler instances are hosted, such as AWS, GCP, or Azure.
     data_type: String
+
   - name: value
-    description: Count of clients for the given day, provider, and client type.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - probelab
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_probelab_clients_country_daily
-  description: Daily aggregated data on Probelab clients by country, including client type and date.
-  columns:
-  - name: date
-    description: The start of the day for the data point, in UTC.
-    data_type: DateTime
-  - name: client
-    description: Client version type identifier.
-    data_type: String
-  - name: country
-    description: Country code or name.
-    data_type: String
-  - name: value
-    description: Count of clients for the given date, client, and country.
-    data_type: UInt32
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - probelab
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_probelab_clients_daily
-  description: Daily aggregated data on Probelab clients, including the maximum crawl creation date, client version type, and the aggregated value of a specific metric.
-  columns:
-  - name: date
-    description: The start of the day for the crawl data, representing the date of aggregation.
-    data_type: DateTime
-  - name: client
-    description: The client version type associated with the data.
-    data_type: String
-  - name: value
-    description: Aggregated metric value (integer), representing the sum or count as per the query.
-    data_type: UInt64
-  config:
-    access: public
-    tags:
-    - production
-    - probelab
-    materialized: view
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_probelab_clients_quic_daily
-  description: Daily aggregated data on QUIC support, client version types, and related metrics derived from crawlers data, used for monitoring and analysis.
-  columns:
-  - name: date
-    description: Date representing the start of the day for the aggregated data (UTC).
-    data_type: DateTime
-  - name: client
-    description: Client version type identifier.
-    data_type: String
-  - name: quic
-    description: Support status for QUIC protocol (e.g., 'supported', 'not supported').
-    data_type: String
-  - name: value
-    description: Count of records for the given date, client, and QUIC support status.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - probelab
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-- name: api_probelab_clients_version_daily
-  description: Daily aggregated data of API probelab clients, including version, client type, and count of occurrences, ordered by date.
-  columns:
-  - name: date
-    description: Date representing the start of the day for the aggregated data.
-    data_type: DateTime
-  - name: client
-    description: Type of client agent.
-    data_type: String
-  - name: version
-    description: Semantic version string of the client.
-    data_type: String
-  - name: value
-    description: Count of occurrences for the given date, client, and version.
+    description: The integer count of crawler instances for the given date, client, and cloud, representing daily activity.
     data_type: Int32
   config:
     access: public
@@ -119,7 +28,204 @@ models:
     tags:
     - production
     - probelab
+    - clients
+    - tier1
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.428063'
+    _generated_fields:
+    - columns.client.description
+    - description
+    - columns.client.data_type
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.cloud.description
+    - columns.cloud.data_type
+    - columns.date.data_type
+
+- name: api_probelab_clients_country_daily
+  description: The api_probelab_clients_country_daily model aggregates daily crawler data to track client activity across different countries, supporting operational and analytical insights.
+  columns:
+
+  - name: date
+    description: The date representing the day of the data aggregation, truncated to the start of the day.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: client
+    description: The version type of the client agent, indicating different client categories or versions.
+    data_type: String
+
+  - name: country
+    description: The country code associated with the client activity, representing geographic location.
+    data_type: String
+
+  - name: value
+    description: The integer count of crawler instances or activities for the specified date, client, and country.
+    data_type: Int32
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - probelab
+    - clients
+    - tier1
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.428118'
+    _generated_fields:
+    - columns.client.description
+    - description
+    - columns.country.description
+    - columns.client.data_type
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.country.data_type
+    - columns.date.data_type
+
+- name: api_probelab_clients_daily
+  description: The api_probelab_clients_daily model aggregates daily maximum crawl creation dates and agent version types for Probelab clients, providing insights into client activity and agent version distribution over time.
+  columns:
+
+  - name: date
+    description: The start of the day for which the data is aggregated, representing the date of maximum crawl creation.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: client
+    description: The type of agent version used by the client, indicating the client category or version type.
+    data_type: String
+
+  - name: value
+    description: The integer count of total crawls, floored to the nearest whole number, representing activity volume per client per day.
+    data_type: Int32
+  config:
+    access: public
+    tags:
+    - production
+    - probelab
+    - clients
+    - tier1
+    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: schema-writer
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.428157'
+    _generated_fields:
+    - columns.client.description
+    - description
+    - columns.client.data_type
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.date.data_type
+
+- name: api_probelab_clients_quic_daily
+  description: This view aggregates daily counts of Probelab clients' support for the QUIC protocol, aiding in monitoring client adoption trends over time.
+  columns:
+
+  - name: date
+    description: The day on which the data was aggregated, representing the start of the day in UTC.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: client
+    description: The version type of the client agent, indicating different client categories or versions.
+    data_type: String
+
+  - name: quic
+    description: A boolean or categorical indicator of whether QUIC support is enabled for the client.
+    data_type: String
+
+  - name: value
+    description: The count of crawler instances supporting or associated with the specified client and QUIC status on the given date.
+    data_type: UInt64
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - probelab
+    - clients
+    - tier1
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.428200'
+    _generated_fields:
+    - columns.client.description
+    - description
+    - columns.quic.description
+    - columns.client.data_type
+    - columns.date.description
+    - columns.quic.data_type
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.date.data_type
+
+- name: api_probelab_clients_version_daily
+  description: The api_probelab_clients_version_daily model aggregates daily counts of unique client agent versions to monitor version distribution and updates over time for Probelab clients.
+  columns:
+
+  - name: date
+    description: The day on which the data was aggregated, representing the start of the day in UTC.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: client
+    description: The type of client agent version, indicating the category or source of the agent.
+    data_type: String
+
+  - name: version
+    description: The semantic version string of the client agent, following semantic versioning conventions.
+    data_type: String
+
+  - name: value
+    description: The integer count of client instances with the specified version on the given date.
+    data_type: Int32
+  config:
+    access: public
+    materialized: view
+    tags:
+    - production
+    - probelab
+    - clients
+    - tier1
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.428242'
+    _generated_fields:
+    - columns.client.description
+    - description
+    - columns.client.data_type
+    - columns.date.description
+    - columns.version.description
+    - config.tags
+    - config.materialized
+    - columns.value.description
+    - columns.value.data_type
+    - columns.version.data_type
+    - columns.date.data_type

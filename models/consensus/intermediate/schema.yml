@@ -4,431 +4,930 @@ models:
 - name: int_consensus_validators_balances_dist_daily
   description: Daily distribution of validator balances based on quantiles from the consensus layer.
   columns:
+
   - name: date
     description: Date representing the start of the day (UTC).
     data_type: DateTime
+
   - name: q05
     description: 5th percentile validator balance in Gwei.
     data_type: Float64
+
   - name: q10
     description: 10th percentile validator balance in Gwei.
     data_type: Float64
+
   - name: q25
     description: 25th percentile validator balance in Gwei.
     data_type: Float64
+
   - name: q50
     description: Median validator balance in Gwei.
     data_type: Float64
+
   - name: q75
     description: 75th percentile validator balance in Gwei.
     data_type: Float64
+
   - name: q90
     description: 90th percentile validator balance in Gwei.
     data_type: Float64
+
   - name: q95
     description: 95th percentile validator balance in Gwei.
     data_type: Float64
-  config:
-    access: public
-    tags:
-    - production
-    - consensus
-    - validators_balances
-    materialized: table
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
+
 - name: int_consensus_validators_status_daily
-  description: Daily aggregated status of consensus validators, including counts and statuses, derived from beacon chain data. Used for monitoring validator health and activity.
+  description: The int_consensus_validators_status_daily model aggregates daily counts of validators' statuses to monitor network health and validator activity trends over time.
   columns:
+
   - name: date
-    description: Date representing the start of the day (UTC) for the aggregated data.
-    data_type: DateTime
+    description: The date (at the start of the day) for which validator status counts are recorded.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: status
-    description: Validator status category (e.g., active, exited, slashed).
+    description: The current status of validators, such as 'active', 'pending', or 'exited'.
     data_type: String
+
   - name: cnt
-    description: Count of validators in the given status on the specified date.
+    description: The number of validators corresponding to each status on the given date.
     data_type: UInt64
+
   - name: total_validators
     description: Total number of validators considered in the daily snapshot.
     data_type: UInt64
+
   - name: active_validators
     description: Number of active validators on the given date.
     data_type: UInt64
+
   - name: exited_validators
     description: Number of exited validators on the given date.
     data_type: UInt64
+
   - name: slashed_validators
     description: Number of slashed validators on the given date.
     data_type: UInt64
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109998'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.status.description
+    - columns.status.data_type
+    - columns.cnt.data_type
+    - columns.cnt.description
+    - columns.date.data_type
   config:
-    access: public
-    materialized: table
     tags:
     - production
     - consensus
     - validators_status
+    materialized: incremental
+
+- name: int_consensus_attestations_daily
+  description: The int_consensus_attestations_daily model aggregates daily consensus attestations, providing insights into attestation activity and delays within the network.
+  columns:
+
+  - name: date
+    description: The date (at day granularity) when attestations were recorded, based on the start of the day from slot timestamps.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: inclusion_delay
+    description: The number of slots elapsed between the attestation slot and the inclusion slot, indicating delay in attestation inclusion.
+    data_type: UInt64
+
+  - name: cnt
+    description: The total count of attestations for the given date and inclusion delay.
+    data_type: UInt64
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
-- name: int_consensus_attestations_daily
-  description: Daily aggregated data of consensus attestations, including counts and delays, derived from beacon chain attestations.
-  columns:
-  - name: date
-    description: Date representing the start of the day for the aggregation.
-    data_type: DateTime
-  - name: inclusion_delay
-    description: Delay in slots between attestation slot and inclusion, measured in slots.
-    data_type: UInt64
-  - name: cnt
-    description: Count of attestations included on that date with the specified delay.
-    data_type: UInt64
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109364'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.cnt.data_type
+    - columns.inclusion_delay.description
+    - columns.inclusion_delay.data_type
+    - columns.cnt.description
+    - columns.date.data_type
   config:
-    access: public
-    materialized: table
     tags:
     - production
     - consensus
     - attestations
+    materialized: incremental
+
+- name: int_consensus_blob_commitments_daily
+  description: The `int_consensus_blob_commitments_daily` model aggregates daily counts of blob commitments from the consensus layer, supporting trend analysis and reporting.
+  columns:
+
+  - name: date
+    description: The start of each day (UTC) representing the aggregation date for blob commitments.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: cnt
+    description: The total number of blob commitments recorded on the given date.
+    data_type: UInt64
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
-- name: int_consensus_blob_commitments_daily
-  description: Daily aggregated data on consensus blob commitments, including commitment counts and timestamps.
-  columns:
-  - name: date
-    description: The day for which the commitments are aggregated, truncated from slot timestamp.
-    data_type: DateTime
-  - name: cnt
-    description: Total number of blob commitments recorded on this date.
-    data_type: UInt64
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109407'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.cnt.data_type
+    - columns.cnt.description
+    - columns.date.data_type
   config:
-    access: public
-    materialized: table
     tags:
     - production
     - consensus
     - blob_commitments
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: incremental
+
 - name: int_consensus_blocks_daily
-  description: Daily summary of consensus blocks including produced blocks and missed blocks count.
+  description: The int_consensus_blocks_daily model aggregates daily consensus block production metrics, including counts of blocks produced, blob commitments, and missed blocks, to monitor network performance over time.
   columns:
+
+  - name: genesis_time_unix
+    description: The Unix timestamp indicating the network's genesis (start) time, used as a reference point for time calculations.
+    data_type: UInt64
+
+  - name: seconds_per_slot
+    description: The duration of each consensus slot in seconds, used to determine block timing and missed blocks.
+    data_type: UInt64
+
   - name: date
     description: The day for which the summary is computed, in UTC.
     data_type: Date
+
   - name: blocks_produced
     description: Number of blocks produced on the given date.
     data_type: UInt64
+
   - name: blocks_missed
     description: Number of blocks missed on the given date.
     data_type: UInt64
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109443'
+    _generated_fields:
+    - description
+    - columns.seconds_per_slot.data_type
+    - config.tags
+    - config.materialized
+    - columns.genesis_time_unix.data_type
+    - columns.genesis_time_unix.description
+    - columns.seconds_per_slot.description
   config:
-    access: public
     tags:
     - production
     - consensus
     - blocks
-    materialized: table
+    materialized: incremental
+
+- name: int_consensus_credentials_daily
+  description: The int_consensus_credentials_daily model tracks the daily count of validator credentials by type, supporting analysis of credential usage trends over time.
+  columns:
+
+  - name: date
+    description: The specific day for which the credential counts are recorded, truncated to the start of the day.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: credentials_type
+    description: A 4-character prefix indicating the type of withdrawal credentials associated with validators.
+    data_type: String
+
+  - name: cnt
+    description: The total number of validators with the specified credentials type on the given date.
+    data_type: UInt64
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: schema-writer
-- name: int_consensus_credentials_daily
-  description: Daily aggregated data on consensus credentials, grouped by date and credentials type.
-  columns:
-  - name: date
-    description: Date of the aggregation, truncated to day.
-    data_type: DateTime
-  - name: credentials_type
-    description: First four characters of withdrawal credentials indicating credentials type.
-    data_type: String
-  - name: cnt
-    description: Count of records for the given date and credentials type.
-    data_type: UInt64
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109481'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.credentials_type.description
+    - columns.cnt.data_type
+    - columns.credentials_type.data_type
+    - columns.cnt.description
+    - columns.date.data_type
   config:
-    access: public
     tags:
     - production
     - consensus
     - credentials
-    materialized: table
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: incremental
+
 - name: int_consensus_deposits_daily
   description: Daily aggregated total deposits and count from consensus deposits, grouped by date.
   columns:
+
   - name: date
     description: Date truncated from slot_timestamp, representing the day.
     data_type: DateTime64(0, 'UTC')
+
   - name: total_amount
     description: Sum of deposit amounts in Gwei for the day.
     data_type: Float64
+
   - name: cnt
     description: Count of deposit records for the day.
     data_type: UInt64
-  config:
-    access: public
-    tags:
-    - production
-    - consensus
-    - deposits
-    materialized: incremental
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
+
 - name: int_consensus_entry_queue_daily
-  description: Daily aggregation of validator activation days and quantiles for consensus entry queue analysis.
+  description: This model provides daily aggregated insights into validator activation times within the consensus protocol, enabling monitoring of validator onboarding efficiency over time.
   columns:
+
+  - name: validator_index
+    description: Unique identifier for each validator in the network.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
   - name: date
-    description: Date representing the day of validator activation.
-    data_type: DateTime64(0, 'UTC')
+    description: The specific day for which the activation metrics are calculated, formatted as a date.
+    data_type: Date
+    tests:
+    - not_null
+
+  - name: epoch_eligibility
+    description: The epoch when the validator became eligible for activation.
+    data_type: UInt64
+
+  - name: epoch_activation
+    description: The epoch when the validator was actually activated.
+    data_type: UInt64
+
+  - name: activation_days
+    description: Number of days between eligibility and activation, calculated as (epoch_activation - epoch_eligibility) * 16 * 5 / (60 * 60 * 24).
+    data_type: UInt64
+
   - name: validator_count
     description: Total number of validators active on the date.
     data_type: UInt64
+
   - name: q05
     description: 5th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: q10
     description: 10th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: q25
     description: 25th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: q50
     description: Median activation_days for validators on the date.
     data_type: Float64
+
   - name: q75
     description: 75th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: q90
     description: 90th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: q95
     description: 95th percentile of activation_days for validators on the date.
     data_type: Float64
+
   - name: mean
     description: Average activation_days for validators on the date.
     data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109599'
+    _generated_fields:
+    - description
+    - columns.epoch_eligibility.description
+    - columns.epoch_eligibility.data_type
+    - columns.epoch_activation.data_type
+    - columns.validator_index.description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.activation_days.description
+    - columns.validator_index.data_type
+    - columns.epoch_activation.description
+    - columns.activation_days.data_type
+    - columns.date.data_type
   config:
-    access: public
-    materialized: table
     tags:
     - production
     - consensus
     - entry_queue
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: incremental
+
 - name: int_consensus_graffiti_daily
-  description: Daily aggregated data on graffiti detection and labeling, including platform, client, and label info for consensus layer analysis.
+  description: This model aggregates daily counts of graffiti entries on the blockchain, categorizing them by detected brands and clients to analyze consensus and platform usage trends.
   columns:
+
   - name: date
-    description: The date representing the start of the day (UTC) for the aggregated data.
-    data_type: DateTime
+    description: The specific day the graffiti data was recorded, truncated to the start of the day.
+    data_type: Date
+    tests:
+    - not_null
+
   - name: graffiti
-    description: Raw graffiti string from blocks, normalized for analysis.
+    description: Hexadecimal string representing the graffiti, with 'None' indicating absence of graffiti.
     data_type: String
+
+  - name: in
+    description: This column is not present in the provided SQL; no description available.
+    data_type: ''
+
+  - name: precedence
+    description: This column is not present in the provided SQL; no description available.
+    data_type: ''
+
+  - name: brands_found
+    description: List of detected brand keys present in the graffiti, used to identify platform brands.
+    data_type: Array(String)
+
+  - name: separator-agnostic
+    description: This column is not present in the provided SQL; no description available.
+    data_type: ''
+
+  - name: el_found
+    description: List of detected execution layer (EL) and client (CL) keys found in the graffiti.
+    data_type: Array(String)
+
+  - name: above
+    description: This column is not present in the provided SQL; no description available.
+    data_type: ''
+
+  - name: el_label
+    description: The human-readable label of the first detected execution layer client, based on priority.
+    data_type: String
+
   - name: label
-    description: Final label assigned based on platform, client, or default categories.
+    description: Final categorization label for the graffiti, prioritizing brand, then EL+CL combo, individual clients, or other.
     data_type: String
+
   - name: cnt
     description: Count of occurrences for the given graffiti label on the date.
     data_type: UInt64
+
   - name: g
     description: Lowercase UTF8 version of graffiti for search purposes.
     data_type: String
-  - name: brands_found
-    description: Array of brand keys detected in graffiti.
-    data_type: Array(String)
+
   - name: brand_label
     description: Human-readable brand name if detected.
     data_type: String
-  - name: el_found
-    description: Array of EL client keys detected in graffiti.
-    data_type: Array(String)
+
   - name: cl_found
     description: Array of CL client keys detected in graffiti.
     data_type: Array(String)
-  - name: el_label
-    description: Label of the first EL client found.
-    data_type: String
+
   - name: cl_label
     description: Label of the first CL client found.
     data_type: String
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109694'
+    _generated_fields:
+    - columns.above.description
+    - columns.date.description
+    - columns.graffiti.data_type
+    - config.tags
+    - columns.in.data_type
+    - columns.brands_found.description
+    - columns.el_found.data_type
+    - columns.el_label.description
+    - description
+    - columns.el_label.data_type
+    - columns.label.data_type
+    - columns.in.description
+    - columns.precedence.description
+    - columns.graffiti.description
+    - columns.date.data_type
+    - columns.label.description
+    - columns.brands_found.data_type
+    - columns.separator-agnostic.description
+    - config.materialized
+    - columns.separator-agnostic.data_type
+    - columns.precedence.data_type
+    - columns.el_found.description
+    - columns.above.data_type
   config:
-    access: public
     tags:
     - production
     - consensus
     - graffiti
-    materialized: table
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: incremental
+
 - name: int_consensus_validators_apy_daily
   description: Daily aggregated data on validator balances, deposits, withdrawals, and calculated APY for consensus validators.
   columns:
+
   - name: date
     description: The date representing the day of the record, in UTC.
     data_type: DateTime
+
   - name: balance
     description: Total validator balance in wei for the day.
     data_type: UInt64
+
   - name: balance_diff
     description: Difference in total validator balance compared to previous day, in wei.
     data_type: Int64
+
   - name: deposited_amount
     description: Total amount deposited on the day, in wei.
     data_type: UInt64
+
   - name: withdrawaled_amount
     description: Total amount withdrawn on the day, in wei.
     data_type: UInt64
+
   - name: deposited_amount_request
     description: Total deposited amount requested via execution requests, in wei.
     data_type: UInt64
+
   - name: withdrawaled_amount_request
     description: Total withdrawal amount requested via execution requests, in wei.
     data_type: UInt64
+
   - name: eff_balance_diff
     description: Effective balance change after deposits and withdrawals, in wei.
     data_type: Int64
+
   - name: rate
     description: Rate of change of balance relative to previous balance (unitless).
     data_type: Float64
+
   - name: apy
     description: Annual Percentage Yield calculated from rate, in percentage points.
     data_type: Float64
-  config:
-    access: public
-    materialized: table
-    tags:
-    - production
-    - consensus
-    - validators_apy
   meta:
     owner: analytics-team
     authoritative: false
     generated_by: schema-writer
+
 - name: int_consensus_validators_apy_dist
   description: Calculates the distribution of annual percentage yields (APY) for consensus validators, aggregated monthly. Uses validator rate data to compute quantiles of APY.
   columns:
+
   - name: date
     description: The first day of the month for which the APY distribution is calculated.
     data_type: DateTime64(0, 'UTC')
+
   - name: q05
     description: 5th percentile of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q10
     description: 10th percentile of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q25
     description: 25th percentile (first quartile) of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q50
     description: 50th percentile (median) of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q75
     description: 75th percentile (third quartile) of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q90
     description: 90th percentile of the validator APY distribution for the month.
     data_type: Float64
+
   - name: q95
     description: 95th percentile of the validator APY distribution for the month.
     data_type: Float64
-  config:
-    access: public
-    materialized: table
-    tags:
-    - production
-    - consensus
-    - validators_apy
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+
 - name: int_consensus_validators_balances_daily
-  description: Daily aggregated balances of consensus validators, including total balance and effective balance, derived from validator data.
+  description: The `int_consensus_validators_balances_daily` model aggregates daily total and effective balances of validators from the consensus layer, supporting historical balance analysis and reporting.
   columns:
+
   - name: date
-    description: Date representing the start of the day for the balance aggregation.
-    data_type: DateTime
+    description: The start of each day (UTC) for which validator balances are aggregated.
+    data_type: DateTime64
+    tests:
+    - not_null
+
   - name: balance
-    description: Total validator balance in Gwei for the day (sum of balances divided by 10^9).
-    data_type: Float64
+    description: The total sum of validator balances in ETH, expressed as a decimal, representing the combined balance at the start of each day.
+    data_type: UInt64
+
   - name: effective_balance
-    description: Sum of effective balances of validators in Gwei for the day.
-    data_type: Float64
+    description: The sum of validator effective balances in ETH, expressed as a decimal, indicating the active stake at the start of each day.
+    data_type: UInt64
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109731'
+    _generated_fields:
+    - description
+    - columns.effective_balance.description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.effective_balance.data_type
+    - columns.balance.data_type
+    - columns.balance.description
+    - columns.date.data_type
   config:
-    access: public
     tags:
     - production
     - consensus
     - validators_balances
-    materialized: table
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
+    materialized: incremental
+
 - name: int_consensus_withdrawls_dist_daily
   description: Daily distribution metrics of consensus withdrawals including quantiles, totals, and counts, aggregated by date.
   columns:
+
   - name: date
     description: Date representing the start of the day for withdrawal data aggregation.
     data_type: DateTime64(0, 'UTC')
+
   - name: total_amount
     description: Sum of withdrawal amounts in Gwei for the day.
     data_type: Float64
+
   - name: cnt
     description: Total number of withdrawal transactions for the day.
     data_type: UInt64
+
   - name: min
     description: Minimum withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q05
     description: 5th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q10
     description: 10th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q25
     description: 25th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q50
     description: Median withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q75
     description: 75th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q90
     description: 90th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: q95
     description: 95th percentile withdrawal amount in Gwei.
     data_type: Float64
+
   - name: max
     description: Maximum withdrawal amount in Gwei.
     data_type: Float64
-  config:
-    access: public
-    materialized: incremental
-    tags:
-    - production
-    - consensus
-    - withdrawals
   meta:
     owner: analytics_team
     authoritative: false
     generated_by: schema-writer
+
+- name: int_consensus_deposits_withdrawals_daily
+  description: This model aggregates daily consensus deposit and withdrawal data, providing insights into the total amounts and transaction counts for each day, segmented by deposit and withdrawal types.
+  config:
+    materialized: incremental
+    tags:
+    - production
+    - consensus
+    - deposits
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109523'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.amount.description
+    - columns.cnt.data_type
+    - columns.amount.data_type
+    - columns.cnt.description
+    - columns.date.data_type
+  columns:
+
+  - name: date
+    description: The specific day for which the deposit or withdrawal data is aggregated, represented as a date.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: amount
+    description: The total amount of deposits or withdrawals for the day, expressed in the base currency units (e.g., tokens), scaled down by 10^9.
+    data_type: UInt64
+
+  - name: cnt
+    description: The total number of deposit or withdrawal transactions recorded on that day.
+    data_type: UInt64
+
+- name: int_consensus_validators_dists_daily
+  description: This model aggregates daily distributions of validator balances and APY (Annual Percentage Yield) metrics to support analysis of validator performance and trends over time.
+  config:
+    materialized: incremental
+    tags:
+    - production
+    - consensus
+    - validators_balances
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109861'
+    _generated_fields:
+    - columns.q90_apy.data_type
+    - columns.date.description
+    - columns.q50_balance.description
+    - config.tags
+    - columns.q25_apy.data_type
+    - columns.q75_balance.description
+    - description
+    - columns.q75_apy.data_type
+    - columns.avg_apy.description
+    - columns.q50_apy.description
+    - columns.avg_balance.description
+    - columns.q95_balance.data_type
+    - columns.q25_balance.description
+    - columns.avg_balance.data_type
+    - columns.q25_apy.description
+    - columns.date.data_type
+    - columns.q10_apy.description
+    - columns.q75_apy.description
+    - columns.avg_apy.data_type
+    - columns.q05_apy.data_type
+    - columns.q05_balance.description
+    - columns.q75_balance.data_type
+    - columns.q05_balance.data_type
+    - columns.q10_balance.data_type
+    - columns.q90_balance.data_type
+    - columns.q05_apy.description
+    - columns.q10_balance.description
+    - columns.q25_balance.data_type
+    - columns.q10_apy.data_type
+    - config.materialized
+    - columns.q90_balance.description
+    - columns.q95_balance.description
+    - columns.q90_apy.description
+    - columns.q50_balance.data_type
+    - columns.q95_apy.description
+    - columns.q50_apy.data_type
+    - columns.q95_apy.data_type
+  columns:
+
+  - name: date
+    description: The date for which the validator metrics are recorded, formatted as YYYY-MM-DD.
+    data_type: Date
+    tests:
+    - not_null
+
+  - name: q05_balance
+    description: The 5th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q10_balance
+    description: The 10th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q25_balance
+    description: The 25th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q50_balance
+    description: The median (50th percentile) of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q75_balance
+    description: The 75th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q90_balance
+    description: The 90th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: q95_balance
+    description: The 95th percentile of validator balances (in billions) on the given date.
+    data_type: Float64
+
+  - name: avg_balance
+    description: The average validator balance (in billions) on the given date.
+    data_type: Float64
+
+  - name: q05_apy
+    description: The 5th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q10_apy
+    description: The 10th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q25_apy
+    description: The 25th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q50_apy
+    description: The median (50th percentile) of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q75_apy
+    description: The 75th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q90_apy
+    description: The 90th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: q95_apy
+    description: The 95th percentile of validator APY values on the given date.
+    data_type: Float64
+
+  - name: avg_apy
+    description: The average validator APY value on the given date.
+    data_type: Float64
+
+- name: int_consensus_validators_labels
+  description: The int_consensus_validators_labels model consolidates the latest validator information, including their indices, public keys, and withdrawal credentials, to support validator management and analysis within the consensus layer.
+  config:
+    materialized: table
+    tags:
+    - production
+    - consensus
+    - validators
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109908'
+    _generated_fields:
+    - description
+    - columns.validator_index.description
+    - columns.withdrawal_credentials.description
+    - config.tags
+    - config.materialized
+    - columns.validator_index.data_type
+    - columns.pubkey.data_type
+    - columns.withdrawal_credentials.data_type
+    - columns.pubkey.description
+  columns:
+
+  - name: validator_index
+    description: Unique numerical identifier assigned to each validator.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
+  - name: pubkey
+    description: Public key associated with the validator, used for cryptographic operations.
+    data_type: String
+
+  - name: withdrawal_credentials
+    description: Encoded credentials specifying the withdrawal address for validator rewards and funds.
+    data_type: String
+
+- name: int_consensus_validators_per_index_apy_daily
+  description: This model calculates daily validator consensus participation and withdrawal metrics, aggregated by validator index, to support analysis of validator performance and network health.
+  config:
+    materialized: incremental
+    tags:
+    - production
+    - consensus
+    - validators_apy
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.109952'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.validator_index.description
+    - config.tags
+    - config.materialized
+    - columns.validator_index.data_type
+    - columns.amount.description
+    - columns.amount.data_type
+    - columns.date.data_type
+  columns:
+
+  - name: date
+    description: The specific day for which the validator metrics are recorded, truncated to the start of the day.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: validator_index
+    description: Unique identifier for each validator, used to track individual validator activity over time.
+    data_type: UInt64
+    tests:
+    - unique
+    - not_null
+
+  - name: amount
+    description: Total amount withdrawn by the validator on the given date, measured in the relevant currency units.
+    data_type: UInt64
+
+- name: int_consensus_withdrawal_credentials_daily
+  description: The `int_consensus_withdrawal_credentials_daily` model aggregates daily counts of active validator withdrawal credentials to monitor credential activity over time.
+  config:
+    materialized: incremental
+    tags:
+    - production
+    - consensus
+    - credentials
+    access: public
+  meta:
+    owner: analytics-team
+    authoritative: false
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:58.110038'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.withdrawal_credentials.description
+    - config.tags
+    - config.materialized
+    - columns.cnt.data_type
+    - columns.withdrawal_credentials.data_type
+    - columns.cnt.description
+    - columns.date.data_type
+  columns:
+
+  - name: date
+    description: The specific day (at the start of the day) for which the data is aggregated.
+    data_type: DateTime64
+    tests:
+    - not_null
+
+  - name: withdrawal_credentials
+    description: The unique identifier representing validator withdrawal credentials.
+    data_type: String
+
+  - name: cnt
+    description: The number of active validators associated with each withdrawal credential on the given day.
+    data_type: UInt64
