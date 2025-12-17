@@ -4,14 +4,15 @@
 ) }}
 
 SELECT
-  timestamp,
+  date,
   bridge,
   source_chain,
   dest_chain,
   token,
-  toFloat64(amount_token) AS amount_token,
-  toFloat64(amount_usd)   AS amount_usd,
-  toFloat64(net_usd)      AS net_usd,         
+  toFloat64(amount_token) AS volume_token,   
+  toFloat64(amount_usd)   AS volume_usd,
+  toFloat64(net_usd)      AS net_usd,
+  toUInt64(txs)           AS txs,
   CASE
     WHEN dest_chain   = 'gnosis' THEN 'in'
     WHEN source_chain = 'gnosis' THEN 'out'
