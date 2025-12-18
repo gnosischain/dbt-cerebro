@@ -11,6 +11,8 @@
   ) 
 }}
 
+-- depends_on: {{ ref('int_execution_tokens_address_diffs_daily') }}
+
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 {% set symbol = var('symbol', none) %}
@@ -49,11 +51,15 @@ overall_max_date AS (
     SELECT 
         --max(date) AS max_date
     {% if end_month %}
-        toDate('{{ end_month }}')
+        least(toLastDayOfMonth(toDate('{{ end_month }}')), yesterday())
     {% else %} 
-    SELECT max(toDate(date)) FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
+    (
+        SELECT max(toDate(date)) 
+        FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
+        {{ apply_monthly_incremental_filter('date', 'date') }}
+    )
     {% endif %} AS max_date
-    FROM deltas
+   -- FROM deltas
 ),
 
 {% if is_incremental() %}
@@ -62,7 +68,7 @@ current_partition AS (
         max(toStartOfMonth(date)) AS month
         ,max(date)  AS max_date
     FROM {{ this }}
-    WHERE 1
+    WHERE 1=1
       {% if symbol is not none %}
         AND symbol = '{{ symbol }}'
       {% endif %}
