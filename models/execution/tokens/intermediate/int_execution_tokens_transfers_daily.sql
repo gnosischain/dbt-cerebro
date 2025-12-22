@@ -21,9 +21,8 @@ WITH base AS (
         symbol,
         lower("from")        AS from_address,
         lower("to")          AS to_address,
-        amount               AS amount,
-        amount_usd           AS amount_usd,
-        transfer_count       AS transfer_count
+        amount_raw,
+        transfer_count
     FROM {{ ref('int_execution_transfers_whitelisted_daily') }}
     WHERE date < today()
       {% if start_month and end_month %}
@@ -40,10 +39,10 @@ with_class AS (
         b.token_address,
         b.symbol,
         coalesce(w.token_class, 'OTHER') AS token_class,
-        b.amount,
-        b.amount_usd,
+        w.decimals,
         b.from_address,
         b.to_address,
+        b.amount_raw,
         b.transfer_count
     FROM base b
     LEFT JOIN {{ ref('tokens_whitelist') }} w
@@ -56,8 +55,7 @@ agg AS (
         token_address,
         any(symbol)      AS symbol,
         any(token_class) AS token_class,
-        sum(amount)      AS volume_token,
-        sum(amount_usd)  AS volume_usd,
+        sum(amount_raw / POWER(10, COALESCE(decimals, 18))) AS volume_token,
         sum(transfer_count) AS transfer_count,
         groupBitmapState(cityHash64(from_address)) AS ua_bitmap_state,
         uniqExact(from_address)                    AS active_senders,
@@ -72,7 +70,6 @@ SELECT
     symbol,
     token_class,
     volume_token,
-    volume_usd,
     transfer_count,
     ua_bitmap_state,
     active_senders,
