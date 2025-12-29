@@ -207,13 +207,10 @@ balances AS (
 
 prices AS (
     SELECT
-        p.date
-        ,p.symbol
-        ,t.decimals
-        ,p.price
+        p.date,
+        p.symbol,
+        p.price
     FROM {{ ref('int_execution_token_prices_daily') }} p
-    INNER JOIN {{ ref('tokens_whitelist') }} t
-        ON upper(p.symbol) = upper(t.symbol)
     WHERE date < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
@@ -241,9 +238,11 @@ final AS (
         b.token_class AS token_class,
         b.address AS address,
         b.balance_raw AS balance_raw,
-        b.balance_raw/POWER(10,p.decimals) AS balance,
-        balance * p.price AS balance_usd
+        b.balance_raw/POWER(10, t.decimals) AS balance,
+        (b.balance_raw/POWER(10, t.decimals)) * p.price AS balance_usd
     FROM balances b
+    LEFT JOIN {{ ref('tokens_whitelist') }} t
+      ON lower(t.address) = b.token_address
     LEFT JOIN prices p
       ON p.date = b.date
      AND upper(p.symbol) = upper(b.symbol)
