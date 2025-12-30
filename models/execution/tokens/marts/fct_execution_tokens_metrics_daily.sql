@@ -1,18 +1,12 @@
 {{
   config(
-    materialized='incremental',
-    incremental_strategy='delete+insert',
-    engine='ReplacingMergeTree()',
+    materialized='table',
+    engine='MergeTree()',
     order_by='(date, token_address)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, token_address)',
-    settings={ 'allow_nullable_key': 1 },
-    tags=['dev','execution','tokens','value_daily']
+    tags=['dev','execution','tokens','metrics_daily']
   )
 }}
-
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
 
 WITH
 
@@ -26,12 +20,6 @@ supply_holders AS (
         holders
     FROM {{ ref('int_execution_tokens_supply_holders_daily') }}
     WHERE date < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
-      {% endif %}
 ),
 
 transfers AS (
@@ -47,12 +35,6 @@ transfers AS (
         t.unique_receivers
     FROM {{ ref('int_execution_tokens_transfers_daily') }} t
     WHERE t.date < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(t.date) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(t.date) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('t.date', 'date', 'true') }}
-      {% endif %}
 ),
 
 prices AS (
@@ -62,12 +44,6 @@ prices AS (
         price AS price_usd
     FROM {{ ref('int_execution_token_prices_daily') }}
     WHERE date < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
-      {% endif %}
 ),
 
 joined AS (

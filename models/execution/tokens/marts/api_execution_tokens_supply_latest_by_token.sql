@@ -8,7 +8,7 @@
 SELECT
   symbol      AS token,
   argMax(supply, date) AS value
-FROM {{ ref('int_execution_tokens_value_daily') }}
+FROM {{ ref('fct_execution_tokens_metrics_daily') }}
 WHERE date < today()
 GROUP BY token_address, symbol
 ORDER BY token
