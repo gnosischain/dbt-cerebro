@@ -15,10 +15,13 @@
 
    Parameters:
    - source_table      : Source table containing the event logs
-   - contract_address  : Ethereum contract address whose events to decode
+   - contract_address  : Ethereum contract address (string) or list of addresses (array)
+                        Single address: '0x...' 
+                        Multiple addresses: ['0x...', '0x...', ...]
    - output_json_type  : If true, returns a native Map; otherwise JSON string
    - incremental_column: Column used for incremental processing (e.g. block_timestamp)
    - address_column    : Column containing the log contract address (default: address)
+   - start_blocktime   : Optional start timestamp for filtering
 
    Supports:
      - static scalars: address, bytes32, uint*, int*
@@ -34,11 +37,21 @@
    - Supports ClickHouse Cloud with topic1–topic3 columns
    - ClickHouse 24.x+ (no external UDFs)
 
-   Usage Example:
+   Usage Example (single address):
    {{
      decode_logs(
        source_table      = source('execution','logs'),
        contract_address  = '0xMyContract',
+       output_json_type  = true,
+       incremental_column= 'block_timestamp'
+     )
+   }}
+
+   Usage Example (multiple addresses):
+   {{
+     decode_logs(
+       source_table      = source('execution','logs'),
+       contract_address  = ['0xContract1', '0xContract2', '0xContract3'],
        output_json_type  = true,
        incremental_column= 'block_timestamp'
      )
@@ -55,10 +68,37 @@
         start_blocktime=null  
 ) %}
 
-{# — normalize contract address — #}
-{% set addr = contract_address | lower | replace('0x','') %}
+{# — Normalize contract_address to list — #}
+{% if contract_address is string %}
+  {% set addr_list = [contract_address] %}
+{% else %}
+  {% set addr_list = contract_address %}
+{% endif %}
 
-{# — pull in the ABI for this contract — #}
+{# — Normalize addresses (remove 0x, lowercase, trim) — #}
+{% set normalized = [] %}
+{% for addr in addr_list %}
+  {% set normalized_addr = addr | lower | replace('0x', '') | trim %}
+  {% set _ = normalized.append(normalized_addr) %}
+{% endfor %}
+
+{# — Build address filter for WHERE clause — #}
+{% if normalized | length > 1 %}
+  {# Multiple addresses: use IN clause #}
+  {% set addr_quoted = [] %}
+  {% for addr in normalized %}
+    {% set _ = addr_quoted.append("'" ~ addr ~ "'") %}
+  {% endfor %}
+  {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (" ~ addr_quoted | join(', ') ~ ")" %}
+  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (" ~ addr_quoted | join(', ') ~ ")" %}
+{% else %}
+  {# Single address: use equality (backward compatible) #}
+  {% set addr = normalized[0] %}
+  {% set addr_filter = address_column ~ " = '" ~ addr ~ "'" %}
+  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ addr ~ "'" %}
+{% endif %}
+
+{# — pull in the ABI for this contract(s) — #}
 {% set sig_sql %}
 SELECT
   replace(signature,'0x','')                     AS topic0_sig,
@@ -70,7 +110,7 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM {{ ref('event_signatures') }}
-WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
+WHERE {{ abi_filter }}
 {% endset %}
 
 {% set sql_body %}
@@ -79,7 +119,7 @@ WITH
 logs AS (
   SELECT *
   FROM {{ source_table }}
-  WHERE {{ address_column }} = '{{ addr }}'
+  WHERE {{ addr_filter }}
   
     {% if start_blocktime is not none and start_blocktime|trim != '' %}
       AND toStartOfMonth({{ incremental_column }}) >= toStartOfMonth(toDateTime('{{ start_blocktime }}'))
