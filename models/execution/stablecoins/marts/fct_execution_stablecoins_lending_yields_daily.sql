@@ -58,52 +58,8 @@ all_yields AS (
     SELECT * FROM agave_yields
 ),
 
--- Get date range and unique protocol+token combinations
-date_range AS (
-    SELECT 
-        MIN(date) AS min_date,
-        MAX(date) AS max_date
-    FROM all_yields
-),
-
-protocol_tokens AS (
-    SELECT DISTINCT
-        protocol,
-        token_address,
-        symbol
-    FROM all_yields
-),
-
--- Create calendar: all dates for each protocol+token combination
-calendar AS (
-    SELECT
-        pt.protocol,
-        pt.token_address,
-        pt.symbol,
-        addDays(dr.min_date, offset) AS date
-    FROM protocol_tokens pt
-    CROSS JOIN date_range dr
-    ARRAY JOIN range(toUInt64(dateDiff('day', dr.min_date, dr.max_date) + 1)) AS offset
-),
-
--- Forward fill: use last known value for missing days
-filled_yields AS (
-    SELECT
-        c.date,
-        c.protocol,
-        c.token_address,
-        c.symbol,
-        -- Forward fill: get the last known apy_daily value up to this date
-        argMax(ay.apy_daily, ay.date) AS apy_daily
-    FROM calendar c
-    LEFT JOIN all_yields ay
-        ON ay.protocol = c.protocol
-        AND ay.token_address = c.token_address
-        AND ay.date <= c.date
-    GROUP BY c.date, c.protocol, c.token_address, c.symbol
-),
-
--- Calculate moving averages per protocol + token combination on filled data
+-- Calculate moving averages per protocol + token combination
+-- Data is already dense from intermediate tables
 with_ma AS (
     SELECT
         date,
@@ -125,8 +81,8 @@ with_ma AS (
                 ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
             ), 2
         ) AS apy_30DMA
-    FROM filled_yields
-    WHERE apy_daily IS NOT NULL  -- Only include rows where we have at least one value
+    FROM all_yields
+    WHERE apy_daily IS NOT NULL
 )
 
 SELECT
