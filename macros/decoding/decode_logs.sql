@@ -61,41 +61,55 @@
 
 {% macro decode_logs(
         source_table,
-        contract_address,
+        contract_address=null,
+        contract_address_ref=null,
+        contract_type_filter=null,
         output_json_type=false,
         incremental_column='block_timestamp',
         address_column='address',
         start_blocktime=null  
 ) %}
 
-{# — Normalize contract_address to list — #}
-{% if contract_address is string %}
-  {% set addr_list = [contract_address] %}
+{# Check if using ref model (new way) or address list (old way) #}
+{% if contract_address_ref %}
+  {% if contract_type_filter %}
+    {% set type_where = " WHERE cw.contract_type = '" ~ contract_type_filter ~ "'" %}
+  {% else %}
+    {% set type_where = "" %}
+  {% endif %}
+  {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
 {% else %}
-  {% set addr_list = contract_address %}
-{% endif %}
+  {# EXISTING: Original logic - works exactly as before #}
+  {# — Normalize contract_address to list — #}
+  {% if contract_address is string %}
+    {% set addr_list = [contract_address] %}
+  {% else %}
+    {% set addr_list = contract_address %}
+  {% endif %}
 
-{# — Normalize addresses (remove 0x, lowercase, trim) — #}
-{% set normalized = [] %}
-{% for addr in addr_list %}
-  {% set normalized_addr = addr | lower | replace('0x', '') | trim %}
-  {% set _ = normalized.append(normalized_addr) %}
-{% endfor %}
-
-{# — Build address filter for WHERE clause — #}
-{% if normalized | length > 1 %}
-  {# Multiple addresses: use IN clause #}
-  {% set addr_quoted = [] %}
-  {% for addr in normalized %}
-    {% set _ = addr_quoted.append("'" ~ addr ~ "'") %}
+  {# — Normalize addresses (remove 0x, lowercase, trim) — #}
+  {% set normalized = [] %}
+  {% for addr in addr_list %}
+    {% set normalized_addr = addr | lower | replace('0x', '') | trim %}
+    {% set _ = normalized.append(normalized_addr) %}
   {% endfor %}
-  {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (" ~ addr_quoted | join(', ') ~ ")" %}
-  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (" ~ addr_quoted | join(', ') ~ ")" %}
-{% else %}
-  {# Single address: use equality (backward compatible) #}
-  {% set addr = normalized[0] %}
-  {% set addr_filter = address_column ~ " = '" ~ addr ~ "'" %}
-  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ addr ~ "'" %}
+
+  {# — Build address filter for WHERE clause — #}
+  {% if normalized | length > 1 %}
+    {# Multiple addresses: use IN clause #}
+    {% set addr_quoted = [] %}
+    {% for addr in normalized %}
+      {% set _ = addr_quoted.append("'" ~ addr ~ "'") %}
+    {% endfor %}
+    {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (" ~ addr_quoted | join(', ') ~ ")" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (" ~ addr_quoted | join(', ') ~ ")" %}
+  {% else %}
+    {# Single address: use equality (backward compatible) #}
+    {% set addr = normalized[0] %}
+    {% set addr_filter = address_column ~ " = '" ~ addr ~ "'" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ addr ~ "'" %}
+  {% endif %}
 {% endif %}
 
 {# — pull in the ABI for this contract(s) — #}
