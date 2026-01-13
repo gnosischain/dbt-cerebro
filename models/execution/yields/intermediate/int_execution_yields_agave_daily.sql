@@ -18,7 +18,8 @@ agave_events AS (
         toStartOfDay(block_timestamp) AS date,
         lower(decoded_params['reserve']) AS token_address,
         block_timestamp,
-        toUInt256OrNull(decoded_params['liquidityRate']) AS liquidity_rate_ray
+        toUInt256OrNull(decoded_params['liquidityRate']) AS liquidity_rate_ray,
+        toUInt256OrNull(decoded_params['variableBorrowRate']) AS variable_borrow_rate_ray
     FROM {{ ref('contracts_agave_LendingPool_events') }}
     WHERE event_name = 'ReserveDataUpdated'
       AND decoded_params['liquidityRate'] IS NOT NULL
@@ -30,7 +31,8 @@ latest_rates AS (
     SELECT
         date,
         token_address,
-        argMax(liquidity_rate_ray, block_timestamp) AS liquidity_rate_ray
+        argMax(liquidity_rate_ray, block_timestamp) AS liquidity_rate_ray,
+        argMax(variable_borrow_rate_ray, block_timestamp) AS variable_borrow_rate_ray
     FROM agave_events
     GROUP BY date, token_address
 ),
@@ -48,7 +50,15 @@ with_symbols AS (
                 (toFloat64(lr.liquidity_rate_ray) / 1e27) * 100,
                 4
             )
-        END AS apy_daily
+        END AS apy_daily,
+        -- Convert RAY to APY for borrow rate
+        CASE 
+            WHEN lr.variable_borrow_rate_ray = 0 OR lr.variable_borrow_rate_ray IS NULL THEN NULL
+            ELSE floor(
+                (toFloat64(lr.variable_borrow_rate_ray) / 1e27) * 100,
+                4
+            )
+        END AS borrow_apy_variable_daily
     FROM latest_rates lr
     INNER JOIN {{ ref('tokens_whitelist') }} w
         ON lower(w.address) = lr.token_address
@@ -93,7 +103,13 @@ filled_yields AS (
             PARTITION BY c.token_address 
             ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS apy_daily
+        ) AS apy_daily,
+        -- Forward fill: get the last known borrow_apy_variable_daily value up to this date
+        last_value(ws.borrow_apy_variable_daily) IGNORE NULLS OVER (
+            PARTITION BY c.token_address 
+            ORDER BY c.date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS borrow_apy_variable_daily
     FROM calendar c
     LEFT JOIN with_symbols ws
         ON ws.token_address = c.token_address
@@ -105,7 +121,8 @@ SELECT
     token_address,
     symbol,
     protocol,
-    apy_daily
+    apy_daily,
+    borrow_apy_variable_daily
 FROM filled_yields
 WHERE apy_daily IS NOT NULL
 ORDER BY date, token_address

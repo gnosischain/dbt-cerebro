@@ -15,6 +15,7 @@ aave_yields AS (
         y.symbol,
         y.protocol,
         y.apy_daily,
+        y.borrow_apy_variable_daily,
         w.token_class
     FROM {{ ref('int_execution_yields_aave_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
@@ -29,6 +30,7 @@ spark_yields AS (
         y.symbol,
         y.protocol,
         y.apy_daily,
+        y.borrow_apy_variable_daily,
         w.token_class
     FROM {{ ref('int_execution_yields_spark_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
@@ -43,6 +45,7 @@ agave_yields AS (
         y.symbol,
         y.protocol,
         y.apy_daily,
+        y.borrow_apy_variable_daily,
         w.token_class
     FROM {{ ref('int_execution_yields_agave_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
@@ -58,7 +61,7 @@ all_yields AS (
     SELECT * FROM agave_yields
 ),
 
--- Calculate moving averages per protocol + token combination
+-- Calculate moving averages and spread per protocol + token combination
 -- Data is already dense from intermediate tables
 with_ma AS (
     SELECT
@@ -68,6 +71,13 @@ with_ma AS (
         symbol,
         token_class,
         apy_daily,
+        borrow_apy_variable_daily,
+        -- Calculate spread: borrow APY - lend APY
+        CASE 
+            WHEN borrow_apy_variable_daily IS NOT NULL AND apy_daily IS NOT NULL
+            THEN ROUND(borrow_apy_variable_daily - apy_daily, 2)
+            ELSE NULL
+        END AS spread_variable,
         ROUND(
             avg(apy_daily) OVER (
                 PARTITION BY protocol, token_address 
@@ -93,6 +103,8 @@ SELECT
     symbol,
     token_class,
     apy_daily,
+    borrow_apy_variable_daily,
+    spread_variable,
     apy_7DMA,
     apy_30DMA
 FROM with_ma
