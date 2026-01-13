@@ -1,7 +1,7 @@
 {{
   config(
     materialized='table',
-    tags=['dev','execution','stablecoins','overview']
+    tags=['dev','execution','tokens','overview']
   )
 }}
 
@@ -15,55 +15,76 @@ latest_date AS (
 
 supply_latest AS (
     SELECT
+        token_class,
         SUM(supply) AS value
     FROM {{ ref('fct_execution_tokens_metrics_daily') }}
     CROSS JOIN latest_date
     WHERE date = latest_date.max_date
-      AND token_class = 'STABLECOIN'
+    GROUP BY token_class
 ),
 
 supply_7d AS (
     SELECT
+        token_class,
         SUM(supply) AS value
     FROM {{ ref('fct_execution_tokens_metrics_daily') }}
     CROSS JOIN latest_date
     WHERE date = subtractDays(latest_date.max_date, 7)
-      AND token_class = 'STABLECOIN'
+    GROUP BY token_class
 ),
 
 holders_latest AS (
     SELECT
+        token_class,
         CAST(COUNT(DISTINCT address) AS Float64) AS value
     FROM {{ ref('int_execution_tokens_balances_daily') }}
     CROSS JOIN latest_date
     WHERE date = latest_date.max_date
-      AND token_class = 'STABLECOIN'
       AND balance_raw > 0
+    GROUP BY token_class
 ),
 
 holders_7d AS (
     SELECT
+        token_class,
         CAST(COUNT(DISTINCT address) AS Float64) AS value
     FROM {{ ref('int_execution_tokens_balances_daily') }}
     CROSS JOIN latest_date
     WHERE date = subtractDays(latest_date.max_date, 7)
-      AND token_class = 'STABLECOIN'
       AND balance_raw > 0
+    GROUP BY token_class
 ),
 
 info_latest AS (
-    SELECT 'supply_total' AS label, CAST((SELECT value FROM supply_latest) AS Float64) AS value
+    SELECT 
+        token_class,
+        'supply_total' AS label, 
+        value
+    FROM supply_latest
     UNION ALL
-    SELECT 'holders_total' AS label, CAST((SELECT value FROM holders_latest) AS Float64) AS value
+    SELECT 
+        token_class,
+        'holders_total' AS label, 
+        value
+    FROM holders_latest
 ),
 
 info_7d AS (
-    SELECT 'supply_total' AS label, CAST((SELECT value FROM supply_7d) AS Float64) AS value
+    SELECT 
+        token_class,
+        'supply_total' AS label, 
+        value
+    FROM supply_7d
     UNION ALL
-    SELECT 'holders_total' AS label, CAST((SELECT value FROM holders_7d) AS Float64) AS value
+    SELECT 
+        token_class,
+        'holders_total' AS label, 
+        value
+    FROM holders_7d
 )
 
 SELECT
+    t1.token_class,
     t1.label,
     t1.value AS value,
     IF(t1.value = 0 AND t2.value = 0, 0, 
@@ -71,5 +92,6 @@ SELECT
     ) AS change_pct
 FROM info_latest t1
 INNER JOIN info_7d t2
-ON t2.label = t1.label
-
+    ON t1.token_class = t2.token_class
+    AND t1.label = t2.label
+ORDER BY t1.token_class, t1.label

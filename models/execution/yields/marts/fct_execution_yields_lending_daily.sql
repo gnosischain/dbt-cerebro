@@ -1,52 +1,52 @@
 {{
     config(
         materialized='table',
-        tags=['production','execution','stablecoins','yields']
+        tags=['production','execution','yields','lending']
     )
 }}
 
 WITH
 
--- Filter Aave yields for stablecoins only
+-- Get all Aave yields (no token_class filter)
 aave_yields AS (
     SELECT 
         y.date,
         y.token_address,
         y.symbol,
         y.protocol,
-        y.apy_daily
+        y.apy_daily,
+        w.token_class
     FROM {{ ref('int_execution_yields_aave_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
         ON lower(w.address) = y.token_address
-    WHERE w.token_class = 'STABLECOIN'
 ),
 
--- Filter Spark yields for stablecoins only
+-- Get all Spark yields (no token_class filter)
 spark_yields AS (
     SELECT 
         y.date,
         y.token_address,
         y.symbol,
         y.protocol,
-        y.apy_daily
+        y.apy_daily,
+        w.token_class
     FROM {{ ref('int_execution_yields_spark_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
         ON lower(w.address) = y.token_address
-    WHERE w.token_class = 'STABLECOIN'
 ),
 
--- Filter Agave yields for stablecoins only
+-- Get all Agave yields (no token_class filter)
 agave_yields AS (
     SELECT 
         y.date,
         y.token_address,
         y.symbol,
         y.protocol,
-        y.apy_daily
+        y.apy_daily,
+        w.token_class
     FROM {{ ref('int_execution_yields_agave_daily') }} y
     INNER JOIN {{ ref('tokens_whitelist') }} w
         ON lower(w.address) = y.token_address
-    WHERE w.token_class = 'STABLECOIN'
 ),
 
 -- Union all protocols
@@ -66,6 +66,7 @@ with_ma AS (
         protocol,
         token_address,
         symbol,
+        token_class,
         apy_daily,
         ROUND(
             avg(apy_daily) OVER (
@@ -90,9 +91,9 @@ SELECT
     protocol,
     token_address,
     symbol,
+    token_class,
     apy_daily,
     apy_7DMA,
     apy_30DMA
 FROM with_ma
 ORDER BY date, protocol, token_address
-
