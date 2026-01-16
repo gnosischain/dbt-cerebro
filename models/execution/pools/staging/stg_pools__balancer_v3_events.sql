@@ -19,7 +19,7 @@ WITH vault_events AS (
 
 liquidity_added AS (
     SELECT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         block_timestamp,
         transaction_hash,
         log_index,
@@ -36,7 +36,7 @@ liquidity_added AS (
 
 liquidity_removed AS (
     SELECT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         block_timestamp,
         transaction_hash,
         log_index,
@@ -53,7 +53,7 @@ liquidity_removed AS (
 
 swap_events AS (
     SELECT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         block_timestamp,
         transaction_hash,
         log_index,
@@ -69,7 +69,7 @@ swap_events AS (
     UNION ALL
 
     SELECT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         block_timestamp,
         transaction_hash,
         log_index,

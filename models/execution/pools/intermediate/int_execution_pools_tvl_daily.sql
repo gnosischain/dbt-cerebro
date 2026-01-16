@@ -18,7 +18,7 @@ WITH
 
 uniswap_v3_pools AS (
     SELECT DISTINCT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         lower(decoded_params['token0']) AS token0,
         lower(decoded_params['token1']) AS token1,
         'Uniswap V3' AS protocol
@@ -31,7 +31,7 @@ uniswap_v3_pools AS (
 
 swapr_v3_pools AS (
     SELECT DISTINCT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         lower(decoded_params['token0']) AS token0,
         lower(decoded_params['token1']) AS token1,
         'Swapr V3' AS protocol
@@ -42,31 +42,9 @@ swapr_v3_pools AS (
       AND decoded_params['token1'] IS NOT NULL
 ),
 
-balancer_v2_pool_tokens AS (
-    SELECT
-        lower(decoded_params['poolId']) AS pool_id,
-        lower(JSONExtractString(token_val, '')) AS token_address,
-        row_number() OVER (PARTITION BY lower(decoded_params['poolId']) ORDER BY block_timestamp, log_index) - 1 AS token_index,
-        'Balancer V2' AS protocol
-    FROM {{ ref('contracts_BalancerV2_Vault_events') }}
-    ARRAY JOIN JSONExtractArrayRaw(ifNull(decoded_params['tokens'], '[]')) AS token_val
-    WHERE event_name = 'TokensRegistered'
-      AND decoded_params['poolId'] IS NOT NULL
-      AND decoded_params['tokens'] IS NOT NULL
-),
-
-balancer_v2_pools AS (
-    SELECT
-        pool_id AS pool_address,
-        token_address,
-        token_index,
-        protocol
-    FROM balancer_v2_pool_tokens
-),
-
 balancer_v3_pool_tokens AS (
     SELECT
-        lower(decoded_params['pool']) AS pool_address,
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
         lower(JSONExtractString(token_val, '')) AS token_address,
         row_number() OVER (PARTITION BY lower(decoded_params['pool']) ORDER BY token_idx) - 1 AS token_index,
         'Balancer V3' AS protocol

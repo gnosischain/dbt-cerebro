@@ -7,7 +7,7 @@
 
 WITH pool_events AS (
     SELECT
-        lower(contract_address) AS pool_address,
+        replaceAll(lower(contract_address), '0x', '') AS pool_address,
         block_timestamp,
         transaction_hash,
         log_index,
