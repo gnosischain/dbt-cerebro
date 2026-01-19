@@ -294,6 +294,43 @@ balancer_balances_final AS (
     LEFT JOIN {{ ref('tokens_whitelist') }} t
         ON lower(t.address) = b.token_address
     WHERE b.balance_raw != 0
+),
+
+all_balances AS (
+    SELECT
+        date,
+        protocol,
+        pool_address,
+        token_address,
+        token_amount_raw,
+        token_amount
+    FROM transfer_based_balances
+
+    UNION ALL
+
+    SELECT
+        date,
+        protocol,
+        pool_address,
+        token_address,
+        token_amount_raw,
+        token_amount
+    FROM balancer_balances_final
+),
+
+final AS (
+    SELECT
+        *
+    FROM all_balances
+    WHERE NOT (
+        protocol IN ('Balancer V2', 'Balancer V3')
+        AND (
+            -- Balancer V2 pool_address is a normal 0x address
+            (protocol = 'Balancer V2' AND lower(token_address) = lower(pool_address))
+            -- Balancer V3 pool_address is stored without 0x in this project
+            OR (protocol = 'Balancer V3' AND lower(token_address) = concat('0x', lower(pool_address)))
+        )
+    )
 )
 
 SELECT
@@ -303,15 +340,4 @@ SELECT
     token_address,
     token_amount_raw,
     token_amount
-FROM transfer_based_balances
-
-UNION ALL
-
-SELECT
-    date,
-    protocol,
-    pool_address,
-    token_address,
-    token_amount_raw,
-    token_amount
-FROM balancer_balances_final
+FROM final
