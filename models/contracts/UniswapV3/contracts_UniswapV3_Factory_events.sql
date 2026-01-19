@@ -23,7 +23,7 @@
         contract_address  = '0xe32f7dd7e3f098d518ff19a22d5f028e076489b1',
         output_json_type  = true,
         incremental_column= 'block_timestamp',
-        start_blocktime   = '2024-05-21'  
+        start_blocktime   = '2022-04-22'  
     )
 }}
 

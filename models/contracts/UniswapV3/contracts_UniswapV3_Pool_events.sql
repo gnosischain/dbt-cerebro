@@ -28,7 +28,7 @@
         contract_type_filter = 'UniswapV3Pool',
         output_json_type  = true,
         incremental_column= 'block_timestamp',
-        start_blocktime   = '2024-05-21'  
+        start_blocktime   = '2022-04-22'  
     )
 }}
 

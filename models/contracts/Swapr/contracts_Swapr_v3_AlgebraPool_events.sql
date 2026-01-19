@@ -29,6 +29,6 @@
         contract_type_filter = 'SwaprPool',
         output_json_type  = true,
         incremental_column= 'block_timestamp',
-        start_blocktime   = '2023-10-06'  
+        start_blocktime   = '2022-03-01'  
     )
 }}
