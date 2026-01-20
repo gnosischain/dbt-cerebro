@@ -24,10 +24,11 @@ liquidity_added AS (
         transaction_hash,
         log_index,
         'LiquidityAdded' AS event_type,
-        toString(arrayJoin(arrayEnumerate(JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')))) - 1) AS token_index,
-        toInt256OrNull(JSONExtractString(amount_val, '')) AS delta_amount_raw
+        token_idx AS token_index,
+        toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw
     FROM vault_events
     ARRAY JOIN 
+        range(length(JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')))) AS token_idx,
         JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')) AS amount_val
     WHERE event_name = 'LiquidityAdded'
       AND decoded_params['pool'] IS NOT NULL
@@ -41,10 +42,11 @@ liquidity_removed AS (
         transaction_hash,
         log_index,
         'LiquidityRemoved' AS event_type,
-        toString(arrayJoin(arrayEnumerate(JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')))) - 1) AS token_index,
-        -toInt256OrNull(JSONExtractString(amount_val, '')) AS delta_amount_raw
+        token_idx AS token_index,
+        -toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw
     FROM vault_events
     ARRAY JOIN 
+        range(length(JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')))) AS token_idx,
         JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')) AS amount_val
     WHERE event_name = 'LiquidityRemoved'
       AND decoded_params['pool'] IS NOT NULL
@@ -154,7 +156,7 @@ SELECT
     transaction_hash,
     log_index,
     event_type,
-    NULL AS token_index,
+    CAST(NULL AS Nullable(UInt64)) AS token_index,
     NULL AS wrapped_token_address,
     token_address,
     delta_amount_raw
@@ -171,7 +173,7 @@ SELECT
     transaction_hash,
     log_index,
     event_type,
-    NULL AS token_index,
+    CAST(NULL AS Nullable(UInt64)) AS token_index,
     wrapped_token_address,
     NULL AS token_address,
     delta_amount_raw

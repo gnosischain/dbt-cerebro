@@ -114,26 +114,96 @@ balancer_v2_pool_registry AS (
       AND decoded_params['poolAddress'] IS NOT NULL
 ),
 
-balancer_v3_pool_tokens AS (
+balancer_v3_swap_tokens AS (
+    SELECT
+        pool_address,
+        arraySort(groupUniqArray(token_address)) AS swap_tokens
+    FROM {{ ref('stg_pools__balancer_v3_events') }}
+    WHERE event_type = 'Swap'
+      AND pool_address IS NOT NULL
+      AND token_address IS NOT NULL
+    GROUP BY pool_address
+),
+
+balancer_v3_tokenconfig_raw AS (
     SELECT
         replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
-        lower(
-            concat(
-                '0x',
-                right(replaceAll(JSONExtractString(token_val, ''), '0x', ''), 40)
-            )
-        ) AS token_address,
-        row_number() OVER (PARTITION BY lower(decoded_params['pool']) ORDER BY token_idx) - 1 AS token_index,
-        'Balancer V3' AS protocol
+        token_idx AS token_index,
+        lower(concat('0x', right(replaceAll(replaceAll(token_val, '"', ''), '0x', ''), 40))) AS token_address,
+        token_address IN (
+            '0x0000000000000000000000000000000000000000',
+            '0x0000000000000000000000000000000000000001'
+        ) AS is_sentinel,
+        block_timestamp,
+        log_index
     FROM {{ ref('contracts_BalancerV3_Vault_events') }}
-    ARRAY JOIN 
+    ARRAY JOIN
         range(length(JSONExtractArrayRaw(ifNull(decoded_params['tokenConfig'], '[]')))) AS token_idx,
         JSONExtractArrayRaw(ifNull(decoded_params['tokenConfig'], '[]')) AS token_val
     WHERE event_name = 'PoolRegistered'
       AND decoded_params['pool'] IS NOT NULL
       AND decoded_params['tokenConfig'] IS NOT NULL
-      AND JSONExtractString(token_val, '') IS NOT NULL
-      AND replaceAll(JSONExtractString(token_val, ''), '0x', '') != '0000000000000000000000000000000000000000000000000000000000000000'
+),
+
+balancer_v3_tokenconfig AS (
+    SELECT
+        pool_address,
+        token_index,
+        token_address,
+        is_sentinel
+    FROM (
+        SELECT
+            pool_address,
+            token_index,
+            token_address,
+            is_sentinel,
+            row_number() OVER (
+                PARTITION BY pool_address, token_index
+                ORDER BY block_timestamp DESC, log_index DESC
+            ) AS rn
+        FROM balancer_v3_tokenconfig_raw
+    )
+    WHERE rn = 1
+),
+
+balancer_v3_tokenconfig_stats AS (
+    SELECT
+        pool_address,
+        countIf(not is_sentinel) AS valid_cnt,
+        anyIf(token_address, not is_sentinel) AS any_valid_token
+    FROM balancer_v3_tokenconfig
+    GROUP BY pool_address
+),
+
+balancer_v3_pool_tokens AS (
+    SELECT
+        pool_address,
+        token_index,
+        protocol,
+        token_address
+    FROM (
+        SELECT
+            c.pool_address AS pool_address,
+            c.token_index AS token_index,
+            'Balancer V3' AS protocol,
+            multiIf(
+                not c.is_sentinel,
+                c.token_address,
+                -- If the config contains a sentinel slot, infer it from swap tokens (2-token pools).
+                length(ifNull(s.swap_tokens, [])) = 2 AND st.valid_cnt = 1,
+                if(st.any_valid_token = s.swap_tokens[1], s.swap_tokens[2], s.swap_tokens[1]),
+                -- If both slots are sentinel (rare), fall back to swap token ordering by index.
+                length(ifNull(s.swap_tokens, [])) = 2 AND st.valid_cnt = 0,
+                s.swap_tokens[toInt32(c.token_index) + 1],
+                NULL
+            ) AS token_address
+        FROM balancer_v3_tokenconfig c
+        LEFT JOIN balancer_v3_swap_tokens s
+            ON s.pool_address = c.pool_address
+        LEFT JOIN balancer_v3_tokenconfig_stats st
+            ON st.pool_address = c.pool_address
+    )
+    WHERE token_address IS NOT NULL
 ),
 
 balancer_v2_deltas AS (
@@ -165,7 +235,7 @@ balancer_v3_deltas_pool AS (
     FROM {{ ref('stg_pools__balancer_v3_events') }} e
     INNER JOIN balancer_v3_pool_tokens p
         ON e.pool_address = p.pool_address
-       AND toInt32OrNull(e.token_index) = p.token_index
+       AND e.token_index = p.token_index
     WHERE e.delta_amount_raw IS NOT NULL
       AND e.token_index IS NOT NULL
       AND e.pool_address IS NOT NULL
@@ -331,6 +401,10 @@ final AS (
             OR (protocol = 'Balancer V3' AND lower(token_address) = concat('0x', lower(pool_address)))
         )
     )
+      AND lower(token_address) NOT IN (
+        '0x0000000000000000000000000000000000000000',
+        '0x0000000000000000000000000000000000000001'
+      )
 )
 
 SELECT
