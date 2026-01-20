@@ -24,8 +24,15 @@ pool_balance_changed AS (
         transaction_hash,
         log_index,
         'PoolBalanceChanged' AS event_type,
-        lower(JSONExtractString(token_val, '')) AS token_address,
-        toInt256OrNull(JSONExtractString(delta_val, '')) AS delta_amount_raw
+        lower(replaceAll(token_val, '"', '')) AS token_address,
+        -- PoolBalanceChanged.deltas are int256. Sometimes negative values appear
+        -- as their uint256 two's-complement representation (e.g. ~2^256-1).
+        -- Decode by interpreting unsigned strings as Int256.
+        multiIf(
+            startsWith(replaceAll(delta_val, '"', ''), '-'),
+            toInt256OrNull(replaceAll(delta_val, '"', '')),
+            reinterpretAsInt256(toUInt256OrNull(replaceAll(delta_val, '"', '')))
+        ) AS delta_amount_raw
     FROM vault_events
     ARRAY JOIN 
         JSONExtractArrayRaw(ifNull(decoded_params['tokens'], '[]')) AS token_val,
@@ -44,8 +51,24 @@ pool_balance_managed AS (
         log_index,
         'PoolBalanceManaged' AS event_type,
         lower(decoded_params['token']) AS token_address,
-        -- cashDelta + managedDelta = net change
-        toInt256OrNull(decoded_params['cashDelta']) + toInt256OrNull(decoded_params['managedDelta']) AS delta_amount_raw
+        -- cashDelta + managedDelta = net change (both int256; may be two's-complement encoded)
+        coalesce(
+            multiIf(
+                startsWith(toString(decoded_params['cashDelta']), '-'),
+                toInt256OrNull(toString(decoded_params['cashDelta'])),
+                reinterpretAsInt256(toUInt256OrNull(toString(decoded_params['cashDelta'])))
+            ),
+            toInt256(0)
+        )
+        +
+        coalesce(
+            multiIf(
+                startsWith(toString(decoded_params['managedDelta']), '-'),
+                toInt256OrNull(toString(decoded_params['managedDelta'])),
+                reinterpretAsInt256(toUInt256OrNull(toString(decoded_params['managedDelta'])))
+            ),
+            toInt256(0)
+        ) AS delta_amount_raw
     FROM vault_events
     WHERE event_name = 'PoolBalanceManaged'
       AND decoded_params['poolId'] IS NOT NULL
