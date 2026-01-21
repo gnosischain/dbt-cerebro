@@ -41,6 +41,9 @@ raw_whitelisted_transfers AS (
     WHERE
         l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
         AND l.block_timestamp < today()
+        -- Enforce whitelist version windows (prevents old/new contract overlap)
+        AND toDate(l.block_timestamp) >= t.date_start
+        AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
         {% if start_month and end_month %}
           AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
