@@ -18,6 +18,15 @@
 {% set symbol = var('symbol', none) %}
 {% set symbol_exclude = var('symbol_exclude', none) %}
 
+{# Support symbol as single value OR comma-separated list OR YAML list #}
+{% if symbol is not none %}
+  {% if symbol is string %}
+    {% set symbols = symbol.split(',') %}
+  {% else %}
+    {% set symbols = symbol %}
+  {% endif %}
+{% endif %}
+
 WITH deltas AS (
     SELECT
         date,
@@ -35,7 +44,11 @@ WITH deltas AS (
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
       {% if symbol is not none %}
-        AND symbol = '{{ symbol }}'
+        AND symbol IN (
+        {% for s in symbols %}
+            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        )
       {% endif %}
       {% if symbol_exclude is not none %}
         AND symbol NOT IN (
@@ -70,7 +83,11 @@ current_partition AS (
     FROM {{ this }}
     WHERE 1=1
       {% if symbol is not none %}
-        AND symbol = '{{ symbol }}'
+        AND symbol IN (
+          {% for s in symbols %}
+            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
+          {% endfor %}
+        )
       {% endif %}
       {% if symbol_exclude is not none %}
         AND symbol NOT IN (
@@ -92,7 +109,11 @@ prev_balances AS (
     WHERE 
         t1.date = t2.max_date
         {% if symbol is not none %}
-        AND t1.symbol = '{{ symbol }}'
+        AND t1.symbol IN (
+          {% for s in symbols %}
+            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
+          {% endfor %}
+        )
         {% endif %}
         {% if symbol_exclude is not none %}
         AND t1.symbol NOT IN (
@@ -219,7 +240,11 @@ prices AS (
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
       {% if symbol is not none %}
-        AND upper(p.symbol) = upper('{{ symbol }}')
+        AND upper(p.symbol) IN (
+        {% for s in symbols %}
+            upper('{{ s | trim }}'){% if not loop.last %}, {% endif %}
+        {% endfor %}
+        )
       {% endif %}
       {% if symbol_exclude is not none %}
         AND symbol NOT IN (
