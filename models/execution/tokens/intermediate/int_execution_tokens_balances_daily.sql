@@ -18,14 +18,6 @@
 {% set symbol = var('symbol', none) %}
 {% set symbol_exclude = var('symbol_exclude', none) %}
 
-{# Support symbol as single value OR comma-separated list OR YAML list #}
-{% if symbol is not none %}
-  {% if symbol is string %}
-    {% set symbols = symbol.split(',') %}
-  {% else %}
-    {% set symbols = symbol %}
-  {% endif %}
-{% endif %}
 
 WITH deltas AS (
     SELECT
@@ -43,26 +35,13 @@ WITH deltas AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
-      {% if symbol is not none %}
-        AND symbol IN (
-        {% for s in symbols %}
-            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
       
 ),
 
 overall_max_date AS (
     SELECT 
-        --max(date) AS max_date
     {% if end_month %}
         least(toLastDayOfMonth(toDate('{{ end_month }}')), yesterday())
     {% else %} 
@@ -72,7 +51,6 @@ overall_max_date AS (
         {{ apply_monthly_incremental_filter('date', 'date') }}
     )
     {% endif %} AS max_date
-   -- FROM deltas
 ),
 
 {% if is_incremental() %}
@@ -82,20 +60,8 @@ current_partition AS (
         ,max(date)  AS max_date
     FROM {{ this }}
     WHERE 1=1
-      {% if symbol is not none %}
-        AND symbol IN (
-          {% for s in symbols %}
-            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
-          {% endfor %}
-        )
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-          {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-          {% endfor %}
-        )
-      {% endif %}
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
 ),
 prev_balances AS (
     SELECT 
@@ -108,20 +74,8 @@ prev_balances AS (
     CROSS JOIN current_partition t2
     WHERE 
         t1.date = t2.max_date
-        {% if symbol is not none %}
-        AND t1.symbol IN (
-          {% for s in symbols %}
-            '{{ s | trim }}'{% if not loop.last %}, {% endif %}
-          {% endfor %}
-        )
-        {% endif %}
-        {% if symbol_exclude is not none %}
-        AND t1.symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-    {% endif %}
+        {{ symbol_filter('t1.symbol', symbol, 'include') }}
+        {{ symbol_filter('t1.symbol', symbol_exclude, 'exclude') }}
 ),
 
 keys AS (
@@ -239,20 +193,8 @@ prices AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
-      {% if symbol is not none %}
-        AND upper(p.symbol) IN (
-        {% for s in symbols %}
-            upper('{{ s | trim }}'){% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
 ),
 
 final AS (
