@@ -78,8 +78,21 @@ deduplicated AS (
         FROM all_prices
     )
     WHERE rn = 1
+),
+
+whitelist_symbols AS (
+    SELECT
+        upper(w.symbol) AS symbol_upper,
+        argMax(w.symbol, w.date_start) AS symbol_display
+    FROM {{ ref('tokens_whitelist') }} w
+    GROUP BY symbol_upper
 )
 
-SELECT date, symbol, price
-FROM deduplicated
-ORDER BY date, symbol
+SELECT
+    d.date,
+    coalesce(nullIf(w.symbol_display, ''), d.symbol) AS symbol,
+    d.price
+FROM deduplicated d
+LEFT JOIN whitelist_symbols w
+  ON upper(d.symbol) = w.symbol_upper
+ORDER BY d.date, symbol
