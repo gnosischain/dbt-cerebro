@@ -3,8 +3,8 @@
         materialized            = 'incremental',
         incremental_strategy    = 'delete+insert',
         engine                  = 'ReplacingMergeTree()',
-        order_by                = '(contract_address, block_timestamp, transaction_hash)',
-        unique_key              = '(contract_address, block_timestamp, transaction_hash)',
+        order_by                = '(contract_address, block_timestamp, transaction_hash, log_index)',
+        unique_key              = '(contract_address, transaction_hash, log_index)',
         partition_by            = 'toStartOfMonth(block_timestamp)',
         settings                = { 
                                     'allow_nullable_key': 1 
