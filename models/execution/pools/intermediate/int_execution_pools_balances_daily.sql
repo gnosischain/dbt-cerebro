@@ -15,13 +15,31 @@
 {% set end_month   = var('end_month', none) %}
 
 WITH
+contracts_whitelist AS (
+    SELECT
+        lower(address) AS pool_address,
+        contract_type
+    FROM {{ ref('contracts_whitelist') }}
+),
+
 uniswap_v3_pools AS (
     SELECT DISTINCT
-        lower(decoded_params['pool']) AS pool_address,
+        multiIf(
+            startsWith(lower(decoded_params['pool']), '0x'),
+            lower(decoded_params['pool']),
+            concat('0x', replaceAll(lower(decoded_params['pool']), '0x', ''))
+        ) AS pool_address,
         lower(decoded_params['token0']) AS token0,
         lower(decoded_params['token1']) AS token1,
         'Uniswap V3' AS protocol
-    FROM {{ ref('contracts_UniswapV3_Factory_events') }}
+    FROM {{ ref('contracts_UniswapV3_Factory_events') }} f
+    INNER JOIN contracts_whitelist w
+      ON w.pool_address = multiIf(
+          startsWith(lower(f.decoded_params['pool']), '0x'),
+          lower(f.decoded_params['pool']),
+          concat('0x', replaceAll(lower(f.decoded_params['pool']), '0x', ''))
+      )
+     AND w.contract_type = 'UniswapV3Pool'
     WHERE event_name = 'PoolCreated'
       AND decoded_params['pool'] IS NOT NULL
       AND decoded_params['token0'] IS NOT NULL
@@ -30,11 +48,22 @@ uniswap_v3_pools AS (
 
 swapr_v3_pools AS (
     SELECT DISTINCT
-        lower(decoded_params['pool']) AS pool_address,
+        multiIf(
+            startsWith(lower(decoded_params['pool']), '0x'),
+            lower(decoded_params['pool']),
+            concat('0x', replaceAll(lower(decoded_params['pool']), '0x', ''))
+        ) AS pool_address,
         lower(decoded_params['token0']) AS token0,
         lower(decoded_params['token1']) AS token1,
         'Swapr V3' AS protocol
-    FROM {{ ref('contracts_Swapr_v3_AlgebraFactory_events') }}
+    FROM {{ ref('contracts_Swapr_v3_AlgebraFactory_events') }} f
+    INNER JOIN contracts_whitelist w
+      ON w.pool_address = multiIf(
+          startsWith(lower(f.decoded_params['pool']), '0x'),
+          lower(f.decoded_params['pool']),
+          concat('0x', replaceAll(lower(f.decoded_params['pool']), '0x', ''))
+      )
+     AND w.contract_type = 'SwaprPool'
     WHERE event_name = 'Pool'
       AND decoded_params['pool'] IS NOT NULL
       AND decoded_params['token0'] IS NOT NULL
