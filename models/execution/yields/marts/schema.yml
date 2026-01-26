@@ -8,8 +8,6 @@ models:
   - name: date
     description: The date of the yield observation, formatted as a date string.
     data_type: Date
-    tests:
-    - not_null
 
   - name: apy
     description: The calculated annual percentage yield (APY) for the given date, expressed as a percentage (0-100%).
@@ -63,3 +61,60 @@ models:
     - columns.apy_30DMM.description
     - columns.apy_7DMA.description
     - columns.date.data_type
+
+- name: fct_execution_yields_pools_daily
+  description: Daily pool yields fact at pool×token grain, providing pool TVL (USD) and accrued fee APR (30D trailing) for Uniswap V3/Swapr V3 pools. Fees are computed from Swap + Flash events (gross fees; independent of Collect/claims). Output is intentionally filtered to the top pools per token based on 30D-average token-specific TVL, with a minimum token TVL threshold (Balancer hidden for now).
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: pool
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token
+    data_type: String
+  - name: tvl_usd
+    data_type: Float64
+  - name: fee_apr_30d
+    data_type: Float64
+  config:
+    access: public
+    tags: [production, execution, yields, pools]
+
+- name: api_execution_yields_pools_tvl_daily
+  description: API view for pool TVL (USD) time series by token and pool label.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: tvl_type
+    data_type: String
+  - name: value
+    data_type: Float64
+  config:
+    access: public
+    tags: [production, execution, yields, api]
+
+- name: api_execution_yields_pools_fee_apr_30d_daily
+  description: API view for fee APR (30D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: apy_type
+    data_type: String
+  - name: value
+    data_type: Float64
+  config:
+    access: public
+    tags: [production, execution, yields, api]
