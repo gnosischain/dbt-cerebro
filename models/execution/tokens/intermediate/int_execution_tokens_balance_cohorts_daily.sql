@@ -20,7 +20,7 @@ balances_filtered AS (
     SELECT
         b.date,
         lower(b.token_address) AS token_address,
-        upper(b.symbol) AS symbol,
+        b.symbol AS symbol,
         b.token_class,
         lower(b.address) AS address,
         b.balance_usd

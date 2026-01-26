@@ -118,7 +118,7 @@ def is_valid_model_name(name: str) -> bool:
 def get_models_in_order(selector: str) -> List[str]:
     """
     Get models matching selector in dependency order.
-    Uses dbt ls which returns models in topological sort order.
+    Uses dbt ls to get matching models, then sorts by dependencies from manifest.
     """
     import re
     
@@ -162,7 +162,79 @@ def get_models_in_order(selector: str) -> List[str]:
         if re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', cleaned):
             models.append(cleaned)
     
-    return models
+    # Sort models by dependency order using manifest
+    return topological_sort_models(models)
+
+
+def topological_sort_models(models: List[str]) -> List[str]:
+    """
+    Sort models in dependency order using manifest.json.
+    Models with no dependencies come first, then their dependents.
+    """
+    ensure_manifest()
+    
+    with open(MANIFEST_PATH) as f:
+        manifest = json.load(f)
+    
+    # Find project name from manifest
+    project_name = None
+    for node_key in manifest.get("nodes", {}).keys():
+        if node_key.startswith("model."):
+            project_name = node_key.split(".")[1]
+            break
+    
+    if not project_name:
+        print("WARNING: Could not determine project name, falling back to alphabetical order")
+        return sorted(models)
+    
+    # Build dependency graph for selected models only
+    model_set = set(models)
+    dependencies: Dict[str, List[str]] = {m: [] for m in models}
+    
+    for model in models:
+        node_key = f"model.{project_name}.{model}"
+        if node_key in manifest.get("nodes", {}):
+            node = manifest["nodes"][node_key]
+            # Get dependencies that are also in our selected models
+            for dep in node.get("depends_on", {}).get("nodes", []):
+                # Extract model name from node key (e.g., "model.project.int_xxx" -> "int_xxx")
+                if dep.startswith("model."):
+                    dep_name = dep.split(".")[-1]
+                    if dep_name in model_set:
+                        dependencies[model].append(dep_name)
+    
+    # Kahn's algorithm for topological sort
+    # Count incoming edges
+    in_degree = {m: 0 for m in models}
+    for model, deps in dependencies.items():
+        for dep in deps:
+            in_degree[model] += 1  # model depends on dep, so model has an incoming edge
+    
+    # Start with models that have no dependencies (in_degree = 0)
+    queue = [m for m in models if in_degree[m] == 0]
+    queue.sort()  # Alphabetical for determinism when no dependency constraint
+    
+    result = []
+    while queue:
+        # Pop model with no remaining dependencies
+        model = queue.pop(0)
+        result.append(model)
+        
+        # Remove this model as a dependency from others
+        for other_model, deps in dependencies.items():
+            if model in deps:
+                in_degree[other_model] -= 1
+                if in_degree[other_model] == 0:
+                    # Insert in sorted position for determinism
+                    queue.append(other_model)
+                    queue.sort()
+    
+    # Check for cycles (shouldn't happen in dbt, but just in case)
+    if len(result) != len(models):
+        print("WARNING: Dependency cycle detected, falling back to alphabetical order")
+        return sorted(models)
+    
+    return result
 
 
 def ensure_manifest() -> None:
@@ -251,7 +323,7 @@ def generate_time_batches(
 def run_model_batched(
     model: str,
     config: dict,
-    is_first_model: bool,
+    full_refresh_first_batch: bool,
     dry_run: bool = False,
     state: Optional[dict] = None,
     incremental_only: bool = False,
@@ -265,7 +337,7 @@ def run_model_batched(
     Args:
         model: The dbt model name
         config: The full_refresh config from schema.yml
-        is_first_model: Whether this is the first model (for --full-refresh on first batch)
+        full_refresh_first_batch: If True, add --full-refresh to first batch (ignored if incremental_only)
         dry_run: If True, only print what would be executed
         state: Resume state dict
         incremental_only: If True, never use --full-refresh (append only)
@@ -311,7 +383,7 @@ def run_model_batched(
     print(f"{'='*60}")
     
     run_number = 0
-    is_first_run = is_first_model
+    is_first_run = full_refresh_first_batch
     
     for stage_idx, stage in enumerate(stages):
         stage_name = stage["name"]
@@ -369,15 +441,15 @@ def run_model_batched(
 
 def run_model_normal(
     model: str,
-    is_first_model: bool,
+    full_refresh: bool,
     dry_run: bool = False
 ) -> bool:
     """Run a model normally (no batching)."""
     cmd = ["run", "-s", model]
-    if is_first_model:
+    if full_refresh:
         cmd.append("--full-refresh")
     
-    refresh_flag = " --full-refresh" if is_first_model else ""
+    refresh_flag = " --full-refresh" if full_refresh else ""
     print(f"\n  {model} (standard run){refresh_flag}")
     
     if not dry_run:
@@ -410,8 +482,9 @@ Examples:
     )
     parser.add_argument(
         "--select", "-s",
+        nargs='+',
         required=True,
-        help="dbt selector (model name, tag:xxx, etc.)"
+        help="dbt selector(s) - model names, tag:xxx, etc. (space-separated)"
     )
     parser.add_argument(
         "--dry-run",
@@ -439,15 +512,18 @@ Examples:
     # Load or initialize state
     state = load_state() if args.resume else {"completed_models": [], "current_model": None, "current_batch": 0}
     
-    print(f"Getting models for: {args.select}")
+    # Join multiple selectors into space-separated string for dbt
+    selector = " ".join(args.select)
+    
+    print(f"Getting models for: {selector}")
     try:
-        models = get_models_in_order(args.select)
+        models = get_models_in_order(selector)
     except subprocess.CalledProcessError:
         print("ERROR: Failed to get model list. Is dbt configured correctly?")
         sys.exit(1)
     
     if not models:
-        print(f"No models found for selector: {args.select}")
+        print(f"No models found for selector: {selector}")
         sys.exit(1)
     
     print(f"Found {len(models)} model(s): {', '.join(models)}")
@@ -457,8 +533,6 @@ Examples:
         print("DRY RUN - Execution Plan")
         print("="*60)
     
-    # Track if we've done the first full-refresh
-    is_first_model = True
     success_count = 0
     
     for model in models:
@@ -474,17 +548,18 @@ Examples:
         stage_filter = args.stage.split(",") if args.stage else None
         
         if config:
+            # Each model's first batch needs --full-refresh (unless incremental_only)
             success = run_model_batched(
-                model, config, is_first_model, args.dry_run, state,
+                model, config, True, args.dry_run, state,
                 incremental_only=args.incremental_only,
                 stage_filter=stage_filter
             )
         else:
-            success = run_model_normal(model, is_first_model, args.dry_run)
+            success = run_model_normal(model, True, args.dry_run)
         
         if not success and not args.dry_run:
             print(f"\nFailed at model: {model}")
-            print(f"State saved. Resume with: python {sys.argv[0]} --select {args.select} --resume")
+            print(f"State saved. Resume with: python {sys.argv[0]} --select {selector} --resume")
             sys.exit(1)
         
         # Mark model complete
@@ -494,7 +569,6 @@ Examples:
             state["current_batch"] = 0
             save_state(state)
         
-        is_first_model = False
         success_count += 1
     
     # Clean up on success
