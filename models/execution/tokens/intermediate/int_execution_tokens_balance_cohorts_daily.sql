@@ -23,6 +23,7 @@ balances_filtered AS (
         b.symbol AS symbol,
         b.token_class,
         lower(b.address) AS address,
+        b.balance,
         b.balance_usd
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
     WHERE b.date < today()
@@ -44,6 +45,7 @@ bucketed AS (
         symbol,
         token_class,
         address,
+        balance,
         balance_usd,
         CASE
             WHEN balance_usd <       10       THEN '0-10'
@@ -65,6 +67,7 @@ agg AS (
         token_class,
         balance_bucket,
         countDistinct(address) AS holders_in_bucket,
+        sum(balance) AS value_native_in_bucket,
         sum(balance_usd) AS value_usd_in_bucket
     FROM bucketed
     GROUP BY
@@ -82,6 +85,7 @@ SELECT
     token_class,
     balance_bucket,
     holders_in_bucket,
+    value_native_in_bucket,
     value_usd_in_bucket
 FROM agg
 WHERE date < today()
