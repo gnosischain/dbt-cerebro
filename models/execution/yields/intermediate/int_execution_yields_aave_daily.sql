@@ -100,6 +100,8 @@ with_symbols AS (
     FROM latest_rates lr
     INNER JOIN {{ ref('tokens_whitelist') }} w
         ON lower(w.address) = lr.token_address
+       AND lr.date >= toDate(w.date_start)
+       AND (w.date_end IS NULL OR lr.date < toDate(w.date_end))
     WHERE lr.liquidity_rate_ray IS NOT NULL
 ),
 

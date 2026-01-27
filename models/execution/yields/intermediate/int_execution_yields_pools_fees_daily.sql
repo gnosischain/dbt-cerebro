@@ -39,7 +39,9 @@ token_meta AS (
     SELECT
         lower(address) AS token_address,
         nullIf(upper(trimBoth(symbol)), '') AS token,
-        decimals
+        decimals,
+        date_start,
+        date_end
     FROM {{ ref('tokens_whitelist') }}
 ),
 
@@ -412,6 +414,8 @@ fees_token_amounts AS (
     FROM fees_with_token f
     LEFT JOIN token_meta tm
       ON tm.token_address = f.token_address
+     AND f.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR f.date < toDate(tm.date_end))
     WHERE f.token_address IS NOT NULL
       AND tm.token IS NOT NULL
       AND tm.token != ''

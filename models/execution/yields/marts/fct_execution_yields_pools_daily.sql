@@ -50,7 +50,9 @@ token_meta AS (
     SELECT
         lower(address) AS token_address,
         nullIf(upper(trimBoth(symbol)), '') AS token,
-        decimals
+        decimals,
+        date_start,
+        date_end
     FROM {{ ref('tokens_whitelist') }}
 ),
 
@@ -78,6 +80,8 @@ balances_enriched AS (
     FROM balances_canon b
     LEFT JOIN token_meta tm
       ON tm.token_address = b.token_address
+     AND b.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR b.date < toDate(tm.date_end))
     LEFT JOIN prices p
       ON p.date = b.date
      AND p.token = tm.token

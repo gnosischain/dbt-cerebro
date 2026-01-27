@@ -44,6 +44,8 @@ with_class AS (
     FROM base b
     LEFT JOIN {{ ref('tokens_whitelist') }} w
       ON lower(w.address) = b.token_address
+     AND b.date >= toDate(w.date_start)
+     AND (w.date_end IS NULL OR b.date < toDate(w.date_end))
 ),
 
 deltas AS (

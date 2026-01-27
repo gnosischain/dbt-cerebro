@@ -392,6 +392,8 @@ balancer_balances_final AS (
     FROM balancer_balances b
     LEFT JOIN {{ ref('tokens_whitelist') }} t
         ON lower(t.address) = b.token_address
+       AND b.date >= toDate(t.date_start)
+       AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     WHERE b.balance_raw != 0
 ),
 
