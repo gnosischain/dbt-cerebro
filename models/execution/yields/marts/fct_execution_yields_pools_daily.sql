@@ -10,7 +10,6 @@
 }}
 
 WITH
--- Base: one row per (date, protocol, pool, token) from pool balances
 balances_base AS (
     SELECT
         toDate(b.date) AS date,
@@ -22,7 +21,6 @@ balances_base AS (
     WHERE b.date < today()
 ),
 
--- Canonicalize pool address to always include 0x in outputs
 balances_canon AS (
     SELECT
         date,
@@ -65,7 +63,6 @@ prices AS (
     WHERE date < today()
 ),
 
--- Enrich balances with token symbol and price for TVL computation
 balances_enriched AS (
     SELECT
         b.date AS date,
@@ -87,7 +84,6 @@ balances_enriched AS (
      AND p.token = tm.token
 ),
 
--- Token-specific TVL in each pool (for token-centric "top pools" selection)
 token_pool_tvl_daily AS (
     SELECT
         date,
@@ -159,7 +155,6 @@ pool_tvl_daily AS (
     GROUP BY date, protocol, pool_address
 ),
 
--- Pool label helpers
 uniswap_v3_pools AS (
     SELECT DISTINCT
         replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
@@ -292,6 +287,7 @@ pool_metrics_final AS (
         protocol,
         pool_address,
         tvl_usd,
+        fees_usd_daily,
         multiIf(
             protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_30d_avg > 0,
             (fees_usd_30d / tvl_usd_30d_avg) * (365.0 / 30.0) * 100.0,
@@ -309,6 +305,7 @@ final AS (
         b.token_address AS token_address,
         b.token AS token,
         pm.tvl_usd AS tvl_usd,
+        pm.fees_usd_daily AS fees_usd_daily,
         pm.fee_apr_30d AS fee_apr_30d
     FROM (
         SELECT DISTINCT
@@ -344,6 +341,7 @@ SELECT
     token_address,
     token,
     tvl_usd,
+    fees_usd_daily,
     fee_apr_30d
 FROM final
 WHERE date < today()
