@@ -267,13 +267,13 @@ pool_metrics_daily AS (
         sum(coalesce(f.fees_usd_daily, 0)) OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
-            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-        ) AS fees_usd_30d,
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ) AS fees_usd_7d,
         avg(t.tvl_usd) OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
-            ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-        ) AS tvl_usd_30d_avg
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ) AS tvl_usd_7d_avg
     FROM pool_tvl_daily t
     LEFT JOIN fees_usd_daily f
       ON f.date = t.date
@@ -289,10 +289,10 @@ pool_metrics_final AS (
         tvl_usd,
         fees_usd_daily,
         multiIf(
-            protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_30d_avg > 0,
-            (fees_usd_30d / tvl_usd_30d_avg) * (365.0 / 30.0) * 100.0,
+            protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_7d_avg > 0,
+            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0,
             NULL
-        ) AS fee_apr_30d
+        ) AS fee_apr_7d
     FROM pool_metrics_daily
 ),
 
@@ -306,7 +306,7 @@ final AS (
         b.token AS token,
         pm.tvl_usd AS tvl_usd,
         pm.fees_usd_daily AS fees_usd_daily,
-        pm.fee_apr_30d AS fee_apr_30d
+        pm.fee_apr_7d AS fee_apr_7d
     FROM (
         SELECT DISTINCT
             date,
@@ -342,6 +342,6 @@ SELECT
     token,
     tvl_usd,
     fees_usd_daily,
-    fee_apr_30d
+    fee_apr_7d
 FROM final
 WHERE date < today()
