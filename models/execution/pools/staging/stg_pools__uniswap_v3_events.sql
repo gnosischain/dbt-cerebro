@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production', 'execution', 'pools', 'uniswap_v3', 'staging']
+        tags=['dev', 'execution', 'pools', 'uniswap_v3', 'staging']
     )
 }}
 

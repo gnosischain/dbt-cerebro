@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier1','api:yields_pools', 'metric:fee_apr_7d', 'granularity:daily']
+        tags=['dev','execution','tier1','api:yields_pools', 'metric:fee_apr_7d', 'granularity:daily']
     )
 }}
 

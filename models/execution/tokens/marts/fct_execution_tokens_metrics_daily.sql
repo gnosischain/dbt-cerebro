@@ -4,7 +4,7 @@
     engine='MergeTree()',
     order_by='(date, token_address)',
     partition_by='toStartOfMonth(date)',
-    tags=['dev','execution','tokens','metrics_daily']
+    tags=['production','execution','tokens','metrics_daily']
   )
 }}
 

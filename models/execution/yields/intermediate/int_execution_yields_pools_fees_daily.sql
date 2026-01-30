@@ -7,7 +7,7 @@
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'yields', 'pools', 'fees', 'accrued', 'intermediate']
+        tags=['dev', 'execution', 'yields', 'pools', 'fees', 'accrued', 'intermediate']
     )
 }}
 

@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(token, metric)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'yields', 'pools', 'snapshots']
+        tags=['dev', 'execution', 'yields', 'pools', 'snapshots']
     )
 }}
 

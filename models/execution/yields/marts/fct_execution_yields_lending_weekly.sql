@@ -5,7 +5,7 @@
         order_by='(week, token_address)',
         partition_by='toYYYYMM(week)',
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','yields','lending']
+        tags=['dev','execution','yields','lending']
     )
 }}
 
