@@ -9,17 +9,24 @@
     tags = ['production', 'intermediate', 'bridges']
 ) }}
 
-SELECT
-    date,
-    bridge,
-    source_chain,
-    dest_chain,
-    token,
-    direction,
-    volume_token,
-    volume_usd,
-    net_usd,
-    txs
-FROM {{ ref('stg_crawlers_data__dune_bridge_flows') }}
-WHERE date < today()
-{{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+-- Production version: Aggregates transaction-level data to daily
+
+WITH base AS (
+    SELECT
+        toDate(timestamp) AS date, 
+        bridge,
+        source_chain,
+        dest_chain,
+        token,
+        direction,
+        sum(amount_token) AS volume_token,
+        sum(amount_usd) AS volume_usd,
+        sum(net_usd) AS net_usd,
+        count() AS txs 
+    FROM {{ ref('stg_crawlers_data__dune_bridge_flows') }}
+    WHERE timestamp < today()
+    {{ apply_monthly_incremental_filter('timestamp', 'date', 'true') }} 
+    GROUP BY date, bridge, source_chain, dest_chain, token, direction
+)
+
+SELECT * FROM base
