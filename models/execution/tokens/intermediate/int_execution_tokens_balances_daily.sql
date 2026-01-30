@@ -208,7 +208,7 @@ final AS (
         b.balance_raw/POWER(10, t.decimals) AS balance,
         (b.balance_raw/POWER(10, t.decimals)) * p.price AS balance_usd
     FROM balances b
-    LEFT JOIN {{ ref('tokens_whitelist') }} t
+    INNER JOIN {{ ref('tokens_whitelist') }} t
       ON lower(t.address) = b.token_address
      AND b.date >= toDate(t.date_start)
      AND (t.date_end IS NULL OR b.date < toDate(t.date_end))

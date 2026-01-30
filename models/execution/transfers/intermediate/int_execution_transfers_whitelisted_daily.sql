@@ -38,6 +38,8 @@ raw_whitelisted_transfers AS (
     FROM {{ ref('stg_execution__logs') }} AS l
     INNER JOIN tokens t
         ON lower(l.address) = t.token_address
+        AND l.block_timestamp >= t.date_start
+        AND (t.date_end IS NULL OR l.block_timestamp < t.date_end)
     WHERE
         l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
         AND l.block_timestamp < today()
