@@ -54,6 +54,7 @@ joined AS (
         coalesce(sh.token_class, t.token_class) AS token_class,
 
         sh.supply,
+        sh.supply * COALESCE(p.price_usd, 0) AS supply_usd,
         sh.holders,
 
         t.volume_token,
@@ -79,6 +80,7 @@ SELECT
     token_class,
 
     supply,
+    supply_usd,
     holders,
 
     volume_token,
