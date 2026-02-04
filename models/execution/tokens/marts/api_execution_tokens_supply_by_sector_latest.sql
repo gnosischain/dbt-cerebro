@@ -12,4 +12,4 @@ SELECT
     value_usd,
     percentage
 FROM {{ ref('fct_execution_tokens_supply_by_sector_latest') }}
-ORDER BY token_class, value DESC
+ORDER BY token_class, value_usd DESC

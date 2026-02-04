@@ -28,7 +28,8 @@ sector_supply AS (
 total_supply AS (
     SELECT 
         token_class,
-        SUM(value) AS total
+        SUM(value) AS total,
+        SUM(value_usd) AS total_usd
     FROM sector_supply
     GROUP BY token_class
 )
@@ -38,8 +39,8 @@ SELECT
     ss.sector,
     ss.value,
     ss.value_usd,
-    ROUND(ss.value / NULLIF(ts.total, 0) * 100, 2) AS percentage
+    ROUND(ss.value_usd / NULLIF(ts.total_usd, 0) * 100, 2) AS percentage
 FROM sector_supply ss
 INNER JOIN total_supply ts
     ON ss.token_class = ts.token_class
-ORDER BY ss.token_class, ss.value DESC
+ORDER BY ss.token_class, ss.value_usd DESC
