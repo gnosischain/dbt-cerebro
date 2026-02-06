@@ -170,24 +170,31 @@ WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
 
 WITH
   tx AS (
-    SELECT *
-    FROM {{ tx_table }} FINAL
-    WHERE replaceAll(lower({{ selector_column }}),'0x','') = '{{ addr }}'
-      {% if start_blocktime %}
-        AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
-      {% endif %}
+    SELECT * FROM (
+      SELECT *,
+        row_number() OVER (
+          PARTITION BY block_number, transaction_index
+          ORDER BY insert_version DESC
+        ) AS _dedup_rn
+      FROM {{ tx_table }}
+      WHERE replaceAll(lower({{ selector_column }}),'0x','') = '{{ addr }}'
+        {% if start_blocktime %}
+          AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
+        {% endif %}
 
-      {# Batch window filter: used by refresh.py for batched full refresh #}
-      {% if start_month is not none and end_month is not none %}
-        AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
-        AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
-      {% endif %}
+        {# Batch window filter: used by refresh.py for batched full refresh #}
+        {% if start_month is not none and end_month is not none %}
+          AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
+          AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
+        {% endif %}
 
-      {% if incremental_column and not flags.FULL_REFRESH %}
-        AND {{ incremental_column }} >
-            (SELECT coalesce(max({{ incremental_column }}), '1970-01-01') FROM {{ this }})
-      {% endif %}
-      AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
+        {% if incremental_column and not flags.FULL_REFRESH %}
+          AND {{ incremental_column }} >
+              (SELECT coalesce(max({{ incremental_column }}), '1970-01-01') FROM {{ this }})
+        {% endif %}
+        AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
+    )
+    WHERE _dedup_rn = 1
   ),
   abi AS ( {{ sig_sql }} ),
 

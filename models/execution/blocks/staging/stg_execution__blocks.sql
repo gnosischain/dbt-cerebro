@@ -9,7 +9,7 @@
 WITH
 
 source AS (
-    SELECT 
+    SELECT
         block_number,
         block_hash,
         parent_hash,
@@ -27,10 +27,16 @@ source AS (
         base_fee_per_gas,
         withdrawals_root,
         block_timestamp
-    FROM 
-        {{ source('execution','blocks') }}
-    WHERE 
-        block_timestamp > '1970-01-01' -- remove genesis
+    FROM (
+        SELECT *,
+            row_number() OVER (
+                PARTITION BY block_number
+                ORDER BY insert_version DESC
+            ) AS _dedup_rn
+        FROM {{ source('execution','blocks') }}
+    )
+    WHERE _dedup_rn = 1
+        AND block_timestamp > '1970-01-01' -- remove genesis
 )
 
 SELECT

@@ -33,7 +33,15 @@ source AS (
         v,
         block_hash,
         block_timestamp
-    FROM {{ source('execution','transactions') }} FINAL
+    FROM (
+        SELECT *,
+            row_number() OVER (
+                PARTITION BY block_number, transaction_index
+                ORDER BY insert_version DESC
+            ) AS _dedup_rn
+        FROM {{ source('execution','transactions') }}
+    )
+    WHERE _dedup_rn = 1
 )
 
 SELECT

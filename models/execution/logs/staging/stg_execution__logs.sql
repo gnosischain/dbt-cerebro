@@ -23,7 +23,15 @@ source AS (
     data,
     n_data_bytes,
     block_timestamp
-    FROM {{ source('execution','logs') }} FINAL
+    FROM (
+        SELECT *,
+            row_number() OVER (
+                PARTITION BY block_number, transaction_index, log_index
+                ORDER BY insert_version DESC
+            ) AS _dedup_rn
+        FROM {{ source('execution','logs') }}
+    )
+    WHERE _dedup_rn = 1
 )
 
 SELECT

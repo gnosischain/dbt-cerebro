@@ -134,25 +134,32 @@ WHERE {{ abi_filter }}
 WITH
 
 logs AS (
-  SELECT *
-  FROM {{ source_table }} FINAL
-  WHERE {{ addr_filter }}
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM {{ source_table }}
+    WHERE {{ addr_filter }}
 
-    {% if start_blocktime is not none and start_blocktime|trim != '' %}
-      AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
-    {% endif %}
+      {% if start_blocktime is not none and start_blocktime|trim != '' %}
+        AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
+      {% endif %}
 
-    {# Batch window filter: used by refresh.py for batched full refresh #}
-    {% if start_month is not none and end_month is not none %}
-      AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
-      AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
-    {% endif %}
+      {# Batch window filter: used by refresh.py for batched full refresh #}
+      {% if start_month is not none and end_month is not none %}
+        AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
+        AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
+      {% endif %}
 
-    {% if incremental_column and not flags.FULL_REFRESH %}
-      AND {{ incremental_column }} >
-        (SELECT coalesce(max({{ incremental_column }}),'1970-01-01')
-         FROM {{ this }})
-    {% endif %}
+      {% if incremental_column and not flags.FULL_REFRESH %}
+        AND {{ incremental_column }} >
+          (SELECT coalesce(max({{ incremental_column }}),'1970-01-01')
+           FROM {{ this }})
+      {% endif %}
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( {{ sig_sql }} ),
