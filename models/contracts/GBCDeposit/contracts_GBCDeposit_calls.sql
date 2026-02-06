@@ -22,6 +22,7 @@
         tx_table      = source('execution','transactions'),
         contract_address  = '0x0B98057eA310F4d31F2a452B414647007d1645d9',
         output_json_type  = true,
-        incremental_column= 'block_timestamp'
+        incremental_column= 'block_timestamp',
+        start_blocktime   = '2021-12-01'
     )
 }}

@@ -128,15 +128,24 @@ WHERE {{ abi_filter }}
 {% endset %}
 
 {% set sql_body %}
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 WITH
 
 logs AS (
   SELECT *
   FROM {{ source_table }} FINAL
   WHERE {{ addr_filter }}
-  
+
     {% if start_blocktime is not none and start_blocktime|trim != '' %}
-      AND toStartOfMonth({{ incremental_column }}) >= toStartOfMonth(toDateTime('{{ start_blocktime }}'))
+      AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
+    {% endif %}
+
+    {# Batch window filter: used by refresh.py for batched full refresh #}
+    {% if start_month is not none and end_month is not none %}
+      AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
+      AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
     {% endif %}
 
     {% if incremental_column and not flags.FULL_REFRESH %}
