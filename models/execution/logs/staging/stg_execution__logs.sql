@@ -23,7 +23,7 @@ source AS (
     data,
     n_data_bytes,
     block_timestamp
-    FROM {{ source('execution','logs') }}
+    FROM {{ source('execution','logs') }} FINAL
 )
 
 SELECT

@@ -41,16 +41,22 @@ WITH deltas AS (
 ),
 
 overall_max_date AS (
-    SELECT 
-    {% if end_month %}
-        least(toLastDayOfMonth(toDate('{{ end_month }}')), yesterday())
-    {% else %} 
-    (
-        SELECT max(toDate(date)) 
-        FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
-        {{ apply_monthly_incremental_filter('date', 'date') }}
-    )
-    {% endif %} AS max_date
+    SELECT
+        least(
+            {% if end_month %}
+                toLastDayOfMonth(toDate('{{ end_month }}')),
+            {% else %}
+                today(),
+            {% endif %}
+            yesterday(),
+            (
+                SELECT max(toDate(date))
+                FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
+                {% if end_month %}
+                WHERE toStartOfMonth(date) <= toDate('{{ end_month }}')
+                {% endif %}
+            )
+        ) AS max_date
 ),
 
 {% if is_incremental() %}

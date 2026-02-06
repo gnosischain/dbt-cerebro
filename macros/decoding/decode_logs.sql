@@ -132,7 +132,7 @@ WITH
 
 logs AS (
   SELECT *
-  FROM {{ source_table }}
+  FROM {{ source_table }} FINAL
   WHERE {{ addr_filter }}
   
     {% if start_blocktime is not none and start_blocktime|trim != '' %}

@@ -11,6 +11,8 @@
   ) 
 }}
 
+-- depends_on: {{ ref('int_execution_transfers_whitelisted_daily') }}
+
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 

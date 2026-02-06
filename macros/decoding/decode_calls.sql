@@ -168,7 +168,7 @@ WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
 WITH
   tx AS (
     SELECT *
-    FROM {{ tx_table }}
+    FROM {{ tx_table }} FINAL
     WHERE replaceAll(lower({{ selector_column }}),'0x','') = '{{ addr }}'
       {% if start_blocktime %}
         AND toStartOfMonth({{ incremental_column }}) >= toStartOfMonth(toDateTime('{{ start_blocktime }}'))
