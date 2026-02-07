@@ -3,7 +3,7 @@
         materialized='table',
         engine='MergeTree()',
         order_by='(validator_index)',
-        tags=["production", "consensus", "validators"]
+        tags=["dev", "consensus", "validators"]
     )
 }}
 

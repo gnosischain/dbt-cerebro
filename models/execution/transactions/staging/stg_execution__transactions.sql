@@ -9,32 +9,33 @@ WITH
 
 source AS (
     SELECT
-        block_number,
-        transaction_index,
-        transaction_hash,
-        nonce,
-        from_address,
-        to_address,
-        value_string,
-        input,
-        gas_limit,
-        gas_used,
-        gas_price,
-        transaction_type,
-        max_priority_fee_per_gas,
-        max_fee_per_gas,
-        success,
-        n_input_bytes,
-        n_input_zero_bytes,
-        n_input_nonzero_bytes,
-        n_rlp_bytes,
-        r,
-        s,
-        v,
-        block_hash,
-        block_timestamp
+        *
     FROM (
-        SELECT *,
+        SELECT 
+            block_number,
+            transaction_index,
+            transaction_hash,
+            nonce,
+            from_address,
+            to_address,
+            value_string,
+            input,
+            gas_limit,
+            gas_used,
+            gas_price,
+            transaction_type,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            success,
+            n_input_bytes,
+            n_input_zero_bytes,
+            n_input_nonzero_bytes,
+            n_rlp_bytes,
+            r,
+            s,
+            v,
+            block_hash,
+            block_timestamp,
             row_number() OVER (
                 PARTITION BY block_number, transaction_index
                 ORDER BY insert_version DESC

@@ -10,25 +10,26 @@ WITH
 
 source AS (
     SELECT
-        block_number,
-        block_hash,
-        parent_hash,
-        uncles_hash,
-        author,
-        state_root,
-        transactions_root,
-        receipts_root,
-        gas_used,
-        gas_limit,
-        extra_data,
-        size,
-        mix_hash,
-        nonce,
-        base_fee_per_gas,
-        withdrawals_root,
-        block_timestamp
+        *
     FROM (
-        SELECT *,
+        SELECT 
+            block_number,
+            block_hash,
+            parent_hash,
+            uncles_hash,
+            author,
+            state_root,
+            transactions_root,
+            receipts_root,
+            gas_used,
+            gas_limit,
+            extra_data,
+            size,
+            mix_hash,
+            nonce,
+            base_fee_per_gas,
+            withdrawals_root,
+            block_timestamp,
             row_number() OVER (
                 PARTITION BY block_number
                 ORDER BY insert_version DESC

@@ -25,6 +25,57 @@ WITH tokens AS (
     WHERE symbol != 'WxDAI'
 ),
 
+deduped_logs AS (
+    SELECT
+        block_number,
+        transaction_index,
+        log_index,
+        transaction_hash,
+        CONCAT('0x', address) AS address,
+        CONCAT('0x', topic0) AS topic0,
+        topic1,
+        topic2,
+        topic3,
+        data,
+        block_timestamp
+    FROM (
+        SELECT
+            block_number,
+            transaction_index,
+            log_index,
+            transaction_hash,
+            address,
+            topic0,
+            topic1,
+            topic2,
+            topic3,
+            data,
+            block_timestamp,
+            ROW_NUMBER() OVER (
+                PARTITION BY block_number, transaction_index, log_index
+                ORDER BY insert_version DESC
+            ) AS _dedup_rn
+        FROM {{ source('execution', 'logs') }}
+        WHERE
+            topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+            AND block_timestamp < today()
+            {% if start_month and end_month %}
+              AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+              AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+            {% else %}
+              {% if is_incremental() %}
+                AND toStartOfMonth(toStartOfDay(block_timestamp)) >= (
+                    SELECT max(toStartOfMonth(date)) FROM {{ this }}
+                )
+                AND toStartOfDay(block_timestamp) >= (
+                    SELECT max(toStartOfDay(date, 'UTC')) FROM {{ this }}
+                )
+              {% endif %}
+            {% endif %}
+    )
+    WHERE _dedup_rn = 1
+),
+
 raw_whitelisted_transfers AS (
     SELECT
         toDate(l.block_timestamp) AS date,
@@ -35,23 +86,14 @@ raw_whitelisted_transfers AS (
         reinterpretAsInt256(
                 reverse(unhex(l.data))
             ) AS value_raw
-    FROM {{ ref('stg_execution__logs') }} AS l
+    FROM deduped_logs AS l
     INNER JOIN tokens t
         ON lower(l.address) = t.token_address
         AND l.block_timestamp >= t.date_start
         AND (t.date_end IS NULL OR l.block_timestamp < t.date_end)
     WHERE
-        l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        AND l.block_timestamp < today()
-        -- Enforce whitelist version windows (prevents old/new contract overlap)
-        AND toDate(l.block_timestamp) >= t.date_start
+        toDate(l.block_timestamp) >= t.date_start
         AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
-        {% if start_month and end_month %}
-          AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
-          AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
-        {% else %}
-          {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-        {% endif %}
 ),
 
 transfers_whitelisted_daily AS (
