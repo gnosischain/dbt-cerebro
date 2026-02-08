@@ -402,6 +402,7 @@ def run_model_batched(
             if state and state.get("current_model") == model:
                 if run_number <= state.get("current_batch", 0):
                     print(f"    [{run_number}/{total_runs}] {batch_start} → {batch_end} | SKIPPED (resume)")
+                    is_first_run = False  # Don't full-refresh after resume
                     continue
             
             # Build vars

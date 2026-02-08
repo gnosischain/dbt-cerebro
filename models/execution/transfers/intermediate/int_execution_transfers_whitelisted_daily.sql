@@ -14,6 +14,18 @@
 {% set start_month      = var('start_month', none) %}
 {% set end_month        = var('end_month', none) %}
 
+{% set logs_pre_filter %}
+    topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    AND address != 'e91d153e0b41518a2ce8dd3d7944fa863463a97d' -- exclude WxDAI, handled separately
+    AND block_timestamp < today()
+    {% if start_month and end_month %}
+      AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    {% endif %}
+{% endset %}
+
 WITH tokens AS (
     SELECT
         lower(address)                       AS token_address,
@@ -27,53 +39,19 @@ WITH tokens AS (
 
 deduped_logs AS (
     SELECT
-        block_number,
-        transaction_index,
-        log_index,
-        transaction_hash,
         CONCAT('0x', address) AS address,
-        CONCAT('0x', topic0) AS topic0,
         topic1,
         topic2,
-        topic3,
         data,
         block_timestamp
     FROM (
-        SELECT
-            block_number,
-            transaction_index,
-            log_index,
-            transaction_hash,
-            address,
-            topic0,
-            topic1,
-            topic2,
-            topic3,
-            data,
-            block_timestamp,
-            ROW_NUMBER() OVER (
-                PARTITION BY block_number, transaction_index, log_index
-                ORDER BY insert_version DESC
-            ) AS _dedup_rn
-        FROM {{ source('execution', 'logs') }}
-        WHERE
-            topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-            AND block_timestamp < today()
-            {% if start_month and end_month %}
-              AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-              AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-            {% else %}
-              {% if is_incremental() %}
-                AND toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-                    SELECT max(toStartOfMonth(date)) FROM {{ this }}
-                )
-                AND toStartOfDay(block_timestamp) >= (
-                    SELECT max(toStartOfDay(date, 'UTC')) FROM {{ this }}
-                )
-              {% endif %}
-            {% endif %}
+        {{ dedup_source(
+            source_ref=source('execution', 'logs'),
+            partition_by='block_number, transaction_index, log_index',
+            columns='address, topic1, topic2, data, block_timestamp',
+            pre_filter=logs_pre_filter
+        ) }}
     )
-    WHERE _dedup_rn = 1
 ),
 
 raw_whitelisted_transfers AS (

@@ -16,6 +16,21 @@
 {% set day_index_start  = var('day_index_start', none) %}
 {% set day_index_end    = var('day_index_end', none) %}
 
+{% set logs_pre_filter %}
+    topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    AND block_timestamp < today()
+    {% if start_month and end_month %}
+      AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True) }}
+    {% endif %}
+    {% if day_index_start and day_index_end %}
+      AND toDayOfMonth(block_timestamp) >= {{ day_index_start }}
+      AND toDayOfMonth(block_timestamp) <= {{ day_index_end }}
+    {% endif %}
+{% endset %}
+
 WITH tokens AS (
     SELECT
         lower(address)                           AS token_address,
@@ -28,60 +43,25 @@ WITH tokens AS (
     FROM {{ ref('tokens_whitelist') }}
 ),
 
-{# Inline pre-filtered dedup: filters BEFORE ROW_NUMBER() to enable partition pruning #}
 deduped_logs AS (
     SELECT
         block_number,
         transaction_index,
         log_index,
-        transaction_hash,
+        CONCAT('0x', transaction_hash) AS transaction_hash,
         CONCAT('0x', address) AS address,
-        CONCAT('0x', topic0) AS topic0,
         topic1,
         topic2,
-        topic3,
         data,
         block_timestamp
     FROM (
-        SELECT
-            block_number,
-            transaction_index,
-            log_index,
-            transaction_hash,
-            address,
-            topic0,
-            topic1,
-            topic2,
-            topic3,
-            data,
-            block_timestamp,
-            ROW_NUMBER() OVER (
-                PARTITION BY block_number, transaction_index, log_index
-                ORDER BY insert_version DESC
-            ) AS _dedup_rn
-        FROM {{ source('execution', 'logs') }}
-        WHERE
-            topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-            AND block_timestamp < today()
-            {% if start_month and end_month %}
-              AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-              AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-            {% else %}
-              {% if is_incremental() %}
-                AND toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-                    SELECT max(toStartOfMonth(block_timestamp)) FROM {{ this }}
-                )
-                AND toStartOfDay(block_timestamp) >= (
-                    SELECT max(toStartOfDay(block_timestamp, 'UTC')) FROM {{ this }}
-                )
-              {% endif %}
-            {% endif %}
-            {% if day_index_start and day_index_end %}
-              AND toDayOfMonth(block_timestamp) >= {{ day_index_start }}
-              AND toDayOfMonth(block_timestamp) <= {{ day_index_end }}
-            {% endif %}
+        {{ dedup_source(
+            source_ref=source('execution', 'logs'),
+            partition_by='block_number, transaction_index, log_index',
+            columns='block_number, transaction_index, log_index, transaction_hash, address, topic1, topic2, data, block_timestamp',
+            pre_filter=logs_pre_filter
+        ) }}
     )
-    WHERE _dedup_rn = 1
 ),
 
 raw_whitelisted_logs AS (
@@ -90,7 +70,7 @@ raw_whitelisted_logs AS (
         l.block_timestamp,
         l.transaction_index,
         l.log_index,
-        concat('0x', lower(replaceAll(l.transaction_hash, '0x', ''))) AS transaction_hash,
+        lower(l.transaction_hash) AS transaction_hash,
         t.token_address,
         t.symbol,
         t.symbol_upper,
@@ -106,7 +86,7 @@ raw_whitelisted_logs AS (
         ) AS value_raw
     FROM deduped_logs AS l
     INNER JOIN tokens t
-        ON lower(l.address) = t.token_address_raw
+        ON lower(l.address) = t.token_address
        AND toDate(l.block_timestamp) >= t.date_start
        AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
 ),
