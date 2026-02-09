@@ -11,17 +11,28 @@
 
 WITH
   tx AS (
-    SELECT *
-    FROM `execution`.`transactions`
-    WHERE replaceAll(lower(to_address),'0x','') = '2de7439f52d059e6cadbbeb4527683a94331cf65'
-      
-        AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2023-11-30'))
-      
-      
-        AND block_timestamp >
-            (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_calls`)
-      
-      AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
+    SELECT * FROM (
+      SELECT *,
+        row_number() OVER (
+          PARTITION BY block_number, transaction_index
+          ORDER BY insert_version DESC
+        ) AS _dedup_rn
+      FROM `execution`.`transactions`
+      WHERE replaceAll(lower(to_address),'0x','') = '2de7439f52d059e6cadbbeb4527683a94331cf65'
+        
+          AND block_timestamp >= toDateTime('2022-03-01')
+        
+
+        
+        
+
+        
+          AND block_timestamp >
+              (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_calls`)
+        
+        AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
+    )
+    WHERE _dedup_rn = 1
   ),
   abi AS ( 
 SELECT

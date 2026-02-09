@@ -3,6 +3,8 @@
 
 
 
+
+
 WITH tokens AS (
     SELECT
         lower(address)                       AS token_address,
@@ -14,24 +16,32 @@ WITH tokens AS (
     WHERE symbol != 'WxDAI'
 ),
 
-raw_whitelisted_transfers AS (
+deduped_logs AS (
     SELECT
-        toDate(l.block_timestamp) AS date,
-        t.token_address,
-        t.symbol,
-        lower(concat('0x', substring(l.topic1, 25, 40))) AS "from",
-        lower(concat('0x', substring(l.topic2, 25, 40))) AS "to",
-        reinterpretAsInt256(
-                reverse(unhex(l.data))
-            ) AS value_raw
-    FROM `dbt`.`stg_execution__logs` AS l
-    INNER JOIN tokens t
-        ON lower(l.address) = t.token_address
-    WHERE
-        l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        AND l.block_timestamp < today()
+        CONCAT('0x', address) AS address,
+        topic1,
+        topic2,
+        data,
+        block_timestamp
+    FROM (
         
-          
+
+SELECT address, topic1, topic2, data, block_timestamp
+FROM (
+    SELECT
+        address, topic1, topic2, data, block_timestamp,
+        ROW_NUMBER() OVER (
+            PARTITION BY block_number, transaction_index, log_index
+            ORDER BY insert_version DESC
+        ) AS _dedup_rn
+    FROM `execution`.`logs`
+    
+    WHERE 
+    topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    AND address != 'e91d153e0b41518a2ce8dd3d7944fa863463a97d' -- exclude WxDAI, handled separately
+    AND block_timestamp < today()
+    
+      
   
     
       
@@ -48,7 +58,33 @@ raw_whitelisted_transfers AS (
     )
   
 
-        
+    
+
+    
+)
+WHERE _dedup_rn = 1
+
+    )
+),
+
+raw_whitelisted_transfers AS (
+    SELECT
+        toDate(l.block_timestamp) AS date,
+        t.token_address,
+        t.symbol,
+        lower(concat('0x', substring(l.topic1, 25, 40))) AS "from",
+        lower(concat('0x', substring(l.topic2, 25, 40))) AS "to",
+        reinterpretAsInt256(
+                reverse(unhex(l.data))
+            ) AS value_raw
+    FROM deduped_logs AS l
+    INNER JOIN tokens t
+        ON lower(l.address) = t.token_address
+        AND l.block_timestamp >= t.date_start
+        AND (t.date_end IS NULL OR l.block_timestamp < t.date_end)
+    WHERE
+        toDate(l.block_timestamp) >= t.date_start
+        AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
 ),
 
 transfers_whitelisted_daily AS (

@@ -1,0 +1,13 @@
+
+
+SELECT
+  date,
+  symbol      AS token,
+  token_class,
+  volume_token AS value_native,
+  volume_usd   AS value_usd
+FROM `dbt`.`fct_execution_tokens_metrics_daily`
+WHERE date < today()
+ORDER BY
+  date,
+  token

@@ -1,5 +1,8 @@
 
 
+-- depends_on: `dbt`.`int_execution_tokens_address_diffs_daily`
+
+
 
 
 
@@ -35,17 +38,27 @@ WITH deltas AS (
 
       
       
+  
+
       
+  
+
       
 ),
 
 overall_max_date AS (
-    SELECT 
-        --max(date) AS max_date
-     
-    SELECT max(toDate(date)) FROM `dbt`.`int_execution_tokens_address_diffs_daily`
-     AS max_date
-    FROM deltas
+    SELECT
+        least(
+            
+                today(),
+            
+            yesterday(),
+            (
+                SELECT max(toDate(date))
+                FROM `dbt`.`int_execution_tokens_address_diffs_daily`
+                
+            )
+        ) AS max_date
 ),
 
 
@@ -54,9 +67,13 @@ current_partition AS (
         max(toStartOfMonth(date)) AS month
         ,max(date)  AS max_date
     FROM `dbt`.`int_execution_tokens_balances_daily`
-    WHERE 1
+    WHERE 1=1
       
+  
+
       
+  
+
 ),
 prev_balances AS (
     SELECT 
@@ -70,7 +87,11 @@ prev_balances AS (
     WHERE 
         t1.date = t2.max_date
         
+  
+
         
+  
+
 ),
 
 keys AS (
@@ -147,13 +168,10 @@ balances AS (
 
 prices AS (
     SELECT
-        p.date
-        ,p.symbol
-        ,t.decimals
-        ,p.price
+        p.date,
+        p.symbol,
+        p.price
     FROM `dbt`.`int_execution_token_prices_daily` p
-    INNER JOIN `dbt`.`tokens_whitelist` t
-        ON upper(p.symbol) = upper(t.symbol)
     WHERE date < today()
       
         
@@ -175,7 +193,11 @@ prices AS (
 
       
       
+  
+
       
+  
+
 ),
 
 final AS (
@@ -186,9 +208,13 @@ final AS (
         b.token_class AS token_class,
         b.address AS address,
         b.balance_raw AS balance_raw,
-        b.balance_raw/POWER(10,p.decimals) AS balance,
-        balance * p.price AS balance_usd
+        b.balance_raw/POWER(10, t.decimals) AS balance,
+        (b.balance_raw/POWER(10, t.decimals)) * p.price AS balance_usd
     FROM balances b
+    INNER JOIN `dbt`.`tokens_whitelist` t
+      ON lower(t.address) = b.token_address
+     AND b.date >= toDate(t.date_start)
+     AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     LEFT JOIN prices p
       ON p.date = b.date
      AND upper(p.symbol) = upper(b.symbol)

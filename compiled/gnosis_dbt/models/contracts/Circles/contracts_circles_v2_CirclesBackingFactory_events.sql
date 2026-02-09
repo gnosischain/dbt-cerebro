@@ -5,6 +5,27 @@
 
 
 
+  
+  
+  
+    
+  
+
+  
+  
+  
+    
+    
+  
+
+  
+  
+    
+    
+    
+    
+  
+
 
 
 
@@ -14,19 +35,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = 'eced91232c609a42f6016860e8223b8aecaa7bd0'
-  
-    
-      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2025-04-25'))
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE address = 'eced91232c609a42f6016860e8223b8aecaa7bd0'
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_circles_v2_CirclesBackingFactory_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2025-04-25')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_circles_v2_CirclesBackingFactory_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 

@@ -5,16 +5,59 @@
 
 
 
+
+
 WITH tokens AS (
     SELECT
-        lower(address)                           AS token_address,      
-        lower(replaceAll(address, '0x', ''))     AS token_address_raw,  
+        lower(address)                           AS token_address,
+        lower(replaceAll(address, '0x', ''))     AS token_address_raw,
         decimals,
         symbol,
-        upper(symbol)                            AS symbol_upper,       
-        date_start,                              
-        date_end                                 
+        upper(symbol)                            AS symbol_upper,
+        date_start,
+        date_end
     FROM `dbt`.`tokens_whitelist`
+),
+
+deduped_logs AS (
+    SELECT
+        block_number,
+        transaction_index,
+        log_index,
+        CONCAT('0x', transaction_hash) AS transaction_hash,
+        CONCAT('0x', address) AS address,
+        topic1,
+        topic2,
+        data,
+        block_timestamp
+    FROM (
+        
+
+SELECT block_number, transaction_index, log_index, transaction_hash, address, topic1, topic2, data, block_timestamp
+FROM (
+    SELECT
+        block_number, transaction_index, log_index, transaction_hash, address, topic1, topic2, data, block_timestamp,
+        ROW_NUMBER() OVER (
+            PARTITION BY block_number, transaction_index, log_index
+            ORDER BY insert_version DESC
+        ) AS _dedup_rn
+    FROM `execution`.`logs`
+    
+    WHERE 
+    topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    AND block_timestamp < today()
+    
+      
+  
+
+    
+    
+
+    
+)
+WHERE _dedup_rn = 1
+
+    )
 ),
 
 raw_whitelisted_logs AS (
@@ -23,7 +66,7 @@ raw_whitelisted_logs AS (
         l.block_timestamp,
         l.transaction_index,
         l.log_index,
-        concat('0x', lower(replaceAll(l.transaction_hash, '0x', ''))) AS transaction_hash,
+        lower(l.transaction_hash) AS transaction_hash,
         t.token_address,
         t.symbol,
         t.symbol_upper,
@@ -37,19 +80,11 @@ raw_whitelisted_logs AS (
                 reverse(unhex(replaceAll(l.data, '0x', '')))
             )
         ) AS value_raw
-    FROM `dbt`.`stg_execution__logs` AS l
+    FROM deduped_logs AS l
     INNER JOIN tokens t
-        ON lower(l.address) = t.token_address_raw
-    WHERE
-        lower(replaceAll(l.topic0, '0x', '')) =
-          'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        AND l.block_timestamp < today()
-        
-          
-  
-
-        
-        
+        ON lower(l.address) = t.token_address
+       AND toDate(l.block_timestamp) >= t.date_start
+       AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
 ),
 
 prices_rwa AS (

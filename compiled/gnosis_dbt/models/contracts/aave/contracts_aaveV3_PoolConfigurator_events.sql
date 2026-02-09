@@ -5,6 +5,27 @@
 
 
 
+  
+  
+  
+    
+  
+
+  
+  
+  
+    
+    
+  
+
+  
+  
+    
+    
+    
+    
+  
+
 
 
 
@@ -14,19 +35,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = '7304979ec9e4eaa0273b6a037a31c4e9e5a75d16'
-  
-    
-      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2023-10-04'))
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE address = '7304979ec9e4eaa0273b6a037a31c4e9e5a75d16'
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_aaveV3_PoolConfigurator_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2023-10-04')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_aaveV3_PoolConfigurator_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 

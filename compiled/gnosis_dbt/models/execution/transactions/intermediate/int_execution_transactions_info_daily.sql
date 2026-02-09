@@ -1,17 +1,31 @@
 
 
-WITH tx AS (
-  SELECT
-    block_timestamp,
-    toDate(block_timestamp)             AS date,
-    toString(transaction_type)          AS transaction_type,
-    coalesce(success, 0)                AS success,
-    toFloat64(value) / 1e18             AS value_native,             
-    toFloat64(coalesce(gas_used, 0))    AS gas_used,                 
-    toFloat64(coalesce(gas_price, 0))   AS gas_price                 
-  FROM `dbt`.`stg_execution__transactions`
-  WHERE block_timestamp < today()
-  
+
+
+WITH deduped_transactions AS (
+    SELECT
+        block_timestamp,
+        transaction_type,
+        success,
+        CAST(value_string AS UInt256) AS value,
+        gas_used,
+        gas_price
+    FROM (
+        
+
+SELECT block_timestamp, transaction_type, success, value_string, gas_used, gas_price
+FROM (
+    SELECT
+        block_timestamp, transaction_type, success, value_string, gas_used, gas_price,
+        ROW_NUMBER() OVER (
+            PARTITION BY block_number, transaction_index
+            ORDER BY insert_version DESC
+        ) AS _dedup_rn
+    FROM `execution`.`transactions`
+    
+    WHERE 
+    block_timestamp < today()
+    
   
     
       
@@ -28,6 +42,24 @@ WITH tx AS (
     )
   
 
+
+    
+)
+WHERE _dedup_rn = 1
+
+    )
+),
+
+tx AS (
+  SELECT
+    block_timestamp,
+    toDate(block_timestamp)             AS date,
+    toString(transaction_type)          AS transaction_type,
+    coalesce(success, 0)                AS success,
+    toFloat64(value) / 1e18             AS value_native,
+    toFloat64(coalesce(gas_used, 0))    AS gas_used,
+    toFloat64(coalesce(gas_price, 0))   AS gas_price
+  FROM deduped_transactions
 ),
 
 agg_base AS (

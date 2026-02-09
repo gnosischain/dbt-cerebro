@@ -4,23 +4,37 @@
 
 
 
+
+
 WITH lbl AS (
   SELECT address, project, sector
   FROM `dbt`.`int_crawlers_data_labels`
 ),
 
-tx_labeled AS (
-  SELECT
-    toDate(t.block_timestamp)                        AS date,
-    coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
-    lower(t.from_address)                            AS from_address,
-    toFloat64(coalesce(t.gas_used, 0))               AS gas_used,
-    toFloat64(coalesce(t.gas_price, 0))              AS gas_price
-  FROM `dbt`.`stg_execution__transactions` t
-  ANY LEFT JOIN lbl l ON lower(t.to_address) = l.address
-  WHERE t.block_timestamp < today()
-    AND t.from_address IS NOT NULL
-    AND t.success = 1
+deduped_transactions AS (
+    SELECT
+        block_timestamp,
+        CONCAT('0x', from_address) AS from_address,
+        IF(to_address IS NULL, NULL, CONCAT('0x', to_address)) AS to_address,
+        gas_used,
+        gas_price
+    FROM (
+        
+
+SELECT block_timestamp, from_address, to_address, gas_used, gas_price
+FROM (
+    SELECT
+        block_timestamp, from_address, to_address, gas_used, gas_price,
+        ROW_NUMBER() OVER (
+            PARTITION BY block_number, transaction_index
+            ORDER BY insert_version DESC
+        ) AS _dedup_rn
+    FROM `execution`.`transactions`
+    
+    WHERE 
+    block_timestamp < today()
+    AND from_address IS NOT NULL
+    AND success = 1
     
       
   
@@ -40,6 +54,23 @@ tx_labeled AS (
   
 
     
+
+    
+)
+WHERE _dedup_rn = 1
+
+    )
+),
+
+tx_labeled AS (
+  SELECT
+    toDate(t.block_timestamp)                        AS date,
+    coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
+    lower(t.from_address)                            AS from_address,
+    toFloat64(coalesce(t.gas_used, 0))               AS gas_used,
+    toFloat64(coalesce(t.gas_price, 0))              AS gas_price
+  FROM deduped_transactions t
+  ANY LEFT JOIN lbl l ON lower(t.to_address) = l.address
 ),
 
 agg AS (

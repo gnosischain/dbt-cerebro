@@ -5,6 +5,27 @@
 
 
 
+  
+  
+  
+    
+  
+
+  
+  
+  
+    
+    
+  
+
+  
+  
+    
+    
+    
+    
+  
+
 
 
 
@@ -14,17 +35,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = '1d3be4d05eba2aa6c4eede85a74f491c31766e64'
-  
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE address = '1d3be4d05eba2aa6c4eede85a74f491c31766e64'
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_backedfi_bNVDA_Oracle_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2025-01-01')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_backedfi_bNVDA_Oracle_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 

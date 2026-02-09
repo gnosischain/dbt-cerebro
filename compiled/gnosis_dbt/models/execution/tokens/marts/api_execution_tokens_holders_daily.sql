@@ -5,7 +5,7 @@ SELECT
   symbol      AS token,
   token_class,
   holders     AS value
-FROM `dbt`.`int_execution_tokens_value_daily`
+FROM `dbt`.`fct_execution_tokens_metrics_daily`
 WHERE date < today()
 ORDER BY
   date,

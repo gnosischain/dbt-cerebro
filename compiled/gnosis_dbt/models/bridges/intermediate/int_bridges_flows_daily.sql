@@ -1,5 +1,7 @@
 
 
+-- Production version: Aggregates transaction-level data to daily
+
 WITH base AS (
     SELECT
         toDate(timestamp) AS date, 
@@ -31,7 +33,7 @@ WITH base AS (
     )
   
  
-    GROUP BY date, bridge, source_chain, dest_chain, token,direction
+    GROUP BY date, bridge, source_chain, dest_chain, token, direction
 )
 
 SELECT * FROM base

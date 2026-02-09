@@ -5,6 +5,27 @@
 
 
 
+  
+  
+  
+    
+  
+
+  
+  
+  
+    
+    
+  
+
+  
+  
+    
+    
+    
+    
+  
+
 
 
 
@@ -14,19 +35,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = '9083a2b699c0a4ad06f63580bde2635d26a3eef0'
-  
-    
-      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2020-09-04'))
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE address = '9083a2b699c0a4ad06f63580bde2635d26a3eef0'
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_FPMMDeterministicFactory_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2020-09-04')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_FPMMDeterministicFactory_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 

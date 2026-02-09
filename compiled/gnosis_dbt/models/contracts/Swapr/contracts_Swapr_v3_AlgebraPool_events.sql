@@ -6,6 +6,13 @@
 
 
 
+  
+    
+  
+  
+  
+
+
 
 
 
@@ -14,19 +21,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = '2de7439f52d059e6cadbbeb4527683a94331cf65'
-  
-    
-      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2023-11-30'))
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2022-03-01')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 
@@ -40,7 +57,7 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = '2de7439f52d059e6cadbbeb4527683a94331cf65'
+WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
  ),
 
 process AS (

@@ -5,6 +5,27 @@
 
 
 
+  
+  
+  
+    
+  
+
+  
+  
+  
+    
+    
+  
+
+  
+  
+    
+    
+    
+    
+  
+
 
 
 
@@ -14,19 +35,29 @@
 WITH
 
 logs AS (
-  SELECT *
-  FROM `execution`.`logs`
-  WHERE address = 'ceafdd6bc0bef976fdcd1112955828e00543c0ce'
-  
-    
-      AND toStartOfMonth(block_timestamp) >= toStartOfMonth(toDateTime('2020-09-01'))
-    
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM `execution`.`logs`
+    WHERE address = 'ceafdd6bc0bef976fdcd1112955828e00543c0ce'
 
-    
-      AND block_timestamp >
-        (SELECT coalesce(max(block_timestamp),'1970-01-01')
-         FROM `dbt`.`contracts_ConditionalTokens_events`)
-    
+      
+        AND block_timestamp >= toDateTime('2020-09-01')
+      
+
+      
+      
+
+      
+        AND block_timestamp >
+          (SELECT coalesce(max(block_timestamp),'1970-01-01')
+           FROM `dbt`.`contracts_ConditionalTokens_events`)
+      
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( 

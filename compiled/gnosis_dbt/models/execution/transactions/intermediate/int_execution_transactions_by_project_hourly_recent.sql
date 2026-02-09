@@ -1,15 +1,47 @@
 
 
+
+
 WITH lbl AS (
   SELECT address, project, sector
   FROM `dbt`.`int_crawlers_data_labels`
 ),
 
+deduped_transactions AS (
+    SELECT
+        block_timestamp,
+        CONCAT('0x', from_address) AS from_address,
+        IF(to_address IS NULL, NULL, CONCAT('0x', to_address)) AS to_address,
+        gas_used,
+        gas_price
+    FROM (
+        
+
+SELECT block_timestamp, from_address, to_address, gas_used, gas_price
+FROM (
+    SELECT
+        block_timestamp, from_address, to_address, gas_used, gas_price,
+        ROW_NUMBER() OVER (
+            PARTITION BY block_number, transaction_index
+            ORDER BY insert_version DESC
+        ) AS _dedup_rn
+    FROM `execution`.`transactions`
+    
+    WHERE 
+    toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
+    AND from_address IS NOT NULL
+    AND success = 1
+
+    
+)
+WHERE _dedup_rn = 1
+
+    )
+),
 
 wm AS (
   SELECT toStartOfDay(max(block_timestamp), 'UTC') AS max_day
-  FROM `dbt`.`stg_execution__transactions`
-  WHERE toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
+  FROM deduped_transactions
 ),
 
 tx AS (
@@ -19,14 +51,11 @@ tx AS (
     lower(t.to_address)                   AS to_address,
     toFloat64(coalesce(t.gas_used, 0))    AS gas_used,
     toFloat64(coalesce(t.gas_price, 0))   AS gas_price
-  FROM `dbt`.`stg_execution__transactions` t
+  FROM deduped_transactions t
   CROSS JOIN wm
-  WHERE 
-    toStartOfMonth(block_timestamp) >= toStartOfMonth(today() - INTERVAL 1 MONTH)
-    AND toStartOfDay(t.block_timestamp, 'UTC') >= subtractDays(max_day, 2)
+  WHERE
+    toStartOfDay(t.block_timestamp, 'UTC') >= subtractDays(max_day, 2)
     AND toStartOfDay(t.block_timestamp, 'UTC') < max_day
-    AND t.from_address IS NOT NULL
-    AND t.success = 1
 ),
 
 classified AS (

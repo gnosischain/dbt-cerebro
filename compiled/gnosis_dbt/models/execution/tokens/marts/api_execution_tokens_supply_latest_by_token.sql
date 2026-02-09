@@ -2,8 +2,9 @@
 
 SELECT
   symbol      AS token,
-  argMax(supply, date) AS value
-FROM `dbt`.`int_execution_tokens_value_daily`
+  argMax(supply, date) AS value_native,
+  argMax(supply_usd, date) AS value_usd
+FROM `dbt`.`fct_execution_tokens_metrics_daily`
 WHERE date < today()
-GROUP BY token_address, symbol
+GROUP BY symbol
 ORDER BY token
