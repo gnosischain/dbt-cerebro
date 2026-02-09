@@ -3,15 +3,6 @@ models:
 
 - name: api_execution_tokens_active_senders_daily
   description: This view provides daily counts of active senders per API token, enabling analysis of token engagement over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier0
-    - api:active_senders_per_token
-    - granularity:daily
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -51,15 +42,6 @@ models:
 
 - name: api_execution_tokens_balance_cohorts_holders_daily
   description: This view provides daily snapshots of token balance cohort distributions among holders, enabling analysis of holder segmentation over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:balance_cohorts_holders_per_token
-    - granularity:daily
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -99,15 +81,6 @@ models:
 
 - name: api_execution_tokens_balance_cohorts_value_daily
   description: This view aggregates daily token balance cohort values, segmented by balance buckets, to support analysis of token holdings over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:balance_cohorts_amount_per_token
-    - granularity:daily
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -141,21 +114,16 @@ models:
     description: The bucket label categorizing token balances, such as ranges or tiers.
     data_type: String
 
-  - name: value
+  - name: value_native
+    description: The total native token balance within the specified bucket on the given date.
+    data_type: Float64
+
+  - name: value_usd
     description: The total USD value of token balances within the specified bucket on the given date.
     data_type: Float64
 
 - name: api_execution_tokens_holders_daily
   description: The api_execution_tokens_holders_daily model provides daily aggregated data on the number of unique token holders for each token, supporting analysis of token distribution trends over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:holders_per_token
-    - granularity:daily
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -195,15 +163,6 @@ models:
 
 - name: api_execution_tokens_holders_latest_by_token
   description: This model provides the latest snapshot of the number of holders for each API token, aggregated by token symbol, to support analysis of token holder trends over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:holders_per_token
-    - granularity:latest
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -229,15 +188,6 @@ models:
 
 - name: api_execution_tokens_supply_daily
   description: The api_execution_tokens_supply_daily model provides daily aggregated data on the supply of different API tokens, supporting analysis of token availability over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:tokens_supply
-    - granularity:daily
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -277,15 +227,6 @@ models:
 
 - name: api_execution_tokens_supply_latest_by_token
   description: This model provides the latest supply values for each API token based on daily recorded data, enabling tracking of token supply trends over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:tokens_supply
-    - granularity:latest
-    access: public
   meta:
     owner: analytics-team
     authoritative: false
@@ -309,17 +250,8 @@ models:
     description: The most recent supply value of the token, as of the latest date prior to today.
     data_type: Float64
 
-- name: api_execution_tokens_volume_usd_daily
-  description: The api_execution_tokens_volume_usd_daily model provides daily aggregated data on the USD trading volume of different tokens, supporting analysis of token liquidity and trading activity over time.
-  config:
-    materialized: view
-    tags:
-    - dev
-    - execution
-    - tier1
-    - api:tokens_volume
-    - granularity:daily
-    access: public
+- name: api_execution_tokens_volume_daily
+  description: The api_execution_tokens_volume_daily model provides daily aggregated data on the trading volume of different tokens in both native token units and USD, supporting analysis of token liquidity and trading activity over time.
   meta:
     owner: analytics-team
     authoritative: false
@@ -353,136 +285,10 @@ models:
     description: The classification category of the token, such as utility or security token.
     data_type: String
 
-  - name: value
+  - name: value_native
+    description: The total trading volume for the token on the given date in native token units.
+    data_type: Float64
+
+  - name: value_usd
     description: The total USD trading volume for the token on the given date.
     data_type: Float64
-
-- name: fct_execution_tokens_balance_cohorts_daily
-  description: The fct_execution_tokens_balance_cohorts_daily model aggregates daily token balances across different address cohorts, enabling analysis of token distribution and movement over time within specified cohorts and date ranges.
-  config:
-    materialized: incremental
-    tags:
-    - dev
-    - execution
-    - tokens
-    - balance_cohorts_daily
-    access: public
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.845856'
-    _generated_fields:
-    - columns.token_address.description
-    - description
-    - columns.token_class.data_type
-    - columns.address.description
-    - columns.symbol.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.address_bucket.description
-    - columns.address_bucket.data_type
-    - columns.address.data_type
-    - columns.token_class.description
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.balance.data_type
-    - columns.balance.description
-    - columns.date.data_type
-  columns:
-
-  - name: date
-    description: The specific date for which the token balance data is recorded, representing a daily snapshot.
-    data_type: Date
-    tests:
-    - not_null
-
-  - name: token_address
-    description: The lowercase hexadecimal address of the token contract associated with the balance.
-    data_type: String
-
-  - name: symbol
-    description: The uppercase symbol representing the token, such as 'ETH' or 'USDT'.
-    data_type: String
-
-  - name: token_class
-    description: The classification category of the token, indicating its type or group.
-    data_type: String
-
-  - name: address
-    description: The lowercase address of the account holding the token balance.
-    data_type: String
-
-  - name: address_bucket
-    description: An integer bucket (0-999) derived from hashing the address, used for cohort segmentation.
-    data_type: UInt64
-
-  - name: balance
-    description: The token balance amount held by the address on the given date, typically in token units.
-    data_type: Float64
-
-- name: fct_execution_tokens_balance_cohorts_daily_agg
-  description: This model aggregates daily token balance cohort data, summarizing the number of holders and total USD value within each balance bucket for different tokens, facilitating analysis of token distribution trends over time.
-  config:
-    materialized: table
-    tags:
-    - dev
-    - execution
-    - tokens
-    - balance_cohorts_daily_agg
-    access: public
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.845925'
-    _generated_fields:
-    - columns.token_address.description
-    - description
-    - columns.token_class.data_type
-    - columns.holders_in_bucket.description
-    - columns.symbol.data_type
-    - columns.holders_in_bucket.data_type
-    - columns.date.description
-    - columns.value_usd_in_bucket.description
-    - config.tags
-    - config.materialized
-    - columns.token_class.description
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.balance_bucket.description
-    - columns.balance_bucket.data_type
-    - columns.value_usd_in_bucket.data_type
-    - columns.date.data_type
-  columns:
-
-  - name: date
-    description: The specific calendar date for the aggregated data, representing a daily snapshot.
-    data_type: Date
-    tests:
-    - not_null
-
-  - name: token_address
-    description: The unique blockchain address identifying the token.
-    data_type: String
-
-  - name: symbol
-    description: The ticker symbol representing the token, such as 'ETH' or 'USDT'.
-    data_type: String
-
-  - name: token_class
-    description: The classification or category of the token, indicating its type or use case.
-    data_type: String
-
-  - name: balance_bucket
-    description: A categorized range of token balances, used to segment holders based on their token holdings.
-    data_type: UInt64
-
-  - name: holders_in_bucket
-    description: The total number of unique holders whose balances fall within the specified bucket.
-    data_type: UInt64
-
-  - name: value_usd_in_bucket
-    description: The cumulative USD value of tokens held by all holders in the bucket, in USD.
-    data_type: UInt64

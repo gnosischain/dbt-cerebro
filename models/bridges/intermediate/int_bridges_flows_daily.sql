@@ -9,6 +9,8 @@
     tags = ['production', 'intermediate', 'bridges']
 ) }}
 
+-- Production version: Aggregates transaction-level data to daily
+
 WITH base AS (
     SELECT
         toDate(timestamp) AS date, 
@@ -24,7 +26,7 @@ WITH base AS (
     FROM {{ ref('stg_crawlers_data__dune_bridge_flows') }}
     WHERE timestamp < today()
     {{ apply_monthly_incremental_filter('timestamp', 'date', 'true') }} 
-    GROUP BY date, bridge, source_chain, dest_chain, token,direction
+    GROUP BY date, bridge, source_chain, dest_chain, token, direction
 )
 
 SELECT * FROM base

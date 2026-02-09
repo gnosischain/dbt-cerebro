@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','yields','sdai_apy']
+        tags=['dev','execution','yields','sdai_apy']
     )
 }}
 

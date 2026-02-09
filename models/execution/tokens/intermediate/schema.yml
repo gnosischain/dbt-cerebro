@@ -34,17 +34,18 @@ models:
   - name: net_delta
     description: Net change in the account balance.
     data_type: Float64
-  config:
-    access: public
-    tags:
-    - dev
-    - execution
-    - tokens
-    - address_deltas
-    materialized: incremental
   meta:
     owner: analytics-team
     authoritative: false
+    full_refresh:
+      batch_months: 1    
+      stages:
+        - name: all
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol_exclude: "aGnoGNO,aGnoWXDAI,aGnosDAI,aGnoUSDC,spGNO,spUSDT,spUSDC,spUSDC.e"
+        
     generated_by: dbt-schema-gen
     _generated_at: '2025-12-12T23:06:58.808910'
     _generated_fields:
@@ -126,18 +127,62 @@ models:
   - name: insert_version
     description: Monotonic ingestion version (nanoseconds).
     data_type: UInt64
-  config:
-    materialized: incremental
-    unique_key: (date, token_address, address)
-    tags:
-    - dev
-    - execution
-    - tokens
-    - balances_daily
-    access: public
   meta:
     owner: analytics_engineer
     authoritative: false
+    full_refresh:
+      batch_months: 1    
+      stages:
+        # WxDAI - very high volume, monthly
+        - name: wxdai
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol: "WxDAI"
+        
+        # Major tokens - high volume, monthly
+        - name: major_tokens1
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol: "GNO"
+
+        - name: major_tokens2
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol: "WETH,WBTC"
+
+        - name: major_tokens3
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol: "USDC"
+
+        - name: major_tokens4
+          start_date: "2020-07-01"
+          batch_months: 1
+          vars:
+            symbol: "USDT"
+        
+        # Newer tokens - medium volume, monthly
+        - name: newer_tokens
+          start_date: "2022-01-01"
+          batch_months: 1
+          vars:
+            symbol: "COW,sGNO,EURe,GBPe,sDAI"
+        
+        # smaller tokens - low volume, monthly
+        - name: small_tokens
+          start_date: "2023-01-01"
+          batch_months: 1         
+          vars:
+            symbol: "bCSPX,bNIU,bCOIN,bIB01,bIBTA,bHIGH,bC3M,SAFE,USDC.e,BRLA,BRZ,bTSLA,bMSTR,bNVDA,bGME,bGOOGL,bMSFT,bERNA"
+        - name: tokens_2025
+          start_date: "2025-01-01"
+          batch_months: 1         
+          vars:
+            symbol: "ZCHF,svZCHF"
     generated_by: dbt-schema-gen
     _generated_at: '2025-12-12T23:06:58.809006'
     _generated_fields:
@@ -206,17 +251,12 @@ models:
   - name: unique_receivers
     description: Number of unique receivers.
     data_type: UInt64
-  config:
-    access: public
-    tags:
-    - dev
-    - execution
-    - tokens
-    - transfers_daily
-    materialized: incremental
   meta:
     owner: analytics_engineer
     authoritative: false
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 6
     generated_by: dbt-schema-gen
     _generated_at: '2025-12-12T23:06:58.809071'
     _generated_fields:
@@ -232,94 +272,101 @@ models:
     - columns.symbol.description
     - columns.date.data_type
 
-- name: int_execution_tokens_value_daily
-  description: The int_execution_tokens_value_daily model aggregates daily supply and holder data for tokens, enabling analysis of token circulation and distribution trends over time.
-  columns:
-
-  - name: date
-    description: The specific date for which the token data is recorded, represented as a date type.
-    data_type: Date
-    tests:
-    - not_null
-
-  - name: token_address
-    description: The unique blockchain address identifying the token, stored as a string.
-    data_type: String
-
-  - name: symbol
-    description: The token's trading symbol or abbreviation, represented as a string.
-    data_type: String
-
-  - name: token_class
-    description: The classification or category of the token, such as governance or utility, stored as a string.
-    data_type: String
-
-  - name: supply
-    description: The total circulating supply of the token on the given date, measured in token units.
-    data_type: Float64
-
-  - name: holders
-    description: The number of unique addresses holding a positive balance of the token on the given date.
-    data_type: UInt64
-
-  - name: price_usd
-    description: Price of the token in USD.
-    data_type: Float64
-
-  - name: value_usd
-    description: Total value of the token in USD.
-    data_type: Float64
-
-  - name: volume_token
-    description: Volume of the token.
-    data_type: String
-
-  - name: volume_usd
-    description: Volume of the token in USD.
-    data_type: String
-
-  - name: transfer_count
-    description: Number of transfers.
-    data_type: String
-
-  - name: ua_bitmap_state
-    description: UA bitmap state.
-    data_type: String
-
-  - name: active_senders
-    description: Number of active senders.
-    data_type: String
-
-  - name: unique_receivers
-    description: Number of unique receivers.
-    data_type: String
-  config:
-    materialized: incremental
-    unique_key: (date, token_address)
-    tags:
-    - dev
-    - execution
-    - tokens
-    - value_daily
-    access: public
+- name: int_execution_tokens_supply_holders_daily
+  description: Daily supply and holder counts aggregated by token.
   meta:
     owner: analytics_engineer
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.809162'
-    _generated_fields:
-    - columns.token_address.description
-    - description
-    - columns.token_class.data_type
-    - columns.symbol.data_type
-    - columns.holders.data_type
-    - columns.date.description
-    - columns.supply.description
-    - config.tags
-    - config.materialized
-    - columns.holders.description
-    - columns.supply.data_type
-    - columns.token_class.description
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.date.data_type
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 3
+  columns:
+  - name: date
+    description: The specific date for which the token data is recorded.
+    data_type: Date
+    tests:
+    - not_null
+  - name: token_address
+    description: The unique blockchain address identifying the token.
+    data_type: String
+  - name: symbol
+    description: The token's trading symbol or abbreviation.
+    data_type: String
+  - name: token_class
+    description: The classification or category of the token.
+    data_type: String
+  - name: supply
+    description: The total circulating supply of the token on the given date.
+    data_type: Float64
+  - name: holders
+    description: The number of unique addresses holding a positive balance.
+    data_type: UInt64
+
+- name: int_execution_tokens_balance_cohorts_daily
+  description: Daily token balance cohort distributions, segmenting holders into balance buckets.
+  meta:
+    owner: analytics-team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 4
+  columns:
+  - name: date
+    description: The specific date for which the token balance data is recorded.
+    data_type: Date
+    tests:
+    - not_null
+  - name: token_address
+    description: The lowercase hexadecimal address of the token contract.
+    data_type: String
+  - name: symbol
+    description: The uppercase symbol representing the token.
+    data_type: String
+  - name: token_class
+    description: The classification category of the token.
+    data_type: String
+  - name: balance_bucket
+    description: The balance range bucket (e.g., '0-10', '10-100', '100-1k').
+    data_type: String
+  - name: holders_in_bucket
+    description: Count of unique holders within the balance bucket.
+    data_type: UInt64
+  - name: value_native_in_bucket
+    description: Total native token balance held within the balance bucket.
+    data_type: Float64
+  - name: value_usd_in_bucket
+    description: Total USD value held within the balance bucket.
+    data_type: Float64
+
+- name: int_execution_tokens_balances_by_sector_daily
+  description: Daily balances aggregated by sector labels for each token.
+  meta:
+    owner: analytics-team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 6
+  columns:
+  - name: date
+    description: The specific date for which the data is recorded.
+    data_type: Date
+    tests:
+    - not_null
+  - name: token_address
+    description: The lowercase hexadecimal address of the token.
+    data_type: String
+  - name: symbol
+    description: The uppercase symbol representing the token.
+    data_type: String
+  - name: token_class
+    description: The classification category of the token.
+    data_type: String
+  - name: sector
+    description: The sector label for the addresses (e.g., 'DeFi', 'CEX', 'Unknown').
+    data_type: String
+  - name: supply
+    description: Total token supply held by addresses in this sector.
+    data_type: Float64
+  - name: supply_usd
+    description: Total USD value held by addresses in this sector.
+    data_type: Float64

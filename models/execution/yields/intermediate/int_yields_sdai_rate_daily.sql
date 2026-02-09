@@ -6,7 +6,7 @@
         order_by='(date)',
         unique_key='(date)',
         partition_by='toStartOfMonth(date)',
-        tags=['production','execution','yields','sdai_rate']
+        tags=['dev','execution','yields','sdai_rate']
     )
 }}
 

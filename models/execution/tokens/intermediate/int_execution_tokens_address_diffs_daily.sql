@@ -7,9 +7,11 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['dev','execution','tokens','address_deltas']
+    tags=['production','execution','tokens','address_deltas']
   ) 
 }}
+
+-- depends_on: {{ ref('int_execution_transfers_whitelisted_daily') }}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
@@ -42,8 +44,10 @@ with_class AS (
         b.to_address,
         b.amount_raw
     FROM base b
-    LEFT JOIN {{ ref('tokens_whitelist') }} w
+    INNER JOIN {{ ref('tokens_whitelist') }} w
       ON lower(w.address) = b.token_address
+     AND b.date >= toDate(w.date_start)
+     AND (w.date_end IS NULL OR b.date < toDate(w.date_end))
 ),
 
 deltas AS (

@@ -15,10 +15,13 @@
 
    Parameters:
    - source_table      : Source table containing the event logs
-   - contract_address  : Ethereum contract address whose events to decode
+   - contract_address  : Ethereum contract address (string) or list of addresses (array)
+                        Single address: '0x...' 
+                        Multiple addresses: ['0x...', '0x...', ...]
    - output_json_type  : If true, returns a native Map; otherwise JSON string
    - incremental_column: Column used for incremental processing (e.g. block_timestamp)
    - address_column    : Column containing the log contract address (default: address)
+   - start_blocktime   : Optional start timestamp for filtering
 
    Supports:
      - static scalars: address, bytes32, uint*, int*
@@ -34,7 +37,7 @@
    - Supports ClickHouse Cloud with topic1–topic3 columns
    - ClickHouse 24.x+ (no external UDFs)
 
-   Usage Example:
+   Usage Example (single address):
    {{
      decode_logs(
        source_table      = source('execution','logs'),
@@ -44,21 +47,72 @@
      )
    }}
 
+   Usage Example (multiple addresses):
+   {{
+     decode_logs(
+       source_table      = source('execution','logs'),
+       contract_address  = ['0xContract1', '0xContract2', '0xContract3'],
+       output_json_type  = true,
+       incremental_column= 'block_timestamp'
+     )
+   }}
+
 ================================================================ #}
 
 {% macro decode_logs(
         source_table,
-        contract_address,
+        contract_address=null,
+        contract_address_ref=null,
+        contract_type_filter=null,
         output_json_type=false,
         incremental_column='block_timestamp',
         address_column='address',
         start_blocktime=null  
 ) %}
 
-{# — normalize contract address — #}
-{% set addr = contract_address | lower | replace('0x','') %}
+{# Check if using ref model (new way) or address list (old way) #}
+{% if contract_address_ref %}
+  {% if contract_type_filter %}
+    {% set type_where = " WHERE cw.contract_type = '" ~ contract_type_filter ~ "'" %}
+  {% else %}
+    {% set type_where = "" %}
+  {% endif %}
+  {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+{% else %}
+  {# EXISTING: Original logic - works exactly as before #}
+  {# — Normalize contract_address to list — #}
+  {% if contract_address is string %}
+    {% set addr_list = [contract_address] %}
+  {% else %}
+    {% set addr_list = contract_address %}
+  {% endif %}
 
-{# — pull in the ABI for this contract — #}
+  {# — Normalize addresses (remove 0x, lowercase, trim) — #}
+  {% set normalized = [] %}
+  {% for addr in addr_list %}
+    {% set normalized_addr = addr | lower | replace('0x', '') | trim %}
+    {% set _ = normalized.append(normalized_addr) %}
+  {% endfor %}
+
+  {# — Build address filter for WHERE clause — #}
+  {% if normalized | length > 1 %}
+    {# Multiple addresses: use IN clause #}
+    {% set addr_quoted = [] %}
+    {% for addr in normalized %}
+      {% set _ = addr_quoted.append("'" ~ addr ~ "'") %}
+    {% endfor %}
+    {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (" ~ addr_quoted | join(', ') ~ ")" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (" ~ addr_quoted | join(', ') ~ ")" %}
+  {% else %}
+    {# Single address: use equality (backward compatible) #}
+    {% set addr = normalized[0] %}
+    {% set addr_filter = address_column ~ " = '" ~ addr ~ "'" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ addr ~ "'" %}
+  {% endif %}
+{% endif %}
+
+{# — pull in the ABI for this contract(s) — #}
 {% set sig_sql %}
 SELECT
   replace(signature,'0x','')                     AS topic0_sig,
@@ -70,26 +124,42 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM {{ ref('event_signatures') }}
-WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
+WHERE {{ abi_filter }}
 {% endset %}
 
 {% set sql_body %}
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 WITH
 
 logs AS (
-  SELECT *
-  FROM {{ source_table }}
-  WHERE {{ address_column }} = '{{ addr }}'
-  
-    {% if start_blocktime is not none and start_blocktime|trim != '' %}
-      AND toStartOfMonth({{ incremental_column }}) >= toStartOfMonth(toDateTime('{{ start_blocktime }}'))
-    {% endif %}
+  SELECT * FROM (
+    SELECT *,
+      row_number() OVER (
+        PARTITION BY block_number, transaction_index, log_index
+        ORDER BY insert_version DESC
+      ) AS _dedup_rn
+    FROM {{ source_table }}
+    WHERE {{ addr_filter }}
 
-    {% if incremental_column and not flags.FULL_REFRESH %}
-      AND {{ incremental_column }} >
-        (SELECT coalesce(max({{ incremental_column }}),'1970-01-01')
-         FROM {{ this }})
-    {% endif %}
+      {% if start_blocktime is not none and start_blocktime|trim != '' %}
+        AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
+      {% endif %}
+
+      {# Batch window filter: used by refresh.py for batched full refresh #}
+      {% if start_month is not none and end_month is not none %}
+        AND {{ incremental_column }} >= toDateTime('{{ start_month }}')
+        AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
+      {% endif %}
+
+      {% if incremental_column and not flags.FULL_REFRESH %}
+        AND {{ incremental_column }} >
+          (SELECT coalesce(max({{ incremental_column }}),'1970-01-01')
+           FROM {{ this }})
+      {% endif %}
+  )
+  WHERE _dedup_rn = 1
 ),
 
 abi AS ( {{ sig_sql }} ),

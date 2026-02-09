@@ -7,14 +7,17 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['dev','execution','tokens','balances_daily']
+    tags=['production','execution','tokens','balances_daily']
   ) 
 }}
+
+-- depends_on: {{ ref('int_execution_tokens_address_diffs_daily') }}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 {% set symbol = var('symbol', none) %}
 {% set symbol_exclude = var('symbol_exclude', none) %}
+
 
 WITH deltas AS (
     SELECT
@@ -32,28 +35,28 @@ WITH deltas AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
-      {% if symbol is not none %}
-        AND symbol = '{{ symbol }}'
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
       
 ),
 
 overall_max_date AS (
-    SELECT 
-        --max(date) AS max_date
-    {% if end_month %}
-        toDate('{{ end_month }}')
-    {% else %} 
-    SELECT max(toDate(date)) FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
-    {% endif %} AS max_date
-    FROM deltas
+    SELECT
+        least(
+            {% if end_month %}
+                toLastDayOfMonth(toDate('{{ end_month }}')),
+            {% else %}
+                today(),
+            {% endif %}
+            yesterday(),
+            (
+                SELECT max(toDate(date))
+                FROM {{ ref('int_execution_tokens_address_diffs_daily') }}
+                {% if end_month %}
+                WHERE toStartOfMonth(date) <= toDate('{{ end_month }}')
+                {% endif %}
+            )
+        ) AS max_date
 ),
 
 {% if is_incremental() %}
@@ -62,17 +65,9 @@ current_partition AS (
         max(toStartOfMonth(date)) AS month
         ,max(date)  AS max_date
     FROM {{ this }}
-    WHERE 1
-      {% if symbol is not none %}
-        AND symbol = '{{ symbol }}'
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-          {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-          {% endfor %}
-        )
-      {% endif %}
+    WHERE 1=1
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
 ),
 prev_balances AS (
     SELECT 
@@ -85,16 +80,8 @@ prev_balances AS (
     CROSS JOIN current_partition t2
     WHERE 
         t1.date = t2.max_date
-        {% if symbol is not none %}
-        AND t1.symbol = '{{ symbol }}'
-        {% endif %}
-        {% if symbol_exclude is not none %}
-        AND t1.symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-    {% endif %}
+        {{ symbol_filter('t1.symbol', symbol, 'include') }}
+        {{ symbol_filter('t1.symbol', symbol_exclude, 'exclude') }}
 ),
 
 keys AS (
@@ -201,13 +188,10 @@ balances AS (
 
 prices AS (
     SELECT
-        p.date
-        ,p.symbol
-        ,t.decimals
-        ,p.price
+        p.date,
+        p.symbol,
+        p.price
     FROM {{ ref('int_execution_token_prices_daily') }} p
-    INNER JOIN {{ ref('tokens_whitelist') }} t
-        ON upper(p.symbol) = upper(t.symbol)
     WHERE date < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
@@ -215,16 +199,8 @@ prices AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
-      {% if symbol is not none %}
-        AND upper(p.symbol) = upper('{{ symbol }}')
-      {% endif %}
-      {% if symbol_exclude is not none %}
-        AND symbol NOT IN (
-        {% for s in symbol_exclude.split(',') %}
-            '{{ s }}'{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        )
-      {% endif %}
+      {{ symbol_filter('symbol', symbol, 'include') }}
+      {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
 ),
 
 final AS (
@@ -235,9 +211,13 @@ final AS (
         b.token_class AS token_class,
         b.address AS address,
         b.balance_raw AS balance_raw,
-        b.balance_raw/POWER(10,p.decimals) AS balance,
-        balance * p.price AS balance_usd
+        b.balance_raw/POWER(10, t.decimals) AS balance,
+        (b.balance_raw/POWER(10, t.decimals)) * p.price AS balance_usd
     FROM balances b
+    INNER JOIN {{ ref('tokens_whitelist') }} t
+      ON lower(t.address) = b.token_address
+     AND b.date >= toDate(t.date_start)
+     AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     LEFT JOIN prices p
       ON p.date = b.date
      AND upper(p.symbol) = upper(b.symbol)

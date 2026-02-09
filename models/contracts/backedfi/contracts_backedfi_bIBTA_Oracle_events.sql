@@ -22,6 +22,7 @@
         source_table      = source('execution','logs'),
         contract_address  = '0x9f9953d8a2c5366f098754d48f2d69b144ce03da',
         output_json_type  = true,
-        incremental_column= 'block_timestamp'
+        incremental_column= 'block_timestamp',
+        start_blocktime   = '2023-04-01'
     )
 }}

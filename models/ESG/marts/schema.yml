@@ -1,142 +1,6 @@
 version: 2
 models:
 
-- name: esg_carbon_emissions
-  description: Carbon emissions data aggregated by date and country, including energy consumption and associated CO2 emissions in metric tons.
-  columns:
-
-  - name: date
-    description: Date of measurement in UTC, format YYYY-MM-DD.
-    data_type: DateTime
-    tests:
-    - not_null
-
-  - name: energy
-    description: Total energy consumption in MWh, calculated as sum of power over the day.
-    data_type: Float64
-
-  - name: co2_emissions
-    description: Total CO2 emissions in metric tons (tCO2e), derived from energy consumption and CIF.
-    data_type: Float64
-
-  - name: mean_cif
-    description: Average Carbon Intensity Factor (gCO2/kWh) for the country and date.
-    data_type: Float64
-
-  - name: power
-    description: Power in watts (W) at the timestamp, used for calculations.
-    data_type: Float64
-
-  - name: country
-    description: ISO 3-letter country code.
-    data_type: String
-    tests:
-    - not_null
-  config:
-    materialized: table
-    access: public
-  meta:
-    owner: analytics-team
-    authoritative: false
-    generated_by: schema-writer
-
-- name: esg_power_consumption_top10
-  description: Aggregated power consumption data for top 10 countries per date, with 'Other' category for remaining countries.
-  columns:
-
-  - name: date
-    description: The date of power consumption measurement.
-    data_type: DateTime
-    tests:
-    - not_null
-
-  - name: country
-    description: Country name or 'Other' for aggregated data.
-    data_type: String
-    tests:
-    - not_null
-
-  - name: power
-    description: Total power consumption in wei for the given date and country.
-    data_type: UInt64
-    tests:
-    - not_null
-
-  - name: rank
-    description: Rank of the country by power consumption for the date.
-    data_type: UInt64
-    tests:
-    - not_null
-  config:
-    access: public
-    materialized: table
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-
-- name: fct_esg_carbon_emissions
-  description: A fact table aggregating carbon emissions data based on power consumption and CIF values, with calculations for energy and emissions in metric tons.
-  columns:
-
-  - name: date
-    description: The date of the measurement in UTC.
-    data_type: DateTime
-
-  - name: country
-    description: ISO 3-letter country code.
-    data_type: String
-
-  - name: power
-    description: Power consumption in kilowatts (kW).
-    data_type: Float64
-
-  - name: energy
-    description: Total energy consumption in megawatt-hours (MWh).
-    data_type: Float64
-
-  - name: co2_emissions
-    description: Total CO2 equivalent emissions in metric tons (tCO2e).
-    data_type: Float64
-
-  - name: mean_cif
-    description: Average Carbon Intensity Factor in gCO2/kWh.
-    data_type: Float64
-  config:
-    access: public
-    materialized: table
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-
-- name: fct_esg_power_consumption_top10
-  description: Aggregated power consumption data for top 10 countries per date, with 'Other' category for remaining.
-  columns:
-
-  - name: date
-    description: The date of power consumption measurement.
-    data_type: DateTime
-
-  - name: country
-    description: Country name or 'Other' for aggregated entries.
-    data_type: String
-
-  - name: power
-    description: Total power consumption in wei units.
-    data_type: UInt64
-
-  - name: rank
-    description: Row number indicating the country's rank by power consumption for the date.
-    data_type: UInt64
-  config:
-    access: public
-    materialized: table
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-
 - name: api_esg_carbon_emissions_annualised_latest
   description: This model provides the most recent annualized projection of CO2 emissions in tonnes, derived from ESG carbon footprint data, to support environmental impact assessments and reporting.
   columns:
@@ -144,15 +8,6 @@ models:
   - name: annual_co2_tonnes_projected
     description: Estimated total CO2 emissions in tonnes for the latest available year, representing projected annualized emissions based on recent data.
     data_type: Float64
-  config:
-    materialized: view
-    access: public
-    tags:
-    - production
-    - esg
-    - tier0
-    - api:carbon_emissions_annualised
-    - granularity:latest
   meta:
     owner: analytics_team
     authoritative: false
@@ -194,15 +49,6 @@ models:
   - name: ma7_upper_95
     description: 7-day moving average of the upper 95% confidence bound for daily CO2 emissions in kilograms, representing a more conservative upper estimate.
     data_type: Float64
-  config:
-    access: public
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:carbon_emissions
-    - granularity:daily
-    materialized: view
   meta:
     owner: analytics-team
     authoritative: false
@@ -274,15 +120,6 @@ models:
   - name: mtd_total
     description: Cumulative total of daily mean CO2 emissions for the current month.
     data_type: DateTime64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:carbon_emissions_distribution
-    - granularity:daily
   meta:
     owner: analytics-team
     authoritative: false
@@ -332,15 +169,6 @@ models:
   - name: entity_code
     description: Identifier for the data source or country, such as 'GNOSIS' for the network or country codes like 'USA' and 'DEU'.
     data_type: String
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:carbon_intensity_factors
-    - granularity:daily
   meta:
     owner: analytics_team
     authoritative: false
@@ -364,15 +192,6 @@ models:
   - name: annual_energy_Mwh_projected
     description: The projected total energy consumption for the year, expressed in megawatt-hours (MWh).
     data_type: Float64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - esg
-    - tier0
-    - api:energy_consumption_annualised
-    - granularity:latest
   meta:
     owner: analytics_team
     authoritative: false
@@ -686,13 +505,6 @@ models:
   - name: wh_per_node_upper_95
     description: Upper bound of 95% confidence interval for watt-hours per node.
     data_type: Float64
-  config:
-    access: public
-    materialized: incremental
-    tags:
-    - production
-    - esg
-    - carbon_emissions
   meta:
     owner: analytics_team
     authoritative: false
@@ -740,15 +552,6 @@ models:
   - name: value
     description: The total energy consumption in kilowatt-hours (kWh) for the given month.
     data_type: UInt64
-  config:
-    access: public
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:energy_consumption
-    - granularity:monthly
-    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
@@ -788,15 +591,6 @@ models:
   - name: nodes_upper_95
     description: The upper bound of the 95% confidence interval for the estimated node count.
     data_type: UInt64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:estimated_nodes
-    - granularity:daily
   meta:
     owner: analytics_team
     authoritative: false
@@ -850,15 +644,6 @@ models:
   - name: upper_90
     description: The upper bound of the 90% confidence interval for the projected value.
     data_type: Float64
-  config:
-    access: public
-    materialized: view
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:energy_and_emissions_annual
-    - granularity:daily
   meta:
     owner: analytics_team
     authoritative: false
@@ -904,15 +689,6 @@ models:
   - name: value
     description: The measured value of the metric, representing daily totals or counts.
     data_type: Float64
-  config:
-    access: public
-    tags:
-    - production
-    - esg
-    - tier1
-    - api:energy_and_emissions_per_category
-    - granularity:daily
-    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
@@ -930,3 +706,4 @@ models:
     - columns.label.description
     - columns.value.data_type
     - columns.date.data_type
+

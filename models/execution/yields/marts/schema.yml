@@ -1,49 +1,6 @@
 version: 2
 models:
 
-- name: yields_sdai_apy_daily
-  description: Business-facing table providing daily and aggregated annual percentage yield (APY) metrics derived from the yields_sdai_rate_daily source, including 7-day and 30-day moving averages and medians, with labels indicating the type of metric.
-  columns:
-
-  - name: date
-    description: Date of the yield data in YYYY-MM-DD format.
-    data_type: DateTime
-    tests:
-    - not_null
-
-  - name: apy
-    description: Daily APY percentage (annualized), in percent units.
-    data_type: Float64
-
-  - name: label
-    description: 'Label indicating the metric type: ''Daily'', ''7DMA'', ''30DMA'', ''7DMM'', or ''30DMM''.'
-    data_type: String
-    tests:
-    - not_null
-
-  - name: apy_7DMA
-    description: 7-day moving average of APY, in percent units.
-    data_type: Float64
-
-  - name: apy_30DMA
-    description: 30-day moving average of APY, in percent units.
-    data_type: Float64
-
-  - name: apy_7DMM
-    description: 7-day median of APY, in percent units.
-    data_type: Float64
-
-  - name: apy_30DMM
-    description: 30-day median of APY, in percent units.
-    data_type: Float64
-  config:
-    access: public
-    materialized: table
-  meta:
-    owner: analytics_team
-    authoritative: false
-    generated_by: schema-writer
-
 - name: fct_yields_sdai_apy_daily
   description: This view aggregates daily SDAI yield data to compute annual percentage yields (APY) and their moving averages and medians over specified windows, facilitating trend analysis of yield performance.
   columns:
@@ -51,8 +8,6 @@ models:
   - name: date
     description: The date of the yield observation, formatted as a date string.
     data_type: Date
-    tests:
-    - not_null
 
   - name: apy
     description: The calculated annual percentage yield (APY) for the given date, expressed as a percentage (0-100%).
@@ -77,14 +32,6 @@ models:
   - name: label
     description: Label indicating the type of APY value ('Daily', '7DMA', '30DMA', '7DMM', '30DMM').
     data_type: String
-  config:
-    access: public
-    tags:
-    - production
-    - execution
-    - yields
-    - sdai_apy
-    materialized: view
   meta:
     owner: analytics_team
     authoritative: false
@@ -106,3 +53,52 @@ models:
     - columns.apy_30DMM.description
     - columns.apy_7DMA.description
     - columns.date.data_type
+
+- name: fct_execution_yields_pools_daily
+  description: Daily pool yields fact at pool×token grain, providing pool TVL (USD) and accrued fee APR (30D trailing) for Uniswap V3/Swapr V3 pools. Fees are computed from Swap + Flash events (gross fees; independent of Collect/claims). Output is intentionally filtered to the top pools per token based on 30D-average token-specific TVL, with a minimum token TVL threshold (Balancer hidden for now).
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: pool
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token
+    data_type: String
+  - name: tvl_usd
+    data_type: Float64
+  - name: fee_apr_30d
+    data_type: Float64
+
+- name: api_execution_yields_pools_tvl_daily
+  description: API view for pool TVL (USD) time series by token and pool label.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: tvl_type
+    data_type: String
+  - name: value
+    data_type: Float64
+
+- name: api_execution_yields_pools_fee_apr_30d_daily
+  description: API view for fee APR (30D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: apy_type
+    data_type: String
+  - name: value
+    data_type: Float64
+

@@ -3,6 +3,8 @@
     tags = ['production', 'staging', 'dune', 'bridges']
 ) }}
 
+-- Production version: Expects transaction-level data from Dune (with timestamp)
+
 SELECT
   timestamp,
   bridge,

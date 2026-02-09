@@ -12,7 +12,7 @@
         pre_hook                = [
                                     "SET allow_experimental_json_type = 1"
                                 ],
-        tags                    = ['production','contracts','circles','events']
+        tags                    = ['dev','contracts','circles','events']
     )
 }}
 
@@ -22,6 +22,7 @@
         source_table      = source('execution','logs'),
         contract_address  = '0x29b9a7fbb8995b2423a71cc17cf9810798f6c543',
         output_json_type  = true,
-        incremental_column= 'block_timestamp'
+        incremental_column= 'block_timestamp',
+        start_blocktime   = '2020-10-01'  
     )
 }}

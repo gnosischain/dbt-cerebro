@@ -11,18 +11,39 @@
   )
 }}
 
-WITH tx AS (
+{% set txn_pre_filter %}
+    block_timestamp < today()
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+{% endset %}
+
+WITH deduped_transactions AS (
+    SELECT
+        block_timestamp,
+        transaction_type,
+        success,
+        CAST(value_string AS UInt256) AS value,
+        gas_used,
+        gas_price
+    FROM (
+        {{ dedup_source(
+            source_ref=source('execution', 'transactions'),
+            partition_by='block_number, transaction_index',
+            columns='block_timestamp, transaction_type, success, value_string, gas_used, gas_price',
+            pre_filter=txn_pre_filter
+        ) }}
+    )
+),
+
+tx AS (
   SELECT
     block_timestamp,
     toDate(block_timestamp)             AS date,
     toString(transaction_type)          AS transaction_type,
     coalesce(success, 0)                AS success,
-    toFloat64(value) / 1e18             AS value_native,             
-    toFloat64(coalesce(gas_used, 0))    AS gas_used,                 
-    toFloat64(coalesce(gas_price, 0))   AS gas_price                 
-  FROM {{ ref('stg_execution__transactions') }}
-  WHERE block_timestamp < today()
-  {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+    toFloat64(value) / 1e18             AS value_native,
+    toFloat64(coalesce(gas_used, 0))    AS gas_used,
+    toFloat64(coalesce(gas_price, 0))   AS gas_price
+  FROM deduped_transactions
 ),
 
 agg_base AS (

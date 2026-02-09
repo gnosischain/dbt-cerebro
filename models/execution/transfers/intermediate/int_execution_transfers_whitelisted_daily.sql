@@ -7,12 +7,24 @@
         unique_key='(date, token_address, "from", "to")',
         partition_by='toStartOfMonth(date)',
         settings={ 'allow_nullable_key': 1 },
-        tags=['dev', 'execution', 'transfers', 'erc20', 'whitelisted', 'daily']
+        tags=['production', 'execution', 'transfers', 'erc20', 'whitelisted', 'daily']
     )
 }}
 
 {% set start_month      = var('start_month', none) %}
 {% set end_month        = var('end_month', none) %}
+
+{% set logs_pre_filter %}
+    topic0 = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    AND address != 'e91d153e0b41518a2ce8dd3d7944fa863463a97d' -- exclude WxDAI, handled separately
+    AND block_timestamp < today()
+    {% if start_month and end_month %}
+      AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    {% endif %}
+{% endset %}
 
 WITH tokens AS (
     SELECT
@@ -25,6 +37,23 @@ WITH tokens AS (
     WHERE symbol != 'WxDAI'
 ),
 
+deduped_logs AS (
+    SELECT
+        CONCAT('0x', address) AS address,
+        topic1,
+        topic2,
+        data,
+        block_timestamp
+    FROM (
+        {{ dedup_source(
+            source_ref=source('execution', 'logs'),
+            partition_by='block_number, transaction_index, log_index',
+            columns='address, topic1, topic2, data, block_timestamp',
+            pre_filter=logs_pre_filter
+        ) }}
+    )
+),
+
 raw_whitelisted_transfers AS (
     SELECT
         toDate(l.block_timestamp) AS date,
@@ -35,18 +64,14 @@ raw_whitelisted_transfers AS (
         reinterpretAsInt256(
                 reverse(unhex(l.data))
             ) AS value_raw
-    FROM {{ ref('stg_execution__logs') }} AS l
+    FROM deduped_logs AS l
     INNER JOIN tokens t
         ON lower(l.address) = t.token_address
+        AND l.block_timestamp >= t.date_start
+        AND (t.date_end IS NULL OR l.block_timestamp < t.date_end)
     WHERE
-        l.topic0 = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-        AND l.block_timestamp < today()
-        {% if start_month and end_month %}
-          AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
-          AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
-        {% else %}
-          {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-        {% endif %}
+        toDate(l.block_timestamp) >= t.date_start
+        AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
 ),
 
 transfers_whitelisted_daily AS (

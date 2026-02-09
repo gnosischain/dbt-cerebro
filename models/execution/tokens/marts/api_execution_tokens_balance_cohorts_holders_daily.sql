@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['dev','execution','tier1','api:balance_cohorts_holders_per_token', 'granularity:daily']
+    tags=['production','execution','tier1','api:balance_cohorts_holders_per_token', 'granularity:daily']
   )
 }}
 
@@ -10,7 +10,7 @@ SELECT
   symbol                         AS token,   
   balance_bucket                 AS label,   
   holders_in_bucket              AS value    
-FROM {{ ref('fct_execution_tokens_balance_cohorts_daily_agg') }}
+FROM {{ ref('int_execution_tokens_balance_cohorts_daily') }}
 WHERE date < today()
 ORDER BY
   date,
