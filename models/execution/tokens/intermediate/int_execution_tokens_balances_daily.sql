@@ -18,6 +18,10 @@
 {% set symbol = var('symbol', none) %}
 {% set symbol_exclude = var('symbol_exclude', none) %}
 
+{% set symbol_sql %}
+  {{ symbol_filter('symbol', symbol, 'include') }}
+  {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
+{% endset %}
 
 WITH deltas AS (
     SELECT
@@ -33,11 +37,11 @@ WITH deltas AS (
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true', lookback_days=2, filters_sql=symbol_sql) }}
       {% endif %}
       {{ symbol_filter('symbol', symbol, 'include') }}
       {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
-      
+
 ),
 
 overall_max_date AS (
@@ -65,7 +69,7 @@ current_partition AS (
         max(toStartOfMonth(date)) AS month
         ,max(date)  AS max_date
     FROM {{ this }}
-    WHERE 1=1
+    WHERE date < yesterday()
       {{ symbol_filter('symbol', symbol, 'include') }}
       {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
 ),
@@ -197,7 +201,7 @@ prices AS (
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true', lookback_days=2, filters_sql=symbol_sql) }}
       {% endif %}
       {{ symbol_filter('symbol', symbol, 'include') }}
       {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
