@@ -1,5 +1,8 @@
 
 
+
+
+
 WITH base AS (
   SELECT
     toStartOfMonth(date)                    AS month,
@@ -9,7 +12,27 @@ WITH base AS (
     sum(gas_used_sum)                       AS gas_used,
     groupBitmapMergeState(ua_bitmap_state)  AS active_state
   FROM `dbt`.`int_execution_transactions_by_project_daily`
-  WHERE date < toStartOfMonth(today())          
+  WHERE date < toStartOfMonth(today())
+  
+    
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
+      FROM `dbt`.`fct_execution_transactions_by_project_monthly_top5` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(date) >= (
+      SELECT addDays(max(toDate(x2.date)), -1)
+      FROM `dbt`.`fct_execution_transactions_by_project_monthly_top5` AS x2
+      WHERE 1=1 
+    )
+  
+
+  
   GROUP BY month, project
 ),
 ranked AS (
