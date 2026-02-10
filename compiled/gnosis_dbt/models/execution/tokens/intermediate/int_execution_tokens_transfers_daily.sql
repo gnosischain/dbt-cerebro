@@ -3,6 +3,10 @@
 
 
 
+
+
+
+
 WITH base AS (
     SELECT
         date,
@@ -25,15 +29,104 @@ WITH base AS (
       SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_tokens_transfers_daily` AS x1
       WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
+
+
     )
     AND toDate(date) >= (
       SELECT addDays(max(toDate(x2.date)), -0)
       FROM `dbt`.`int_execution_tokens_transfers_daily` AS x2
       WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
+
+
     )
   
 
       
+      
+  
+
+      
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
+
 ),
 
 with_class AS (
