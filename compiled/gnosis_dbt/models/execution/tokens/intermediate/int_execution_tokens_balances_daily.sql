@@ -35,6 +35,29 @@ WITH deltas AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -47,6 +70,29 @@ WITH deltas AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -57,6 +103,29 @@ WITH deltas AS (
   
 
       
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
   
 
 
@@ -89,6 +158,29 @@ current_partition AS (
 
       
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 ),
 prev_balances AS (
@@ -106,6 +198,29 @@ prev_balances AS (
   
 
         
+  
+    
+    
+      AND t1.symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
   
 
 ),
@@ -205,6 +320,29 @@ prices AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -217,6 +355,29 @@ prices AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -227,6 +388,29 @@ prices AS (
   
 
       
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
   
 
 ),

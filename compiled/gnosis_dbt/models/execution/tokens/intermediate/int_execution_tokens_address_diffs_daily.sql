@@ -35,6 +35,29 @@ WITH base AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -47,6 +70,29 @@ WITH base AS (
 
   
   
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
+  
 
 
     )
@@ -57,6 +103,29 @@ WITH base AS (
   
 
       
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e'
+        
+      )
+    
   
 
 ),
