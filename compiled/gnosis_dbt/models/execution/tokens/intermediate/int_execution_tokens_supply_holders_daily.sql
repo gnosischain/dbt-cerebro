@@ -27,17 +27,18 @@ WHERE b.date < today()
     
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(b.date)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(b.date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(b.date) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(b.date) >= (
+      SELECT addDays(max(toDate(x2.date)), -0)
       FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x2
+      WHERE 1=1 
     )
   
 

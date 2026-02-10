@@ -13,17 +13,18 @@ state_size_diff AS (
     
   
     
-      
     
 
    WHERE 
-    toStartOfMonth(toStartOfDay(block_timestamp)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_state_size_full_diff_daily` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(block_timestamp) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(block_timestamp) >= (
+      SELECT addDays(max(toDate(x2.date)), -0)
       FROM `dbt`.`int_execution_state_size_full_diff_daily` AS x2
+      WHERE 1=1 
     )
   
 

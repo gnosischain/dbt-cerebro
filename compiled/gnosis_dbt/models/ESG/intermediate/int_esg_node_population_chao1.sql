@@ -30,17 +30,18 @@ WITH peer_connection_analysis AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(visit_ended_at)) >= (
-      SELECT max(toStartOfMonth(x1.observation_date))
+    toStartOfMonth(toDate(visit_ended_at)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.observation_date)), -0))
       FROM `dbt`.`int_esg_node_population_chao1` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(visit_ended_at) >= (
-      SELECT max(toStartOfDay(x2.observation_date, 'UTC'))
+    AND toDate(visit_ended_at) >= (
+      SELECT addDays(max(toDate(x2.observation_date)), -0)
       FROM `dbt`.`int_esg_node_population_chao1` AS x2
+      WHERE 1=1 
     )
   
 

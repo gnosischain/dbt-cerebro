@@ -8,6 +8,7 @@
 
 
 
+
 WITH deltas AS (
     SELECT
         date,
@@ -22,17 +23,32 @@ WITH deltas AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+      WHERE 1=1 
+  
+  
+
+  
+  
+
+
     )
-    AND toStartOfDay(date) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(date) >= (
+      SELECT addDays(max(toDate(x2.date)), -1)
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+      WHERE 1=1 
+  
+  
+
+  
+  
+
+
     )
   
 
@@ -43,7 +59,7 @@ WITH deltas AS (
       
   
 
-      
+
 ),
 
 overall_max_date AS (
@@ -67,7 +83,7 @@ current_partition AS (
         max(toStartOfMonth(date)) AS month
         ,max(date)  AS max_date
     FROM `dbt`.`int_execution_tokens_balances_daily`
-    WHERE 1=1
+    WHERE date < yesterday()
       
   
 
@@ -177,17 +193,32 @@ prices AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+      WHERE 1=1 
+  
+  
+
+  
+  
+
+
     )
-    AND toStartOfDay(date) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(date) >= (
+      SELECT addDays(max(toDate(x2.date)), -1)
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+      WHERE 1=1 
+  
+  
+
+  
+  
+
+
     )
   
 

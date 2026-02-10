@@ -19,17 +19,18 @@ withdrawals AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(slot_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_consensus_validators_per_index_apy_daily` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(slot_timestamp) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(slot_timestamp) >= (
+      SELECT addDays(max(toDate(x2.date)), -0)
       FROM `dbt`.`int_consensus_validators_per_index_apy_daily` AS x2
+      WHERE 1=1 
     )
   
 
@@ -107,17 +108,18 @@ validators AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(slot_timestamp)) >= (
-      SELECT max(toStartOfMonth(x1.date))
+    toStartOfMonth(toDate(slot_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_consensus_validators_per_index_apy_daily` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(slot_timestamp) >= (
-      SELECT max(toStartOfDay(x2.date, 'UTC'))
+    AND toDate(slot_timestamp) >= (
+      SELECT addDays(max(toDate(x2.date)), -0)
       FROM `dbt`.`int_consensus_validators_per_index_apy_daily` AS x2
+      WHERE 1=1 
     )
   
 

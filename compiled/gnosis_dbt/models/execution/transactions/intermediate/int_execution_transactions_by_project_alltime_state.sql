@@ -16,17 +16,18 @@ WITH src AS (
       
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay(date)) >= (
-      SELECT max(toStartOfMonth(x1.month))
+    toStartOfMonth(toDate(date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.month)), -0))
       FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay(date) >= (
-      SELECT max(toStartOfDay(x2.month, 'UTC'))
+    AND toDate(date) >= (
+      SELECT addDays(max(toDate(x2.month)), -0)
       FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x2
+      WHERE 1=1 
     )
   
 

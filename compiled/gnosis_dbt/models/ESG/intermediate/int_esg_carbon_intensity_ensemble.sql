@@ -24,17 +24,18 @@ WITH ember_monthly AS (
         
   
     
-      
     
 
    AND 
-    toStartOfMonth(toStartOfDay("Date")) >= (
-      SELECT max(toStartOfMonth(x1.month_date))
+    toStartOfMonth(toDate("Date")) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.month_date)), -0))
       FROM `dbt`.`int_esg_carbon_intensity_ensemble` AS x1
+      WHERE 1=1 
     )
-    AND toStartOfDay("Date") >= (
-      SELECT max(toStartOfDay(x2.month_date, 'UTC'))
+    AND toDate("Date") >= (
+      SELECT addDays(max(toDate(x2.month_date)), -0)
       FROM `dbt`.`int_esg_carbon_intensity_ensemble` AS x2
+      WHERE 1=1 
     )
   
 
