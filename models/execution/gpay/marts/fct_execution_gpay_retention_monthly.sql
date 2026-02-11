@@ -16,11 +16,13 @@ WITH first_payment AS (
 ),
 
 monthly_activity AS (
-    SELECT DISTINCT
+    SELECT
         wallet_address,
-        toStartOfMonth(date) AS activity_month
+        toStartOfMonth(date) AS activity_month,
+        sum(amount_usd)      AS amount_usd
     FROM {{ ref('int_execution_gpay_payments_daily') }}
     WHERE toStartOfMonth(date) < toStartOfMonth(today())
+    GROUP BY wallet_address, activity_month
 ),
 
 cohort_activity AS (
@@ -28,7 +30,8 @@ cohort_activity AS (
         f.cohort_month,
         a.activity_month,
         dateDiff('month', f.cohort_month, a.activity_month) AS months_since,
-        count(DISTINCT a.wallet_address) AS users
+        count(DISTINCT a.wallet_address) AS users,
+        sum(a.amount_usd)               AS amount_usd
     FROM first_payment f
     INNER JOIN monthly_activity a ON f.wallet_address = a.wallet_address
     GROUP BY f.cohort_month, a.activity_month
@@ -47,6 +50,7 @@ SELECT
     months_since,
     users,
     initial_users,
-    round(users / initial_users * 100, 1) AS retention_pct
+    round(users / initial_users * 100, 1) AS retention_pct,
+    round(toFloat64(amount_usd), 2)       AS amount_usd
 FROM with_initial
 ORDER BY cohort_month, activity_month
