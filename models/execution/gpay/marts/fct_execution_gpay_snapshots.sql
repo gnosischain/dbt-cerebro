@@ -48,6 +48,31 @@ all_time AS (
         sum(payment_count)        AS payments,
         uniqExact(wallet_address) AS funded_wallets
     FROM {{ ref('int_execution_gpay_payments_daily') }}
+),
+
+cb_curr_7d AS (
+    SELECT
+        sum(amount)     AS cashback_gno,
+        sum(amount_usd) AS cashback_usd
+    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
+    CROSS JOIN bounds b
+    WHERE d.date > b.curr_start AND d.date <= b.curr_end
+),
+
+cb_prev_7d AS (
+    SELECT
+        sum(amount)     AS cashback_gno,
+        sum(amount_usd) AS cashback_usd
+    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
+    CROSS JOIN bounds b
+    WHERE d.date > b.prev_start AND d.date <= b.prev_end
+),
+
+cb_all_time AS (
+    SELECT
+        sum(amount)     AS cashback_gno,
+        sum(amount_usd) AS cashback_usd
+    FROM {{ ref('int_execution_gpay_cashback_daily') }}
 )
 
 SELECT 'Volume' AS label, 'All' AS window,
@@ -84,3 +109,27 @@ SELECT 'FundedWallets', 'All',
     toFloat64(a.funded_wallets),
     toNullable(NULL)
 FROM all_time a
+
+UNION ALL
+SELECT 'CashbackGNO', 'All',
+    round(toFloat64(ca.cashback_gno), 2),
+    toNullable(NULL)
+FROM cb_all_time ca
+
+UNION ALL
+SELECT 'CashbackUSD', 'All',
+    round(toFloat64(ca.cashback_usd), 2),
+    toNullable(NULL)
+FROM cb_all_time ca
+
+UNION ALL
+SELECT 'CashbackGNO', '7D',
+    round(toFloat64(cc.cashback_gno), 2),
+    round((coalesce(toFloat64(cc.cashback_gno) / nullIf(toFloat64(cp.cashback_gno), 0), 0) - 1) * 100, 1)
+FROM cb_curr_7d cc, cb_prev_7d cp
+
+UNION ALL
+SELECT 'CashbackUSD', '7D',
+    round(toFloat64(cc.cashback_usd), 2),
+    round((coalesce(toFloat64(cc.cashback_usd) / nullIf(toFloat64(cp.cashback_usd), 0), 0) - 1) * 100, 1)
+FROM cb_curr_7d cc, cb_prev_7d cp
