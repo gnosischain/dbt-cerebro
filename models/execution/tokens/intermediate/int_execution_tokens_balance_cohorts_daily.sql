@@ -74,15 +74,15 @@ bucketed_native AS (
         balance_usd,
         'native' AS cohort_unit,
         CASE
-            WHEN balance_usd <     0.01       THEN '0-0.01'
-            WHEN balance_usd <      0.1       THEN '0.01-0.1'
-            WHEN balance_usd <        1       THEN '0.1-1'
-            WHEN balance_usd <       10       THEN '1-10'
-            WHEN balance_usd <      100       THEN '10-100'
-            WHEN balance_usd <     1000       THEN '100-1k'
-            WHEN balance_usd <    10000       THEN '1k-10k'
-            WHEN balance_usd <   100000       THEN '10k-100k'
-            WHEN balance_usd <  1000000       THEN '100k-1M'
+            WHEN balance <     0.01       THEN '0-0.01'
+            WHEN balance <      0.1       THEN '0.01-0.1'
+            WHEN balance <        1       THEN '0.1-1'
+            WHEN balance <       10       THEN '1-10'
+            WHEN balance <      100       THEN '10-100'
+            WHEN balance <     1000       THEN '100-1k'
+            WHEN balance <    10000       THEN '1k-10k'
+            WHEN balance <   100000       THEN '10k-100k'
+            WHEN balance <  1000000       THEN '100k-1M'
             ELSE                                  '1M+'
         END AS balance_bucket
     FROM balances_base
