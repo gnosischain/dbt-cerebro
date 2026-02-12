@@ -133,3 +133,11 @@ SELECT 'CashbackUSD', '7D',
     round(toFloat64(cc.cashback_usd), 2),
     round((coalesce(toFloat64(cc.cashback_usd) / nullIf(toFloat64(cp.cashback_usd), 0), 0) - 1) * 100, 1)
 FROM cb_curr_7d cc, cb_prev_7d cp
+
+UNION ALL
+SELECT 'TotalBalance', 'All',
+    round(toFloat64(sum(balance_usd)), 2),
+    toNullable(NULL)
+FROM {{ ref('fct_execution_gpay_balances_by_token_daily') }}
+WHERE date = (SELECT max(date) FROM {{ ref('fct_execution_gpay_balances_by_token_daily') }})
+  AND symbol IN ('EURe', 'GBPe', 'USDC.e')
