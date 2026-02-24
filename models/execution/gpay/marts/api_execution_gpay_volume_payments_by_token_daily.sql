@@ -1,0 +1,13 @@
+{{
+  config(
+    materialized='view',
+    tags=['production','execution','gpay','tier1','api:gpay_volume_payments_by_token_daily','granularity:daily']
+  )
+}}
+
+SELECT
+    date   AS date,
+    token  AS label,
+    volume_usd AS value
+FROM {{ ref('fct_execution_gpay_volume_payments_by_token_daily') }}
+ORDER BY date, label
