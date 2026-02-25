@@ -25,7 +25,7 @@ RUN pip install -r /app/requirements.txt
 COPY --chown=appuser:appgroup . /app/
 
 # Permissions for DBT directories
-RUN mkdir -p /app/dbt_packages /app/logs /app/target && \
+RUN mkdir -p /app/dbt_packages /app/logs /app/target /app/reports /app/www && \
     chown -R appuser:appgroup /app && \
     chmod -R 755 /app
 
@@ -41,4 +41,4 @@ EXPOSE 8000
 
 USER appuser
 
-CMD ["/bin/bash", "-c", "exec python -m http.server 8000 --directory logs & tail -f /dev/null"]
+CMD ["/bin/bash", "-c", "ln -sfn /app/logs /app/www/logs && ln -sfn /app/reports /app/www/reports && exec python -m http.server 8000 --directory /app/www & tail -f /dev/null"]
