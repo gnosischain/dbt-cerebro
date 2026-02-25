@@ -73,6 +73,25 @@ cb_all_time AS (
         sum(amount)     AS cashback_gno,
         sum(amount_usd) AS cashback_usd
     FROM {{ ref('int_execution_gpay_cashback_daily') }}
+),
+
+cbr_curr_7d AS (
+    SELECT uniqExact(wallet_address) AS recipients
+    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
+    CROSS JOIN bounds b
+    WHERE d.date > b.curr_start AND d.date <= b.curr_end
+),
+
+cbr_prev_7d AS (
+    SELECT uniqExact(wallet_address) AS recipients
+    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
+    CROSS JOIN bounds b
+    WHERE d.date > b.prev_start AND d.date <= b.prev_end
+),
+
+cbr_all_time AS (
+    SELECT uniqExact(wallet_address) AS recipients
+    FROM {{ ref('int_execution_gpay_cashback_daily') }}
 )
 
 SELECT 'Volume' AS label, 'All' AS window,
@@ -133,6 +152,18 @@ SELECT 'CashbackUSD', '7D',
     round(toFloat64(cc.cashback_usd), 2),
     round((coalesce(toFloat64(cc.cashback_usd) / nullIf(toFloat64(cp.cashback_usd), 0), 0) - 1) * 100, 1)
 FROM cb_curr_7d cc, cb_prev_7d cp
+
+UNION ALL
+SELECT 'CashbackRecipients', 'All',
+    toFloat64(cra.recipients),
+    toNullable(NULL)
+FROM cbr_all_time cra
+
+UNION ALL
+SELECT 'CashbackRecipients', '7D',
+    toFloat64(crc.recipients),
+    round((coalesce(toFloat64(crc.recipients) / nullIf(toFloat64(crp.recipients), 0), 0) - 1) * 100, 1)
+FROM cbr_curr_7d crc, cbr_prev_7d crp
 
 UNION ALL
 SELECT 'TotalBalance', 'All',
