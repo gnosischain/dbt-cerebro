@@ -3,9 +3,9 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     engine='ReplacingMergeTree()',
-    order_by='(wallet_address, block_timestamp, token_address)',
+    order_by='(wallet_address, block_timestamp, transaction_hash, token_address, counterparty, direction)',
     partition_by='toStartOfMonth(toDate(block_timestamp))',
-    unique_key='(wallet_address, block_timestamp, token_address, counterparty, direction)',
+    unique_key='(wallet_address, block_timestamp, transaction_hash, token_address, counterparty, direction)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','gpay','activity']
   )
@@ -30,6 +30,7 @@
 {% set merchant   = '0x4822521e6135cd2599199c83ea35179229a172ee' %}
 {% set cashback   = '0xcdf50be9061086e2ecfe6e4a1bf9164d43568eec' %}
 {% set gno_token  = '0x9c58bacc331c9aa871afd802db6379a98e80cedb' %}
+{% set refund_addr  = '0x6a2f816caf01166db2e8abbabbebb71a89939b72' %}
 
 WITH gpay_wallets AS (
     SELECT address
@@ -49,6 +50,7 @@ tokens AS (
 
 deduped_logs AS (
     SELECT
+        concat('0x', transaction_hash) AS transaction_hash,
         CONCAT('0x', address) AS address,
         topic1,
         topic2,
@@ -58,7 +60,7 @@ deduped_logs AS (
         {{ dedup_source(
             source_ref=source('execution', 'logs'),
             partition_by='block_number, transaction_index, log_index',
-            columns='address, topic1, topic2, data, block_timestamp',
+            columns='address, topic1, topic2, data, block_timestamp, transaction_hash',
             pre_filter=logs_pre_filter
         ) }}
     )
@@ -66,6 +68,7 @@ deduped_logs AS (
 
 transfers AS (
     SELECT
+        l.transaction_hash,
         l.block_timestamp,
         t.token_address,
         t.symbol,
@@ -84,6 +87,7 @@ transfers AS (
 
 classified AS (
     SELECT
+        transaction_hash,
         block_timestamp,
         token_address,
         symbol,
@@ -95,6 +99,10 @@ classified AS (
             WHEN sender IN (SELECT address FROM gpay_wallets)
              AND receiver = '{{ merchant }}'
             THEN 'Payment'
+
+            WHEN receiver IN (SELECT address FROM gpay_wallets)
+             AND sender = '{{ merchant }}'
+            THEN 'Reversal'
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
              AND sender = '{{ cashback }}'
@@ -120,6 +128,10 @@ classified AS (
              AND token_address != '{{ gno_token }}'
             THEN 'Crypto Withdrawal'
 
+            WHEN receiver IN (SELECT address FROM gpay_wallets)
+             AND sender = '{{ refund_addr }}'
+            THEN 'Refund'
+
             ELSE 'Other'
         END AS action,
         CASE
@@ -138,6 +150,7 @@ classified AS (
 )
 
 SELECT
+    c.transaction_hash,
     c.block_timestamp,
     toDate(c.block_timestamp) AS date,
     c.wallet_address,
