@@ -19,7 +19,8 @@ WORKDIR /app
 
 # Copy and install Python requirements first (better caching)
 COPY requirements.txt /app/
-RUN pip install -r /app/requirements.txt
+RUN pip install -r /app/requirements.txt && \
+    chown -R ${USER_ID}:${GROUP_ID} /usr/local/lib/python3.11/site-packages/elementary/monitor/dbt_project/
 
 # Copy remaining files
 COPY --chown=appuser:appgroup . /app/
@@ -29,9 +30,9 @@ RUN mkdir -p /app/dbt_packages /app/logs /app/target /app/reports /app/www && \
     chown -R appuser:appgroup /app && \
     chmod -R 755 /app
 
-# Setup .dbt profiles directory
+# Setup .dbt profiles directory (symlink so bind-mount changes are picked up)
 RUN mkdir -p /home/appuser/.dbt && \
-    cp /app/profiles.yml /home/appuser/.dbt/profiles.yml && \
+    ln -sf /app/profiles.yml /home/appuser/.dbt/profiles.yml && \
     chown -R appuser:appgroup /home/appuser/.dbt
 
 # DBT project path

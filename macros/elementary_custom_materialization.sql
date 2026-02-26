@@ -1,3 +1,3 @@
 {% materialization test, default %}
-  {{ return(elementary.test_materialization()) }}
+  {{ return(elementary.materialization_test_default()) }}
 {% endmaterialization %}
