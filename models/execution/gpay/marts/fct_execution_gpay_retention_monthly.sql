@@ -40,7 +40,8 @@ cohort_activity AS (
 with_initial AS (
     SELECT
         *,
-        max(users) OVER (PARTITION BY cohort_month) AS initial_users
+        max(users) OVER (PARTITION BY cohort_month) AS initial_users,
+        argMin(amount_usd, activity_month) OVER (PARTITION BY cohort_month) AS initial_amount_usd
     FROM cohort_activity
 )
 
@@ -51,6 +52,7 @@ SELECT
     users,
     initial_users,
     round(users / initial_users * 100, 1) AS retention_pct,
+    round(amount_usd / initial_amount_usd * 100, 1) AS amount_retention_pct,
     round(toFloat64(amount_usd), 2)       AS amount_usd
 FROM with_initial
 ORDER BY cohort_month, activity_month

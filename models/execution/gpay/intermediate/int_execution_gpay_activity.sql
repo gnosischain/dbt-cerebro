@@ -45,7 +45,7 @@ tokens AS (
         date_start,
         date_end
     FROM {{ ref('tokens_whitelist') }}
-    WHERE symbol IN ('EURe', 'GBPe', 'USDC.e', 'GNO')
+    --WHERE symbol IN ('EURe', 'GBPe', 'USDC.e', 'GNO')
 ),
 
 deduped_logs AS (
@@ -111,21 +111,22 @@ classified AS (
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
              AND sender = '{{ zero_addr }}'
-             AND symbol IN ('EURe', 'GBPe')
+           --  AND symbol IN ('EURe', 'GBPe')
             THEN 'Fiat Top Up'
 
             WHEN sender IN (SELECT address FROM gpay_wallets)
              AND receiver = '{{ zero_addr }}'
-             AND symbol IN ('EURe', 'GBPe')
+           --  AND symbol IN ('EURe', 'GBPe')
             THEN 'Fiat Off-ramp'
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
-             AND token_address != '{{ gno_token }}'
+            AND sender != '{{ cashback }}'
+            -- AND token_address != '{{ gno_token }}'
             THEN 'Crypto Deposit'
 
             WHEN sender IN (SELECT address FROM gpay_wallets)
              AND receiver != '{{ merchant }}'
-             AND token_address != '{{ gno_token }}'
+            -- AND token_address != '{{ gno_token }}'
             THEN 'Crypto Withdrawal'
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
@@ -166,5 +167,5 @@ FROM classified c
 LEFT JOIN {{ ref('int_execution_token_prices_daily') }} p
     ON p.date = toDate(c.block_timestamp)
    AND p.symbol = c.symbol
-WHERE c.action != 'Other'
+--WHERE c.action != 'Other'
 ORDER BY c.wallet_address, c.block_timestamp
