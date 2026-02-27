@@ -7,4 +7,4 @@
 
 SELECT value
 FROM {{ ref('fct_execution_gpay_snapshots') }}
-WHERE label = 'CashbackRecipients' AND window = 'All'
+WHERE label = 'CashbackUsers' AND window = 'All'

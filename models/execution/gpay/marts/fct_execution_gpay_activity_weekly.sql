@@ -11,10 +11,11 @@ WITH weekly_activity AS (
     SELECT
         toStartOfWeek(date, 1)    AS week,
         uniqExact(wallet_address) AS active_users,
-        sum(payment_count)        AS total_payments,
+        sum(activity_count)       AS total_payments,
         sum(amount_usd)           AS total_volume_usd
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
-    WHERE toStartOfWeek(date, 1) < toStartOfWeek(today(), 1)
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
+      AND toStartOfWeek(date, 1) < toStartOfWeek(today(), 1)
     GROUP BY week
 ),
 
@@ -22,7 +23,8 @@ first_payment AS (
     SELECT
         wallet_address,
         min(date) AS first_date
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
     GROUP BY wallet_address
 ),
 

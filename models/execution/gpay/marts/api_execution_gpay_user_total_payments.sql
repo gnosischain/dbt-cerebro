@@ -7,6 +7,7 @@
 
 SELECT
     wallet_address,
-    sum(payment_count) AS value
-FROM {{ ref('int_execution_gpay_payments_daily') }}
+    sum(activity_count) AS value
+FROM {{ ref('int_execution_gpay_activity_daily') }}
+WHERE action = 'Payment'
 GROUP BY wallet_address

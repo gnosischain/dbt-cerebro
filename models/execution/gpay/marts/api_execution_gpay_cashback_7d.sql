@@ -13,4 +13,4 @@ UNION ALL
 
 SELECT 'usd' AS unit, value, change_pct
 FROM {{ ref('fct_execution_gpay_snapshots') }}
-WHERE label = 'CashbackUSD' AND window = '7D'
+WHERE label = 'CashbackVolume' AND window = '7D'

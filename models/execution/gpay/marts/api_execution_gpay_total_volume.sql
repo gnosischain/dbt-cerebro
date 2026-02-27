@@ -7,4 +7,4 @@
 
 SELECT value
 FROM {{ ref('fct_execution_gpay_snapshots') }}
-WHERE label = 'Volume' AND window = 'All'
+WHERE label = 'PaymentVolume' AND window = 'All'

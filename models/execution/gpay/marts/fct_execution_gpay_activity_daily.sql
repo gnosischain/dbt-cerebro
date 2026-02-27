@@ -11,10 +11,11 @@ WITH daily_activity AS (
     SELECT
         date,
         uniqExact(wallet_address) AS active_users,
-        sum(payment_count)        AS total_payments,
+        sum(activity_count)       AS total_payments,
         sum(amount_usd)           AS total_volume_usd
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
-    WHERE date < today()
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
+      AND date < today()
     GROUP BY date
 ),
 
@@ -22,7 +23,8 @@ first_payment AS (
     SELECT
         wallet_address,
         min(date) AS first_date
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
     GROUP BY wallet_address
 ),
 

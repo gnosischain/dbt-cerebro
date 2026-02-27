@@ -8,5 +8,6 @@
 SELECT
     wallet_address,
     round(toFloat64(sum(amount)), 6) AS value
-FROM {{ ref('int_execution_gpay_cashback_daily') }}
+FROM {{ ref('int_execution_gpay_activity_daily') }}
+WHERE action = 'Cashback'
 GROUP BY wallet_address

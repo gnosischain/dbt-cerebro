@@ -8,5 +8,6 @@
 SELECT
     wallet_address,
     round(toFloat64(sum(amount_usd)), 2) AS value
-FROM {{ ref('int_execution_gpay_payments_daily') }}
+FROM {{ ref('int_execution_gpay_activity_daily') }}
+WHERE action = 'Payment'
 GROUP BY wallet_address

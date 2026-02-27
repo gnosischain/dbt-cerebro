@@ -7,4 +7,4 @@
 
 SELECT value, change_pct
 FROM {{ ref('fct_execution_gpay_snapshots') }}
-WHERE label = 'Volume' AND window = '7D'
+WHERE label = 'PaymentVolume' AND window = '7D'

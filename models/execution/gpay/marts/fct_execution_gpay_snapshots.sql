@@ -9,163 +9,138 @@
 
 WITH wd AS (
     SELECT max(date) AS max_date
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
 ),
 
 bounds AS (
     SELECT
         max_date,
-        subtractDays(max_date, 7)   AS curr_start,
-        max_date                    AS curr_end,
-        subtractDays(max_date, 14)  AS prev_start,
-        subtractDays(max_date, 7)   AS prev_end
+        subtractDays(max_date, 7)  AS curr_start,
+        max_date                   AS curr_end,
+        subtractDays(max_date, 14) AS prev_start,
+        subtractDays(max_date, 7)  AS prev_end
     FROM wd
 ),
 
 curr_7d AS (
     SELECT
+        action,
         sum(amount_usd)           AS volume,
-        sum(payment_count)        AS payments,
-        uniqExact(wallet_address) AS active_users
-    FROM {{ ref('int_execution_gpay_payments_daily') }} d
+        sum(amount)               AS native_volume,
+        sum(activity_count)       AS cnt,
+        uniqExact(wallet_address) AS users
+    FROM {{ ref('int_execution_gpay_activity_daily') }} d
     CROSS JOIN bounds b
     WHERE d.date > b.curr_start AND d.date <= b.curr_end
+    GROUP BY action
 ),
 
 prev_7d AS (
     SELECT
+        action,
         sum(amount_usd)           AS volume,
-        sum(payment_count)        AS payments,
-        uniqExact(wallet_address) AS active_users
-    FROM {{ ref('int_execution_gpay_payments_daily') }} d
+        sum(amount)               AS native_volume,
+        sum(activity_count)       AS cnt,
+        uniqExact(wallet_address) AS users
+    FROM {{ ref('int_execution_gpay_activity_daily') }} d
     CROSS JOIN bounds b
     WHERE d.date > b.prev_start AND d.date <= b.prev_end
+    GROUP BY action
 ),
 
 all_time AS (
     SELECT
+        action,
         sum(amount_usd)           AS volume,
-        sum(payment_count)        AS payments,
-        uniqExact(wallet_address) AS funded_wallets
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
+        sum(amount)               AS native_volume,
+        sum(activity_count)       AS cnt,
+        uniqExact(wallet_address) AS users
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    GROUP BY action
 ),
 
-cb_curr_7d AS (
+joined AS (
     SELECT
-        sum(amount)     AS cashback_gno,
-        sum(amount_usd) AS cashback_usd
-    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
-    CROSS JOIN bounds b
-    WHERE d.date > b.curr_start AND d.date <= b.curr_end
-),
-
-cb_prev_7d AS (
-    SELECT
-        sum(amount)     AS cashback_gno,
-        sum(amount_usd) AS cashback_usd
-    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
-    CROSS JOIN bounds b
-    WHERE d.date > b.prev_start AND d.date <= b.prev_end
-),
-
-cb_all_time AS (
-    SELECT
-        sum(amount)     AS cashback_gno,
-        sum(amount_usd) AS cashback_usd
-    FROM {{ ref('int_execution_gpay_cashback_daily') }}
-),
-
-cbr_curr_7d AS (
-    SELECT uniqExact(wallet_address) AS recipients
-    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
-    CROSS JOIN bounds b
-    WHERE d.date > b.curr_start AND d.date <= b.curr_end
-),
-
-cbr_prev_7d AS (
-    SELECT uniqExact(wallet_address) AS recipients
-    FROM {{ ref('int_execution_gpay_cashback_daily') }} d
-    CROSS JOIN bounds b
-    WHERE d.date > b.prev_start AND d.date <= b.prev_end
-),
-
-cbr_all_time AS (
-    SELECT uniqExact(wallet_address) AS recipients
-    FROM {{ ref('int_execution_gpay_cashback_daily') }}
+        a.action AS action_type,
+        a.volume  AS all_volume,  a.native_volume AS all_native,  a.cnt AS all_cnt,  a.users AS all_users,
+        c.volume  AS curr_volume, c.native_volume AS curr_native, c.cnt AS curr_cnt, c.users AS curr_users,
+        p.volume  AS prev_volume, p.native_volume AS prev_native, p.cnt AS prev_cnt, p.users AS prev_users
+    FROM all_time a
+    LEFT JOIN curr_7d c ON c.action = a.action
+    LEFT JOIN prev_7d p ON p.action = a.action
 )
 
-SELECT 'Volume' AS label, 'All' AS window,
-    round(toFloat64(a.volume), 2) AS value,
+-- {Action}Volume: All
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Volume' AS label,
+    'All' AS window,
+    round(toFloat64(all_volume), 2) AS value,
     toNullable(NULL) AS change_pct
-FROM all_time a
+FROM joined
 
 UNION ALL
-SELECT 'Volume', '7D',
-    round(toFloat64(c.volume), 2),
-    round((coalesce(toFloat64(c.volume) / nullIf(toFloat64(p.volume), 0), 0) - 1) * 100, 1)
-FROM curr_7d c, prev_7d p
+-- {Action}Volume: 7D
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Volume',
+    '7D',
+    round(toFloat64(curr_volume), 2),
+    round((coalesce(toFloat64(curr_volume) / nullIf(toFloat64(prev_volume), 0), 0) - 1) * 100, 1)
+FROM joined
 
 UNION ALL
-SELECT 'Payments', 'All',
-    toFloat64(a.payments),
+-- {Action}Count: All
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Count',
+    'All',
+    toFloat64(all_cnt),
     toNullable(NULL)
-FROM all_time a
+FROM joined
 
 UNION ALL
-SELECT 'Payments', '7D',
-    toFloat64(c.payments),
-    round((coalesce(toFloat64(c.payments) / nullIf(toFloat64(p.payments), 0), 0) - 1) * 100, 1)
-FROM curr_7d c, prev_7d p
+-- {Action}Count: 7D
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Count',
+    '7D',
+    toFloat64(curr_cnt),
+    round((coalesce(toFloat64(curr_cnt) / nullIf(toFloat64(prev_cnt), 0), 0) - 1) * 100, 1)
+FROM joined
 
 UNION ALL
-SELECT 'ActiveUsers', '7D',
-    toFloat64(c.active_users),
-    round((coalesce(toFloat64(c.active_users) / nullIf(toFloat64(p.active_users), 0), 0) - 1) * 100, 1)
-FROM curr_7d c, prev_7d p
-
-UNION ALL
-SELECT 'FundedWallets', 'All',
-    toFloat64(a.funded_wallets),
+-- {Action}Users: All
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Users',
+    'All',
+    toFloat64(all_users),
     toNullable(NULL)
-FROM all_time a
+FROM joined
 
 UNION ALL
+-- {Action}Users: 7D
+SELECT
+    replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Users',
+    '7D',
+    toFloat64(curr_users),
+    round((coalesce(toFloat64(curr_users) / nullIf(toFloat64(prev_users), 0), 0) - 1) * 100, 1)
+FROM joined
+
+UNION ALL
+-- CashbackGNO (native GNO amount): All
 SELECT 'CashbackGNO', 'All',
-    round(toFloat64(ca.cashback_gno), 2),
+    round(toFloat64(all_native), 2),
     toNullable(NULL)
-FROM cb_all_time ca
+FROM joined
+WHERE action_type = 'Cashback'
 
 UNION ALL
-SELECT 'CashbackUSD', 'All',
-    round(toFloat64(ca.cashback_usd), 2),
-    toNullable(NULL)
-FROM cb_all_time ca
-
-UNION ALL
+-- CashbackGNO (native GNO amount): 7D
 SELECT 'CashbackGNO', '7D',
-    round(toFloat64(cc.cashback_gno), 2),
-    round((coalesce(toFloat64(cc.cashback_gno) / nullIf(toFloat64(cp.cashback_gno), 0), 0) - 1) * 100, 1)
-FROM cb_curr_7d cc, cb_prev_7d cp
+    round(toFloat64(curr_native), 2),
+    round((coalesce(toFloat64(curr_native) / nullIf(toFloat64(prev_native), 0), 0) - 1) * 100, 1)
+FROM joined
+WHERE action_type = 'Cashback'
 
 UNION ALL
-SELECT 'CashbackUSD', '7D',
-    round(toFloat64(cc.cashback_usd), 2),
-    round((coalesce(toFloat64(cc.cashback_usd) / nullIf(toFloat64(cp.cashback_usd), 0), 0) - 1) * 100, 1)
-FROM cb_curr_7d cc, cb_prev_7d cp
-
-UNION ALL
-SELECT 'CashbackRecipients', 'All',
-    toFloat64(cra.recipients),
-    toNullable(NULL)
-FROM cbr_all_time cra
-
-UNION ALL
-SELECT 'CashbackRecipients', '7D',
-    toFloat64(crc.recipients),
-    round((coalesce(toFloat64(crc.recipients) / nullIf(toFloat64(crp.recipients), 0), 0) - 1) * 100, 1)
-FROM cbr_curr_7d crc, cbr_prev_7d crp
-
-UNION ALL
+-- TotalBalance (from balances model)
 SELECT 'TotalBalance', 'All',
     round(toFloat64(sum(balance_usd)), 2),
     toNullable(NULL)

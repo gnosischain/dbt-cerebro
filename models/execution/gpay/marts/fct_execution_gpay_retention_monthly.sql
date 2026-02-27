@@ -11,7 +11,8 @@ WITH first_payment AS (
     SELECT
         wallet_address,
         toStartOfMonth(min(date)) AS cohort_month
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
     GROUP BY wallet_address
 ),
 
@@ -20,8 +21,9 @@ monthly_activity AS (
         wallet_address,
         toStartOfMonth(date) AS activity_month,
         sum(amount_usd)      AS amount_usd
-    FROM {{ ref('int_execution_gpay_payments_daily') }}
-    WHERE toStartOfMonth(date) < toStartOfMonth(today())
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Payment'
+      AND toStartOfMonth(date) < toStartOfMonth(today())
     GROUP BY wallet_address, activity_month
 ),
 

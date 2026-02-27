@@ -13,4 +13,4 @@ UNION ALL
 
 SELECT 'usd' AS unit, value
 FROM {{ ref('fct_execution_gpay_snapshots') }}
-WHERE label = 'CashbackUSD' AND window = 'All'
+WHERE label = 'CashbackVolume' AND window = 'All'
