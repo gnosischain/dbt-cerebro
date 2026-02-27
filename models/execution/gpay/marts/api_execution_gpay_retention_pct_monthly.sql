@@ -8,6 +8,7 @@
 SELECT
     toString(activity_month) AS x,
     toString(cohort_month)   AS y,
-    retention_pct            AS value
+    retention_pct            AS value_pct,
+    users                    AS value_abs
 FROM {{ ref('fct_execution_gpay_retention_monthly') }}
 ORDER BY y, x
