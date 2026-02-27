@@ -6,8 +6,9 @@
 }}
 
 SELECT
-    week   AS date,
-    token  AS label,
-    volume_usd AS value
-FROM {{ ref('fct_execution_gpay_volume_payments_by_token_weekly') }}
+    week        AS date,
+    token       AS label,
+    volume_usd  AS value
+FROM {{ ref('fct_execution_gpay_actions_by_token_weekly') }}
+WHERE action = 'Payment'
 ORDER BY date, label

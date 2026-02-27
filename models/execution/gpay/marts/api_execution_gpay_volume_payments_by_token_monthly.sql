@@ -6,8 +6,9 @@
 }}
 
 SELECT
-    month  AS date,
-    token  AS label,
-    volume_usd AS value
-FROM {{ ref('fct_execution_gpay_volume_payments_by_token_monthly') }}
+    month       AS date,
+    token       AS label,
+    volume_usd  AS value
+FROM {{ ref('fct_execution_gpay_actions_by_token_monthly') }}
+WHERE action = 'Payment'
 ORDER BY date, label
