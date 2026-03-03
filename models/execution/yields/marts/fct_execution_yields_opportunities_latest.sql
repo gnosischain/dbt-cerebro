@@ -63,16 +63,42 @@ FROM (
         WHERE date < today()
     ),
     
+    lending_cumulative_supply AS (
+        SELECT
+            token_address,
+            symbol,
+            sum(net_supply_change_daily) AS total_supply_tokens
+        FROM {{ ref('int_execution_yields_aave_daily') }}
+        GROUP BY token_address, symbol
+    ),
+    
+    latest_prices AS (
+        SELECT
+            nullIf(upper(trimBoth(symbol)), '') AS token,
+            argMax(toFloat64(price), date) AS price_usd
+        FROM {{ ref('int_execution_token_prices_daily') }}
+        WHERE date < today()
+        GROUP BY token
+    ),
+    
     lending_markets AS (
         SELECT
             'Lending' AS type,
             a.symbol AS name,
             a.apy_daily AS yield_pct,
             a.borrow_apy_variable_daily AS borrow_apy,
-            NULL AS tvl,
+            CASE
+                WHEN cs.total_supply_tokens IS NOT NULL AND cs.total_supply_tokens > 0
+                THEN cs.total_supply_tokens * coalesce(lp.price_usd, 0)
+                ELSE NULL
+            END AS tvl,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
+        LEFT JOIN lending_cumulative_supply cs
+            ON cs.token_address = a.token_address
+        LEFT JOIN latest_prices lp
+            ON lp.token = nullIf(upper(trimBoth(a.symbol)), '')
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
