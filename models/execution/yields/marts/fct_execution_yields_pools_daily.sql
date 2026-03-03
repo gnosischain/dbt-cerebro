@@ -245,13 +245,14 @@ pool_labels AS (
      AND sl.pool_address = p.pool_address
 ),
 
--- Accrued fees (gross) from Swap + Flash events (Uniswap V3 + Swapr V3 only)
-fees_usd_daily AS (
+-- Accrued fees (gross) + trading volume from Swap + Flash events (Uniswap V3 + Swapr V3 only)
+fees_volume_daily AS (
     SELECT
         date,
         protocol,
         pool_address,
-        sum(fees_usd) AS fees_usd_daily
+        sum(fees_usd) AS fees_usd_daily,
+        sum(volume_usd) AS volume_usd_daily
     FROM {{ ref('int_execution_yields_pools_fees_daily') }}
     WHERE date < today()
     GROUP BY date, protocol, pool_address
@@ -264,6 +265,7 @@ pool_metrics_daily AS (
         t.pool_address,
         t.tvl_usd,
         coalesce(f.fees_usd_daily, 0) AS fees_usd_daily,
+        coalesce(f.volume_usd_daily, 0) AS volume_usd_daily,
         sum(coalesce(f.fees_usd_daily, 0)) OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
@@ -275,7 +277,7 @@ pool_metrics_daily AS (
             ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
         ) AS tvl_usd_7d_avg
     FROM pool_tvl_daily t
-    LEFT JOIN fees_usd_daily f
+    LEFT JOIN fees_volume_daily f
       ON f.date = t.date
      AND f.protocol = t.protocol
      AND f.pool_address = t.pool_address
@@ -288,6 +290,7 @@ pool_metrics_final AS (
         pool_address,
         tvl_usd,
         fees_usd_daily,
+        volume_usd_daily,
         multiIf(
             protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_7d_avg > 0,
             (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0,
@@ -306,6 +309,7 @@ final AS (
         b.token AS token,
         pm.tvl_usd AS tvl_usd,
         pm.fees_usd_daily AS fees_usd_daily,
+        pm.volume_usd_daily AS volume_usd_daily,
         pm.fee_apr_7d AS fee_apr_7d
     FROM (
         SELECT DISTINCT
@@ -342,6 +346,7 @@ SELECT
     token,
     tvl_usd,
     fees_usd_daily,
+    volume_usd_daily,
     fee_apr_7d
 FROM final
 WHERE date < today()

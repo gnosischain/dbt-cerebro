@@ -54,8 +54,9 @@ models:
     - columns.apy_7DMA.description
     - columns.date.data_type
 
+
 - name: fct_execution_yields_pools_daily
-  description: Daily pool yields fact at pool×token grain, providing pool TVL (USD) and accrued fee APR (30D trailing) for Uniswap V3/Swapr V3 pools. Fees are computed from Swap + Flash events (gross fees; independent of Collect/claims). Output is intentionally filtered to the top pools per token based on 30D-average token-specific TVL, with a minimum token TVL threshold (Balancer hidden for now).
+  description: Daily pool-level metrics for top Uniswap V3 and Swapr V3 pools on Gnosis Chain, including TVL (USD), accrued fees, and 7D trailing fee APR. Filtered to top 5 pools per token by 30-day average TVL.
   columns:
   - name: date
     data_type: Date
@@ -71,7 +72,12 @@ models:
     data_type: String
   - name: tvl_usd
     data_type: Float64
-  - name: fee_apr_30d
+  - name: fees_usd_daily
+    data_type: Float64
+  - name: volume_usd_daily
+    description: Daily trading volume in USD (gross incoming amounts from Swap events).
+    data_type: Float64
+  - name: fee_apr_7d
     data_type: Float64
 
 - name: api_execution_yields_pools_tvl_daily
@@ -88,8 +94,8 @@ models:
   - name: value
     data_type: Float64
 
-- name: api_execution_yields_pools_fee_apr_30d_daily
-  description: API view for fee APR (30D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
+- name: api_execution_yields_pools_fee_apr_7d_daily
+  description: API view for fee APR (7D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
   columns:
   - name: date
     data_type: Date
@@ -100,5 +106,46 @@ models:
   - name: apy_type
     data_type: String
   - name: value
+    data_type: Float64
+
+- name: api_execution_yields_pools_volume_7d
+  description: API view for 7-day total trading volume per token (snapshot from fct_execution_yields_pools_snapshots).
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    description: Total trading volume (USD) over the last 7 days.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior 7-day window.
+    data_type: Float64
+
+- name: api_execution_yields_pools_volume_daily
+  description: API view for daily trading volume (USD) by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: volume_type
+    data_type: String
+  - name: value
+    description: Daily gross trading volume in USD.
+    data_type: Float64
+
+- name: fct_execution_yields_pools_snapshots
+  description: Snapshot KPI table for pool yields. Each row is a (token, metric) pair with the latest value and 7-day percentage change. Metrics include TVL_Latest, Fees_7D, and Volume_7D.
+  columns:
+  - name: token
+    data_type: String
+  - name: metric
+    description: "Metric name: TVL_Latest, Fees_7D, or Volume_7D."
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior 7-day window (or vs 7 days ago for TVL).
     data_type: Float64
 

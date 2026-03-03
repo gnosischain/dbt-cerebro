@@ -30,8 +30,56 @@ models:
     - columns.sdai_conversion.description
     - columns.sdai_conversion.data_type
     - columns.date.data_type
+- name: int_execution_yields_aave_daily
+  description: Daily Aave V3 lending metrics per reserve token on Gnosis Chain. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: token_class
+    data_type: String
+  - name: protocol
+    data_type: String
+  - name: apy_daily
+    description: Annualized supply APY from Aave V3 liquidityRate (RAY / 1e27 * 100). Forward-filled on days without ReserveDataUpdated events.
+    data_type: Float64
+  - name: borrow_apy_variable_daily
+    description: Annualized variable borrow APY from Aave V3 variableBorrowRate. Forward-filled.
+    data_type: Float64
+  - name: spread_variable
+    description: Borrow-supply APY spread (borrow_apy - apy_daily).
+    data_type: Float64
+  - name: lenders_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique supplier addresses (cityHash64). Use groupBitmapMerge() to combine across dates.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: borrowers_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique borrower addresses.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: lenders_count_daily
+    data_type: UInt64
+  - name: borrowers_count_daily
+    data_type: UInt64
+  - name: deposits_volume_daily
+    description: Daily Supply event volume in token units.
+    data_type: Float64
+  - name: borrows_volume_daily
+    description: Daily Borrow event volume in token units.
+    data_type: Float64
+  - name: withdrawals_volume_daily
+    description: Daily Withdraw event volume in token units.
+    data_type: Float64
+  - name: repays_volume_daily
+    description: Daily Repay event volume in token units.
+    data_type: Float64
+  - name: net_supply_change_daily
+    description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Sum across all dates to get cumulative supply for TVL.
+    data_type: Float64
+
 - name: int_execution_yields_pools_fees_daily
-  description: Daily accrued pool fees at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Includes both token amount and USD for debugging.
+  description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
   columns:
   - name: date
     data_type: Date
@@ -46,5 +94,11 @@ models:
   - name: fee_amount
     data_type: Float64
   - name: fees_usd
+    data_type: Float64
+  - name: volume_amount
+    description: Daily trading volume in token units (gross incoming amount from Swap events).
+    data_type: Float64
+  - name: volume_usd
+    description: Daily trading volume in USD.
     data_type: Float64
 

@@ -28,7 +28,7 @@ aave_rate_events AS (
       {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
 ),
 
--- Extract activity events (Supply, Borrow) for volumes and user counts
+-- Extract activity events (Supply, Borrow, Withdraw, Repay, LiquidationCall) for volumes and user counts
 aave_activity_events AS (
     SELECT
         toStartOfDay(block_timestamp) AS date,
@@ -37,10 +37,27 @@ aave_activity_events AS (
         event_name AS event_type,
         toUInt256OrNull(decoded_params['amount']) AS amount_raw
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name IN ('Supply', 'Borrow')
+    WHERE event_name IN ('Supply', 'Borrow', 'Withdraw', 'Repay')
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['user'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
+      AND block_timestamp < today()
+      {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+
+    UNION ALL
+
+    -- Liquidation collateral seizures (treated as supply reduction per collateral token)
+    SELECT
+        toStartOfDay(block_timestamp) AS date,
+        lower(decoded_params['collateralAsset']) AS token_address,
+        lower(decoded_params['user']) AS user_address,
+        'LiquidationWithdraw' AS event_type,
+        toUInt256OrNull(decoded_params['liquidatedCollateralAmount']) AS amount_raw
+    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
+    WHERE event_name = 'LiquidationCall'
+      AND decoded_params['collateralAsset'] IS NOT NULL
+      AND decoded_params['user'] IS NOT NULL
+      AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
       AND block_timestamp < today()
       {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
 ),
@@ -68,7 +85,10 @@ activity_agg AS (
         uniqExact(user_address) FILTER (WHERE event_type = 'Borrow') AS borrowers_count_daily,
         -- Volumes (will be converted from wei later)
         sum(amount_raw) FILTER (WHERE event_type = 'Supply') AS deposits_volume_raw,
-        sum(amount_raw) FILTER (WHERE event_type = 'Borrow') AS borrows_volume_raw
+        sum(amount_raw) FILTER (WHERE event_type = 'Borrow') AS borrows_volume_raw,
+        sum(amount_raw) FILTER (WHERE event_type = 'Withdraw') AS withdrawals_volume_raw,
+        sum(amount_raw) FILTER (WHERE event_type = 'Repay') AS repays_volume_raw,
+        sum(amount_raw) FILTER (WHERE event_type = 'LiquidationWithdraw') AS liquidated_supply_raw
     FROM aave_activity_events
     GROUP BY date, token_address
 ),
@@ -122,7 +142,15 @@ yields_with_activity AS (
         COALESCE(aa.borrowers_count_daily, 0) AS borrowers_count_daily,
         -- Convert volumes from wei to token units
         COALESCE(aa.deposits_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS deposits_volume_daily,
-        COALESCE(aa.borrows_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS borrows_volume_daily
+        COALESCE(aa.borrows_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS borrows_volume_daily,
+        COALESCE(aa.withdrawals_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS withdrawals_volume_daily,
+        COALESCE(aa.repays_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS repays_volume_daily,
+        -- Net supply change: deposits - withdrawals - liquidated collateral (in token units)
+        (
+            COALESCE(toFloat64(aa.deposits_volume_raw), 0)
+            - COALESCE(toFloat64(aa.withdrawals_volume_raw), 0)
+            - COALESCE(toFloat64(aa.liquidated_supply_raw), 0)
+        ) / POWER(10, COALESCE(ws.decimals, 18)) AS net_supply_change_daily
     FROM with_symbols ws
     LEFT JOIN activity_agg aa
         ON ws.date = aa.date
@@ -184,7 +212,10 @@ filled_yields AS (
         COALESCE(ywa.lenders_count_daily, 0) AS lenders_count_daily,
         COALESCE(ywa.borrowers_count_daily, 0) AS borrowers_count_daily,
         COALESCE(ywa.deposits_volume_daily, 0) AS deposits_volume_daily,
-        COALESCE(ywa.borrows_volume_daily, 0) AS borrows_volume_daily
+        COALESCE(ywa.borrows_volume_daily, 0) AS borrows_volume_daily,
+        COALESCE(ywa.withdrawals_volume_daily, 0) AS withdrawals_volume_daily,
+        COALESCE(ywa.repays_volume_daily, 0) AS repays_volume_daily,
+        COALESCE(ywa.net_supply_change_daily, 0) AS net_supply_change_daily
     FROM calendar c
     LEFT JOIN yields_with_activity ywa
         ON ywa.token_address = c.token_address
@@ -210,7 +241,10 @@ SELECT
     lenders_count_daily,
     borrowers_count_daily,
     deposits_volume_daily,
-    borrows_volume_daily
+    borrows_volume_daily,
+    withdrawals_volume_daily,
+    repays_volume_daily,
+    net_supply_change_daily
 FROM filled_yields
 WHERE apy_daily IS NOT NULL
 ORDER BY date, token_address
