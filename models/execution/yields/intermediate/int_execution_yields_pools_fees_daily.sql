@@ -160,6 +160,7 @@ uniswap_v3_flash_fees_token AS (
       AND e.block_timestamp < today()
       AND e.decoded_params['paid0'] IS NOT NULL
       AND e.decoded_params['amount0'] IS NOT NULL
+      AND toUInt256OrNull(e.decoded_params['paid0']) >= toUInt256OrNull(e.decoded_params['amount0'])
       {% if start_month and end_month %}
         AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
@@ -183,6 +184,7 @@ uniswap_v3_flash_fees_token AS (
       AND e.block_timestamp < today()
       AND e.decoded_params['paid1'] IS NOT NULL
       AND e.decoded_params['amount1'] IS NOT NULL
+      AND toUInt256OrNull(e.decoded_params['paid1']) >= toUInt256OrNull(e.decoded_params['amount1'])
       {% if start_month and end_month %}
         AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
@@ -329,6 +331,7 @@ swapr_v3_flash_fees_token AS (
       AND e.block_timestamp < today()
       AND e.decoded_params['paid0'] IS NOT NULL
       AND e.decoded_params['amount0'] IS NOT NULL
+      AND toUInt256OrNull(e.decoded_params['paid0']) >= toUInt256OrNull(e.decoded_params['amount0'])
       {% if start_month and end_month %}
         AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
@@ -352,6 +355,7 @@ swapr_v3_flash_fees_token AS (
       AND e.block_timestamp < today()
       AND e.decoded_params['paid1'] IS NOT NULL
       AND e.decoded_params['amount1'] IS NOT NULL
+      AND toUInt256OrNull(e.decoded_params['paid1']) >= toUInt256OrNull(e.decoded_params['amount1'])
       {% if start_month and end_month %}
         AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
