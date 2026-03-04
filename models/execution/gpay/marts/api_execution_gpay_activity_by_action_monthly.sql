@@ -1,7 +1,39 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier1','api:gpay_activity_by_action_monthly','granularity:monthly']
+    tags=['production','execution','gpay','tier1','api:gpay_activity_by_action_monthly','granularity:monthly'],
+    meta={
+      "api": {
+        "methods": ["GET"],
+        "allow_unfiltered": true,
+        "parameters": [
+          {
+            "name": "action",
+            "column": "action",
+            "operator": "=",
+            "type": "string",
+            "description": "Action type"
+          },
+          {
+            "name": "start_date",
+            "column": "month",
+            "operator": ">=",
+            "type": "date",
+            "description": "Inclusive start date"
+          },
+          {
+            "name": "end_date",
+            "column": "month",
+            "operator": "<=",
+            "type": "date",
+            "description": "Inclusive end date"
+          }
+        ],
+        "sort": [
+          {"column": "month", "direction": "DESC"}
+        ]
+      }
+    }
   )
 }}
 

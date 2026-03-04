@@ -1,28 +1,28 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier0','api:gpay_user_payments_daily','granularity:daily'],
+    tags=['production','execution','tier1','api:token_balances','granularity:daily'],
     meta={
       "api": {
         "methods": ["GET","POST"],
         "allow_unfiltered": false,
-        "require_any_of": ["wallet_address"],
+        "require_any_of": ["symbol","address"],
         "parameters": [
           {
-            "name": "wallet_address",
-            "column": "wallet_address",
-            "operator": "IN",
-            "type": "string_list",
-            "case": "lower",
-            "max_items": 20,
-            "description": "Wallet address(es)"
-          },
-          {
-            "name": "token",
-            "column": "label",
+            "name": "symbol",
+            "column": "symbol",
             "operator": "=",
             "type": "string",
             "description": "Token symbol"
+          },
+          {
+            "name": "address",
+            "column": "address",
+            "operator": "IN",
+            "type": "string_list",
+            "case": "lower",
+            "max_items": 200,
+            "description": "Wallet address list"
           },
           {
             "name": "start_date",
@@ -53,10 +53,10 @@
 }}
 
 SELECT
-    wallet_address,
     date,
-    symbol AS label,
-    round(toFloat64(amount_usd), 2) AS value
-FROM {{ ref('int_execution_gpay_activity_daily') }}
-WHERE action = 'Payment'
-ORDER BY date
+    token_address,
+    symbol,
+    address,
+    balance,
+    balance_usd
+FROM {{ ref('int_execution_tokens_balances_daily') }}
