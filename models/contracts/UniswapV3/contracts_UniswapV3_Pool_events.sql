@@ -10,7 +10,8 @@
                                     'allow_nullable_key': 1 
                                 },
         pre_hook                = [
-                                    "SET allow_experimental_json_type = 1"
+                                    "SET allow_experimental_json_type = 1",
+                                    "SET max_block_size = 5000"
                                 ],
         tags                    = ['dev','contracts','uniswapv3','events']
     )
