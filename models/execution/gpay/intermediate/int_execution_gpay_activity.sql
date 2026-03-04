@@ -30,7 +30,6 @@
 {% set merchant   = '0x4822521e6135cd2599199c83ea35179229a172ee' %}
 {% set cashback   = '0xcdf50be9061086e2ecfe6e4a1bf9164d43568eec' %}
 {% set gno_token  = '0x9c58bacc331c9aa871afd802db6379a98e80cedb' %}
-{% set refund_addr  = '0x6a2f816caf01166db2e8abbabbebb71a89939b72' %}
 
 WITH gpay_wallets AS (
     SELECT address
@@ -129,9 +128,6 @@ classified AS (
             -- AND token_address != '{{ gno_token }}'
             THEN 'Crypto Withdrawal'
 
-            WHEN receiver IN (SELECT address FROM gpay_wallets)
-             AND sender = '{{ refund_addr }}'
-            THEN 'Refund'
 
             ELSE 'Other'
         END AS action,
