@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tier1','api:balance_cohorts_holders_per_token', 'granularity:daily'],
+    tags=['production','execution','gpay','tier1','api:gpay_balance_cohorts_holders_daily','granularity:daily'],
     meta={
       "api": {
         "methods": ["GET"],
@@ -38,15 +38,10 @@
 }}
 
 SELECT
-  date,
-  symbol                         AS token,   
-  cohort_unit,
-  balance_bucket                 AS label,   
-  holders_in_bucket              AS value    
-FROM {{ ref('int_execution_tokens_balance_cohorts_daily') }}
-WHERE date < today()
-ORDER BY
-  date,
-  token,
-  cohort_unit,
-  label
+    date,
+    symbol         AS token,
+    cohort_unit,
+    balance_bucket AS label,
+    holders        AS value
+FROM {{ ref('fct_execution_gpay_balance_cohorts_daily') }}
+ORDER BY date, token, cohort_unit, label

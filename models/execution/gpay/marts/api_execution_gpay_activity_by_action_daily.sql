@@ -1,18 +1,18 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tier1','api:balance_cohorts_holders_per_token', 'granularity:daily'],
+    tags=['production','execution','gpay','tier1','api:gpay_activity_by_action_daily','granularity:daily'],
     meta={
       "api": {
         "methods": ["GET"],
         "allow_unfiltered": true,
         "parameters": [
           {
-            "name": "token",
-            "column": "token",
+            "name": "action",
+            "column": "action",
             "operator": "=",
             "type": "string",
-            "description": "Token symbol"
+            "description": "Action type (Payment, Cashback, etc.)"
           },
           {
             "name": "start_date",
@@ -38,15 +38,11 @@
 }}
 
 SELECT
-  date,
-  symbol                         AS token,   
-  cohort_unit,
-  balance_bucket                 AS label,   
-  holders_in_bucket              AS value    
-FROM {{ ref('int_execution_tokens_balance_cohorts_daily') }}
-WHERE date < today()
-ORDER BY
-  date,
-  token,
-  cohort_unit,
-  label
+    date,
+    action,
+    sum(activity_count)                   AS activity_count,
+    round(toFloat64(sum(volume_usd)), 2)  AS volume_usd,
+    round(toFloat64(sum(volume)), 6)      AS volume_native
+FROM {{ ref('fct_execution_gpay_actions_by_token_daily') }}
+GROUP BY action, date
+ORDER BY date, action

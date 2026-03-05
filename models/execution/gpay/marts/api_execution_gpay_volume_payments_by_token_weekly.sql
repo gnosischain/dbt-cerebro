@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tier1','api:balance_cohorts_holders_per_token', 'granularity:daily'],
+    tags=['production','execution','gpay','tier1','api:gpay_volume_payments_by_token_weekly','granularity:weekly'],
     meta={
       "api": {
         "methods": ["GET"],
@@ -9,7 +9,7 @@
         "parameters": [
           {
             "name": "token",
-            "column": "token",
+            "column": "label",
             "operator": "=",
             "type": "string",
             "description": "Token symbol"
@@ -38,15 +38,9 @@
 }}
 
 SELECT
-  date,
-  symbol                         AS token,   
-  cohort_unit,
-  balance_bucket                 AS label,   
-  holders_in_bucket              AS value    
-FROM {{ ref('int_execution_tokens_balance_cohorts_daily') }}
-WHERE date < today()
-ORDER BY
-  date,
-  token,
-  cohort_unit,
-  label
+    week        AS date,
+    token       AS label,
+    volume_usd  AS value
+FROM {{ ref('fct_execution_gpay_actions_by_token_weekly') }}
+WHERE action = 'Payment'
+ORDER BY date, label

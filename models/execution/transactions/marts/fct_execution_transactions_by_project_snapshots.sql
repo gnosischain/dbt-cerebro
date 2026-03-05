@@ -3,6 +3,7 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(window, bucket, label)',
+    pre_hook=["SET join_algorithm = 'hash'"],
     tags=['production','execution','transactions']
   )
 }}
