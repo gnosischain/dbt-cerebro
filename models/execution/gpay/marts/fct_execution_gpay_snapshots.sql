@@ -68,6 +68,39 @@ joined AS (
     FROM all_time a
     LEFT JOIN curr_7d c ON c.action = a.action
     LEFT JOIN prev_7d p ON p.action = a.action
+),
+
+-- Cashback-specific bounds: use the last distribution week instead of a strict 7D window
+cashback_bounds AS (
+    SELECT
+        toStartOfWeek(max(date), 1) AS curr_week,
+        subtractWeeks(toStartOfWeek(max(date), 1), 1) AS prev_week
+    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    WHERE action = 'Cashback'
+),
+
+curr_cb AS (
+    SELECT
+        sum(amount_usd)           AS volume,
+        sum(amount)               AS native_volume,
+        sum(activity_count)       AS cnt,
+        uniqExact(wallet_address) AS users
+    FROM {{ ref('int_execution_gpay_activity_daily') }} d
+    CROSS JOIN cashback_bounds cb
+    WHERE d.action = 'Cashback'
+      AND toStartOfWeek(d.date, 1) = cb.curr_week
+),
+
+prev_cb AS (
+    SELECT
+        sum(amount_usd)           AS volume,
+        sum(amount)               AS native_volume,
+        sum(activity_count)       AS cnt,
+        uniqExact(wallet_address) AS users
+    FROM {{ ref('int_execution_gpay_activity_daily') }} d
+    CROSS JOIN cashback_bounds cb
+    WHERE d.action = 'Cashback'
+      AND toStartOfWeek(d.date, 1) = cb.prev_week
 )
 
 -- {Action}Volume: All
@@ -79,13 +112,14 @@ SELECT
 FROM joined
 
 UNION ALL
--- {Action}Volume: 7D
+-- {Action}Volume: 7D (excludes Cashback — handled separately below)
 SELECT
     replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Volume',
     '7D',
     round(toFloat64(curr_volume), 2),
     round((coalesce(toFloat64(curr_volume) / nullIf(toFloat64(prev_volume), 0), 0) - 1) * 100, 1)
 FROM joined
+WHERE action_type != 'Cashback'
 
 UNION ALL
 -- {Action}Count: All
@@ -97,13 +131,14 @@ SELECT
 FROM joined
 
 UNION ALL
--- {Action}Count: 7D
+-- {Action}Count: 7D (excludes Cashback — handled separately below)
 SELECT
     replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Count',
     '7D',
     toFloat64(curr_cnt),
     round((coalesce(toFloat64(curr_cnt) / nullIf(toFloat64(prev_cnt), 0), 0) - 1) * 100, 1)
 FROM joined
+WHERE action_type != 'Cashback'
 
 UNION ALL
 -- {Action}Users: All
@@ -115,13 +150,14 @@ SELECT
 FROM joined
 
 UNION ALL
--- {Action}Users: 7D
+-- {Action}Users: 7D (excludes Cashback — handled separately below)
 SELECT
     replaceAll(replaceAll(action_type, ' ', ''), '-', '') || 'Users',
     '7D',
     toFloat64(curr_users),
     round((coalesce(toFloat64(curr_users) / nullIf(toFloat64(prev_users), 0), 0) - 1) * 100, 1)
 FROM joined
+WHERE action_type != 'Cashback'
 
 UNION ALL
 -- CashbackGNO (native GNO amount): All
@@ -132,12 +168,29 @@ FROM joined
 WHERE action_type = 'Cashback'
 
 UNION ALL
--- CashbackGNO (native GNO amount): 7D
+-- Cashback 7D metrics: use last distribution week instead of strict 7-day window
+-- CashbackVolume: 7D
+SELECT 'CashbackVolume', '7D',
+    round(toFloat64((SELECT volume FROM curr_cb)), 2),
+    round((coalesce(toFloat64((SELECT volume FROM curr_cb)) / nullIf(toFloat64((SELECT volume FROM prev_cb)), 0), 0) - 1) * 100, 1)
+
+UNION ALL
+-- CashbackCount: 7D
+SELECT 'CashbackCount', '7D',
+    toFloat64((SELECT cnt FROM curr_cb)),
+    round((coalesce(toFloat64((SELECT cnt FROM curr_cb)) / nullIf(toFloat64((SELECT cnt FROM prev_cb)), 0), 0) - 1) * 100, 1)
+
+UNION ALL
+-- CashbackUsers: 7D
+SELECT 'CashbackUsers', '7D',
+    toFloat64((SELECT users FROM curr_cb)),
+    round((coalesce(toFloat64((SELECT users FROM curr_cb)) / nullIf(toFloat64((SELECT users FROM prev_cb)), 0), 0) - 1) * 100, 1)
+
+UNION ALL
+-- CashbackGNO: 7D
 SELECT 'CashbackGNO', '7D',
-    round(toFloat64(curr_native), 2),
-    round((coalesce(toFloat64(curr_native) / nullIf(toFloat64(prev_native), 0), 0) - 1) * 100, 1)
-FROM joined
-WHERE action_type = 'Cashback'
+    round(toFloat64((SELECT native_volume FROM curr_cb)), 2),
+    round((coalesce(toFloat64((SELECT native_volume FROM curr_cb)) / nullIf(toFloat64((SELECT native_volume FROM prev_cb)), 0), 0) - 1) * 100, 1)
 
 UNION ALL
 -- TotalBalance (from balances model)
