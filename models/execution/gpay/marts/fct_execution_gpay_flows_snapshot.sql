@@ -112,4 +112,12 @@ final AS (
   GROUP BY 1, 2, 3, 4, 5
 )
 
-SELECT * FROM final
+SELECT 
+  window,
+  days,
+  symbol,
+  If((symbol = 'EURe' OR symbol = 'GBPe') AND from_label = 'Null/Burn', 'Bank', from_label) AS from_label,
+  If((symbol = 'EURe' OR symbol = 'GBPe') AND to_label = 'Null/Burn', 'Bank', to_label) AS to_label,
+  amount_usd,
+  tf_cnt
+FROM final

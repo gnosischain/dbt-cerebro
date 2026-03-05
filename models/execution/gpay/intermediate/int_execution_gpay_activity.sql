@@ -110,12 +110,12 @@ classified AS (
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
              AND sender = '{{ zero_addr }}'
-           --  AND symbol IN ('EURe', 'GBPe')
+             AND symbol IN ('EURe', 'GBPe')
             THEN 'Fiat Top Up'
 
             WHEN sender IN (SELECT address FROM gpay_wallets)
              AND receiver = '{{ zero_addr }}'
-           --  AND symbol IN ('EURe', 'GBPe')
+             AND symbol IN ('EURe', 'GBPe')
             THEN 'Fiat Off-ramp'
 
             WHEN receiver IN (SELECT address FROM gpay_wallets)
