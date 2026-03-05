@@ -2,7 +2,162 @@ version: 2
 
 models:
   - name: int_execution_gpay_activity
+    description: Incremental model that captures individual Gnosis Pay wallet transactions including payments, deposits, withdrawals, and cashback events with USD valuations.
+    columns:
+
+    - name: transaction_hash
+      description: The unique hash identifier for the transaction.
+      data_type: String
+
+    - name: block_timestamp
+      description: The UTC timestamp of the block containing the transaction.
+      data_type: DateTime64(0, 'UTC')
+      tests:
+      - not_null
+
+    - name: date
+      description: The calendar date of the transaction.
+      data_type: Date
+      tests:
+      - not_null
+
+    - name: wallet_address
+      description: The Gnosis Pay wallet address involved in the transaction.
+      data_type: String
+
+    - name: action
+      description: The type of activity (e.g., Payment, Deposit, Withdrawal, Cashback).
+      data_type: String
+
+    - name: direction
+      description: The direction of the transaction (e.g., inbound, outbound).
+      data_type: String
+
+    - name: symbol
+      description: The token symbol involved in the transaction.
+      data_type: String
+
+    - name: token_address
+      description: The contract address of the token.
+      data_type: String
+
+    - name: counterparty
+      description: The counterparty address in the transaction.
+      data_type: String
+
+    - name: value_raw
+      description: The raw token amount before decimal adjustment.
+      data_type: Float64
+
+    - name: amount
+      description: The decimal-adjusted token amount.
+      data_type: Float64
+
+    - name: amount_usd
+      description: The USD-equivalent value of the transaction.
+      data_type: Float64
     meta:
+      owner: analytics-team
+      authoritative: false
       full_refresh:
         start_date: "2023-06-01"
         batch_months: 3
+
+  - name: int_execution_gpay_activity_daily
+    description: Incremental model that aggregates Gnosis Pay wallet activity at the daily level, grouped by wallet, action, direction, and token symbol.
+    columns:
+
+    - name: date
+      description: The calendar date of the aggregated activity.
+      data_type: Date
+      tests:
+      - not_null
+
+    - name: wallet_address
+      description: The blockchain address of the Gnosis Pay wallet.
+      data_type: String
+
+    - name: action
+      description: The type of activity performed (e.g., payment, deposit, withdrawal, cashback).
+      data_type: String
+
+    - name: direction
+      description: The direction of the transaction (e.g., inbound, outbound).
+      data_type: String
+
+    - name: symbol
+      description: The token symbol involved in the activity.
+      data_type: String
+
+    - name: amount_raw
+      description: The raw token amount of the activity before decimal adjustment.
+      data_type: Float64
+
+    - name: amount
+      description: The decimal-adjusted token amount of the activity.
+      data_type: Float64
+
+    - name: amount_usd
+      description: The USD-equivalent value of the activity.
+      data_type: Float64
+
+    - name: activity_count
+      description: The number of individual transactions in this aggregation.
+      data_type: UInt64
+    meta:
+      owner: analytics-team
+      authoritative: false
+
+  - name: int_execution_gpay_balances_daily
+    description: Incremental model that tracks daily token balances for each Gnosis Pay wallet address, with both native and USD values.
+    columns:
+
+    - name: date
+      description: The calendar date of the balance snapshot.
+      data_type: Date
+      tests:
+      - not_null
+
+    - name: address
+      description: The blockchain address of the Gnosis Pay wallet.
+      data_type: String
+
+    - name: symbol
+      description: The token symbol for the balance.
+      data_type: String
+
+    - name: balance
+      description: The token balance in native units.
+      data_type: Float64
+
+    - name: balance_usd
+      description: The token balance converted to USD.
+      data_type: Float64
+    meta:
+      owner: analytics-team
+      authoritative: false
+
+  - name: int_execution_gpay_wallet_owners
+    description: Incremental model that maps Gnosis Pay wallet addresses to their owner addresses and safe thresholds.
+    columns:
+
+    - name: pay_wallet
+      description: The Gnosis Pay wallet (safe) address.
+      data_type: String
+
+    - name: owner
+      description: The owner address that controls the pay wallet.
+      data_type: String
+
+    - name: threshold
+      description: The number of required confirmations for the safe wallet.
+      data_type: UInt64
+
+    - name: block_timestamp
+      description: The UTC timestamp of the block when the ownership was recorded.
+      data_type: DateTime64(0, 'UTC')
+      tests:
+      - not_null
+    meta:
+      owner: analytics-team
+      authoritative: false
