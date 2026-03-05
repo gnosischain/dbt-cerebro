@@ -33,7 +33,16 @@ wallet_monthly AS (
     HAVING payment_cnt > 0   -- only wallets that made payments
 ),
 
--- For each (wallet, month), compute cumulative cashback received up to that month
+-- Pre-compute running cumulative cashback per wallet using a window function
+cashback_cumulative AS (
+    SELECT
+        wallet_address,
+        month,
+        sum(cb_usd) OVER (PARTITION BY wallet_address ORDER BY month ROWS UNBOUNDED PRECEDING) AS cumulative_cb_usd
+    FROM cashback_by_month
+),
+
+-- For each (wallet, month), look up cumulative cashback via ASOF join (avoids non-equi LEFT JOIN)
 with_cumulative_cashback AS (
     SELECT
         p.wallet_address,
@@ -42,15 +51,11 @@ with_cumulative_cashback AS (
         p.payment_cnt,
         p.deposit_vol,
         p.withdrawal_vol,
-        coalesce(sum(c.cb_usd), 0) AS cumulative_cb_usd
+        coalesce(cc.cumulative_cb_usd, 0) AS cumulative_cb_usd
     FROM wallet_monthly p
-    LEFT JOIN cashback_by_month c
-        ON  c.wallet_address = p.wallet_address
-        AND c.month <= p.month
-    GROUP BY
-        p.wallet_address, p.month,
-        p.payment_vol, p.payment_cnt,
-        p.deposit_vol, p.withdrawal_vol
+    ASOF LEFT JOIN cashback_cumulative cc
+        ON cc.wallet_address = p.wallet_address
+        AND p.month >= cc.month
 ),
 
 -- Assign cashback tier segment
