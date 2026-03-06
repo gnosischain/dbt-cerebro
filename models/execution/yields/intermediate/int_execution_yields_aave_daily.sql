@@ -157,7 +157,18 @@ yields_with_activity AS (
         AND ws.token_address = aa.token_address
 ),
 
--- Get date range and unique token combinations
+{% if is_incremental() %}
+last_known_apy AS (
+    SELECT
+        token_address,
+        argMax(apy_daily, date) AS last_apy,
+        argMax(borrow_apy_variable_daily, date) AS last_borrow_apy
+    FROM {{ this }}
+    WHERE apy_daily IS NOT NULL
+    GROUP BY token_address
+),
+{% endif %}
+
 date_range AS (
     SELECT 
         MIN(date) AS min_date,
@@ -185,8 +196,6 @@ calendar AS (
     ARRAY JOIN range(toUInt64(dateDiff('day', dr.min_date, dr.max_date) + 1)) AS offset
 ),
 
--- Forward fill: use last known value for missing days (only for APY rates)
--- Activity metrics don't need forward-filling (show only days with activity)
 filled_yields AS (
     SELECT
         c.date,
@@ -194,19 +203,30 @@ filled_yields AS (
         c.symbol,
         c.token_class,
         'Aave V3' AS protocol,
-        -- Forward fill: get the last known apy_daily value up to this date
-        last_value(ywa.apy_daily) IGNORE NULLS OVER (
-            PARTITION BY c.token_address 
-            ORDER BY c.date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        COALESCE(
+            last_value(ywa.apy_daily) IGNORE NULLS OVER (
+                PARTITION BY c.token_address 
+                ORDER BY c.date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ),
+            {% if is_incremental() %}
+            lka.last_apy
+            {% else %}
+            NULL
+            {% endif %}
         ) AS apy_daily,
-        -- Forward fill: get the last known borrow_apy_variable_daily value up to this date
-        last_value(ywa.borrow_apy_variable_daily) IGNORE NULLS OVER (
-            PARTITION BY c.token_address 
-            ORDER BY c.date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        COALESCE(
+            last_value(ywa.borrow_apy_variable_daily) IGNORE NULLS OVER (
+                PARTITION BY c.token_address 
+                ORDER BY c.date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ),
+            {% if is_incremental() %}
+            lka.last_borrow_apy
+            {% else %}
+            NULL
+            {% endif %}
         ) AS borrow_apy_variable_daily,
-        -- Activity metrics: use actual values (no forward fill)
         ywa.lenders_bitmap_state,
         ywa.borrowers_bitmap_state,
         COALESCE(ywa.lenders_count_daily, 0) AS lenders_count_daily,
@@ -220,6 +240,10 @@ filled_yields AS (
     LEFT JOIN yields_with_activity ywa
         ON ywa.token_address = c.token_address
         AND ywa.date = c.date
+    {% if is_incremental() %}
+    LEFT JOIN last_known_apy lka
+        ON lka.token_address = c.token_address
+    {% endif %}
 )
 
 SELECT
