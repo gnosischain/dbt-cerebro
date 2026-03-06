@@ -1,34 +1,11 @@
 
 
-
-
-
 WITH src AS (
   SELECT
     lower(address) AS address,
     project,
     introduced_at
   FROM `dbt`.`stg_crawlers_data__dune_labels`
-  
-    
-  
-    
-    
-
-   WHERE 
-    toStartOfMonth(toDate(introduced_at)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.introduced_at)), -0))
-      FROM `dbt`.`int_crawlers_data_labels` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(introduced_at) >= (
-      SELECT addDays(max(toDate(x2.introduced_at)), -0)
-      FROM `dbt`.`int_crawlers_data_labels` AS x2
-      WHERE 1=1 
-    )
-  
-
-  
 ),
 
 labeled AS (
