@@ -225,12 +225,6 @@ swapr_v3_fee_events AS (
     WHERE e.event_name = 'Fee'
       AND e.block_timestamp < today()
       AND e.decoded_params['fee'] IS NOT NULL
-      {% if start_month and end_month %}
-        AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('e.block_timestamp', 'date', 'true') }}
-      {% endif %}
 ),
 
 swapr_v3_first_fee AS (
