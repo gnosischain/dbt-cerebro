@@ -74,8 +74,21 @@ models:
   - name: repays_volume_daily
     description: Daily Repay event volume in token units.
     data_type: Float64
+  - name: liquidity_index
+    description: Aave V3 liquidityIndex (RAY) for the reserve, forward-filled. Used to convert scaled supply to actual token supply (scaledSupply * liquidityIndex / 1e27).
+    data_type: Float64
   - name: net_supply_change_daily
-    description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Sum across all dates to get cumulative supply for TVL.
+    description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
+    data_type: Float64
+- name: int_execution_yields_aave_scaled_supply_daily
+  description: Daily net change in Aave V3 scaled supply per reserve token. Computed by dividing each Supply/Withdraw/LiquidationCall amount by the liquidityIndex from the same transaction's ReserveDataUpdated event, making the values interest-neutral. Sum all dates per token and multiply by the latest liquidityIndex / 1e27 to recover true TVL in wei.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: net_scaled_supply_change_daily
+    description: Daily net change in Aave scaled supply (amount * 1e27 / liquidityIndex at time of event).
     data_type: Float64
 
 - name: int_execution_yields_pools_fees_daily
