@@ -85,13 +85,21 @@ FROM (
         WHERE date < today()
     ),
     
-    lending_cumulative_supply AS (
+    lending_scaled_supply AS (
         SELECT
             token_address,
-            symbol,
-            sum(net_supply_change_daily) AS total_supply_tokens
+            sum(net_scaled_supply_change_daily) AS total_scaled_supply
+        FROM {{ ref('int_execution_yields_aave_scaled_supply_daily') }}
+        GROUP BY token_address
+    ),
+    
+    lending_latest_index AS (
+        SELECT
+            token_address,
+            argMax(liquidity_index, date) AS latest_liquidity_index
         FROM {{ ref('int_execution_yields_aave_daily') }}
-        GROUP BY token_address, symbol
+        WHERE liquidity_index IS NOT NULL
+        GROUP BY token_address
     ),
     
     latest_prices AS (
@@ -112,16 +120,26 @@ FROM (
             'APY' AS yield_label,
             a.borrow_apy_variable_daily AS borrow_apy,
             CASE
-                WHEN cs.total_supply_tokens IS NOT NULL AND cs.total_supply_tokens > 0
-                THEN cs.total_supply_tokens * coalesce(lp.price_usd, 0)
+                WHEN ss.total_scaled_supply IS NOT NULL AND ss.total_scaled_supply > 0
+                     AND li.latest_liquidity_index IS NOT NULL
+                THEN (ss.total_scaled_supply * li.latest_liquidity_index / 1e27)
+                     / POWER(10, COALESCE(w.decimals, 18))
+                     * coalesce(lp.price_usd, 0)
                 ELSE NULL
             END AS tvl,
             NULL AS fees_7d,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
-        LEFT JOIN lending_cumulative_supply cs
-            ON cs.token_address = a.token_address
+        LEFT JOIN lending_scaled_supply ss
+            ON ss.token_address = a.token_address
+        LEFT JOIN lending_latest_index li
+            ON li.token_address = a.token_address
+        LEFT JOIN (
+            SELECT lower(address) AS token_address, any(decimals) AS decimals
+            FROM {{ ref('tokens_whitelist') }}
+            GROUP BY lower(address)
+        ) w ON w.token_address = a.token_address
         LEFT JOIN latest_prices lp
             ON lp.token = nullIf(upper(trimBoth(a.symbol)), '')
         WHERE a.date = d.max_date
