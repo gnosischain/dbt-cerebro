@@ -53,12 +53,6 @@ prices AS (
         toFloat64(price) AS price_usd
     FROM {{ ref('int_execution_token_prices_daily') }}
     WHERE date < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
-      {% endif %}
 ),
 
 /* -----------------------------
@@ -442,9 +436,11 @@ fees_daily AS (
         sum(f.volume_amount) AS volume_amount,
         sum(f.volume_amount * coalesce(p.price_usd, 0)) AS volume_usd
     FROM fees_token_amounts f
-    LEFT JOIN prices p
-      ON p.date = f.date
-     AND p.token = f.token
+    ASOF LEFT JOIN (
+        SELECT * FROM prices ORDER BY token, date
+    ) p
+      ON p.token = f.token
+     AND f.date >= p.date
     GROUP BY f.date, f.protocol, f.pool_address, f.token_address, f.token
 )
 
