@@ -20,7 +20,8 @@ aave_rate_events AS (
         lower(decoded_params['reserve']) AS token_address,
         block_timestamp,
         toUInt256OrNull(decoded_params['liquidityRate']) AS liquidity_rate_ray,
-        toUInt256OrNull(decoded_params['variableBorrowRate']) AS variable_borrow_rate_ray
+        toUInt256OrNull(decoded_params['variableBorrowRate']) AS variable_borrow_rate_ray,
+        toFloat64(toUInt256OrNull(decoded_params['liquidityIndex'])) AS liquidity_index
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
     WHERE event_name = 'ReserveDataUpdated'
       AND decoded_params['liquidityRate'] IS NOT NULL
@@ -46,7 +47,6 @@ aave_activity_events AS (
 
     UNION ALL
 
-    -- Liquidation collateral seizures (treated as supply reduction per collateral token)
     SELECT
         toStartOfDay(block_timestamp) AS date,
         lower(decoded_params['collateralAsset']) AS token_address,
@@ -67,7 +67,8 @@ latest_rates AS (
         date,
         token_address,
         argMax(liquidity_rate_ray, block_timestamp) AS liquidity_rate_ray,
-        argMax(variable_borrow_rate_ray, block_timestamp) AS variable_borrow_rate_ray
+        argMax(variable_borrow_rate_ray, block_timestamp) AS variable_borrow_rate_ray,
+        argMax(liquidity_index, block_timestamp) AS liquidity_index
     FROM aave_rate_events
     GROUP BY date, token_address
 ),
@@ -101,7 +102,7 @@ with_symbols AS (
         w.token_class,
         w.decimals,
         'Aave V3' AS protocol,
-        -- Convert RAY to APY: liquidityRate / 1e27 is already the APY as a decimal
+        lr.liquidity_index,
         CASE 
             WHEN lr.liquidity_rate_ray = 0 OR lr.liquidity_rate_ray IS NULL THEN 0
             ELSE floor(
@@ -109,7 +110,6 @@ with_symbols AS (
                 4
             )
         END AS apy_daily,
-        -- Convert RAY to APY for borrow rate
         CASE 
             WHEN lr.variable_borrow_rate_ray = 0 OR lr.variable_borrow_rate_ray IS NULL THEN NULL
             ELSE floor(
@@ -135,17 +135,15 @@ yields_with_activity AS (
         ws.protocol,
         ws.apy_daily,
         ws.borrow_apy_variable_daily,
-        -- Activity metrics (may be NULL if no activity that day)
+        ws.liquidity_index,
         aa.lenders_bitmap_state,
         aa.borrowers_bitmap_state,
         COALESCE(aa.lenders_count_daily, 0) AS lenders_count_daily,
         COALESCE(aa.borrowers_count_daily, 0) AS borrowers_count_daily,
-        -- Convert volumes from wei to token units
         COALESCE(aa.deposits_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS deposits_volume_daily,
         COALESCE(aa.borrows_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS borrows_volume_daily,
         COALESCE(aa.withdrawals_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS withdrawals_volume_daily,
         COALESCE(aa.repays_volume_raw / POWER(10, COALESCE(ws.decimals, 18)), 0) AS repays_volume_daily,
-        -- Net supply change: deposits - withdrawals - liquidated collateral (in token units)
         (
             COALESCE(toFloat64(aa.deposits_volume_raw), 0)
             - COALESCE(toFloat64(aa.withdrawals_volume_raw), 0)
@@ -162,7 +160,8 @@ last_known_apy AS (
     SELECT
         token_address,
         argMax(apy_daily, date) AS last_apy,
-        argMax(borrow_apy_variable_daily, date) AS last_borrow_apy
+        argMax(borrow_apy_variable_daily, date) AS last_borrow_apy,
+        argMax(liquidity_index, date) AS last_liquidity_index
     FROM {{ this }}
     WHERE apy_daily IS NOT NULL
     GROUP BY token_address
@@ -227,6 +226,18 @@ filled_yields AS (
             NULL
             {% endif %}
         ) AS borrow_apy_variable_daily,
+        COALESCE(
+            last_value(ywa.liquidity_index) IGNORE NULLS OVER (
+                PARTITION BY c.token_address 
+                ORDER BY c.date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ),
+            {% if is_incremental() %}
+            lka.last_liquidity_index
+            {% else %}
+            NULL
+            {% endif %}
+        ) AS liquidity_index,
         ywa.lenders_bitmap_state,
         ywa.borrowers_bitmap_state,
         COALESCE(ywa.lenders_count_daily, 0) AS lenders_count_daily,
@@ -254,12 +265,12 @@ SELECT
     protocol,
     apy_daily,
     borrow_apy_variable_daily,
-    -- Calculate spread: borrow APY - lend APY
     CASE 
         WHEN borrow_apy_variable_daily IS NOT NULL AND apy_daily IS NOT NULL
         THEN ROUND(borrow_apy_variable_daily - apy_daily, 2)
         ELSE NULL
     END AS spread_variable,
+    liquidity_index,
     lenders_bitmap_state,
     borrowers_bitmap_state,
     lenders_count_daily,
