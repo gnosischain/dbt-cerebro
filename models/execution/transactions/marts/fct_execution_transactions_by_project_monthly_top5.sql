@@ -1,11 +1,16 @@
 {{ config(
-  materialized='table',
+  materialized='incremental',
+  incremental_strategy='delete+insert',
   engine='ReplacingMergeTree()',
   order_by='(date, label, metric)',
   partition_by='toStartOfYear(date)',
   unique_key='(date, label, metric)',
+  settings={ 'allow_nullable_key': 1 },
   tags=['production','execution','transactions']
 ) }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
 
 WITH base AS (
   SELECT
@@ -16,7 +21,13 @@ WITH base AS (
     sum(gas_used_sum)                       AS gas_used,
     groupBitmapMergeState(ua_bitmap_state)  AS active_state
   FROM {{ ref('int_execution_transactions_by_project_daily') }}
-  WHERE date < toStartOfMonth(today())          
+  WHERE date < toStartOfMonth(today())
+  {% if start_month and end_month %}
+    AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter('date', 'date', add_and=True, lookback_days=2) }}
+  {% endif %}
   GROUP BY month, project
 ),
 ranked AS (
