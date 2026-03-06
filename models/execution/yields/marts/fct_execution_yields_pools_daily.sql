@@ -79,9 +79,11 @@ balances_enriched AS (
       ON tm.token_address = b.token_address
      AND b.date >= toDate(tm.date_start)
      AND (tm.date_end IS NULL OR b.date < toDate(tm.date_end))
-    LEFT JOIN prices p
-      ON p.date = b.date
-     AND p.token = tm.token
+    ASOF LEFT JOIN (
+        SELECT * FROM prices ORDER BY token, date
+    ) p
+      ON p.token = tm.token
+     AND b.date >= p.date
 ),
 
 token_pool_tvl_daily AS (
