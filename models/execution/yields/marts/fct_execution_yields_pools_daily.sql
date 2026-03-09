@@ -318,7 +318,13 @@ final AS (
         pm.tvl_usd AS tvl_usd,
         pm.fees_usd_daily AS fees_usd_daily,
         pm.volume_usd_daily AS volume_usd_daily,
-        pm.fee_apr_7d AS fee_apr_7d
+        pm.fee_apr_7d AS fee_apr_7d,
+        il.il_apr_7d AS il_apr_7d,
+        CASE
+            WHEN pm.fee_apr_7d IS NOT NULL AND il.il_apr_7d IS NOT NULL
+            THEN pm.fee_apr_7d + il.il_apr_7d
+            ELSE NULL
+        END AS net_apr_7d
     FROM (
         SELECT DISTINCT
             date,
@@ -342,6 +348,10 @@ final AS (
       ON pm.date = b.date
      AND pm.protocol = b.protocol
      AND pm.pool_address = b.pool_address
+    LEFT JOIN {{ ref('fct_execution_yields_pools_il_daily') }} il
+      ON il.date = b.date
+     AND il.protocol = b.protocol
+     AND il.pool_address = b.pool_address
     WHERE b.protocol IN ('Uniswap V3', 'Swapr V3')
 )
 
@@ -355,6 +365,8 @@ SELECT
     tvl_usd,
     fees_usd_daily,
     volume_usd_daily,
-    fee_apr_7d
+    fee_apr_7d,
+    il_apr_7d,
+    net_apr_7d
 FROM final
 WHERE date < today()

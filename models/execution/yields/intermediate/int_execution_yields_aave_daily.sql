@@ -21,7 +21,8 @@ aave_rate_events AS (
         block_timestamp,
         toUInt256OrNull(decoded_params['liquidityRate']) AS liquidity_rate_ray,
         toUInt256OrNull(decoded_params['variableBorrowRate']) AS variable_borrow_rate_ray,
-        toFloat64(toUInt256OrNull(decoded_params['liquidityIndex'])) AS liquidity_index
+        toFloat64(toUInt256OrNull(decoded_params['liquidityIndex'])) AS liquidity_index,
+        toFloat64(toUInt256OrNull(decoded_params['variableBorrowIndex'])) AS variable_borrow_index
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
     WHERE event_name = 'ReserveDataUpdated'
       AND decoded_params['liquidityRate'] IS NOT NULL
@@ -68,7 +69,8 @@ latest_rates AS (
         token_address,
         argMax(liquidity_rate_ray, block_timestamp) AS liquidity_rate_ray,
         argMax(variable_borrow_rate_ray, block_timestamp) AS variable_borrow_rate_ray,
-        argMax(liquidity_index, block_timestamp) AS liquidity_index
+        argMax(liquidity_index, block_timestamp) AS liquidity_index,
+        argMax(variable_borrow_index, block_timestamp) AS variable_borrow_index
     FROM aave_rate_events
     GROUP BY date, token_address
 ),
@@ -103,6 +105,7 @@ with_symbols AS (
         w.decimals,
         'Aave V3' AS protocol,
         lr.liquidity_index,
+        lr.variable_borrow_index,
         CASE 
             WHEN lr.liquidity_rate_ray = 0 OR lr.liquidity_rate_ray IS NULL THEN 0
             ELSE floor(
@@ -136,6 +139,7 @@ yields_with_activity AS (
         ws.apy_daily,
         ws.borrow_apy_variable_daily,
         ws.liquidity_index,
+        ws.variable_borrow_index,
         aa.lenders_bitmap_state,
         aa.borrowers_bitmap_state,
         COALESCE(aa.lenders_count_daily, 0) AS lenders_count_daily,
@@ -161,7 +165,8 @@ last_known_apy AS (
         token_address,
         argMax(apy_daily, date) AS last_apy,
         argMax(borrow_apy_variable_daily, date) AS last_borrow_apy,
-        argMax(liquidity_index, date) AS last_liquidity_index
+        argMax(liquidity_index, date) AS last_liquidity_index,
+        argMax(variable_borrow_index, date) AS last_variable_borrow_index
     FROM {{ this }}
     WHERE apy_daily IS NOT NULL
     GROUP BY token_address
@@ -238,6 +243,18 @@ filled_yields AS (
             NULL
             {% endif %}
         ) AS liquidity_index,
+        COALESCE(
+            last_value(ywa.variable_borrow_index) IGNORE NULLS OVER (
+                PARTITION BY c.token_address 
+                ORDER BY c.date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ),
+            {% if is_incremental() %}
+            lka.last_variable_borrow_index
+            {% else %}
+            NULL
+            {% endif %}
+        ) AS variable_borrow_index,
         ywa.lenders_bitmap_state,
         ywa.borrowers_bitmap_state,
         COALESCE(ywa.lenders_count_daily, 0) AS lenders_count_daily,
@@ -271,6 +288,7 @@ SELECT
         ELSE NULL
     END AS spread_variable,
     liquidity_index,
+    variable_borrow_index,
     lenders_bitmap_state,
     borrowers_bitmap_state,
     lenders_count_daily,

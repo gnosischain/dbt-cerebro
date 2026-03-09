@@ -77,11 +77,14 @@ models:
   - name: liquidity_index
     description: Aave V3 liquidityIndex (RAY) for the reserve, forward-filled. Used to convert scaled supply to actual token supply (scaledSupply * liquidityIndex / 1e27).
     data_type: Float64
+  - name: variable_borrow_index
+    description: Aave V3 variableBorrowIndex (RAY) for the reserve, forward-filled. Used to convert scaled borrows to actual borrow amounts (scaledBorrow * variableBorrowIndex / 1e27).
+    data_type: Float64
   - name: net_supply_change_daily
     description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
     data_type: Float64
-- name: int_execution_yields_aave_scaled_supply_daily
-  description: Daily net change in Aave V3 scaled supply per reserve token. Computed by dividing each Supply/Withdraw/LiquidationCall amount by the liquidityIndex from the same transaction's ReserveDataUpdated event, making the values interest-neutral. Sum all dates per token and multiply by the latest liquidityIndex / 1e27 to recover true TVL in wei.
+- name: int_execution_yields_aave_scaled_balances_daily
+  description: Daily net change in Aave V3 scaled supply and borrows per reserve token. Supply events (Supply/Withdraw/LiquidationCall collateral) are divided by liquidityIndex; borrow events (Borrow/Repay/LiquidationCall debt) are divided by variableBorrowIndex — both from the same transaction's ReserveDataUpdated event. Sum all dates per token and multiply by the latest index / 1e27 to recover true balances.
   columns:
   - name: date
     data_type: Date
@@ -89,6 +92,9 @@ models:
     data_type: String
   - name: net_scaled_supply_change_daily
     description: Daily net change in Aave scaled supply (amount * 1e27 / liquidityIndex at time of event).
+    data_type: Float64
+  - name: net_scaled_borrow_change_daily
+    description: Daily net change in Aave scaled borrows (amount * 1e27 / variableBorrowIndex at time of event).
     data_type: Float64
 
 - name: int_execution_yields_pools_fees_daily
