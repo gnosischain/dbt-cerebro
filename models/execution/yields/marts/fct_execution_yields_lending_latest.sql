@@ -94,7 +94,10 @@ SELECT
     c.window,
     c.token,
     toFloat64(COALESCE(c.value, 0)) AS value,
-    ROUND((COALESCE(c.value / NULLIF(p.value, 0), 0) - 1) * 100, 1) AS change_pct
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
 FROM curr_lenders c
 LEFT JOIN prev_lenders p ON p.window = c.window AND p.token = c.token
 
@@ -105,6 +108,9 @@ SELECT
     c.window,
     c.token,
     toFloat64(COALESCE(c.value, 0)) AS value,
-    ROUND((COALESCE(c.value / NULLIF(p.value, 0), 0) - 1) * 100, 1) AS change_pct
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
 FROM curr_borrowers c
 LEFT JOIN prev_borrowers p ON p.window = c.window AND p.token = c.token
