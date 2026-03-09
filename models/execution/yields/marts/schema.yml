@@ -79,6 +79,41 @@ models:
     data_type: Float64
   - name: fee_apr_7d
     data_type: Float64
+  - name: il_apr_7d
+    description: Estimated 7-day impermanent loss annualized using the constant-product AMM model (2*sqrt(r)/(1+r)-1). Always <= 0. Lower bound for concentrated-liquidity pools.
+    data_type: Float64
+  - name: net_apr_7d
+    description: Net APR (fee_apr_7d + il_apr_7d). Represents the estimated real return after impermanent loss.
+    data_type: Float64
+
+- name: fct_execution_yields_pools_il_daily
+  description: Daily impermanent loss (IL) estimate per LP pool, using the constant-product formula applied to 7-day trailing token0/token1 price ratios. IL is annualised as a percentage and represents a lower-bound estimate for concentrated-liquidity pools.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: il_apr_7d
+    description: Annualised 7-day trailing impermanent loss estimate (%). Negative values indicate IL drag.
+    data_type: Nullable(Float64)
+
+- name: api_execution_yields_pools_net_apr_daily
+  description: API view for net APR (fee APR minus estimated IL) time series by token and pool label, with fee APR and IL components.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: fee_apr_7d
+    data_type: Float64
+  - name: il_apr_7d
+    data_type: Float64
+  - name: net_apr_7d
+    data_type: Float64
 
     tests:
     - elementary.column_anomalies:
@@ -209,6 +244,15 @@ models:
     data_type: Float64
   - name: fees_7d
     description: Fees accrued over the last 7 days in USD (LP only, NULL for lending).
+    data_type: Float64
+  - name: il_apr_7d
+    description: Estimated 7-day impermanent loss annualized (LP only, NULL for lending). Always <= 0.
+    data_type: Float64
+  - name: net_apr_7d
+    description: Net APR after impermanent loss (fee_apr_7d + il_apr_7d). LP only, NULL for lending.
+    data_type: Float64
+  - name: utilization_rate
+    description: Lending utilization rate as a percentage (total_borrows / total_supply * 100). Lending only, NULL for LPs. High values (>80%) indicate withdrawal risk.
     data_type: Float64
   - name: protocol
     description: Protocol name (e.g. Uniswap V3, Swapr V3, Aave V3).
