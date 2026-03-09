@@ -277,7 +277,12 @@ pool_metrics_daily AS (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
             ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-        ) AS tvl_usd_7d_avg
+        ) AS tvl_usd_7d_avg,
+        count() OVER (
+            PARTITION BY t.protocol, t.pool_address
+            ORDER BY t.date
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ) AS days_in_window
     FROM pool_tvl_daily t
     LEFT JOIN fees_volume_daily f
       ON f.date = t.date
@@ -294,9 +299,10 @@ pool_metrics_final AS (
         fees_usd_daily,
         volume_usd_daily,
         multiIf(
-            protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_7d_avg > 0,
-            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0,
-            NULL
+            protocol NOT IN ('Uniswap V3', 'Swapr V3'), NULL,
+            days_in_window < 3, NULL,
+            tvl_usd_7d_avg <= 0, NULL,
+            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / days_in_window) * 100.0
         ) AS fee_apr_7d
     FROM pool_metrics_daily
 ),
