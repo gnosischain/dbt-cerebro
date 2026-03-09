@@ -41,14 +41,12 @@ FROM (
     -- LP Best APR (latest) with pool name
     lp_best_apr_latest AS (
         SELECT
-            f.fee_apr_7d AS apr,
-            f.pool AS pool_name
+            argMax(f.fee_apr_7d, f.fee_apr_7d) AS apr,
+            argMax(f.pool, f.fee_apr_7d) AS pool_name
         FROM {{ ref('fct_execution_yields_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
-        ORDER BY f.fee_apr_7d DESC
-        LIMIT 1
     ),
     
     -- LP Best APR (7 days ago)
@@ -70,15 +68,13 @@ FROM (
     -- Best Lending APY (latest) with token name
     lending_best_apy_latest AS (
         SELECT
-            a.apy_daily AS apy,
-            a.symbol AS token_name
+            argMax(a.apy_daily, a.apy_daily) AS apy,
+            argMax(a.symbol, a.apy_daily) AS token_name
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
-        ORDER BY a.apy_daily DESC
-        LIMIT 1
     ),
     
     -- Best Lending APY (7 days ago)
@@ -126,7 +122,7 @@ FROM (
     
     -- sDAI APY (latest)
     sdai_apy_latest AS (
-        SELECT apy
+        SELECT any(apy) AS apy
         FROM {{ ref('fct_yields_sdai_apy_daily') }} s
         CROSS JOIN sdai_latest_date d
         WHERE s.date = d.max_date
@@ -135,7 +131,7 @@ FROM (
     
     -- sDAI APY (7 days ago)
     sdai_apy_7d_ago AS (
-        SELECT apy
+        SELECT any(apy) AS apy
         FROM {{ ref('fct_yields_sdai_apy_daily') }} s
         CROSS JOIN sdai_latest_date d
         WHERE s.date = d.max_date - INTERVAL 7 DAY
@@ -152,7 +148,7 @@ FROM (
     
     -- sDAI Supply (7 days ago)
     sdai_supply_7d_ago AS (
-        SELECT supply
+        SELECT any(supply) AS supply
         FROM {{ ref('fct_execution_tokens_metrics_daily') }}
         WHERE upper(symbol) = 'SDAI'
           AND date = (SELECT max(date) - INTERVAL 7 DAY FROM {{ ref('fct_execution_tokens_metrics_daily') }} WHERE upper(symbol) = 'SDAI' AND date < today())
