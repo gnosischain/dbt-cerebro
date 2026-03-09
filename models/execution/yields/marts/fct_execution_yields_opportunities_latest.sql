@@ -17,6 +17,9 @@ SELECT
     borrow_apy,
     tvl,
     fees_7d,
+    il_apr_7d,
+    net_apr_7d,
+    utilization_rate,
     protocol
 FROM (
     WITH
@@ -49,6 +52,9 @@ FROM (
             NULL AS borrow_apy,
             f.tvl_usd AS tvl,
             pf.fees_7d AS fees_7d,
+            f.il_apr_7d AS il_apr_7d,
+            f.net_apr_7d AS net_apr_7d,
+            NULL AS utilization_rate,
             f.protocol AS protocol
         FROM {{ ref('fct_execution_yields_pools_daily') }} f
         CROSS JOIN pools_latest_date d
@@ -68,6 +74,9 @@ FROM (
             borrow_apy,
             tvl,
             fees_7d,
+            il_apr_7d,
+            net_apr_7d,
+            utilization_rate,
             protocol
         FROM (
             SELECT
@@ -85,11 +94,12 @@ FROM (
         WHERE date < today()
     ),
     
-    lending_scaled_supply AS (
+    lending_scaled_balances AS (
         SELECT
             token_address,
-            sum(net_scaled_supply_change_daily) AS total_scaled_supply
-        FROM {{ ref('int_execution_yields_aave_scaled_supply_daily') }}
+            sum(net_scaled_supply_change_daily) AS total_scaled_supply,
+            sum(net_scaled_borrow_change_daily) AS total_scaled_borrow
+        FROM {{ ref('int_execution_yields_aave_scaled_balances_daily') }}
         GROUP BY token_address
     ),
     
@@ -99,6 +109,15 @@ FROM (
             argMax(liquidity_index, date) AS latest_liquidity_index
         FROM {{ ref('int_execution_yields_aave_daily') }}
         WHERE liquidity_index IS NOT NULL
+        GROUP BY token_address
+    ),
+    
+    lending_latest_borrow_index AS (
+        SELECT
+            token_address,
+            argMax(variable_borrow_index, date) AS latest_variable_borrow_index
+        FROM {{ ref('int_execution_yields_aave_daily') }}
+        WHERE variable_borrow_index IS NOT NULL
         GROUP BY token_address
     ),
     
@@ -120,21 +139,34 @@ FROM (
             'APY' AS yield_label,
             a.borrow_apy_variable_daily AS borrow_apy,
             CASE
-                WHEN ss.total_scaled_supply IS NOT NULL AND ss.total_scaled_supply > 0
+                WHEN sb.total_scaled_supply IS NOT NULL AND sb.total_scaled_supply > 0
                      AND li.latest_liquidity_index IS NOT NULL
-                THEN (ss.total_scaled_supply * li.latest_liquidity_index / 1e27)
+                THEN (sb.total_scaled_supply * li.latest_liquidity_index / 1e27)
                      / POWER(10, COALESCE(w.decimals, 18))
                      * coalesce(lp.price_usd, 0)
                 ELSE NULL
             END AS tvl,
             NULL AS fees_7d,
+            NULL AS il_apr_7d,
+            NULL AS net_apr_7d,
+            CASE
+                WHEN sb.total_scaled_supply IS NOT NULL AND sb.total_scaled_supply > 0
+                     AND li.latest_liquidity_index IS NOT NULL
+                     AND sb.total_scaled_borrow IS NOT NULL
+                     AND bi.latest_variable_borrow_index IS NOT NULL
+                THEN (sb.total_scaled_borrow * bi.latest_variable_borrow_index)
+                     / (sb.total_scaled_supply * li.latest_liquidity_index) * 100
+                ELSE NULL
+            END AS utilization_rate,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
-        LEFT JOIN lending_scaled_supply ss
-            ON ss.token_address = a.token_address
+        LEFT JOIN lending_scaled_balances sb
+            ON sb.token_address = a.token_address
         LEFT JOIN lending_latest_index li
             ON li.token_address = a.token_address
+        LEFT JOIN lending_latest_borrow_index bi
+            ON bi.token_address = a.token_address
         LEFT JOIN (
             SELECT lower(address) AS token_address, any(decimals) AS decimals
             FROM {{ ref('tokens_whitelist') }}
@@ -148,12 +180,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, protocol
+    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, protocol
+    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lending_markets
 )
 ORDER BY yield_pct DESC
