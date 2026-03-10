@@ -164,9 +164,9 @@ SELECT
     coalesce(sf.swap_amount1_raw, 0) AS swap_amount1_raw,
     coalesce(f.fees_usd_daily, 0) AS fees_usd_daily,
     coalesce(tp0.decimals, 18) AS decimals0,
-    coalesce(tp0.price_usd, 0) AS price0_usd,
+    tp0.price_usd AS price0_usd,
     coalesce(tp1.decimals, 18) AS decimals1,
-    coalesce(tp1.price_usd, 0) AS price1_usd
+    tp1.price_usd AS price1_usd
 FROM pool_tvl_daily tvl
 INNER JOIN v3_pool_meta m
     ON m.protocol = tvl.protocol

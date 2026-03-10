@@ -73,7 +73,7 @@ balances_enriched AS (
         tm.token AS token,
         b.token_amount AS token_amount,
         p.price_usd AS price_usd,
-        b.token_amount * coalesce(p.price_usd, 0) AS tvl_component_usd
+        b.token_amount * p.price_usd AS tvl_component_usd
     FROM balances_canon b
     LEFT JOIN token_meta tm
       ON tm.token_address = b.token_address
@@ -271,17 +271,17 @@ pool_metrics_daily AS (
         sum(coalesce(f.fees_usd_daily, 0)) OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
         ) AS fees_usd_7d,
         avg(t.tvl_usd) OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
         ) AS tvl_usd_7d_avg,
         count() OVER (
             PARTITION BY t.protocol, t.pool_address
             ORDER BY t.date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
         ) AS days_in_window
     FROM pool_tvl_daily t
     LEFT JOIN fees_volume_daily f
@@ -302,7 +302,7 @@ pool_metrics_final AS (
             protocol NOT IN ('Uniswap V3', 'Swapr V3'), NULL,
             days_in_window < 3, NULL,
             tvl_usd_7d_avg <= 0, NULL,
-            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / days_in_window) * 100.0
+            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0
         ) AS fee_apr_7d
     FROM pool_metrics_daily
 ),
