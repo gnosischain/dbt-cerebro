@@ -106,17 +106,17 @@ with_symbols AS (
         'Aave V3' AS protocol,
         lr.liquidity_index,
         lr.variable_borrow_index,
-        CASE 
+        CASE
             WHEN lr.liquidity_rate_ray = 0 OR lr.liquidity_rate_ray IS NULL THEN 0
             ELSE floor(
-                (toFloat64(lr.liquidity_rate_ray) / 1e27) * 100,
+                (pow(1 + toFloat64(lr.liquidity_rate_ray) / 1e27 / 31536000, 31536000) - 1) * 100,
                 4
             )
         END AS apy_daily,
-        CASE 
+        CASE
             WHEN lr.variable_borrow_rate_ray = 0 OR lr.variable_borrow_rate_ray IS NULL THEN NULL
             ELSE floor(
-                (toFloat64(lr.variable_borrow_rate_ray) / 1e27) * 100,
+                (pow(1 + toFloat64(lr.variable_borrow_rate_ray) / 1e27 / 31536000, 31536000) - 1) * 100,
                 4
             )
         END AS borrow_apy_variable_daily
