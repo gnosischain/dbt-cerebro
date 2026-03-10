@@ -432,9 +432,9 @@ fees_daily AS (
         f.token_address,
         f.token,
         sum(f.fee_amount) AS fee_amount,
-        sum(f.fee_amount * coalesce(p.price_usd, 0)) AS fees_usd,
+        sum(f.fee_amount * p.price_usd) AS fees_usd,
         sum(f.volume_amount) AS volume_amount,
-        sum(f.volume_amount * coalesce(p.price_usd, 0)) AS volume_usd
+        sum(f.volume_amount * p.price_usd) AS volume_usd
     FROM fees_token_amounts f
     ASOF LEFT JOIN (
         SELECT * FROM prices ORDER BY token, date
