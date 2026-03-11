@@ -23,32 +23,6 @@ constants AS (
         toUInt256('115792089237316195423570985008687907853269984665640564039457584007913129639936') AS two_256
 ),
 
-v3_pool_meta AS (
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
-        'Uniswap V3' AS protocol
-    FROM {{ ref('contracts_UniswapV3_Factory_events') }}
-    WHERE event_name = 'PoolCreated'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-
-    UNION ALL
-
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
-        'Swapr V3' AS protocol
-    FROM {{ ref('contracts_Swapr_v3_AlgebraFactory_events') }}
-    WHERE event_name = 'Pool'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-),
-
 token_prices_by_address AS (
     SELECT
         lower(w.address) AS token_address,
@@ -66,22 +40,14 @@ token_prices_by_address AS (
 
 pool_tvl_daily AS (
     SELECT
-        toDate(b.date) AS day,
-        b.protocol AS protocol,
-        multiIf(
-            startsWith(lower(b.pool_address), '0x'),
-            lower(b.pool_address),
-            concat('0x', lower(b.pool_address))
-        ) AS pool_address,
-        replaceAll(lower(b.pool_address), '0x', '') AS pool_address_no0x,
-        sum(b.token_amount * coalesce(tp.price_usd, 0)) AS tvl_usd
-    FROM {{ ref('int_execution_pools_balances_daily') }} b
-    LEFT JOIN token_prices_by_address tp
-        ON tp.token_address = lower(b.token_address)
-       AND tp.day = toDate(b.date)
-    WHERE b.protocol IN ('Uniswap V3', 'Swapr V3')
-      AND b.date < today()
-    GROUP BY toDate(b.date), b.protocol, pool_address, pool_address_no0x
+        date AS day,
+        protocol,
+        pool_address,
+        pool_address_no0x,
+        sum(tvl_component_usd) AS tvl_usd
+    FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
+    WHERE protocol IN ('Uniswap V3', 'Swapr V3')
+    GROUP BY date, protocol, pool_address, pool_address_no0x
 ),
 
 uniswap_v3_swap_flows AS (
@@ -168,7 +134,7 @@ SELECT
     coalesce(tp1.decimals, 18) AS decimals1,
     tp1.price_usd AS price1_usd
 FROM pool_tvl_daily tvl
-INNER JOIN v3_pool_meta m
+INNER JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
     ON m.protocol = tvl.protocol
    AND m.pool_address_no0x = tvl.pool_address_no0x
 LEFT JOIN swap_flows_daily sf
