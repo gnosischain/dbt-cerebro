@@ -77,6 +77,9 @@ models:
   - name: volume_usd_daily
     description: Daily trading volume in USD (gross incoming amounts from Swap events).
     data_type: Float64
+  - name: swap_count
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
   - name: fee_apr_7d
     data_type: Float64
   - name: il_apr_7d
@@ -209,6 +212,71 @@ models:
   - name: protocol
     description: Protocol name (e.g. Uniswap V3, Swapr V3, Aave V3).
     data_type: String
+
+- name: api_execution_yields_pools_fees_usd_daily
+  description: API view for daily fee revenue (USD) by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: value
+    description: Daily gross fee revenue in USD.
+    data_type: Float64
+
+- name: api_execution_yields_pools_swap_count_daily
+  description: API view for daily swap event count by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: value
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
+
+- name: fct_execution_yields_pools_lps_latest
+  description: Unique LP provider counts per token over rolling time windows with change percentage vs prior window. Uses bitmap merge to deduplicate across pools and days.
+  columns:
+  - name: window
+    description: "Time window label: 7D."
+    data_type: String
+  - name: token
+    data_type: String
+  - name: value
+    description: Unique LP addresses within the window across all pools containing this token.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior window of the same length.
+    data_type: Float64
+
+- name: api_execution_yields_pools_lps_count_7d
+  description: API view for unique LP provider count over the last 7 days per token.
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    data_type: Float64
+
+- name: api_execution_yields_pools_lp_activity_daily
+  description: API view for daily LP activity (Mint/Burn event counts) aggregated per token across all pools.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: mints
+    description: Total Mint events across all pools containing this token on this day.
+    data_type: UInt64
+  - name: burns
+    description: Total Burn events across all pools containing this token on this day.
+    data_type: UInt64
 
 - name: fct_execution_yields_pools_snapshots
   description: Snapshot KPI table for pool yields. Each row is a (token, metric) pair with the latest value and 7-day percentage change. Metrics include TVL_Latest, Fees_7D, and Volume_7D.
