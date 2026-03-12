@@ -42,24 +42,18 @@ bounds AS (
     CROSS JOIN latest_date w
 ),
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token
-    FROM {{ ref('tokens_whitelist') }}
-    WHERE symbol IS NOT NULL AND symbol != ''
-),
-
 pool_token_map AS (
     SELECT pt.pool_address, pt.protocol, tm.token
     FROM {{ ref('int_execution_yields_v3_pool_meta') }} pt
-    INNER JOIN token_meta tm ON tm.token_address = pt.token0_address
+    INNER JOIN {{ ref('stg_yields__tokens_meta') }} tm ON tm.token_address = pt.token0_address
+    WHERE tm.token IS NOT NULL
 
     UNION ALL
 
     SELECT pt.pool_address, pt.protocol, tm.token
     FROM {{ ref('int_execution_yields_v3_pool_meta') }} pt
-    INNER JOIN token_meta tm ON tm.token_address = pt.token1_address
+    INNER JOIN {{ ref('stg_yields__tokens_meta') }} tm ON tm.token_address = pt.token1_address
+    WHERE tm.token IS NOT NULL
 ),
 
 curr_lps AS (

@@ -31,32 +31,16 @@ pools AS (
     WHERE date < today()
 ),
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token_symbol
-    FROM {{ ref('tokens_whitelist') }}
-),
-
-prices AS (
-    SELECT
-        toDate(date) AS date,
-        nullIf(upper(trimBoth(symbol)), '') AS token_symbol,
-        toFloat64(price) AS price_usd
-    FROM {{ ref('int_execution_token_prices_daily') }}
-    WHERE date < today()
-),
-
 pool_token_symbols AS (
     SELECT
         m.protocol AS protocol,
         m.pool_address_no0x AS pool_address_no0x,
-        tm0.token_symbol AS token0_symbol,
-        tm1.token_symbol AS token1_symbol
+        tm0.token AS token0_symbol,
+        tm1.token AS token1_symbol
     FROM {{ ref('int_execution_yields_v3_pool_meta') }} m
-    LEFT JOIN token_meta tm0
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm0
         ON tm0.token_address = m.token0_address
-    LEFT JOIN token_meta tm1
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm1
         ON tm1.token_address = m.token1_address
 )
 
@@ -82,11 +66,11 @@ INNER JOIN pools po
 INNER JOIN pool_token_symbols pts
     ON pts.protocol = be.protocol
    AND pts.pool_address_no0x = be.pool_address_no0x
-LEFT JOIN prices p0
-    ON p0.token_symbol = pts.token0_symbol
+LEFT JOIN {{ ref('stg_yields__token_prices_daily') }} p0
+    ON p0.token = pts.token0_symbol
    AND p0.date = be.date
-LEFT JOIN prices p1
-    ON p1.token_symbol = pts.token1_symbol
+LEFT JOIN {{ ref('stg_yields__token_prices_daily') }} p1
+    ON p1.token = pts.token1_symbol
    AND p1.date = be.date
 WHERE be.token IS NOT NULL
   AND be.token != ''

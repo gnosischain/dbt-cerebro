@@ -36,39 +36,16 @@ constants AS (
         toUInt64(1000000) AS fee_denom
 ),
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        decimals,
-        date_start,
-        date_end
-    FROM {{ ref('tokens_whitelist') }}
-),
-
-prices AS (
-    SELECT
-        toDate(date) AS date,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        toFloat64(price) AS price_usd
-    FROM {{ ref('int_execution_token_prices_daily') }}
-    WHERE date < today()
-),
-
 /* -----------------------------
-   Uniswap V3: pool meta + fee tier
+   Uniswap V3: static fee tier per pool
 ------------------------------ */
-uniswap_v3_pools AS (
+uniswap_v3_fee_tiers AS (
     SELECT DISTINCT
         replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
         toUInt32OrNull(decoded_params['fee']) AS fee_ppm
     FROM {{ ref('contracts_UniswapV3_Factory_events') }}
     WHERE event_name = 'PoolCreated'
       AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
       AND decoded_params['fee'] IS NOT NULL
 ),
 
@@ -108,13 +85,13 @@ uniswap_v3_swaps AS (
             -toInt256((SELECT two_256 FROM constants) - s.amount1_u),
             toInt256(s.amount1_u)
         ) AS amount1,
-        p.fee_ppm AS fee_ppm
+        ft.fee_ppm AS fee_ppm
     FROM uniswap_v3_swaps_raw s
-    INNER JOIN uniswap_v3_pools p
-        ON p.pool_address_no0x = s.pool_address_no0x
+    INNER JOIN uniswap_v3_fee_tiers ft
+        ON ft.pool_address_no0x = s.pool_address_no0x
     WHERE s.amount0_u IS NOT NULL
       AND s.amount1_u IS NOT NULL
-      AND p.fee_ppm IS NOT NULL
+      AND ft.fee_ppm IS NOT NULL
 ),
 
 uniswap_v3_swap_fees_token AS (
@@ -194,20 +171,8 @@ uniswap_v3_fees_token AS (
 ),
 
 /* -----------------------------
-   Swapr V3 (Algebra): pool meta + dynamic fee schedule
+   Swapr V3 (Algebra): dynamic fee schedule
 ------------------------------ */
-swapr_v3_pools AS (
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address
-    FROM {{ ref('contracts_Swapr_v3_AlgebraFactory_events') }}
-    WHERE event_name = 'Pool'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-),
-
 swapr_v3_fee_events AS (
     SELECT
         replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
@@ -361,24 +326,6 @@ swapr_v3_fees_token AS (
 /* -----------------------------
    Token mapping + aggregation
 ------------------------------ */
-v3_pool_meta AS (
-    SELECT
-        'Uniswap V3' AS protocol,
-        pool_address_no0x,
-        token0_address,
-        token1_address
-    FROM uniswap_v3_pools
-
-    UNION ALL
-
-    SELECT
-        'Swapr V3' AS protocol,
-        pool_address_no0x,
-        token0_address,
-        token1_address
-    FROM swapr_v3_pools
-),
-
 all_fees_token AS (
     SELECT * FROM uniswap_v3_fees_token
     UNION ALL
@@ -399,7 +346,7 @@ fees_with_token AS (
         f.fee_raw,
         f.volume_raw
     FROM all_fees_token f
-    INNER JOIN v3_pool_meta m
+    INNER JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
       ON m.protocol = f.protocol
      AND m.pool_address_no0x = f.pool_address_no0x
     WHERE f.fee_raw IS NOT NULL
@@ -415,7 +362,7 @@ fees_token_amounts AS (
         (toFloat64(f.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
         (toFloat64(f.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
     FROM fees_with_token f
-    LEFT JOIN token_meta tm
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
       ON tm.token_address = f.token_address
      AND f.date >= toDate(tm.date_start)
      AND (tm.date_end IS NULL OR f.date < toDate(tm.date_end))
@@ -437,7 +384,7 @@ fees_daily AS (
         sum(f.volume_amount * p.price_usd) AS volume_usd
     FROM fees_token_amounts f
     ASOF LEFT JOIN (
-        SELECT * FROM prices ORDER BY token, date
+        SELECT * FROM {{ ref('stg_yields__token_prices_daily') }} ORDER BY token, date
     ) p
       ON p.token = f.token
      AND f.date >= p.date

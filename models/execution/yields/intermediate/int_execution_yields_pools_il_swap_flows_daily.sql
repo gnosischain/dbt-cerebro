@@ -25,17 +25,14 @@ constants AS (
 
 token_prices_by_address AS (
     SELECT
-        lower(w.address) AS token_address,
-        coalesce(w.decimals, 18) AS decimals,
-        toDate(p.date) AS day,
-        toFloat64(p.price) AS price_usd
-    FROM {{ ref('tokens_whitelist') }} w
-    INNER JOIN {{ ref('int_execution_token_prices_daily') }} p
-        ON p.symbol = w.symbol
-    WHERE p.date < today()
-      AND w.symbol IS NOT NULL
-      AND w.symbol != ''
-    GROUP BY lower(w.address), coalesce(w.decimals, 18), toDate(p.date), toFloat64(p.price)
+        tm.token_address,
+        coalesce(tm.decimals, 18) AS decimals,
+        p.date AS day,
+        p.price_usd
+    FROM {{ ref('stg_yields__tokens_meta') }} tm
+    INNER JOIN {{ ref('stg_yields__token_prices_daily') }} p
+        ON p.token = tm.token
+    WHERE tm.token IS NOT NULL
 ),
 
 pool_tvl_daily AS (
