@@ -97,6 +97,38 @@ models:
     description: Daily net change in Aave scaled borrows (amount * 1e27 / variableBorrowIndex at time of event).
     data_type: Float64
 
+- name: int_execution_yields_aave_user_balances_daily
+  description: Daily per-user aToken balances for Aave V3 on Gnosis. Computes scaled balance deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
+  columns:
+  - name: date
+    data_type: Date
+  - name: reserve_address
+    description: Address of the underlying reserve token (e.g. GNO, sDAI, USDC).
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol from atoken_reserve_mapping.
+    data_type: String
+  - name: user_address
+    description: Address of the aToken holder.
+    data_type: String
+  - name: scaled_balance
+    description: Running cumulative scaled balance (sum of all scaled deltas). Multiply by liquidityIndex / 1e27 to get actual underlying amount.
+    data_type: Float64
+  - name: balance_raw
+    description: Underlying token amount in raw units (scaled_balance * liquidityIndex_eod / 1e27).
+    data_type: Float64
+  - name: balance
+    description: Human-readable balance (balance_raw / 10^decimals).
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance (balance * price).
+    data_type: Float64
+  meta:
+    owner: analytics-team
+    full_refresh:
+      start_date: "2023-10-04"
+      batch_months: 3
+
 - name: int_execution_yields_pools_lps_daily
   description: Daily LP provider activity from Mint and Burn events on Uniswap V3 and Swapr V3 pools. Tracks event counts, daily unique LP addresses, and a bitmap state for rolling-window deduplication via groupBitmapMerge(). The `owner` field from Mint/Burn events is the actual LP position owner, not a router.
   columns:
