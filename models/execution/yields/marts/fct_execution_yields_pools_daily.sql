@@ -11,13 +11,6 @@
 
 WITH
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token
-    FROM {{ ref('tokens_whitelist') }}
-),
-
 token_pool_tvl_daily AS (
     SELECT
         date,
@@ -127,9 +120,9 @@ pool_labels AS (
     LEFT JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
       ON m.protocol = p.protocol
      AND m.pool_address_no0x = replaceAll(lower(p.pool_address), '0x', '')
-    LEFT JOIN token_meta t0
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} t0
       ON t0.token_address = m.token0_address
-    LEFT JOIN token_meta t1
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} t1
       ON t1.token_address = m.token1_address
     LEFT JOIN pool_symbol_lists sl
       ON sl.protocol = p.protocol
