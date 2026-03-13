@@ -10,5 +10,4 @@ SELECT
     value,
     change_pct
 FROM {{ ref('fct_execution_yields_lending_latest') }}
-WHERE label = 'Lenders' AND window = '7D'
-ORDER BY token
+WHERE label = 'Lenders' AND window = '7D' AND token = 'ALL'

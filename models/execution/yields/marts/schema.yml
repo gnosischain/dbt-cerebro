@@ -54,8 +54,9 @@ models:
     - columns.apy_7DMA.description
     - columns.date.data_type
 
+
 - name: fct_execution_yields_pools_daily
-  description: Daily pool yields fact at pool×token grain, providing pool TVL (USD) and accrued fee APR (30D trailing) for Uniswap V3/Swapr V3 pools. Fees are computed from Swap + Flash events (gross fees; independent of Collect/claims). Output is intentionally filtered to the top pools per token based on 30D-average token-specific TVL, with a minimum token TVL threshold (Balancer hidden for now).
+  description: Daily pool-level metrics for top Uniswap V3 and Swapr V3 pools on Gnosis Chain, including TVL (USD), accrued fees, and 7D trailing fee APR. Filtered to top 5 pools per token by 30-day average TVL.
   columns:
   - name: date
     data_type: Date
@@ -71,7 +72,50 @@ models:
     data_type: String
   - name: tvl_usd
     data_type: Float64
-  - name: fee_apr_30d
+  - name: fees_usd_daily
+    data_type: Float64
+  - name: volume_usd_daily
+    description: Daily trading volume in USD (gross incoming amounts from Swap events).
+    data_type: Float64
+  - name: swap_count
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
+  - name: fee_apr_7d
+    data_type: Float64
+  - name: il_apr_7d
+    description: Estimated 7-day impermanent loss annualized using the constant-product AMM model (2*sqrt(r)/(1+r)-1). Always <= 0. Lower bound for concentrated-liquidity pools.
+    data_type: Float64
+  - name: net_apr_7d
+    description: Net APR (fee_apr_7d + il_apr_7d). Represents the estimated real return after impermanent loss.
+    data_type: Float64
+
+- name: fct_execution_yields_pools_il_daily
+  description: Daily impermanent loss (IL) estimate per LP pool, using the constant-product formula applied to 7-day trailing token0/token1 price ratios. IL is annualised as a percentage and represents a lower-bound estimate for concentrated-liquidity pools.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: il_apr_7d
+    description: Annualised 7-day trailing impermanent loss estimate (%). Negative values indicate IL drag.
+    data_type: Nullable(Float64)
+
+- name: api_execution_yields_pools_net_apr_daily
+  description: API view for net APR (fee APR minus estimated IL) time series by token and pool label, with fee APR and IL components.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: fee_apr_7d
+    data_type: Float64
+  - name: il_apr_7d
+    data_type: Float64
+  - name: net_apr_7d
     data_type: Float64
 
 - name: api_execution_yields_pools_tvl_daily
@@ -88,8 +132,8 @@ models:
   - name: value
     data_type: Float64
 
-- name: api_execution_yields_pools_fee_apr_30d_daily
-  description: API view for fee APR (30D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
+- name: api_execution_yields_pools_fee_apr_7d_daily
+  description: API view for fee APR (7D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
   columns:
   - name: date
     data_type: Date
@@ -101,4 +145,200 @@ models:
     data_type: String
   - name: value
     data_type: Float64
+
+- name: api_execution_yields_pools_volume_7d
+  description: API view for 7-day total trading volume per token (snapshot from fct_execution_yields_pools_snapshots).
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    description: Total trading volume (USD) over the last 7 days.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior 7-day window.
+    data_type: Float64
+
+- name: api_execution_yields_pools_volume_daily
+  description: API view for daily trading volume (USD) by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: volume_type
+    data_type: String
+  - name: value
+    description: Daily gross trading volume in USD.
+    data_type: Float64
+
+- name: fct_execution_yields_opportunities_latest
+  description: Combined yield opportunities table for LP pools and lending markets. Ranked by yield for quick comparison.
+  columns:
+  - name: type
+    description: "Opportunity type: LP or Lending."
+    data_type: String
+  - name: token
+    description: Base token symbol (e.g. WETH, USDC.e).
+    data_type: String
+  - name: name
+    description: Display name. For LPs the pair and address suffix; for lending the token symbol.
+    data_type: String
+  - name: yield_pct
+    description: Current yield percentage (fee APR for LPs, supply APY for lending).
+    data_type: Float64
+  - name: yield_label
+    description: "Yield type label: APR (LP) or APY (Lending)."
+    data_type: String
+  - name: borrow_apy
+    description: Variable borrow APY (lending only, NULL for LPs).
+    data_type: Float64
+  - name: tvl
+    description: Total value locked in USD.
+    data_type: Float64
+  - name: fees_7d
+    description: Fees accrued over the last 7 days in USD (LP only, NULL for lending).
+    data_type: Float64
+  - name: il_apr_7d
+    description: Estimated 7-day impermanent loss annualized (LP only, NULL for lending). Always <= 0.
+    data_type: Float64
+  - name: net_apr_7d
+    description: Net APR after impermanent loss (fee_apr_7d + il_apr_7d). LP only, NULL for lending.
+    data_type: Float64
+  - name: utilization_rate
+    description: Lending utilization rate as a percentage (total_borrows / total_supply * 100). Lending only, NULL for LPs. High values (>80%) indicate withdrawal risk.
+    data_type: Float64
+  - name: protocol
+    description: Protocol name (e.g. Uniswap V3, Swapr V3, Aave V3).
+    data_type: String
+
+- name: api_execution_yields_pools_fees_usd_daily
+  description: API view for daily fee revenue (USD) by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: value
+    description: Daily gross fee revenue in USD.
+    data_type: Float64
+
+- name: api_execution_yields_pools_swap_count_daily
+  description: API view for daily swap event count by token and pool, sourced from fct_execution_yields_pools_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: label
+    data_type: String
+  - name: value
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
+
+- name: fct_execution_yields_pools_lps_latest
+  description: Unique LP provider counts per token over rolling time windows with change percentage vs prior window. Uses bitmap merge to deduplicate across pools and days.
+  columns:
+  - name: window
+    description: "Time window label: 7D."
+    data_type: String
+  - name: token
+    data_type: String
+  - name: value
+    description: Unique LP addresses within the window across all pools containing this token.
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior window of the same length.
+    data_type: Float64
+
+- name: api_execution_yields_pools_lps_count_7d
+  description: API view for unique LP provider count over the last 7 days per token.
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    data_type: Float64
+
+- name: api_execution_yields_pools_lp_activity_daily
+  description: API view for daily LP activity (Mint/Burn event counts) aggregated per token across all pools.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: mints
+    description: Total Mint events across all pools containing this token on this day.
+    data_type: UInt64
+  - name: burns
+    description: Total Burn events across all pools containing this token on this day.
+    data_type: UInt64
+
+- name: fct_execution_yields_pools_snapshots
+  description: Snapshot KPI table for pool yields. Each row is a (token, metric) pair with the latest value and 7-day percentage change. Metrics include TVL_Latest, Fees_7D, and Volume_7D.
+  columns:
+  - name: token
+    data_type: String
+  - name: metric
+    description: "Metric name: TVL_Latest, Fees_7D, or Volume_7D."
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    description: Percentage change vs prior 7-day window (or vs 7 days ago for TVL).
+    data_type: Float64
+
+- name: api_execution_yields_lending_tvl_by_token_latest
+  description: Latest Aave V3 lending TVL per reserve token for pie chart display. Each row is a token with its total USD value locked.
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    data_type: Float64
+
+- name: api_execution_yields_lending_balance_cohorts_value_daily
+  description: Daily Aave V3 lender balance cohort values. Stacked bar chart data showing total USD and native value held by lenders in each balance bucket, filterable by token.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: cohort_unit
+    data_type: String
+  - name: label
+    description: Balance bucket label (e.g. '10-100', '1k-10k').
+    data_type: String
+  - name: value_native
+    data_type: Float64
+  - name: value_usd
+    data_type: Float64
+
+- name: api_execution_yields_lending_balance_cohorts_holders_daily
+  description: Daily Aave V3 lender count by balance cohort. Stacked bar chart data showing holder count per balance bucket, filterable by token.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: cohort_unit
+    data_type: String
+  - name: label
+    description: Balance bucket label.
+    data_type: String
+  - name: value
+    data_type: UInt64
+
+- name: api_execution_yields_overview_lending_tvl
+  description: Overview KPI card for total Aave V3 lending TVL with 7-day change percentage.
+  columns:
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    data_type: Float64
+  - name: label
+    data_type: String
 
