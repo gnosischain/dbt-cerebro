@@ -67,11 +67,8 @@ daily_index AS (
       AND decoded_params['liquidityIndex'] IS NOT NULL
       AND lower(decoded_params['reserve']) IN (SELECT reserve_address FROM reserve_map)
       AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+      {% if end_month %}
+        AND toDate(block_timestamp) <= toLastDayOfMonth(toDate('{{ end_month }}'))
       {% endif %}
     GROUP BY date, reserve_address
 ),
@@ -182,25 +179,35 @@ daily_balances AS (
     {% endif %}
 ),
 
-balances_with_underlying AS (
+balances_with_index AS (
     SELECT
         b.date AS date,
         b.user_address AS user_address,
         b.reserve_address AS reserve_address,
+        b.scaled_balance AS scaled_balance,
+        i.liquidity_index_eod AS liquidity_index_eod
+    FROM daily_balances b
+    ASOF LEFT JOIN daily_index i
+        ON i.reserve_address = b.reserve_address
+        AND b.date >= i.date
+    WHERE b.scaled_balance != 0
+),
+
+balances_with_underlying AS (
+    SELECT
+        bi.date AS date,
+        bi.user_address AS user_address,
+        bi.reserve_address AS reserve_address,
         rm.reserve_symbol AS symbol,
         rm.decimals AS decimals,
-        b.scaled_balance AS scaled_balance,
+        bi.scaled_balance AS scaled_balance,
         CASE
-            WHEN b.scaled_balance <= 0 THEN 0
-            ELSE (b.scaled_balance * i.liquidity_index_eod) / 1e27
+            WHEN bi.scaled_balance <= 0 THEN 0
+            ELSE (bi.scaled_balance * bi.liquidity_index_eod) / 1e27
         END AS balance_raw
-    FROM daily_balances b
+    FROM balances_with_index bi
     INNER JOIN reserve_map rm
-        ON rm.reserve_address = b.reserve_address
-    LEFT JOIN daily_index i
-        ON i.date = b.date
-       AND i.reserve_address = b.reserve_address
-    WHERE b.scaled_balance != 0
+        ON rm.reserve_address = bi.reserve_address
 )
 
 SELECT
