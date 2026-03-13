@@ -97,8 +97,23 @@ models:
     description: Daily net change in Aave scaled borrows (amount * 1e27 / variableBorrowIndex at time of event).
     data_type: Float64
 
+- name: int_execution_yields_aave_diffs_daily
+  description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Lightweight event-processing model consumed by int_execution_yields_aave_user_balances_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: user_address
+    description: Address of the aToken holder.
+    data_type: String
+  - name: reserve_address
+    description: Address of the underlying reserve token.
+    data_type: String
+  - name: diff_scaled
+    description: Net scaled balance change for this user-reserve on this day. Positive = net supply, negative = net withdrawal.
+    data_type: Float64
+
 - name: int_execution_yields_aave_user_balances_daily
-  description: Daily per-user aToken balances for Aave V3 on Gnosis. Computes scaled balance deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
+  description: Daily per-user aToken balances for Aave V3 on Gnosis. Reads pre-computed scaled deltas from int_execution_yields_aave_diffs_daily, builds a calendar of all active user-reserve pairs, computes running cumulative scaled balances, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
   columns:
   - name: date
     data_type: Date
@@ -122,6 +137,48 @@ models:
     data_type: Float64
   - name: balance_usd
     description: USD value of the balance (balance * price).
+    data_type: Float64
+  meta:
+    owner: analytics-team
+    full_refresh:
+      start_date: "2023-10-04"
+      batch_months: 1
+      stages:
+        - name: WxDAI
+          vars:
+            reserve_symbol: "WxDAI"
+        - name: EURe
+          vars:
+            reserve_symbol: "EURe"
+        - name: others
+          vars:
+            reserve_symbol: "GNO,sDAI,USDC,USDC.e"
+
+- name: int_execution_yields_aave_balance_cohorts_daily
+  description: Daily Aave V3 lender balance cohort distributions per reserve token. Buckets users by deposit size (USD and native units) for concentration analysis. Derived from int_execution_yields_aave_user_balances_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: reserve_address
+    description: Address of the underlying reserve token.
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: cohort_unit
+    description: Unit used for bucketing — 'usd' for balance_usd, 'native' for balance in token units.
+    data_type: String
+  - name: balance_bucket
+    description: Balance range bucket (e.g. '0-0.01', '10-100', '100k-1M', '1M+').
+    data_type: String
+  - name: holders_in_bucket
+    description: Count of unique lender addresses in this bucket.
+    data_type: UInt64
+  - name: value_native_in_bucket
+    description: Total native token balance held by lenders in this bucket.
+    data_type: Float64
+  - name: value_usd_in_bucket
+    description: Total USD value held by lenders in this bucket.
     data_type: Float64
   meta:
     owner: analytics-team
