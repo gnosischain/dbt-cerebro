@@ -1,9 +1,8 @@
 {{
   config(
     materialized='table',
-    engine='ReplacingMergeTree()',
+    engine='MergeTree()',
     order_by='(window, label)',
-    pre_hook=["SET join_algorithm = 'hash'"],
     tags=['production','execution','transactions']
   )
 }}
