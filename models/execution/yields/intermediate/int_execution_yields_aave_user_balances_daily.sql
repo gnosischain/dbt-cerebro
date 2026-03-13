@@ -7,221 +7,56 @@
         unique_key='(date, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','yields','aave','user_balances']
+        tags=['dev','execution','yields','aave','user_balances'],
+        incremental_predicates=(
+            [
+                "toStartOfMonth(date) >= toDate('" ~ var('start_month') ~ "')",
+                "toStartOfMonth(date) <= toDate('" ~ var('end_month') ~ "')"
+            ]
+            if var('start_month', none) and var('end_month', none)
+            else []
+        )
     )
 }}
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
+-- depends_on: {{ ref('int_execution_yields_aave_diffs_daily') }}
+
+{% set start_month     = var('start_month', none) %}
+{% set end_month       = var('end_month', none) %}
+{% set reserve_symbol  = var('reserve_symbol', none) %}
 
 WITH
 
 reserve_map AS (
     SELECT
-        lower(atoken_address)  AS atoken_address,
         lower(reserve_address) AS reserve_address,
         reserve_symbol,
         decimals
     FROM {{ ref('atoken_reserve_mapping') }}
+    WHERE 1=1
+      {{ symbol_filter('reserve_symbol', reserve_symbol, 'include') }}
 ),
 
-reserve_index_by_tx AS (
+deltas AS (
     SELECT
-        transaction_hash,
-        lower(decoded_params['reserve']) AS reserve_address,
-        any(toFloat64(toUInt256OrNull(decoded_params['liquidityIndex']))) AS liquidity_index
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name = 'ReserveDataUpdated'
-      AND block_timestamp < today()
+        d.date AS date,
+        d.user_address AS user_address,
+        d.reserve_address AS reserve_address,
+        d.diff_scaled AS diff_scaled
+    FROM {{ ref('int_execution_yields_aave_diffs_daily') }} d
+    INNER JOIN reserve_map rm ON rm.reserve_address = d.reserve_address
+    WHERE d.date < today()
       {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        AND toStartOfMonth(d.date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(d.date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+        {{ apply_monthly_incremental_filter('d.date', 'date', 'true') }}
       {% endif %}
-    GROUP BY transaction_hash, lower(decoded_params['reserve'])
-),
-
-pool_events AS (
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        transaction_hash,
-        lower(decoded_params['reserve']) AS reserve_address,
-        lower(decoded_params['onBehalfOf']) AS user_address,
-        'Supply' AS action,
-        toFloat64(toUInt256OrNull(decoded_params['amount'])) AS amount
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name = 'Supply'
-      AND decoded_params['reserve'] IS NOT NULL
-      AND decoded_params['amount'] IS NOT NULL
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-
-    UNION ALL
-
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        transaction_hash,
-        lower(decoded_params['reserve']) AS reserve_address,
-        lower(decoded_params['user']) AS user_address,
-        'Withdraw' AS action,
-        toFloat64(toUInt256OrNull(decoded_params['amount'])) AS amount
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name = 'Withdraw'
-      AND decoded_params['reserve'] IS NOT NULL
-      AND decoded_params['amount'] IS NOT NULL
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-
-    UNION ALL
-
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        transaction_hash,
-        lower(decoded_params['reserve']) AS reserve_address,
-        lower(decoded_params['repayer']) AS user_address,
-        'RepayWithATokens' AS action,
-        toFloat64(toUInt256OrNull(decoded_params['amount'])) AS amount
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name = 'Repay'
-      AND decoded_params['useATokens'] = 'true'
-      AND decoded_params['reserve'] IS NOT NULL
-      AND decoded_params['amount'] IS NOT NULL
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-
-    UNION ALL
-
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        transaction_hash,
-        lower(decoded_params['collateralAsset']) AS reserve_address,
-        lower(decoded_params['user']) AS user_address,
-        'LiquidationWithdraw' AS action,
-        toFloat64(toUInt256OrNull(decoded_params['liquidatedCollateralAmount'])) AS amount
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
-    WHERE event_name = 'LiquidationCall'
-      AND decoded_params['collateralAsset'] IS NOT NULL
-      AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-),
-
-pool_events_filtered AS (
-    SELECT
-        pe.date AS date,
-        pe.transaction_hash AS transaction_hash,
-        pe.reserve_address AS reserve_address,
-        pe.user_address AS user_address,
-        pe.action AS action,
-        pe.amount AS amount
-    FROM pool_events pe
-    INNER JOIN reserve_map rm ON rm.reserve_address = pe.reserve_address
-),
-
-pool_scaled_deltas AS (
-    SELECT
-        pe.date AS date,
-        pe.user_address AS user_address,
-        pe.reserve_address AS reserve_address,
-        CASE
-            WHEN pe.action = 'Supply'
-                THEN pe.amount * 1e27 / ri.liquidity_index
-            ELSE
-                -(pe.amount * 1e27 / ri.liquidity_index)
-        END AS scaled_delta
-    FROM pool_events_filtered pe
-    INNER JOIN reserve_index_by_tx ri
-        ON ri.transaction_hash = pe.transaction_hash
-       AND ri.reserve_address = pe.reserve_address
-    WHERE ri.liquidity_index IS NOT NULL
-      AND ri.liquidity_index > 0
-),
-
-transfer_scaled_deltas AS (
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        lower(decoded_params['from']) AS user_address,
-        rm.reserve_address AS reserve_address,
-        -toFloat64(toUInt256OrNull(decoded_params['value'])) AS scaled_delta
-    FROM {{ ref('contracts_aaveV3_AToken_events') }} t
-    INNER JOIN reserve_map rm
-        ON rm.atoken_address = lower(t.contract_address)
-    WHERE t.event_name = 'BalanceTransfer'
-      AND decoded_params['from'] != '0x0000000000000000000000000000000000000000'
-      AND decoded_params['to']   != '0x0000000000000000000000000000000000000000'
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-
-    UNION ALL
-
-    SELECT
-        toStartOfDay(block_timestamp) AS date,
-        lower(decoded_params['to']) AS user_address,
-        rm.reserve_address AS reserve_address,
-        toFloat64(toUInt256OrNull(decoded_params['value'])) AS scaled_delta
-    FROM {{ ref('contracts_aaveV3_AToken_events') }} t
-    INNER JOIN reserve_map rm
-        ON rm.atoken_address = lower(t.contract_address)
-    WHERE t.event_name = 'BalanceTransfer'
-      AND decoded_params['from'] != '0x0000000000000000000000000000000000000000'
-      AND decoded_params['to']   != '0x0000000000000000000000000000000000000000'
-      AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
-      {% endif %}
-),
-
-all_scaled_deltas AS (
-    SELECT date, user_address, reserve_address, scaled_delta
-    FROM pool_scaled_deltas
-    UNION ALL
-    SELECT date, user_address, reserve_address, scaled_delta
-    FROM transfer_scaled_deltas
-),
-
-daily_scaled_diff AS (
-    SELECT
-        date,
-        user_address,
-        reserve_address,
-        sum(scaled_delta) AS diff_scaled
-    FROM all_scaled_deltas
-    GROUP BY date, user_address, reserve_address
-    HAVING diff_scaled != 0
 ),
 
 daily_index AS (
     SELECT
-        toStartOfDay(block_timestamp) AS date,
+        toDate(block_timestamp) AS date,
         lower(decoded_params['reserve']) AS reserve_address,
         argMax(
             toFloat64(toUInt256OrNull(decoded_params['liquidityIndex'])),
@@ -230,6 +65,7 @@ daily_index AS (
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
     WHERE event_name = 'ReserveDataUpdated'
       AND decoded_params['liquidityIndex'] IS NOT NULL
+      AND lower(decoded_params['reserve']) IN (SELECT reserve_address FROM reserve_map)
       AND block_timestamp < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
@@ -253,41 +89,72 @@ overall_max_date AS (
 ),
 
 {% if is_incremental() %}
+current_partition AS (
+    SELECT
+        max(date) AS max_date
+    FROM {{ this }}
+    WHERE date < yesterday()
+      AND reserve_address IN (SELECT reserve_address FROM reserve_map)
+),
+
 prev_balances AS (
     SELECT
-        user_address,
-        reserve_address,
-        scaled_balance
-    FROM {{ this }}
-    WHERE date = (SELECT max(date) FROM {{ this }})
+        t1.user_address AS user_address,
+        t1.reserve_address AS reserve_address,
+        t1.scaled_balance AS scaled_balance
+    FROM {{ this }} t1
+    CROSS JOIN current_partition t2
+    WHERE t1.date = t2.max_date
+      AND t1.reserve_address IN (SELECT reserve_address FROM reserve_map)
 ),
-{% endif %}
+
+keys AS (
+    SELECT DISTINCT
+        user_address,
+        reserve_address
+    FROM (
+        SELECT user_address, reserve_address
+        FROM prev_balances
+        UNION ALL
+        SELECT user_address, reserve_address
+        FROM deltas
+    )
+),
 
 calendar AS (
     SELECT
-        user_address AS user_address,
-        reserve_address AS reserve_address,
+        k.user_address AS user_address,
+        k.reserve_address AS reserve_address,
+        addDays(cp.max_date + 1, offset) AS date
+    FROM keys k
+    CROSS JOIN current_partition cp
+    CROSS JOIN overall_max_date o
+    ARRAY JOIN range(
+        dateDiff('day', cp.max_date, o.max_date)
+    ) AS offset
+),
+
+{% else %}
+
+calendar AS (
+    SELECT
+        user_address,
+        reserve_address,
         addDays(min_date, offset) AS date
     FROM (
         SELECT
-            user_address,
-            reserve_address,
-            min(date) AS min_date,
-            dateDiff('day', min(date), (SELECT max_date FROM overall_max_date)) AS num_days
-        FROM (
-            SELECT user_address, reserve_address, date
-            FROM daily_scaled_diff
-            {% if is_incremental() %}
-            UNION ALL
-            SELECT user_address, reserve_address,
-                   (SELECT max(date) + 1 FROM {{ this }}) AS date
-            FROM prev_balances
-            {% endif %}
-        )
-        GROUP BY user_address, reserve_address
+            d.user_address AS user_address,
+            d.reserve_address AS reserve_address,
+            min(d.date) AS min_date,
+            dateDiff('day', min(d.date), any(o.max_date)) AS num_days
+        FROM deltas d
+        CROSS JOIN overall_max_date o
+        GROUP BY d.user_address, d.reserve_address
     )
     ARRAY JOIN range(toUInt64(num_days + 1)) AS offset
 ),
+
+{% endif %}
 
 daily_balances AS (
     SELECT
@@ -304,7 +171,7 @@ daily_balances AS (
         {% endif %}
         AS scaled_balance
     FROM calendar c
-    LEFT JOIN daily_scaled_diff d
+    LEFT JOIN deltas d
         ON d.user_address = c.user_address
        AND d.reserve_address = c.reserve_address
        AND d.date = c.date
@@ -348,4 +215,4 @@ SELECT
 FROM balances_with_underlying b
 LEFT JOIN {{ ref('int_execution_token_prices_daily') }} p
     ON p.date = b.date
-   AND upper(p.symbol) = upper(b.symbol)
+   AND p.symbol = b.symbol
