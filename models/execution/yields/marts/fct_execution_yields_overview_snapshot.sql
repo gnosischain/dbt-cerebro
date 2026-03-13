@@ -152,6 +152,29 @@ FROM (
         FROM {{ ref('fct_execution_tokens_metrics_daily') }}
         WHERE upper(symbol) = 'SDAI'
           AND date = (SELECT max(date) - INTERVAL 7 DAY FROM {{ ref('fct_execution_tokens_metrics_daily') }} WHERE upper(symbol) = 'SDAI' AND date < today())
+    ),
+
+    lending_tvl_latest_date AS (
+        SELECT max(date) AS max_date
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }}
+        WHERE date < today()
+          AND balance_usd > 0
+    ),
+
+    lending_tvl_latest AS (
+        SELECT coalesce(sum(balance_usd), 0) AS tvl
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date
+          AND b.balance_usd > 0
+    ),
+
+    lending_tvl_7d_ago AS (
+        SELECT coalesce(sum(balance_usd), 0) AS tvl
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date - INTERVAL 7 DAY
+          AND b.balance_usd > 0
     )
 
     
@@ -255,4 +278,21 @@ FROM (
         NULL AS label
     FROM sdai_supply_latest l
     CROSS JOIN sdai_supply_7d_ago p
+    
+    UNION ALL
+    
+    -- 7. Lending TVL Total
+    SELECT
+        'lending_tvl_total' AS metric,
+        l.tvl AS value,
+        round(
+            CASE
+                WHEN p.tvl IS NULL OR p.tvl = 0 THEN NULL
+                ELSE ((l.tvl / p.tvl) - 1) * 100
+            END,
+            2
+        ) AS change_pct,
+        NULL AS label
+    FROM lending_tvl_latest l
+    CROSS JOIN lending_tvl_7d_ago p
 )
