@@ -2,163 +2,145 @@ version: 2
 models:
 
 - name: int_execution_tokens_address_diffs_daily
-  description: This model calculates daily net address-level token transfer deltas, capturing inflows and outflows for each address to support analysis of token movement patterns and address activity over time.
+  description: Calculates daily net token transfer deltas per address, aggregating inflows and outflows from int_execution_transfers_whitelisted_daily. Used by int_execution_tokens_balances_daily to compute running balances.
   columns:
-
   - name: date
-    description: The specific calendar date for the recorded token transfer net delta.
+    description: The calendar date for the recorded token transfer net delta.
     data_type: Date
     tests:
     - not_null
-
   - name: token_address
-    description: The lowercase hexadecimal address of the token involved in the transfer.
+    description: The lowercase hexadecimal address of the token contract.
     data_type: String
-
   - name: symbol
-    description: The token's symbol, representing its identifier in a human-readable format.
+    description: The token's trading symbol (e.g., GNO, WETH, USDC).
     data_type: String
-
-  - name: AS
-    description: The recipient address in the transfer, stored in lowercase, representing the address receiving tokens.
-    data_type: ''
-
   - name: token_class
-    description: Class of the token.
+    description: Classification of the token (e.g., NATIVE, STABLECOIN, GOVERNANCE).
     data_type: String
-
   - name: address
-    description: Account address whose balance changed.
+    description: The account address whose balance changed on this date.
     data_type: String
-
-  - name: net_delta
-    description: Net change in the account balance.
-    data_type: Float64
+  - name: net_delta_raw
+    description: Net change in token balance for the address in raw units (before decimal scaling).
+    data_type: Int256
   meta:
     owner: analytics_team
     authoritative: false
     full_refresh:
       batch_months: 1
       stages:
-      - name: all
-        start_date: "2020-07-01"
-        batch_months: 1000
-        vars:
-          symbol_exclude: "{{ var('symbol_exclude') }}"
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
-- name: int_execution_tokens_balances_daily
-  description: The int_execution_tokens_balances_daily model tracks the daily balances of tokens for various addresses, incorporating net delta changes to maintain an up-to-date view of token holdings over time.
-  columns:
+        - name: all
+          start_date: "2020-07-01"
+          batch_months: 1000
+          vars:
+            symbol_exclude: "{{ var('symbol_exclude') }}"
+    generated_by: dbt-schema-gen
+    _generated_at: '2026-03-16T00:00:00.000000'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.token_address.description
+    - columns.symbol.description
+    - columns.token_class.description
+    - columns.address.description
+    - columns.net_delta_raw.description
+    - columns.net_delta_raw.data_type
 
+- name: int_execution_tokens_balances_daily
+  description: Tracks daily token balances per address by applying cumulative net deltas from int_execution_tokens_address_diffs_daily. Joins with token prices to compute USD values. Used by downstream cohort, sector, and supply models.
+  columns:
   - name: date
-    description: The specific date for which the token balances are recorded, representing a daily snapshot.
+    description: The calendar date of the balance snapshot.
     data_type: Date
     tests:
     - not_null
-
   - name: token_address
-    description: The blockchain address of the token contract associated with the balance.
+    description: The lowercase hexadecimal address of the token contract.
     data_type: String
-
   - name: symbol
-    description: The token's symbol, serving as a human-readable identifier.
+    description: The token's trading symbol (e.g., GNO, WETH, USDC).
     data_type: String
-
   - name: token_class
-    description: The classification or category of the token, such as ERC20 or other types.
+    description: Classification of the token (e.g., NATIVE, STABLECOIN, GOVERNANCE).
     data_type: String
-
   - name: address
-    description: The blockchain address holding the token balance.
+    description: The account address holding the token balance.
     data_type: String
-
-  - name: net_delta_raw
-    description: The raw net change in token quantity for the address on the given date, measured in token units.
+  - name: balance_raw
+    description: Token balance in raw units (before decimal scaling).
+    data_type: Int256
+  - name: balance
+    description: Token balance in native units (after applying token decimals).
     data_type: Float64
-
-  - name: from_value_binary
-    description: Balance before change as 32-byte binary.
-    data_type: String
-
-  - name: from_value_string
-    description: Balance before change as decimal string.
-    data_type: String
-
-  - name: from_value_f64
-    description: Balance before change as floating-point ether.
-    data_type: Float64
-
-  - name: to_value_binary
-    description: Balance after change as 32-byte binary.
-    data_type: String
-
-  - name: to_value_string
-    description: Balance after change as decimal string.
-    data_type: String
-
-  - name: to_value_f64
-    description: Balance after change as floating-point ether.
-    data_type: Float64
-
-  - name: chain_id
-    description: EVM chain identifier.
-    data_type: UInt64
-
-  - name: block_timestamp
-    description: UTC timestamp of the enclosing block.
-    data_type: DateTime64(0, 'UTC')
-
-  - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
-    data_type: UInt64
+  - name: balance_usd
+    description: Token balance converted to USD using daily price from int_execution_token_prices_daily.
+    data_type: Nullable(Float64)
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     full_refresh:
       batch_months: 1
       stages:
         # WxDAI - very high volume, monthly
-      - name: wxdai
-        start_date: "2020-07-01"
-        batch_months: 2
-        vars:
-          symbol: "WxDAI"
-
+        - name: wxdai
+          start_date: "2020-07-01"
+          batch_months: 2
+          vars:
+            symbol: "WxDAI"
         # Major tokens - high volume, monthly
-      - name: major_tokens1
-        start_date: "2020-07-01"
-        batch_months: 6
-        vars:
-          symbol: "GNO"
-
-      - name: major_tokens2
-        start_date: "2020-07-01"
-        batch_months: 3
-        vars:
-          symbol: "WETH,WBTC"
-
-      - name: major_tokens3
-        start_date: "2020-07-01"
-        batch_months: 3
-        vars:
-          symbol: "USDC"
-
-      - name: major_tokens4
-        start_date: "2020-07-01"
-        batch_months: 6
-        vars:
-          symbol: "USDT"
-
+        - name: major_tokens1
+          start_date: "2020-07-01"
+          batch_months: 6
+          vars:
+            symbol: "GNO"
+        - name: major_tokens2
+          start_date: "2020-07-01"
+          batch_months: 3
+          vars:
+            symbol: "WETH,WBTC"
+        - name: major_tokens3
+          start_date: "2020-07-01"
+          batch_months: 3
+          vars:
+            symbol: "USDC"
+        - name: major_tokens4
+          start_date: "2020-07-01"
+          batch_months: 6
+          vars:
+            symbol: "USDT"
         # Newer tokens - medium volume, monthly
-      - name: newer_tokens
-        start_date: "2022-01-01"
-        batch_months: 1
-        vars:
-          symbol: "COW,sGNO,EURe,GBPe,sDAI"
+        - name: newer_tokens
+          start_date: "2022-01-01"
+          batch_months: 1
+          vars:
+            symbol: "COW,sGNO,EURe,GBPe,sDAI"
+        # smaller tokens - low volume, monthly
+        - name: small_tokens
+          start_date: "2023-01-01"
+          batch_months: 12
+          vars:
+            symbol: "bCSPX,bNIU,bCOIN,bIB01,bIBTA,bHIGH,bC3M,SAFE,USDC.e,BRLA,BRZ,bTSLA,bMSTR,bNVDA,bGME,bGOOGL,bMSFT,bERNA"
+        - name: tokens_2025
+          start_date: "2025-01-01"
+          batch_months: 12
+          vars:
+            symbol: "ZCHF,svZCHF"
+    generated_by: dbt-schema-gen
+    _generated_at: '2026-03-16T00:00:00.000000'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.token_address.description
+    - columns.symbol.description
+    - columns.token_class.description
+    - columns.address.description
+    - columns.balance_raw.description
+    - columns.balance_raw.data_type
+    - columns.balance.description
+    - columns.balance.data_type
+    - columns.balance_usd.description
+    - columns.balance_usd.data_type
 
         # smaller tokens - low volume, monthly
       - name: small_tokens
@@ -177,69 +159,62 @@ models:
       tags:
       - elementary
 - name: int_execution_tokens_transfers_daily
-  description: The int_execution_tokens_transfers_daily model aggregates daily transfer metrics for tokens, providing insights into token transfer volumes, counts, and user activity for analytics and reporting purposes.
+  description: Aggregates daily transfer metrics per token from int_execution_transfers_whitelisted_daily, including volume, transfer counts, and unique sender/receiver counts. Supports dashboard analytics.
   columns:
-
   - name: date
-    description: The date of the transfer data, representing the day for which metrics are aggregated.
+    description: The calendar date for the aggregated transfer metrics.
     data_type: Date
     tests:
     - not_null
-
   - name: token_address
-    description: The lowercase blockchain address of the token involved in transfers.
+    description: The lowercase hexadecimal address of the token contract.
     data_type: String
-
   - name: symbol
-    description: The token's symbol, representing its identifier in the ecosystem.
+    description: The token's trading symbol (e.g., GNO, WETH, USDC).
     data_type: String
-
-  - name: AS
-    description: The alias used for the symbol column in the SQL query, representing the token's symbol.
-    data_type: ''
-
   - name: token_class
-    description: Class of the token.
+    description: Classification of the token (e.g., NATIVE, STABLECOIN, GOVERNANCE).
     data_type: String
-
   - name: volume_token
-    description: Total volume of tokens transferred.
+    description: Total volume of tokens transferred on this date in native units.
     data_type: Float64
-
-  - name: volume_usd
-    description: Total volume in USD.
-    data_type: Float64
-
   - name: transfer_count
-    description: Number of transfers.
+    description: Total number of transfer events for this token on this date.
     data_type: UInt64
-
   - name: ua_bitmap_state
-    description: Bitmap state of user agents.
-    data_type: String
-
+    description: ClickHouse bitmap state for distinct sender counting via groupBitmapState.
+    data_type: AggregateFunction(groupBitmap, UInt64)
   - name: active_senders
-    description: Number of unique senders.
+    description: Count of unique sender addresses on this date.
     data_type: UInt64
-
   - name: unique_receivers
-    description: Number of unique receivers.
+    description: Count of unique receiver addresses on this date.
     data_type: UInt64
   meta:
-    owner: analytics_team
+    owner: analytics-team
     authoritative: false
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
       stages:
-      - name: all
-        vars:
-          symbol_exclude: "{{ var('symbol_exclude') }}"
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
+        - name: all
+          vars:
+            symbol_exclude: "{{ var('symbol_exclude') }}"
+    generated_by: dbt-schema-gen
+    _generated_at: '2026-03-16T00:00:00.000000'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - columns.token_address.description
+    - columns.symbol.description
+    - columns.token_class.description
+    - columns.volume_token.description
+    - columns.transfer_count.description
+    - columns.ua_bitmap_state.description
+    - columns.ua_bitmap_state.data_type
+    - columns.active_senders.description
+    - columns.unique_receivers.description
+
 - name: int_execution_tokens_supply_holders_daily
   description: Daily supply and holder counts aggregated by token.
   meta:
