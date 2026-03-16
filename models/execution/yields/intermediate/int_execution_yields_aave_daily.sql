@@ -100,9 +100,9 @@ with_symbols AS (
     SELECT
         lr.date,
         lr.token_address,
-        w.symbol,
-        w.token_class,
-        w.decimals,
+        rm.reserve_symbol AS symbol,
+        rm.token_class,
+        rm.decimals,
         'Aave V3' AS protocol,
         lr.liquidity_index,
         lr.variable_borrow_index,
@@ -121,10 +121,8 @@ with_symbols AS (
             )
         END AS borrow_apy_variable_daily
     FROM latest_rates lr
-    INNER JOIN {{ ref('tokens_whitelist') }} w
-        ON lower(w.address) = lr.token_address
-       AND lr.date >= toDate(w.date_start)
-       AND (w.date_end IS NULL OR lr.date < toDate(w.date_end))
+    INNER JOIN {{ ref('atoken_reserve_mapping') }} rm
+        ON lower(rm.reserve_address) = lr.token_address
     WHERE lr.liquidity_rate_ray IS NOT NULL
 ),
 
