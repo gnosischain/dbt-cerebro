@@ -86,30 +86,22 @@ FROM (
           AND a.apy_daily IS NOT NULL
     ),
     
-    -- Total unique lenders (all-time) using bitmap merge
-    lending_lenders_total AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS total_lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }}
-        WHERE lenders_bitmap_state IS NOT NULL
+    -- Active lenders (current): users with positive supply balance on latest date
+    lending_active_lenders_latest AS (
+        SELECT toUInt64(count(DISTINCT user_address)) AS lenders
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date
+          AND b.balance > 0
     ),
-    
-    -- Lenders (7D window for change calculation)
-    lending_lenders_7d AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
-        CROSS JOIN lending_latest_date d
-        WHERE a.date > d.max_date - INTERVAL 7 DAY
-          AND a.date <= d.max_date
-          AND a.lenders_bitmap_state IS NOT NULL
-    ),
-    
-    lending_lenders_prior_7d AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
-        CROSS JOIN lending_latest_date d
-        WHERE a.date > d.max_date - INTERVAL 14 DAY
-          AND a.date <= d.max_date - INTERVAL 7 DAY
-          AND a.lenders_bitmap_state IS NOT NULL
+
+    -- Active lenders (7 days ago) for change calculation
+    lending_active_lenders_7d_ago AS (
+        SELECT toUInt64(count(DISTINCT user_address)) AS lenders
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date - INTERVAL 7 DAY
+          AND b.balance > 0
     ),
     
     
@@ -229,10 +221,10 @@ FROM (
     
     UNION ALL
     
-    -- 4. Total Lenders (all-time)
+    -- 4. Active Lenders (current open positions)
     SELECT
         'lending_lenders_total' AS metric,
-        toFloat64(t.total_lenders) AS value,
+        toFloat64(c.lenders) AS value,
         round(
             CASE
                 WHEN p.lenders IS NULL OR p.lenders = 0 THEN NULL
@@ -241,9 +233,8 @@ FROM (
             2
         ) AS change_pct,
         NULL AS label
-    FROM lending_lenders_total t
-    CROSS JOIN lending_lenders_7d c
-    CROSS JOIN lending_lenders_prior_7d p
+    FROM lending_active_lenders_latest c
+    CROSS JOIN lending_active_lenders_7d_ago p
     
     UNION ALL
     
