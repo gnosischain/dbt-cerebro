@@ -93,43 +93,20 @@ FROM (
         FROM {{ ref('int_execution_yields_aave_daily') }}
         WHERE date < today()
     ),
-    
-    lending_scaled_balances AS (
+
+    lending_tvl AS (
         SELECT
-            token_address,
-            sum(net_scaled_supply_change_daily) AS total_scaled_supply,
-            sum(net_scaled_borrow_change_daily) AS total_scaled_borrow
-        FROM {{ ref('int_execution_yields_aave_scaled_balances_daily') }}
-        GROUP BY token_address
+            b.reserve_address AS token_address,
+            sum(b.balance_usd) AS tvl
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        WHERE b.date = (
+            SELECT max(date) FROM {{ ref('int_execution_yields_aave_user_balances_daily') }}
+            WHERE date < today() AND balance_usd > 0
+        )
+          AND b.balance_usd > 0
+        GROUP BY b.reserve_address
     ),
-    
-    lending_latest_index AS (
-        SELECT
-            token_address,
-            argMax(liquidity_index, date) AS latest_liquidity_index
-        FROM {{ ref('int_execution_yields_aave_daily') }}
-        WHERE liquidity_index IS NOT NULL
-        GROUP BY token_address
-    ),
-    
-    lending_latest_borrow_index AS (
-        SELECT
-            token_address,
-            argMax(variable_borrow_index, date) AS latest_variable_borrow_index
-        FROM {{ ref('int_execution_yields_aave_daily') }}
-        WHERE variable_borrow_index IS NOT NULL
-        GROUP BY token_address
-    ),
-    
-    latest_prices AS (
-        SELECT
-            nullIf(upper(trimBoth(symbol)), '') AS token,
-            argMax(toFloat64(price), date) AS price_usd
-        FROM {{ ref('int_execution_token_prices_daily') }}
-        WHERE date < today()
-        GROUP BY token
-    ),
-    
+
     lending_markets AS (
         SELECT
             'Lending' AS type,
@@ -138,42 +115,19 @@ FROM (
             a.apy_daily AS yield_pct,
             'APY' AS yield_label,
             a.borrow_apy_variable_daily AS borrow_apy,
-            CASE
-                WHEN sb.total_scaled_supply IS NOT NULL AND sb.total_scaled_supply > 0
-                     AND li.latest_liquidity_index IS NOT NULL
-                THEN (sb.total_scaled_supply * li.latest_liquidity_index / 1e27)
-                     / POWER(10, COALESCE(w.decimals, 18))
-                     * coalesce(lp.price_usd, 0)
-                ELSE NULL
-            END AS tvl,
+            tvl.tvl AS tvl,
             NULL AS fees_7d,
             NULL AS il_apr_7d,
             NULL AS net_apr_7d,
-            CASE
-                WHEN sb.total_scaled_supply IS NOT NULL AND sb.total_scaled_supply > 0
-                     AND li.latest_liquidity_index IS NOT NULL
-                     AND sb.total_scaled_borrow IS NOT NULL
-                     AND bi.latest_variable_borrow_index IS NOT NULL
-                THEN (sb.total_scaled_borrow * bi.latest_variable_borrow_index)
-                     / (sb.total_scaled_supply * li.latest_liquidity_index) * 100
-                ELSE NULL
-            END AS utilization_rate,
+            u.utilization_rate AS utilization_rate,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
-        LEFT JOIN lending_scaled_balances sb
-            ON sb.token_address = a.token_address
-        LEFT JOIN lending_latest_index li
-            ON li.token_address = a.token_address
-        LEFT JOIN lending_latest_borrow_index bi
-            ON bi.token_address = a.token_address
-        LEFT JOIN (
-            SELECT lower(address) AS token_address, any(decimals) AS decimals
-            FROM {{ ref('tokens_whitelist') }}
-            GROUP BY lower(address)
-        ) w ON w.token_address = a.token_address
-        LEFT JOIN latest_prices lp
-            ON lp.token = nullIf(upper(trimBoth(a.symbol)), '')
+        LEFT JOIN lending_tvl tvl
+            ON tvl.token_address = a.token_address
+        LEFT JOIN {{ ref('int_execution_yields_aave_utilization_daily') }} u
+            ON u.token_address = a.token_address
+           AND u.date = d.max_date
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
