@@ -107,6 +107,15 @@ FROM (
         GROUP BY b.reserve_address
     ),
 
+    lending_utilization_latest AS (
+        SELECT
+            token_address,
+            argMax(utilization_rate, date) AS latest_utilization_rate
+        FROM {{ ref('int_execution_yields_aave_utilization_daily') }}
+        WHERE utilization_rate IS NOT NULL
+        GROUP BY token_address
+    ),
+
     lending_markets AS (
         SELECT
             'Lending' AS type,
@@ -119,15 +128,14 @@ FROM (
             NULL AS fees_7d,
             NULL AS il_apr_7d,
             NULL AS net_apr_7d,
-            u.utilization_rate AS utilization_rate,
+            u.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         LEFT JOIN lending_tvl tvl
             ON tvl.token_address = a.token_address
-        LEFT JOIN {{ ref('int_execution_yields_aave_utilization_daily') }} u
+        LEFT JOIN lending_utilization_latest u
             ON u.token_address = a.token_address
-           AND u.date = d.max_date
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
