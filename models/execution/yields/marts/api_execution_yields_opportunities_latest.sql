@@ -9,6 +9,7 @@ SELECT
     type,
     token,
     name,
+    address,
     yield_pct,
     yield_label,
     borrow_apy,

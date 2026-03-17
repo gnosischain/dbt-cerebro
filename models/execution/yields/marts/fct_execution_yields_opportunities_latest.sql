@@ -12,6 +12,7 @@ SELECT
     type,
     token,
     name,
+    address,
     yield_pct,
     yield_label,
     borrow_apy,
@@ -49,6 +50,7 @@ FROM (
             'LP' AS type,
             f.token AS token,
             replaceOne(f.pool, concat(' • ', f.protocol), '') AS name,
+            f.pool_address AS address,
             f.fee_apr_7d AS yield_pct,
             'APR' AS yield_label,
             NULL AS borrow_apy,
@@ -73,6 +75,7 @@ FROM (
             type,
             token,
             name,
+            address,
             yield_pct,
             yield_label,
             borrow_apy,
@@ -116,6 +119,7 @@ FROM (
             'Lending' AS type,
             a.symbol AS token,
             a.symbol AS name,
+            rm.atoken_address AS address,
             a.apy_daily AS yield_pct,
             'APY' AS yield_label,
             a.borrow_apy_variable_daily AS borrow_apy,
@@ -144,12 +148,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lending_markets
 )
 ORDER BY yield_pct DESC
