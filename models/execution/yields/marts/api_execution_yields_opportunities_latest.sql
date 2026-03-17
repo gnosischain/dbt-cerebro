@@ -13,6 +13,8 @@ SELECT
     yield_label,
     borrow_apy,
     tvl,
+    total_supplied,
+    total_borrowed,
     fees_7d,
     il_apr_7d,
     net_apr_7d,

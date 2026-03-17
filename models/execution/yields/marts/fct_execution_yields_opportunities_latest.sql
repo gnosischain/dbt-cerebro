@@ -16,6 +16,8 @@ SELECT
     yield_label,
     borrow_apy,
     tvl,
+    total_supplied,
+    total_borrowed,
     fees_7d,
     il_apr_7d,
     net_apr_7d,
@@ -51,6 +53,8 @@ FROM (
             'APR' AS yield_label,
             NULL AS borrow_apy,
             f.tvl_usd AS tvl,
+            NULL AS total_supplied,
+            NULL AS total_borrowed,
             pf.fees_7d AS fees_7d,
             f.il_apr_7d AS il_apr_7d,
             f.net_apr_7d AS net_apr_7d,
@@ -73,6 +77,8 @@ FROM (
             yield_label,
             borrow_apy,
             tvl,
+            total_supplied,
+            total_borrowed,
             fees_7d,
             il_apr_7d,
             net_apr_7d,
@@ -94,22 +100,11 @@ FROM (
         WHERE date < today()
     ),
 
-    lending_tvl AS (
-        SELECT
-            b.reserve_address AS token_address,
-            sum(b.balance_usd) AS tvl
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
-        WHERE b.date = (
-            SELECT max(date) FROM {{ ref('int_execution_yields_aave_user_balances_daily') }}
-            WHERE date < today() AND balance_usd > 0
-        )
-          AND b.balance_usd > 0
-        GROUP BY b.reserve_address
-    ),
-
-    lending_utilization_latest AS (
+    lending_cumulative_latest AS (
         SELECT
             token_address,
+            argMax(cumulative_scaled_supply, date) AS cumulative_scaled_supply,
+            argMax(cumulative_scaled_borrow, date) AS cumulative_scaled_borrow,
             argMax(utilization_rate, date) AS latest_utilization_rate
         FROM {{ ref('int_execution_yields_aave_utilization_daily') }}
         WHERE utilization_rate IS NOT NULL
@@ -124,30 +119,37 @@ FROM (
             a.apy_daily AS yield_pct,
             'APY' AS yield_label,
             a.borrow_apy_variable_daily AS borrow_apy,
-            tvl.tvl AS tvl,
+            NULL AS tvl,
+            (lc.cumulative_scaled_supply * a.liquidity_index / 1e27)
+                / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_supplied,
+            (lc.cumulative_scaled_borrow * a.variable_borrow_index / 1e27)
+                / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_borrowed,
             NULL AS fees_7d,
             NULL AS il_apr_7d,
             NULL AS net_apr_7d,
-            u.latest_utilization_rate AS utilization_rate,
+            lc.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
-        LEFT JOIN lending_tvl tvl
-            ON tvl.token_address = a.token_address
-        LEFT JOIN lending_utilization_latest u
-            ON u.token_address = a.token_address
+        LEFT JOIN lending_cumulative_latest lc
+            ON lc.token_address = a.token_address
+        INNER JOIN {{ ref('atoken_reserve_mapping') }} rm
+            ON lower(rm.reserve_address) = a.token_address
+        LEFT JOIN {{ ref('int_execution_token_prices_daily') }} pr
+            ON pr.symbol = a.symbol
+           AND pr.date = a.date
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
     )
     
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lending_markets
 )
 ORDER BY yield_pct DESC
