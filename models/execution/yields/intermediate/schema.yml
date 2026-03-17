@@ -83,19 +83,22 @@ models:
   - name: net_supply_change_daily
     description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
     data_type: Float64
-- name: int_execution_yields_aave_scaled_balances_daily
-  description: Daily net change in Aave V3 scaled supply and borrows per reserve token. Supply events (Supply/Withdraw/LiquidationCall collateral) are divided by liquidityIndex; borrow events (Borrow/Repay/LiquidationCall debt) are divided by variableBorrowIndex — both from the same transaction's ReserveDataUpdated event. Sum all dates per token and multiply by the latest index / 1e27 to recover true balances.
+- name: int_execution_yields_aave_utilization_daily
+  description: Daily Aave V3 utilization rate per reserve token. Computes cumulative scaled supply and borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall), then derives utilization as (totalScaledBorrow * variableBorrowIndex) / (totalScaledSupply * liquidityIndex) * 100. Indexes sourced from int_execution_yields_aave_daily.
   columns:
   - name: date
     data_type: Date
   - name: token_address
     data_type: String
-  - name: net_scaled_supply_change_daily
-    description: Daily net change in Aave scaled supply (amount * 1e27 / liquidityIndex at time of event).
+  - name: cumulative_scaled_supply
+    description: Running total of scaled supply position (sum of all supply/withdraw deltas up to this date).
     data_type: Float64
-  - name: net_scaled_borrow_change_daily
-    description: Daily net change in Aave scaled borrows (amount * 1e27 / variableBorrowIndex at time of event).
+  - name: cumulative_scaled_borrow
+    description: Running total of scaled borrow position (sum of all borrow/repay deltas up to this date).
     data_type: Float64
+  - name: utilization_rate
+    description: Reserve utilization rate as percentage (totalBorrows / totalSupply * 100). Null if supply is zero or indexes are unavailable.
+    data_type: Nullable(Float64)
 
 - name: int_execution_yields_aave_diffs_daily
   description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Lightweight event-processing model consumed by int_execution_yields_aave_user_balances_daily.

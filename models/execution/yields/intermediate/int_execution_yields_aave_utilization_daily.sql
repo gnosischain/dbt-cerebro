@@ -7,7 +7,7 @@
         unique_key='(date, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','yields','aave']
+        tags=['dev','execution','yields','aave','utilization']
     )
 }}
 
@@ -121,24 +121,93 @@ borrow_scaled AS (
 ),
 
 supply_daily AS (
-    SELECT date, token_address, sum(scaled_delta) AS net_scaled_supply_change_daily
+    SELECT date, token_address, sum(scaled_delta) AS delta_supply
     FROM supply_scaled
     GROUP BY date, token_address
 ),
 
 borrow_daily AS (
-    SELECT date, token_address, sum(scaled_delta) AS net_scaled_borrow_change_daily
+    SELECT date, token_address, sum(scaled_delta) AS delta_borrow
     FROM borrow_scaled
     GROUP BY date, token_address
+),
+
+deltas AS (
+    SELECT
+        coalesce(s.date, b.date) AS date,
+        coalesce(s.token_address, b.token_address) AS token_address,
+        coalesce(s.delta_supply, 0) AS delta_supply,
+        coalesce(b.delta_borrow, 0) AS delta_borrow
+    FROM supply_daily s
+    FULL OUTER JOIN borrow_daily b
+        ON b.date = s.date
+       AND b.token_address = s.token_address
+),
+
+{% if is_incremental() %}
+prev_cumulative AS (
+    SELECT
+        token_address,
+        argMax(cumulative_scaled_supply, date) AS prev_supply,
+        argMax(cumulative_scaled_borrow, date) AS prev_borrow
+    FROM {{ this }}
+    GROUP BY token_address
+),
+{% endif %}
+
+with_cumulative AS (
+    SELECT
+        d.date,
+        d.token_address,
+        sum(d.delta_supply) OVER (
+            PARTITION BY d.token_address ORDER BY d.date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )
+        {% if is_incremental() %}
+            + coalesce(p.prev_supply, 0)
+        {% endif %}
+        AS cumulative_scaled_supply,
+        sum(d.delta_borrow) OVER (
+            PARTITION BY d.token_address ORDER BY d.date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )
+        {% if is_incremental() %}
+            + coalesce(p.prev_borrow, 0)
+        {% endif %}
+        AS cumulative_scaled_borrow
+    FROM deltas d
+    {% if is_incremental() %}
+    LEFT JOIN prev_cumulative p
+        ON p.token_address = d.token_address
+    {% endif %}
+),
+
+daily_index AS (
+    SELECT
+        date,
+        token_address,
+        liquidity_index,
+        variable_borrow_index
+    FROM {{ ref('int_execution_yields_aave_daily') }}
+    WHERE liquidity_index IS NOT NULL
+      AND variable_borrow_index IS NOT NULL
 )
 
 SELECT
-    coalesce(s.date, b.date) AS date,
-    coalesce(s.token_address, b.token_address) AS token_address,
-    coalesce(s.net_scaled_supply_change_daily, 0) AS net_scaled_supply_change_daily,
-    coalesce(b.net_scaled_borrow_change_daily, 0) AS net_scaled_borrow_change_daily
-FROM supply_daily s
-FULL OUTER JOIN borrow_daily b
-    ON b.date = s.date
-   AND b.token_address = s.token_address
-ORDER BY date, token_address
+    c.date,
+    c.token_address,
+    c.cumulative_scaled_supply,
+    c.cumulative_scaled_borrow,
+    CASE
+        WHEN c.cumulative_scaled_supply > 0
+             AND i.liquidity_index IS NOT NULL
+             AND i.variable_borrow_index IS NOT NULL
+        THEN (c.cumulative_scaled_borrow * i.variable_borrow_index)
+             / (c.cumulative_scaled_supply * i.liquidity_index) * 100
+        ELSE NULL
+    END AS utilization_rate
+FROM with_cumulative c
+LEFT JOIN daily_index i
+    ON i.token_address = c.token_address
+   AND i.date = c.date
+ORDER BY c.date, c.token_address
