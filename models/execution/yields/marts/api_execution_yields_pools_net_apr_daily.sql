@@ -10,7 +10,7 @@ SELECT
     token,
     pool AS label,
     fee_apr_7d,
-    il_apr_7d,
+    lvr_apr_7d,
     net_apr_7d
 FROM {{ ref('fct_execution_yields_pools_daily') }}
 WHERE net_apr_7d IS NOT NULL

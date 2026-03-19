@@ -153,10 +153,10 @@ SELECT
     pm.volume_usd_daily AS volume_usd_daily,
     pm.swap_count AS swap_count,
     pm.fee_apr_7d AS fee_apr_7d,
-    il.il_apr_7d AS il_apr_7d,
+    il.lvr_apr_7d AS lvr_apr_7d,
     CASE
-        WHEN pm.fee_apr_7d IS NOT NULL AND il.il_apr_7d IS NOT NULL
-        THEN pm.fee_apr_7d + il.il_apr_7d
+        WHEN pm.fee_apr_7d IS NOT NULL AND il.lvr_apr_7d IS NOT NULL
+        THEN pm.fee_apr_7d - il.lvr_apr_7d
         ELSE NULL
     END AS net_apr_7d
 FROM distinct_token_pool_dates b

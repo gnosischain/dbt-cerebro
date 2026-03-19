@@ -82,15 +82,15 @@ models:
     data_type: UInt64
   - name: fee_apr_7d
     data_type: Float64
-  - name: il_apr_7d
-    description: Estimated 7-day impermanent loss annualized using the constant-product AMM model (2*sqrt(r)/(1+r)-1). Always <= 0. Lower bound for concentrated-liquidity pools.
+  - name: lvr_apr_7d
+    description: Annualised 7-day Loss Versus Rebalancing (LVR) — the cost LPs pay to arbitrageurs from swap flows, as a percentage of TVL. Always >= 0.
     data_type: Float64
   - name: net_apr_7d
-    description: Net APR (fee_apr_7d + il_apr_7d). Represents the estimated real return after impermanent loss.
+    description: Net APR (fee_apr_7d - lvr_apr_7d). Represents the estimated real return after LVR cost.
     data_type: Float64
 
 - name: fct_execution_yields_pools_il_daily
-  description: Daily impermanent loss (IL) estimate per LP pool, using the constant-product formula applied to 7-day trailing token0/token1 price ratios. IL is annualised as a percentage and represents a lower-bound estimate for concentrated-liquidity pools.
+  description: Daily Loss Versus Rebalancing (LVR) estimate per LP pool, computed from 7-day trailing swap flows relative to TVL. LVR is annualised as a percentage and represents the arbitrage cost extracted from the pool.
   columns:
   - name: date
     data_type: Date
@@ -98,8 +98,8 @@ models:
     data_type: String
   - name: pool_address
     data_type: String
-  - name: il_apr_7d
-    description: Annualised 7-day trailing impermanent loss estimate (%). Negative values indicate IL drag.
+  - name: lvr_apr_7d
+    description: Annualised 7-day trailing LVR (%). Always >= 0. Represents the cost of adverse selection from arbitrage swaps.
     data_type: Nullable(Float64)
 
 - name: api_execution_yields_pools_net_apr_daily
@@ -113,7 +113,7 @@ models:
     data_type: String
   - name: fee_apr_7d
     data_type: Float64
-  - name: il_apr_7d
+  - name: lvr_apr_7d
     data_type: Float64
   - name: net_apr_7d
     data_type: Float64
@@ -257,11 +257,11 @@ models:
   - name: fees_7d
     description: Fees accrued over the last 7 days in USD (LP only, NULL for lending).
     data_type: Float64
-  - name: il_apr_7d
-    description: Estimated 7-day impermanent loss annualized (LP only, NULL for lending). Always <= 0.
+  - name: lvr_apr_7d
+    description: Annualised 7-day LVR — arbitrage cost as % of TVL (LP only, NULL for lending). Always >= 0.
     data_type: Float64
   - name: net_apr_7d
-    description: Net APR after impermanent loss (fee_apr_7d + il_apr_7d). LP only, NULL for lending.
+    description: Net APR after LVR (fee_apr_7d - lvr_apr_7d). LP only, NULL for lending.
     data_type: Float64
   - name: utilization_rate
     description: Lending utilization rate as a percentage (total_borrows / total_supply * 100). Lending only, NULL for LPs. High values (>80%) indicate withdrawal risk.

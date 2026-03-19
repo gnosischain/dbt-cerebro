@@ -10,9 +10,12 @@
 }}
 
 {#-
-  Pool-level impermanent loss from actual swap rebalancing flows.
+  Pool-level Loss Versus Rebalancing (LVR) from actual swap flows.
 
-  IL = net value of swap flows (at each day's prices) minus fees earned.
+  LVR measures the cost LPs pay to arbitrageurs — the value extracted via
+  swap rebalancing. Sign convention: negative = loss (arbitrage extracted value),
+  positive = gain (swaps were favorable to the pool).
+
   Swap events already embed the concentrated-liquidity math executed by the
   pool contract, so this captures V3 amplification without per-position tracking.
 
@@ -21,8 +24,7 @@
 
   swap_flow_usd_d  =  amount0_d / 10^dec0 × P0_d  +  amount1_d / 10^dec1 × P1_d
   swap_flow_usd_7d =  Σ(swap_flow_usd_d)  over 7-day window
-  pure_IL_7d       =  swap_flow_usd_7d − fees_usd_7d
-  il_apr_7d        =  (pure_IL_7d / avg_tvl_7d) × (365 / 7) × 100
+  lvr_apr_7d       =  -(swap_flow_usd_7d / avg_tvl_7d) × (365 / 7) × 100
 -#}
 
 SELECT
@@ -32,9 +34,9 @@ SELECT
     CASE
         WHEN t.days_in_window < 3 THEN NULL
         WHEN t.tvl_usd_7d_avg IS NULL OR t.tvl_usd_7d_avg <= 0 THEN NULL
-        ELSE (t.swap_flow_usd_7d - t.fees_usd_7d)
+        ELSE -t.swap_flow_usd_7d
              / t.tvl_usd_7d_avg * (365.0 / 7.0) * 100.0
-    END AS il_apr_7d
+    END AS lvr_apr_7d
 FROM (
     SELECT
         s.day,
