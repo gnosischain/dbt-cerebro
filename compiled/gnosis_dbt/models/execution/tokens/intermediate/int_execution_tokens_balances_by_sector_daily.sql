@@ -31,7 +31,11 @@ balances_filtered AS (
       WHERE 1=1 
     )
     AND toDate(b.date) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_execution_tokens_balances_by_sector_daily` AS x2
       WHERE 1=1 
     )

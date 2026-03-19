@@ -16,8 +16,9 @@ SELECT
   e.target,
   sum(e.value) AS value
 FROM `dbt`.`fct_bridges_sankey_edges_token_daily` e
-JOIN ranges r ON e.date BETWEEN r.start_d AND r.end_d
+CROSS JOIN ranges r
 WHERE e.direction = 'out'
+  AND e.date BETWEEN r.start_d AND r.end_d
 GROUP BY r.range, e.source, e.target, r.range_order
 HAVING value > 0
 ORDER BY r.range_order, value DESC, e.source ASC, e.target ASC

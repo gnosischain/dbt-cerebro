@@ -25,7 +25,11 @@ WITH src AS (
       WHERE 1=1 
     )
     AND toDate(date) >= (
-      SELECT addDays(max(toDate(x2.month)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.month)), -0)
+        
+
       FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x2
       WHERE 1=1 
     )

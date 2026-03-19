@@ -28,7 +28,11 @@ WITH base AS (
       WHERE 1=1 
     )
     AND toDate(timestamp) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_bridges_flows_daily` AS x2
       WHERE 1=1 
     )

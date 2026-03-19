@@ -30,7 +30,11 @@ balances_base AS (
       WHERE 1=1 
     )
     AND toDate(b.date) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_execution_tokens_balance_cohorts_daily` AS x2
       WHERE 1=1 
     )

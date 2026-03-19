@@ -33,7 +33,11 @@ WITH ember_monthly AS (
       WHERE 1=1 
     )
     AND toDate("Date") >= (
-      SELECT addDays(max(toDate(x2.month_date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.month_date)), -0)
+        
+
       FROM `dbt`.`int_esg_carbon_intensity_ensemble` AS x2
       WHERE 1=1 
     )

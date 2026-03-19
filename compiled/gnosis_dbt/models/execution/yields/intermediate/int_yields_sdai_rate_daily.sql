@@ -28,7 +28,11 @@ sdai_rate_sparse_daily AS (
       WHERE 1=1 
     )
     AND toDate(block_timestamp) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_yields_sdai_rate_daily` AS x2
       WHERE 1=1 
     )

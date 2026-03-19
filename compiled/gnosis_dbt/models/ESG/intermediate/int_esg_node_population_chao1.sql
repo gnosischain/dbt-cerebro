@@ -39,7 +39,11 @@ WITH peer_connection_analysis AS (
       WHERE 1=1 
     )
     AND toDate(visit_ended_at) >= (
-      SELECT addDays(max(toDate(x2.observation_date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.observation_date)), -0)
+        
+
       FROM `dbt`.`int_esg_node_population_chao1` AS x2
       WHERE 1=1 
     )

@@ -20,7 +20,11 @@ WITH base AS (
       WHERE 1=1 
     )
     AND toDate(date) >= (
-      SELECT addDays(max(toDate(x2.week)), -1)
+      SELECT 
+        
+          toStartOfWeek(addDays(max(toDate(x2.week)), -1))
+        
+
       FROM `dbt`.`fct_execution_transactions_by_sector_weekly` AS x2
       WHERE 1=1 
     )

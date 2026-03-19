@@ -36,7 +36,11 @@ WHERE b.date < today()
       WHERE 1=1 
     )
     AND toDate(b.date) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x2
       WHERE 1=1 
     )

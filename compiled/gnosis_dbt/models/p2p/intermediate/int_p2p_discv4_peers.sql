@@ -30,7 +30,11 @@ WITH
       WHERE 1=1 
     )
     AND toDate(visit_ended_at) >= (
-      SELECT addDays(max(toDate(x2.visit_ended_at)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.visit_ended_at)), -0)
+        
+
       FROM `dbt`.`int_p2p_discv4_peers` AS x2
       WHERE 1=1 
     )

@@ -48,7 +48,11 @@ FROM (
       WHERE 1=1 
     )
     AND toDate(block_timestamp) >= (
-      SELECT addDays(max(toDate(x2.date)), -0)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
       FROM `dbt`.`int_execution_transactions_by_project_daily` AS x2
       WHERE 1=1 
     )
@@ -78,10 +82,10 @@ agg AS (
   SELECT
     date,
     project,
-    count()                                    AS tx_count,
-    groupBitmapState(cityHash64(from_address)) AS ua_bitmap_state,
-    sum(gas_used)                              AS gas_used_sum,
-    sum(gas_used * gas_price) / 1e18           AS fee_native_sum
+    count()                                                    AS tx_count,
+    groupBitmapState(assumeNotNull(cityHash64(from_address)))  AS ua_bitmap_state,
+    sum(gas_used)                                              AS gas_used_sum,
+    sum(gas_used * gas_price) / 1e18                           AS fee_native_sum
   FROM tx_labeled
   GROUP BY date, project
 ),

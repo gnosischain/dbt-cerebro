@@ -26,7 +26,11 @@ WITH base AS (
       WHERE 1=1 
     )
     AND toDate(date) >= (
-      SELECT addDays(max(toDate(x2.date)), -1)
+      SELECT 
+        
+          toStartOfMonth(addDays(max(toDate(x2.date)), -1))
+        
+
       FROM `dbt`.`fct_execution_transactions_by_project_monthly_top5` AS x2
       WHERE 1=1 
     )

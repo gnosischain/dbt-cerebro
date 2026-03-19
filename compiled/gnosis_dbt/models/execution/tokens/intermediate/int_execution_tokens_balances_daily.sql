@@ -62,7 +62,11 @@ WITH deltas AS (
 
     )
     AND toDate(date) >= (
-      SELECT addDays(max(toDate(x2.date)), -1)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -1)
+        
+
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
       WHERE 1=1 
   
@@ -347,7 +351,11 @@ prices AS (
 
     )
     AND toDate(date) >= (
-      SELECT addDays(max(toDate(x2.date)), -1)
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -1)
+        
+
       FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
       WHERE 1=1 
   
