@@ -28,12 +28,7 @@
     {% endif %}
 {% endset %}
 
-WITH lbl AS (
-  SELECT address, project, sector
-  FROM {{ ref('int_crawlers_data_labels') }}
-),
-
-deduped_transactions AS (
+WITH deduped_transactions AS (
     SELECT
         block_timestamp,
         CONCAT('0x', from_address) AS from_address,
@@ -50,15 +45,46 @@ deduped_transactions AS (
     )
 ),
 
+to_address_slice AS (
+  SELECT DISTINCT
+    lower(to_address) AS address
+  FROM deduped_transactions
+  WHERE to_address IS NOT NULL
+),
+
+lbl_ranked AS (
+  SELECT
+    address,
+    project,
+    sector,
+    introduced_at,
+    row_number() OVER (
+      PARTITION BY address
+      ORDER BY introduced_at DESC, project DESC, sector DESC
+    ) AS rn
+  FROM {{ ref('int_crawlers_data_labels') }}
+  WHERE address IN (SELECT address FROM to_address_slice)
+),
+
+lbl AS (
+  SELECT
+    address,
+    project,
+    sector
+  FROM lbl_ranked
+  WHERE rn = 1
+),
+
 tx_labeled AS (
   SELECT
-    toDate(t.block_timestamp)                        AS date,
+    toDate(t.block_timestamp)                         AS date,
     coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
-    lower(t.from_address)                            AS from_address,
-    toFloat64(coalesce(t.gas_used, 0))               AS gas_used,
-    toFloat64(coalesce(t.gas_price, 0))              AS gas_price
+    lower(t.from_address)                             AS from_address,
+    toFloat64(coalesce(t.gas_used, 0))                AS gas_used,
+    toFloat64(coalesce(t.gas_price, 0))               AS gas_price
   FROM deduped_transactions t
-  ANY LEFT JOIN lbl l ON lower(t.to_address) = l.address
+  LEFT JOIN lbl l
+    ON lower(t.to_address) = l.address
 ),
 
 agg AS (
@@ -76,12 +102,9 @@ agg AS (
 proj_sector AS (
   SELECT
     project,
-    coalesce(nullIf(trim(sector), ''), 'Unknown') AS sector
-  FROM (
-    SELECT project, anyHeavy(sector) AS sector
-    FROM {{ ref('int_crawlers_data_labels') }}
-    GROUP BY project
-  )
+    coalesce(nullIf(trim(anyHeavy(sector)), ''), 'Unknown') AS sector
+  FROM lbl
+  GROUP BY project
 )
 
 SELECT

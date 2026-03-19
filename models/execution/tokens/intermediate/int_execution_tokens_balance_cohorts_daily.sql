@@ -128,4 +128,3 @@ SELECT
     value_usd_in_bucket
 FROM agg
 WHERE date < today()
-ORDER BY date, token_address, cohort_unit, balance_bucket

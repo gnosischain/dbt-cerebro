@@ -86,4 +86,3 @@ SELECT
     active_senders,
     unique_receivers
 FROM agg
-ORDER BY date, token_address

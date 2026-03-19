@@ -54,14 +54,27 @@ base_date_symbols AS (
   SELECT DISTINCT date, symbol FROM base
 ),
 
-lbl AS (
+lbl_ranked AS (
   SELECT
     t1.address,
-    IF(t2.address = t1.address, 'gpay', t1.project) AS project
+    IF(t2.address = t1.address, 'gpay', t1.project) AS project,
+    t1.introduced_at,
+    row_number() OVER (
+      PARTITION BY t1.address
+      ORDER BY t1.introduced_at DESC, t1.project DESC
+    ) AS rn
   FROM {{ ref('int_crawlers_data_labels') }} t1
   LEFT JOIN gpay_wallets t2
     ON t2.address = t1.address
   WHERE t1.address IN (SELECT address FROM base_addresses)
+),
+
+lbl AS (
+  SELECT
+    address,
+    project
+  FROM lbl_ranked
+  WHERE rn = 1
 ),
 
 prices AS (
@@ -87,9 +100,9 @@ enriched AS (
     t1.amount_raw / POWER(10, t4.decimals) * t4.price AS amount_usd,
     t1.transfer_count AS transfer_count
   FROM base t1
-  ANY LEFT JOIN lbl t2
+  LEFT JOIN lbl t2
     ON t2.address = t1."from"
-  ANY LEFT JOIN lbl t3
+  LEFT JOIN lbl t3
     ON t3.address = t1."to"
   ANY LEFT JOIN prices t4
     ON t4.date = t1.date
@@ -112,7 +125,7 @@ final AS (
   GROUP BY 1, 2, 3, 4, 5
 )
 
-SELECT 
+SELECT
   window,
   days,
   symbol,

@@ -37,11 +37,32 @@ balances_filtered AS (
       {% endif %}
 ),
 
+balance_addresses AS (
+    SELECT DISTINCT
+        address
+    FROM balances_filtered
+),
+
+labels_ranked AS (
+    SELECT
+        address,
+        project,
+        sector,
+        introduced_at,
+        row_number() OVER (
+            PARTITION BY address
+            ORDER BY introduced_at DESC, project DESC, sector DESC
+        ) AS rn
+    FROM {{ ref('int_crawlers_data_labels') }}
+    WHERE address IN (SELECT address FROM balance_addresses)
+),
+
 labels AS (
     SELECT
-        lower(address) AS address,
+        address,
         sector
-    FROM {{ ref('int_crawlers_data_labels') }}
+    FROM labels_ranked
+    WHERE rn = 1
 ),
 
 joined AS (
@@ -53,7 +74,7 @@ joined AS (
         b.address,
         b.balance,
         b.balance_usd,
-        COALESCE(nullIf(trim(l.sector), ''), 'Unknown') AS sector
+        coalesce(nullIf(trim(l.sector), ''), 'Unknown') AS sector
     FROM balances_filtered b
     LEFT JOIN labels l ON b.address = l.address
 ),
@@ -86,4 +107,3 @@ SELECT
     supply_usd
 FROM agg
 WHERE date < today()
-ORDER BY date, token_address, sector, token_class

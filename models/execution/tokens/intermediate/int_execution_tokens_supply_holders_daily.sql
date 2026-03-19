@@ -41,5 +41,4 @@ WHERE b.date < today()
     {{ apply_monthly_incremental_filter('b.date', 'date', 'true') }}
   {% endif %}
 GROUP BY b.date, b.token_address
-ORDER BY b.date, b.token_address
 
