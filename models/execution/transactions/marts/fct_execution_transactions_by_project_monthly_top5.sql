@@ -26,7 +26,7 @@ WITH base AS (
     AND toStartOfMonth(date) >= toDate('{{ start_month }}')
     AND toStartOfMonth(date) <= toDate('{{ end_month }}')
   {% else %}
-    {{ apply_monthly_incremental_filter('date', 'date', add_and=True, lookback_days=2) }}
+    {{ apply_monthly_incremental_filter('date', 'date', add_and=True, lookback_days=2, lookback_res='month') }}
   {% endif %}
   GROUP BY month, project
 ),
