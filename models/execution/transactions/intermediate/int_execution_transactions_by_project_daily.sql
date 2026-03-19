@@ -1,4 +1,4 @@
-{{ 
+{{
   config(
     materialized='incremental',
     incremental_strategy='delete+insert',
@@ -7,8 +7,9 @@
     unique_key='(date, project)',
     partition_by='toStartOfMonth(date)',
     settings={ 'allow_nullable_key': 1 },
+    pre_hook=["SET join_algorithm = 'grace_hash'"],
     tags=['production','execution','transactions']
-  ) 
+  )
 }}
 
 {% set month       = var('month', none) %}
@@ -64,10 +65,10 @@ agg AS (
   SELECT
     date,
     project,
-    count()                                    AS tx_count,
-    groupBitmapState(cityHash64(from_address)) AS ua_bitmap_state,
-    sum(gas_used)                              AS gas_used_sum,
-    sum(gas_used * gas_price) / 1e18           AS fee_native_sum
+    count()                                                    AS tx_count,
+    groupBitmapState(assumeNotNull(cityHash64(from_address)))  AS ua_bitmap_state,
+    sum(gas_used)                                              AS gas_used_sum,
+    sum(gas_used * gas_price) / 1e18                           AS fee_native_sum
   FROM tx_labeled
   GROUP BY date, project
 ),
