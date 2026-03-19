@@ -48,4 +48,3 @@ WHERE b.date < today()
 
   
 GROUP BY b.date, b.token_address
-ORDER BY b.date, b.token_address

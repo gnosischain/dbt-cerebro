@@ -29,40 +29,84 @@ transfers AS (
     WHERE t.date < today()
 ),
 
+keys AS (
+    SELECT
+        date,
+        token_address,
+        any(symbol) AS symbol,
+        any(token_class) AS token_class
+    FROM (
+        SELECT
+            date,
+            token_address,
+            symbol,
+            token_class
+        FROM supply_holders
+
+        UNION ALL
+
+        SELECT
+            date,
+            token_address,
+            symbol,
+            token_class
+        FROM transfers
+    )
+    GROUP BY
+        date,
+        token_address
+),
+
+price_keys AS (
+    SELECT DISTINCT
+        date,
+        upper(symbol) AS symbol_upper
+    FROM keys
+    WHERE symbol IS NOT NULL
+),
+
 prices AS (
     SELECT
         date,
-        symbol,
+        upper(symbol) AS symbol_upper,
         price AS price_usd
     FROM `dbt`.`int_execution_token_prices_daily`
     WHERE date < today()
+      AND (date, upper(symbol)) IN (
+          SELECT
+              date,
+              symbol_upper
+          FROM price_keys
+      )
 ),
 
 joined AS (
     SELECT
-        coalesce(sh.date, t.date) AS date,
-        coalesce(sh.token_address, t.token_address) AS token_address,
-        coalesce(sh.symbol, t.symbol) AS symbol,
-        coalesce(sh.token_class, t.token_class) AS token_class,
+        k.date AS date,
+        k.token_address AS token_address,
+        coalesce(sh.symbol, t.symbol, k.symbol) AS symbol,
+        coalesce(sh.token_class, t.token_class, k.token_class) AS token_class,
 
         sh.supply,
-        sh.supply * COALESCE(p.price_usd, 0) AS supply_usd,
+        sh.supply * coalesce(p.price_usd, 0) AS supply_usd,
         sh.holders,
 
         t.volume_token,
-        t.volume_token * COALESCE(p.price_usd, 0) AS volume_usd,
+        t.volume_token * coalesce(p.price_usd, 0) AS volume_usd,
         t.transfer_count,
         t.ua_bitmap_state,
         t.active_senders,
         t.unique_receivers
-    FROM supply_holders sh
-    FULL OUTER JOIN transfers t
-      ON sh.date = t.date
-     AND sh.token_address = t.token_address
-
+    FROM keys k
+    LEFT JOIN supply_holders sh
+      ON sh.date = k.date
+     AND sh.token_address = k.token_address
+    LEFT JOIN transfers t
+      ON t.date = k.date
+     AND t.token_address = k.token_address
     LEFT JOIN prices p
-      ON p.date = coalesce(sh.date, t.date)
-     AND upper(p.symbol) = upper(coalesce(sh.symbol, t.symbol))
+      ON p.date = k.date
+     AND p.symbol_upper = upper(coalesce(sh.symbol, t.symbol, k.symbol))
 )
 
 SELECT
@@ -83,4 +127,3 @@ SELECT
     unique_receivers
 FROM joined
 WHERE date < today()
-ORDER BY date, token_address
