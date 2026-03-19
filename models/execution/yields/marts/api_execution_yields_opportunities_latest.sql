@@ -17,7 +17,7 @@ SELECT
     total_supplied,
     total_borrowed,
     fees_7d,
-    il_apr_7d,
+    lvr_apr_7d,
     net_apr_7d,
     utilization_rate,
     protocol

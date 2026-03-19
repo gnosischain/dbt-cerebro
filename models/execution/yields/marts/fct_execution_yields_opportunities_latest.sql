@@ -20,7 +20,7 @@ SELECT
     total_supplied,
     total_borrowed,
     fees_7d,
-    il_apr_7d,
+    lvr_apr_7d,
     net_apr_7d,
     utilization_rate,
     protocol
@@ -58,7 +58,7 @@ FROM (
             NULL AS total_supplied,
             NULL AS total_borrowed,
             pf.fees_7d AS fees_7d,
-            f.il_apr_7d AS il_apr_7d,
+            f.lvr_apr_7d AS lvr_apr_7d,
             f.net_apr_7d AS net_apr_7d,
             NULL AS utilization_rate,
             f.protocol AS protocol
@@ -83,7 +83,7 @@ FROM (
             total_supplied,
             total_borrowed,
             fees_7d,
-            il_apr_7d,
+            lvr_apr_7d,
             net_apr_7d,
             utilization_rate,
             protocol
@@ -129,7 +129,7 @@ FROM (
             (lc.cumulative_scaled_borrow * a.variable_borrow_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_borrowed,
             NULL AS fees_7d,
-            NULL AS il_apr_7d,
+            NULL AS lvr_apr_7d,
             NULL AS net_apr_7d,
             lc.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol
@@ -148,12 +148,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, il_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol
     FROM lending_markets
 )
 ORDER BY yield_pct DESC
