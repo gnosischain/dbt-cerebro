@@ -18,6 +18,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
@@ -327,7 +328,8 @@ def run_model_batched(
     dry_run: bool = False,
     state: Optional[dict] = None,
     incremental_only: bool = False,
-    stage_filter: Optional[List[str]] = None
+    stage_filter: Optional[List[str]] = None,
+    delay: int = 0
 ) -> bool:
     """
     Run a model with batched execution based on its config.
@@ -432,6 +434,10 @@ def run_model_batched(
                         state["current_model"] = model
                         state["current_batch"] = run_number
                         save_state(state)
+                    # Delay between batches to let background merges drain
+                    if delay > 0 and run_number < total_runs:
+                        print(f"    Waiting {delay}s for background merges...")
+                        time.sleep(delay)
                 except subprocess.CalledProcessError as e:
                     print(f"\n    ERROR: dbt run failed!")
                     print(f"    Command: dbt {' '.join(cmd)}")
@@ -507,6 +513,12 @@ Examples:
         type=str,
         help="Only run specific stage(s), comma-separated (e.g., --stage usdc,sdai)"
     )
+    parser.add_argument(
+        "--delay",
+        type=int,
+        default=0,
+        help="Seconds to wait between batches, letting background merges drain (e.g., --delay 30)"
+    )
     
     args = parser.parse_args()
     
@@ -553,7 +565,8 @@ Examples:
             success = run_model_batched(
                 model, config, True, args.dry_run, state,
                 incremental_only=args.incremental_only,
-                stage_filter=stage_filter
+                stage_filter=stage_filter,
+                delay=args.delay
             )
         else:
             success = run_model_normal(model, True, args.dry_run)

@@ -14,12 +14,7 @@
     AND success = 1
 {% endset %}
 
-WITH lbl AS (
-  SELECT address, project, sector
-  FROM {{ ref('int_crawlers_data_labels') }}
-),
-
-deduped_transactions AS (
+WITH deduped_transactions AS (
     SELECT
         block_timestamp,
         CONCAT('0x', from_address) AS from_address,
@@ -44,15 +39,45 @@ wm AS (
 tx AS (
   SELECT
     toStartOfHour(t.block_timestamp, 'UTC') AS hour,
-    lower(t.from_address)                 AS from_address,
-    lower(t.to_address)                   AS to_address,
-    toFloat64(coalesce(t.gas_used, 0))    AS gas_used,
-    toFloat64(coalesce(t.gas_price, 0))   AS gas_price
+    lower(t.from_address)                   AS from_address,
+    lower(t.to_address)                     AS to_address,
+    toFloat64(coalesce(t.gas_used, 0))      AS gas_used,
+    toFloat64(coalesce(t.gas_price, 0))     AS gas_price
   FROM deduped_transactions t
   CROSS JOIN wm
   WHERE
     toStartOfDay(t.block_timestamp, 'UTC') >= subtractDays(max_day, 2)
     AND toStartOfDay(t.block_timestamp, 'UTC') < max_day
+),
+
+to_address_slice AS (
+  SELECT DISTINCT
+    to_address AS address
+  FROM tx
+  WHERE to_address IS NOT NULL
+),
+
+lbl_ranked AS (
+  SELECT
+    address,
+    project,
+    sector,
+    introduced_at,
+    row_number() OVER (
+      PARTITION BY address
+      ORDER BY introduced_at DESC, project DESC, sector DESC
+    ) AS rn
+  FROM {{ ref('int_crawlers_data_labels') }}
+  WHERE address IN (SELECT address FROM to_address_slice)
+),
+
+lbl AS (
+  SELECT
+    address,
+    project,
+    sector
+  FROM lbl_ranked
+  WHERE rn = 1
 ),
 
 classified AS (
@@ -64,19 +89,17 @@ classified AS (
     groupBitmapState(cityHash64(tx.from_address))    AS ua_bitmap_state,
     sum(tx.gas_used * tx.gas_price) / 1e18           AS fee_native_sum
   FROM tx
-  ANY LEFT JOIN lbl l ON tx.to_address = l.address
+  LEFT JOIN lbl l
+    ON tx.to_address = l.address
   GROUP BY tx.hour, project
 ),
 
 proj_sector AS (
   SELECT
     project,
-    coalesce(nullIf(trim(sector), ''), 'Unknown') AS sector
-  FROM (
-    SELECT project, anyHeavy(sector) AS sector
-    FROM {{ ref('int_crawlers_data_labels') }}
-    GROUP BY project
-  )
+    coalesce(nullIf(trim(anyHeavy(sector)), ''), 'Unknown') AS sector
+  FROM lbl
+  GROUP BY project
 )
 
 SELECT

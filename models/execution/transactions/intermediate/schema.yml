@@ -197,6 +197,61 @@ models:
     - columns.project.data_type
     - columns.address.data_type
 
+- name: int_execution_transactions_unique_addresses
+  description: Incremental table of every unique transaction sender address hash with the date it was first seen. Used to compute exact all-time active account counts without bitmap merges.
+  columns:
+
+  - name: address_hash
+    description: The cityHash64 of the lowercase sender address, used as a unique identifier.
+    data_type: UInt64
+
+  - name: first_seen_date
+    description: The earliest date this address appeared in a successful transaction.
+    data_type: Date
+  meta:
+    owner: analytics-team
+    authoritative: false
+    full_refresh:
+        start_date: "2018-10-01"
+        batch_months: 2
+
+- name: int_execution_transactions_cumulative_daily
+  description: Daily time series of new and cumulative unique active accounts. Derived from the unique addresses table, provides exact all-time counts without bitmap memory overhead.
+  columns:
+
+  - name: date
+    description: The date on which new accounts were first seen.
+    data_type: Date
+
+  - name: new_accounts
+    description: Number of unique addresses that appeared for the first time on this date.
+    data_type: UInt64
+
+  - name: cumulative_accounts
+    description: Running total of all unique addresses seen up to and including this date.
+    data_type: UInt64
+  meta:
+    owner: analytics-team
+    authoritative: false
+
+- name: int_execution_transactions_daily_active_addresses
+  description: Daily active address hashes — one row per unique sender address per active day. Used for memory-efficient windowed active account counts via countDistinct instead of bitmap merges.
+  columns:
+
+  - name: date
+    description: The date the address was active (had a successful transaction).
+    data_type: Date
+
+  - name: address_hash
+    description: The cityHash64 of the lowercase sender address.
+    data_type: UInt64
+  meta:
+    owner: analytics-team
+    authoritative: false
+    full_refresh:
+        start_date: "2018-10-01"
+        batch_months: 1
+
 - name: int_execution_transactions_by_project_alltime_state
   description: This model aggregates execution transaction data by project and month, providing insights into transaction volume, fees, and user activity for comprehensive project-level analysis over time.
   columns:
@@ -223,20 +278,5 @@ models:
   meta:
     owner: analytics-team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.877262'
-    _generated_fields:
-    - description
-    - columns.project.description
-    - columns.fee_state.data_type
-    - columns.aa_state.data_type
-    - columns.txs_state.description
-    - columns.month.description
-    - config.tags
-    - config.materialized
-    - columns.txs_state.data_type
-    - columns.aa_state.description
-    - columns.project.data_type
-    - columns.month.data_type
-    - columns.fee_state.description
+
 
