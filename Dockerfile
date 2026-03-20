@@ -44,7 +44,8 @@ RUN mkdir -p /home/appuser/.dbt && \
 # Writable runtime directory structure — symlinked from /app so dbt/edr
 # write to a mountable path, enabling read_only_root_filesystem in k8s
 ENV RUNTIME_DATA_DIR=/data
-RUN mkdir -p /data/logs /data/reports /data/target /data/edr_target && \
+RUN rm -rf /app/logs /app/reports /app/target /app/edr_target && \
+    mkdir -p /data/logs /data/reports /data/target /data/edr_target && \
     ln -sfn /data/logs /app/logs && \
     ln -sfn /data/reports /app/reports && \
     ln -sfn /data/target /app/target && \
