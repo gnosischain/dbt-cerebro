@@ -1,3 +1,30 @@
+{% macro clean_elementary_orphaned_tables() %}
+    {# Drop orphaned Elementary tmp tables left behind by crashed runs.
+       Elementary's on_run_end hook only cleans tables from the current run's
+       cache — tables from interrupted runs persist and count toward the
+       ClickHouse max_table_num_to_throw limit (default 1000). #}
+    {% for db in ['elementary', 'dbt'] %}
+        {% set orphan_query %}
+            SELECT database, name
+            FROM system.tables
+            WHERE database = '{{ db }}'
+              AND name LIKE '%\\_\\_tmp\\_%' ESCAPE '\\'
+        {% endset %}
+
+        {% set orphans = run_query(orphan_query).rows %}
+        {% if orphans | length > 0 %}
+            {{ log("Found " ~ orphans | length ~ " orphaned tmp tables in " ~ db, info=True) }}
+        {% endif %}
+
+        {% for row in orphans %}
+            {% set fqn = row[0] ~ '.`' ~ row[1] ~ '`' %}
+            {{ log("Dropping orphaned tmp table: " ~ fqn, info=True) }}
+            {% do run_query("DROP TABLE IF EXISTS " ~ fqn ~ " SYNC") %}
+        {% endfor %}
+    {% endfor %}
+{% endmacro %}
+
+
 {% macro drop_dbt_trash(database_name) %}
     {{ log("Dropping leftover dbt tables in " ~ database_name, info=True) }}
 

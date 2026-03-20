@@ -44,19 +44,26 @@ run_step() {
   return $rc
 }
 
+# ── 0. Clean orphaned tmp tables from previous crashed runs ──────────────
+run_step "cleanup-tmp-tables" \
+  dbt run-operation clean_elementary_orphaned_tables \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+run_step "cleanup-dbt-trash" \
+  dbt run-operation drop_dbt_trash --args '{"database_name": "dbt"}' \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
 # ── 1. Source freshness ──────────────────────────────────────────────────
+# Note: Elementary's on_run_end hook automatically uploads freshness results
+# to the elementary schema — no separate edr upload step needed.
 run_step "source-freshness" \
   dbt source freshness --select source:* \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 
-# ── 2. Upload source freshness to Elementary ─────────────────────────────
-run_step "upload-freshness" \
-  edr run-operation upload-source-freshness \
-  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-  || true
-
-# ── 3. Main pipeline ────────────────────────────────────────────────────
+# ── 2. Main pipeline ────────────────────────────────────────────────────
 run_step "dbt-run" \
   dbt run --select tag:production \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
