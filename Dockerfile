@@ -20,7 +20,8 @@ WORKDIR /app
 # Copy and install Python requirements first (better caching)
 COPY requirements.txt /app/
 RUN pip install -r /app/requirements.txt && \
-    chown -R ${USER_ID}:${GROUP_ID} /usr/local/lib/python3.11/site-packages/elementary/monitor/dbt_project/
+    chown -R ${USER_ID}:${GROUP_ID} /usr/local/lib/python3.11/site-packages/elementary/monitor/dbt_project/ && \
+    chown -R ${USER_ID}:${GROUP_ID} /usr/local/lib/python3.11/site-packages/elementary/
 
 # Install dbt packages at build time (not runtime)
 COPY packages.yml dbt_project.yml profiles.yml /app/
@@ -44,14 +45,21 @@ RUN mkdir -p /home/appuser/.dbt && \
 # Writable runtime directory structure — symlinked from /app so dbt/edr
 # write to a mountable path, enabling read_only_root_filesystem in k8s
 ENV RUNTIME_DATA_DIR=/data
+ENV EDR_PROJECT_DIR=/usr/local/lib/python3.11/site-packages/elementary/monitor/dbt_project
 RUN rm -rf /app/logs /app/reports /app/target /app/edr_target && \
-    mkdir -p /data/logs /data/reports /data/target /data/edr_target && \
+    mkdir -p /data/logs /data/reports /data/target /data/edr_target \
+             /data/edr_packages /data/edr_target_internal && \
     ln -sfn /data/logs /app/logs && \
     ln -sfn /data/reports /app/reports && \
     ln -sfn /data/target /app/target && \
     ln -sfn /data/edr_target /app/edr_target && \
     ln -sfn /data/logs /app/www/logs && \
     ln -sfn /data/reports /app/www/reports && \
+    # edr internal project: symlink writable dirs so edr deps/run work on read-only fs
+    rm -rf ${EDR_PROJECT_DIR}/dbt_packages ${EDR_PROJECT_DIR}/target ${EDR_PROJECT_DIR}/logs && \
+    ln -sfn /data/edr_packages ${EDR_PROJECT_DIR}/dbt_packages && \
+    ln -sfn /data/edr_target_internal ${EDR_PROJECT_DIR}/target && \
+    ln -sfn /data/logs ${EDR_PROJECT_DIR}/logs && \
     chown -R appuser:appgroup /data
 
 # DBT project path
