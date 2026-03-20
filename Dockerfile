@@ -55,11 +55,12 @@ RUN rm -rf /app/logs /app/reports /app/target /app/edr_target && \
     ln -sfn /data/edr_target /app/edr_target && \
     ln -sfn /data/logs /app/www/logs && \
     ln -sfn /data/reports /app/www/reports && \
-    # edr internal project: symlink writable dirs so edr deps/run work on read-only fs
+    # edr internal project: configure writable paths via dbt_project.yml
+    # (symlinks don't work for dbt_packages — dbt deps calls shutil.rmtree which rejects symlinks)
     rm -rf ${EDR_PROJECT_DIR}/dbt_packages ${EDR_PROJECT_DIR}/target ${EDR_PROJECT_DIR}/logs && \
-    ln -sfn /data/edr_packages ${EDR_PROJECT_DIR}/dbt_packages && \
-    ln -sfn /data/edr_target_internal ${EDR_PROJECT_DIR}/target && \
-    ln -sfn /data/logs ${EDR_PROJECT_DIR}/logs && \
+    echo 'packages-install-path: /data/edr_packages' >> ${EDR_PROJECT_DIR}/dbt_project.yml && \
+    echo 'target-path: /data/edr_target_internal' >> ${EDR_PROJECT_DIR}/dbt_project.yml && \
+    echo 'log-path: /data/logs' >> ${EDR_PROJECT_DIR}/dbt_project.yml && \
     chown -R appuser:appgroup /data
 
 # DBT project path
