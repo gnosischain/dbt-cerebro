@@ -17,19 +17,13 @@ models:
     tests:
     - not_null
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.596531'
-    _generated_fields:
-    - description
-    - columns.project.description
-    - columns.sector.description
-    - config.tags
-    - config.materialized
-    - columns.sector.data_type
-    - columns.project.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: api_crawlers_data_distinct_projects_sectors_totals
   description: This view aggregates the total number of distinct projects and sectors crawled, providing a high-level overview of data coverage for the API.
   columns:
@@ -46,19 +40,13 @@ models:
     tests:
     - not_null
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.596439'
-    _generated_fields:
-    - columns.value1.description
-    - description
-    - columns.value2.data_type
-    - columns.value1.data_type
-    - config.tags
-    - config.materialized
-    - columns.value2.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_crawlers_data_gno_supply_daily
   description: The api_crawlers_data_gno_supply_daily model aggregates daily GNO supply data from crawler sources to support trend analysis and reporting.
   columns:
@@ -76,18 +64,54 @@ models:
   - name: supply
     description: The amount of GNO supply recorded on the given date, measured in units consistent with blockchain token quantities.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.596496'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.supply.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.supply.data_type
-    - columns.label.description
-    - columns.date.data_type
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary

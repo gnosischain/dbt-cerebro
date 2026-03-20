@@ -11,15 +11,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930638'
-    _generated_fields:
-    - description
-    - columns.annual_co2_tonnes_projected.description
-    - config.tags
-    - config.materialized
-    - columns.annual_co2_tonnes_projected.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_carbon_emissions_daily
   description: The `api_esg_carbon_emissions_daily` model provides daily aggregated estimates of carbon emissions, including moving averages and uncertainty bounds, to support ESG reporting and analysis.
   columns:
@@ -50,27 +46,43 @@ models:
     description: 7-day moving average of the upper 95% confidence bound for daily CO2 emissions in kilograms, representing a more conservative upper estimate.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930728'
-    _generated_fields:
-    - description
-    - columns.ma7_value.data_type
-    - columns.date.description
-    - columns.ma7_value.description
-    - columns.ma7_upper_95.description
-    - config.tags
-    - config.materialized
-    - columns.ma7_upper_90.description
-    - columns.ma7_upper_95.data_type
-    - columns.ma7_lower_90.data_type
-    - columns.ma7_lower_90.description
-    - columns.ma7_lower_95.description
-    - columns.ma7_lower_95.data_type
-    - columns.ma7_upper_90.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_carbon_timeseries_bands
   description: This view provides daily estimates and uncertainty bounds of carbon emissions (in kg CO2) with moving averages and month-to-date aggregations to support ESG reporting and analysis.
   columns:
@@ -121,37 +133,13 @@ models:
     description: Cumulative total of daily mean CO2 emissions for the current month.
     data_type: DateTime64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930830'
-    _generated_fields:
-    - columns.date.description
-    - columns.ma7_upper_95.description
-    - columns.mtd_total.description
-    - config.tags
-    - columns.value.data_type
-    - columns.upper_90.data_type
-    - columns.upper_90.description
-    - columns.mtd_avg.description
-    - description
-    - columns.lower_95.description
-    - columns.upper_95.data_type
-    - columns.upper_95.description
-    - columns.mtd_avg.data_type
-    - columns.lower_90.data_type
-    - columns.lower_95.data_type
-    - columns.date.data_type
-    - columns.ma7_value.data_type
-    - columns.ma7_value.description
-    - columns.value.description
-    - columns.ma7_lower_95.data_type
-    - columns.mtd_total.data_type
-    - config.materialized
-    - columns.ma7_lower_95.description
-    - columns.ma7_upper_95.data_type
-    - columns.lower_90.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_cif_network_vs_countries_daily
   description: This view provides daily effective carbon intensity metrics for the network and selected countries, enabling comparison of carbon footprint performance over time.
   columns:
@@ -172,19 +160,41 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930887'
-    _generated_fields:
-    - description
-    - columns.entity_code.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.carbon_intensity.description
-    - columns.entity_code.description
-    - columns.carbon_intensity.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_energy_consumption_annualised_latest
   description: This dbt view provides the latest annualized energy consumption projection in MWh, supporting ESG and carbon footprint analysis for energy management.
   columns:
@@ -195,15 +205,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930915'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.annual_energy_Mwh_projected.data_type
-    - columns.annual_energy_Mwh_projected.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: fct_esg_carbon_footprint_uncertainty
   description: This model calculates the uncertainty in the carbon footprint of a network by aggregating power consumption, energy, and emission data across nodes and geographic regions, providing a comprehensive view of ESG-related carbon emissions and their variability.
   columns:
@@ -508,37 +514,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.931355'
-    _generated_fields:
-    - columns.daily_energy_kwh_mean.data_type
-    - columns.date.description
-    - config.tags
-    - columns.daily_energy_kwh_mean.description
-    - columns.carbon_intensity_gco2_kwh.data_type
-    - columns.avg_power_watts_per_node.description
-    - columns.country_code.description
-    - columns.nodes_upper_95.data_type
-    - columns.avg_power_watts_per_node.data_type
-    - description
-    - columns.estimated_total_nodes.description
-    - columns.carbon_intensity_gco2_kwh.description
-    - columns.node_category.description
-    - columns.daily_co2_kg_std.description
-    - columns.date.data_type
-    - columns.country_code.data_type
-    - columns.nodes_lower_95.description
-    - columns.power_std_dev_per_node.data_type
-    - columns.nodes_lower_95.data_type
-    - columns.daily_co2_kg_mean.data_type
-    - columns.daily_co2_kg_mean.description
-    - columns.power_std_dev_per_node.description
-    - config.materialized
-    - columns.nodes_upper_95.description
-    - columns.estimated_total_nodes.data_type
-    - columns.daily_co2_kg_std.data_type
-    - columns.node_category.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: api_esg_energy_monthly
   description: The api_esg_energy_monthly model aggregates total energy consumption in kilowatt-hours (kWh) on a monthly basis, providing insights into energy usage trends for ESG reporting and analysis.
   columns:
@@ -555,17 +535,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.930948'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_estimated_nodes_daily
   description: The api_esg_estimated_nodes_daily model provides daily estimates of observed and projected node counts related to ESG carbon footprint analysis, facilitating trend analysis and uncertainty quantification.
   columns:
@@ -594,23 +568,41 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.931001'
-    _generated_fields:
-    - description
-    - columns.estimated_nodes.description
-    - columns.estimated_nodes.data_type
-    - columns.date.description
-    - columns.baseline_observed_nodes.data_type
-    - config.tags
-    - config.materialized
-    - columns.baseline_observed_nodes.description
-    - columns.nodes_lower_95.description
-    - columns.nodes_upper_95.description
-    - columns.nodes_lower_95.data_type
-    - columns.nodes_upper_95.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_info_annual_daily
   description: The api_esg_info_annual_daily model provides daily projections of energy consumption and CO2 emissions with associated uncertainty intervals, supporting ESG performance analysis at a daily granularity.
   columns:
@@ -647,27 +639,41 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.931066'
-    _generated_fields:
-    - description
-    - columns.upper_90.data_type
-    - columns.lower_95.description
-    - columns.upper_95.data_type
-    - columns.lower_90.description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.lower_90.data_type
-    - columns.upper_95.description
-    - columns.label.description
-    - columns.mean_val.data_type
-    - columns.mean_val.description
-    - columns.upper_90.description
-    - columns.lower_95.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_esg_info_category_daily
   description: The api_esg_info_category_daily model aggregates daily ESG-related metrics, including carbon footprint, energy consumption, and node counts, categorized by stakeholder type for analytical insights.
   columns:
@@ -689,21 +695,54 @@ models:
   - name: value
     description: The measured value of the metric, representing daily totals or counts.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:57.931112'
-    _generated_fields:
-    - columns.category.description
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - columns.category.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary

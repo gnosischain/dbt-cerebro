@@ -1,17 +1,6 @@
 #!/bin/bash
-set -e
-
-echo "[$(date -u)] Starting dbt production run"
-dbt run --select tag:production
-
-echo "[$(date -u)] Running dbt tests"
-dbt test --select tag:production
-
-echo "[$(date -u)] Generating Elementary report"
-edr report \
-  --profiles-dir /home/appuser/.dbt \
-  --project-dir /app \
-  --file-path /app/reports/elementary_report.html \
-  --target-path /app/edr_target || echo "[$(date -u)] WARNING: edr report failed"
-
-echo "[$(date -u)] Cron run complete"
+# Production cron wrapper — sets prod defaults and delegates to orchestrator.
+export EDR_REPORT_ENV=prod
+export EDR_MONITOR_ENV=prod
+export MANDATORY_STEPS="dbt-run,dbt-test,source-freshness,upload-freshness,edr-report,edr-monitor"
+exec /app/scripts/run_dbt_observability.sh

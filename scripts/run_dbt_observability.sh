@@ -1,0 +1,112 @@
+#!/bin/bash
+# Shared dbt observability orchestrator.
+#
+# Called by cron.sh (production) and cron_preview.sh (preview) after they
+# set environment-specific defaults.
+#
+# Required env vars:
+#   EDR_REPORT_ENV        - "dev" or "prod"
+#
+# Optional env vars:
+#   EDR_MONITOR_ENV       - set to enable edr monitor (e.g., "dev" or "prod")
+#   SLACK_WEBHOOK         - Slack webhook URL for edr monitor alerts
+#   OBSERVABILITY_ARTIFACT_MODE - "none" (default) or "s3"
+#   MANDATORY_STEPS       - comma-separated list of step names that must pass
+#                           for exit 0 (default: "dbt-run,edr-report")
+#
+# The script never exits early — it always completes all steps, then reports
+# a summary and exits non-zero if any mandatory step failed.
+
+PROFILES_DIR="${PROFILES_DIR:-/home/appuser/.dbt}"
+PROJECT_DIR="${PROJECT_DIR:-/app}"
+REPORT_PATH="${PROJECT_DIR}/reports/elementary_report.html"
+EDR_TARGET="${PROJECT_DIR}/edr_target"
+
+# Default mandatory steps (preview). Prod wrapper overrides this.
+MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run,edr-report}"
+
+declare -A step_exit_codes
+step_results=()
+
+run_step() {
+  local name="$1"; shift
+  echo "[$(date -u)] Starting: $name"
+  "$@"
+  local rc=$?
+  step_exit_codes["$name"]=$rc
+  if [ $rc -eq 0 ]; then
+    step_results+=("$name=PASS")
+    echo "[$(date -u)] Completed: $name"
+  else
+    step_results+=("$name=FAIL(rc=$rc)")
+    echo "[$(date -u)] Failed: $name (exit $rc)"
+  fi
+  return $rc
+}
+
+# ── 1. Source freshness ──────────────────────────────────────────────────
+run_step "source-freshness" \
+  dbt source freshness --select source:* \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+# ── 2. Upload source freshness to Elementary ─────────────────────────────
+run_step "upload-freshness" \
+  edr run-operation upload-source-freshness \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+# ── 3. Main pipeline ────────────────────────────────────────────────────
+run_step "dbt-run" \
+  dbt run --select tag:production \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+# ── 4. Tests ─────────────────────────────────────────────────────────────
+run_step "dbt-test" \
+  dbt test --select tag:production \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+# ── 5. Elementary monitor (only when webhook + env are set) ──────────────
+if [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
+  run_step "edr-monitor" \
+    edr monitor \
+    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+    --env "$EDR_MONITOR_ENV" --group-by table \
+    --suppression-interval 24 \
+    || true
+fi
+
+# ── 6. Elementary report (always) ────────────────────────────────────────
+run_step "edr-report" \
+  edr report \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  --env "${EDR_REPORT_ENV:-dev}" \
+  --file-path "$REPORT_PATH" \
+  --target-path "$EDR_TARGET" \
+  || true
+
+# ── Summary ──────────────────────────────────────────────────────────────
+echo ""
+echo "[$(date -u)] Run complete. Results: ${step_results[*]}"
+
+# Determine exit code based on mandatory steps
+overall_exit=0
+IFS=',' read -ra MANDATORY <<< "$MANDATORY_STEPS"
+for step in "${MANDATORY[@]}"; do
+  rc="${step_exit_codes[$step]:-}"
+  if [ -z "$rc" ]; then
+    # Step was not run (e.g., edr-monitor skipped) — only fail if it was mandatory
+    if [ "$step" = "edr-monitor" ] && [ -z "$EDR_MONITOR_ENV" ]; then
+      continue  # monitor is optional when env is not set
+    fi
+    echo "[$(date -u)] WARNING: mandatory step '$step' was not executed"
+    overall_exit=1
+  elif [ "$rc" -ne 0 ]; then
+    echo "[$(date -u)] MANDATORY STEP FAILED: $step (exit $rc)"
+    overall_exit=1
+  fi
+done
+
+exit $overall_exit
