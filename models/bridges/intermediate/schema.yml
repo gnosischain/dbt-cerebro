@@ -64,33 +64,53 @@ models:
     data_type: UInt64
     tests:
     - not_null
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.002330'
-    _generated_fields:
-    - columns.direction.data_type
-    - columns.date.description
-    - columns.volume_usd.description
-    - config.tags
-    - columns.source_chain.description
-    - columns.dest_chain.description
-    - columns.dest_chain.data_type
-    - columns.volume_usd.data_type
-    - columns.bridge.data_type
-    - columns.source_chain.data_type
-    - description
-    - columns.token.data_type
-    - columns.net_usd.data_type
-    - columns.date.data_type
-    - columns.bridge.description
-    - columns.txs.description
-    - columns.token.description
-    - columns.direction.description
-    - columns.volume_token.data_type
-    - config.materialized
-    - columns.net_usd.description
-    - columns.txs.data_type
-    - columns.volume_token.description
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

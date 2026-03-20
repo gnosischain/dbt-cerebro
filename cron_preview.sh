@@ -1,3 +1,7 @@
 #!/bin/bash
-
-dbt run --select tag:production
+# Preview cron wrapper — sets dev defaults and delegates to orchestrator.
+export EDR_REPORT_ENV=dev
+export MANDATORY_STEPS="dbt-run,edr-report"
+# Monitor only runs if SLACK_WEBHOOK is present
+[ -n "$SLACK_WEBHOOK" ] && export EDR_MONITOR_ENV=dev
+exec /app/scripts/run_dbt_observability.sh

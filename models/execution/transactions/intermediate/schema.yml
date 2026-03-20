@@ -33,6 +33,19 @@ models:
     description: The total amount of gas units consumed by the transaction, as a float.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   - name: gas_price
     description: The gas price paid per gas unit in wei, represented as a float.
     data_type: UInt64
@@ -41,6 +54,19 @@ models:
     description: Total number of transactions of this type on the day.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   - name: xdai_value
     description: Sum of transaction values in native units (XDAI).
     data_type: Float64
@@ -65,33 +91,73 @@ models:
     description: Total fee paid in native units (XDAI).
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   - name: fee_usd_sum
     description: Total fee in USD, calculated using price data.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.877674'
-    _generated_fields:
-    - description
-    - columns.value_native.description
-    - columns.transaction_type.data_type
-    - columns.date.description
-    - columns.gas_price.data_type
-    - config.tags
-    - config.materialized
-    - columns.gas_used.description
-    - columns.success.data_type
-    - columns.block_timestamp.data_type
-    - columns.block_timestamp.description
-    - columns.transaction_type.description
-    - columns.value_native.data_type
-    - columns.success.description
-    - columns.gas_used.data_type
-    - columns.gas_price.description
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_by_project_daily
   description: This model aggregates daily execution transaction data by project, providing insights into transaction volume, user engagement, and fees associated with each project over time.
   columns:
@@ -128,24 +194,16 @@ models:
     description: Total fees paid in native tokens (wei converted to GNO/XDAI).
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2018-10-01"
       batch_months: 2
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.877455'
-    _generated_fields:
-    - description
-    - columns.address.description
-    - columns.project.description
-    - columns.sector.description
-    - config.tags
-    - config.materialized
-    - columns.sector.data_type
-    - columns.project.data_type
-    - columns.address.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_by_project_hourly_recent
   description: This model aggregates hourly execution transaction data by project for the recent two-day period, providing insights into transaction volume, active accounts, and associated fees for business analysis.
   columns:
@@ -174,6 +232,19 @@ models:
     description: Count of distinct active sender addresses during the hour.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: hour
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   - name: ua_bitmap_state
     description: Bitmap state representing unique active addresses for the project.
     data_type: String
@@ -181,22 +252,57 @@ models:
   - name: fee_native_sum
     description: Sum of gas used multiplied by gas price, converted to native units (e.g., ETH).
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: hour
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.877540'
-    _generated_fields:
-    - description
-    - columns.address.description
-    - columns.project.description
-    - columns.sector.description
-    - config.tags
-    - config.materialized
-    - columns.sector.data_type
-    - columns.project.data_type
-    - columns.address.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: hour
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: hour
+      time_bucket:
+        period: hour
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_unique_addresses
   description: Incremental table of every unique transaction sender address hash with the date it was first seen. Used to compute exact all-time active account counts without bitmap merges.
   columns:
@@ -209,12 +315,17 @@ models:
     description: The earliest date this address appeared in a successful transaction.
     data_type: Date
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
-        start_date: "2018-10-01"
-        batch_months: 2
+      start_date: "2018-10-01"
+      batch_months: 2
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_cumulative_daily
   description: Daily time series of new and cumulative unique active accounts. Derived from the unique addresses table, provides exact all-time counts without bitmap memory overhead.
   columns:
@@ -231,9 +342,44 @@ models:
     description: Running total of all unique addresses seen up to and including this date.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_daily_active_addresses
   description: Daily active address hashes — one row per unique sender address per active day. Used for memory-efficient windowed active account counts via countDistinct instead of bitmap merges.
   columns:
@@ -246,12 +392,17 @@ models:
     description: The cityHash64 of the lowercase sender address.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
-        start_date: "2018-10-01"
-        batch_months: 1
+      start_date: "2018-10-01"
+      batch_months: 1
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_transactions_by_project_alltime_state
   description: This model aggregates execution transaction data by project and month, providing insights into transaction volume, fees, and user activity for comprehensive project-level analysis over time.
   columns:
@@ -276,7 +427,12 @@ models:
     description: A bitmap representing unique active users or accounts involved in transactions for the project during the month.
     data_type: String
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

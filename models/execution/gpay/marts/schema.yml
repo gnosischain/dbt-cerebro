@@ -27,6 +27,19 @@ models:
     description: The total native token volume for the action on this date.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: volume_usd
     description: The total USD-equivalent volume for the action on this date.
     data_type: Float64
@@ -47,9 +60,44 @@ models:
     description: The cumulative number of transactions up to this date.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_actions_by_token_monthly
   description: Monthly aggregation of Gnosis Pay activity metrics broken down by action type and token, with cumulative totals.
   columns:
@@ -92,9 +140,14 @@ models:
     description: The cumulative number of transactions up to this month.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_actions_by_token_weekly
   description: Weekly aggregation of Gnosis Pay activity metrics broken down by action type and token, with cumulative totals.
   columns:
@@ -117,6 +170,19 @@ models:
     description: The total native token volume for the action in this week.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: week
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: volume_usd
     description: The total USD-equivalent volume for the action in this week.
     data_type: Float64
@@ -137,9 +203,39 @@ models:
     description: The cumulative number of transactions up to this week.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_activity_daily
   description: Daily summary of Gnosis Pay ecosystem activity including active users, payments, volume, and funded wallet counts.
   columns:
@@ -154,14 +250,53 @@ models:
     description: The number of unique active wallets on this date.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: total_payments
     description: The total number of payment transactions on this date.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: total_volume_usd
     description: The total payment volume in USD on this date.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: newly_funded
     description: The number of wallets newly funded on this date.
     data_type: UInt64
@@ -170,9 +305,44 @@ models:
     description: The cumulative number of funded wallets up to this date.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_activity_monthly
   description: Monthly summary of Gnosis Pay ecosystem activity including active users, payments, volume, and funded wallet counts.
   columns:
@@ -203,9 +373,14 @@ models:
     description: The cumulative number of funded wallets up to this month.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_activity_weekly
   description: Weekly summary of Gnosis Pay ecosystem activity including active users, payments, volume, and funded wallet counts.
   columns:
@@ -220,14 +395,53 @@ models:
     description: The number of unique active wallets in this week.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: week
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: total_payments
     description: The total number of payment transactions in this week.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: week
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: total_volume_usd
     description: The total payment volume in USD in this week.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: week
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: newly_funded
     description: The number of wallets newly funded in this week.
     data_type: UInt64
@@ -236,9 +450,39 @@ models:
     description: The cumulative number of funded wallets up to this week.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_balance_cohorts_daily
   description: Daily distribution of Gnosis Pay wallet balances segmented into cohort buckets by token, showing holder counts and values.
   columns:
@@ -265,6 +509,19 @@ models:
     description: The number of wallets in this balance bucket.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: value_native
     description: The total native token value held by wallets in this bucket.
     data_type: Float64
@@ -273,9 +530,44 @@ models:
     description: The total USD value held by wallets in this bucket.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_balances_by_token_daily
   description: Daily aggregate token balances across all Gnosis Pay wallets, in both native and USD values.
   columns:
@@ -294,13 +586,61 @@ models:
     description: The total balance in native token units.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: balance_usd
     description: The total balance in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_cashback_cohort_retention_monthly
   description: Monthly cohort retention analysis for Gnosis Pay cashback recipients, tracking user counts and retention percentages over time.
   columns:
@@ -339,9 +679,14 @@ models:
     description: The total cashback amount in USD for the cohort in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_cashback_dist_weekly
   description: Weekly distribution of Gnosis Pay cashback amounts using percentile statistics.
   columns:
@@ -388,9 +733,39 @@ models:
     description: The average cashback amount.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_cashback_impact_monthly
   description: Monthly analysis of cashback impact on Gnosis Pay user segments, comparing payment behavior between cashback and non-cashback users.
   columns:
@@ -445,9 +820,14 @@ models:
     description: The percentage of total users this segment represents.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_cashback_recipients_weekly
   description: Weekly count of unique Gnosis Pay cashback recipients.
   columns:
@@ -462,9 +842,39 @@ models:
     description: The number of unique wallets that received cashback in this week.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_churn_monthly
   description: Monthly user churn and retention analysis for Gnosis Pay, breaking down users into new, retained, returning, and churned segments.
   columns:
@@ -507,9 +917,14 @@ models:
     description: The percentage of last month's users who were retained.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_flows_snapshot
   description: Snapshot of token flow patterns between Gnosis Pay wallet labels across different time windows.
   columns:
@@ -542,9 +957,14 @@ models:
     description: The number of individual transfers in the flow.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_kpi_monthly
   description: Monthly key performance indicators for Gnosis Pay including MAU, payment volume, deposits, withdrawals, cashback, and user engagement metrics.
   columns:
@@ -623,9 +1043,14 @@ models:
     description: Percentage of users who made more than one payment.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_owner_balances_by_token_daily
   description: Daily aggregate token balances across Gnosis Pay wallet owners (as opposed to wallet addresses), in both native and USD values.
   columns:
@@ -644,13 +1069,61 @@ models:
     description: The total balance in native token units.
     data_type: Float64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: balance_usd
     description: The total balance in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_payments_hourly
   description: Hourly payment counts for Gnosis Pay broken down by token symbol.
   columns:
@@ -667,9 +1140,44 @@ models:
     description: The number of payments made in this hour for this token.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: hour
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: hour
+      time_bucket:
+        period: hour
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_retention_by_action_monthly
   description: Monthly cohort retention analysis for Gnosis Pay users broken down by action type, tracking user counts and retention over time.
   columns:
@@ -712,9 +1220,14 @@ models:
     description: The total USD amount for the cohort in this activity month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_retention_monthly
   description: Monthly cohort retention analysis for all Gnosis Pay activity, tracking user counts and retention percentages over time.
   columns:
@@ -753,9 +1266,14 @@ models:
     description: The total USD amount for the cohort in this activity month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_snapshots
   description: Summary snapshot metrics for Gnosis Pay across different time windows (All, 7D), providing headline KPIs with percentage changes.
   columns:
@@ -776,9 +1294,14 @@ models:
     description: The percentage change compared to the previous period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_gpay_user_lifetime_metrics
   description: Lifetime metrics for each Gnosis Pay wallet, including tenure, activity counts, payment volumes, and cashback totals.
   columns:
@@ -843,13 +1366,18 @@ models:
     description: Average monthly payment volume in USD across active months.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
 # ──────────────────────────────────────────────
 # API models
 # ──────────────────────────────────────────────
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: api_execution_gpay_active_users_7d
   description: 7-day active user count with period-over-period change percentage for Gnosis Pay.
   columns:
@@ -862,9 +1390,14 @@ models:
     description: The percentage change compared to the previous 7-day period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_active_users_weekly
   description: Weekly time series of Gnosis Pay active user counts.
   columns:
@@ -878,10 +1411,53 @@ models:
   - name: value
     description: The number of active users in this week.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_activity_by_action_daily
   description: Daily Gnosis Pay activity metrics broken down by action type, with counts and volumes.
   columns:
@@ -908,9 +1484,44 @@ models:
     description: The total native token volume for this action on this date.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_activity_by_action_monthly
   description: Monthly Gnosis Pay activity metrics broken down by action type, with counts and volumes.
   columns:
@@ -937,9 +1548,14 @@ models:
     description: The total native token volume for this action in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_activity_by_action_weekly
   description: Weekly Gnosis Pay activity metrics broken down by action type, with counts and volumes.
   columns:
@@ -966,9 +1582,39 @@ models:
     description: The total native token volume for this action in this week.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: week
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_balance_cohorts_holders_daily
   description: Daily count of Gnosis Pay wallet holders in each balance cohort bucket by token.
   columns:
@@ -994,10 +1640,58 @@ models:
   - name: value
     description: The number of holders in this cohort bucket.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_balance_cohorts_value_daily
   description: Daily total value held in each balance cohort bucket by token, in native and USD.
   columns:
@@ -1028,9 +1722,44 @@ models:
     description: The total USD value in this bucket.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_balances_by_token_daily
   description: Daily total Gnosis Pay wallet balances by token in USD.
   columns:
@@ -1048,10 +1777,58 @@ models:
   - name: value
     description: The total balance in USD for this token.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_balances_native_daily
   description: Daily total Gnosis Pay wallet balances by token in native units.
   columns:
@@ -1069,10 +1846,58 @@ models:
   - name: value
     description: The total balance in native token units.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_balances_usd_daily
   description: Daily total Gnosis Pay wallet balances by token in USD.
   columns:
@@ -1090,10 +1915,58 @@ models:
   - name: value
     description: The total balance in USD for this token.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_7d
   description: 7-day cashback summary with unit breakdown and period-over-period change percentage.
   columns:
@@ -1110,9 +1983,14 @@ models:
     description: The percentage change compared to the previous 7-day period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_cohort_retention_monthly
   description: Monthly cashback cohort retention heatmap data showing retention and amount percentages across cohorts.
   columns:
@@ -1141,9 +2019,14 @@ models:
     description: The total cashback amount in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_cohort_retention_users_monthly
   description: Monthly cashback cohort sizes over time, formatted for time series visualization.
   columns:
@@ -1162,9 +2045,14 @@ models:
     description: The number of active users from this cohort.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_cumulative
   description: Cumulative cashback distributed over time by unit.
   columns:
@@ -1183,9 +2071,14 @@ models:
     description: The cumulative cashback amount up to this date.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_dist_weekly
   description: Weekly cashback distribution percentiles for Gnosis Pay users.
   columns:
@@ -1228,9 +2121,39 @@ models:
     description: The average cashback amount.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_impact_monthly
   description: Monthly cashback impact analysis comparing payment behavior between user segments. Passes through all columns from the fact model.
   columns:
@@ -1285,9 +2208,14 @@ models:
     description: The percentage of total users this segment represents.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_recipients_7d
   description: 7-day unique cashback recipient count with period-over-period change percentage.
   columns:
@@ -1300,9 +2228,14 @@ models:
     description: The percentage change compared to the previous 7-day period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_recipients_total
   description: All-time total count of unique Gnosis Pay cashback recipients.
   columns:
@@ -1311,9 +2244,14 @@ models:
     description: The total number of unique cashback recipients.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_recipients_weekly
   description: Weekly time series of unique Gnosis Pay cashback recipient counts.
   columns:
@@ -1327,10 +2265,53 @@ models:
   - name: value
     description: The number of unique cashback recipients in this week.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_total
   description: All-time total cashback distributed by unit.
   columns:
@@ -1343,9 +2324,14 @@ models:
     description: The total cashback amount.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_cashback_weekly
   description: Weekly cashback amounts distributed by unit.
   columns:
@@ -1363,10 +2349,53 @@ models:
   - name: value
     description: The cashback amount for this week.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_churn_monthly
   description: Monthly user churn breakdown for Gnosis Pay showing user segments and rates by activity scope.
   columns:
@@ -1409,9 +2438,14 @@ models:
     description: The percentage of last month's users who were retained.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_churn_rates_monthly
   description: Monthly churn and retention rates for Gnosis Pay by activity scope.
   columns:
@@ -1434,9 +2468,14 @@ models:
     description: The retention rate for the month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_flows_snapshot
   description: Token flow patterns between Gnosis Pay wallet labels for API consumption.
   columns:
@@ -1465,9 +2504,14 @@ models:
     description: The number of individual transfers in the flow.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_funded_addresses_daily
   description: Daily time series of cumulative funded Gnosis Pay wallet addresses.
   columns:
@@ -1481,10 +2525,58 @@ models:
   - name: value
     description: The cumulative number of funded wallet addresses.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_funded_addresses_monthly
   description: Monthly time series of cumulative funded Gnosis Pay wallet addresses.
   columns:
@@ -1499,9 +2591,14 @@ models:
     description: The cumulative number of funded wallet addresses.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_funded_addresses_weekly
   description: Weekly time series of cumulative funded Gnosis Pay wallet addresses.
   columns:
@@ -1515,10 +2612,53 @@ models:
   - name: value
     description: The cumulative number of funded wallet addresses.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_gno_balance_daily
   description: Daily total GNO token balance across all Gnosis Pay wallets.
   columns:
@@ -1532,10 +2672,58 @@ models:
   - name: value
     description: The total GNO balance across all wallets.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_gno_total_balance
   description: Current total GNO token balance across all Gnosis Pay wallets.
   columns:
@@ -1544,9 +2732,14 @@ models:
     description: The total GNO balance.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_kpi_monthly
   description: Monthly KPIs for Gnosis Pay, passing through all columns from the fact model.
   columns:
@@ -1625,9 +2818,14 @@ models:
     description: Percentage of users who made more than one payment.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_owner_balances_by_token_daily
   description: Daily total Gnosis Pay owner balances by token in USD.
   columns:
@@ -1645,10 +2843,58 @@ models:
   - name: value
     description: The total owner balance in USD for this token.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_owner_total_balance
   description: Current total balance across all Gnosis Pay wallet owners in USD.
   columns:
@@ -1657,9 +2903,14 @@ models:
     description: The total owner balance in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_payments_7d
   description: 7-day payment count with period-over-period change percentage.
   columns:
@@ -1672,9 +2923,14 @@ models:
     description: The percentage change compared to the previous 7-day period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_payments_by_token_daily
   description: Daily payment counts by token for Gnosis Pay.
   columns:
@@ -1692,10 +2948,58 @@ models:
   - name: value
     description: The number of payments for this token on this date.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_payments_by_token_monthly
   description: Monthly payment counts by token for Gnosis Pay.
   columns:
@@ -1714,9 +3018,14 @@ models:
     description: The number of payments for this token in this month.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_payments_by_token_weekly
   description: Weekly payment counts by token for Gnosis Pay.
   columns:
@@ -1734,10 +3043,53 @@ models:
   - name: value
     description: The number of payments for this token in this week.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_payments_hourly
   description: Hourly payment counts by token for Gnosis Pay.
   columns:
@@ -1753,10 +3105,58 @@ models:
   - name: value
     description: The number of payments in this hour for this token.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_retention_by_action_monthly
   description: Monthly cohort retention heatmap data for Gnosis Pay broken down by action type.
   columns:
@@ -1789,9 +3189,14 @@ models:
     description: The total USD amount for the cohort in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_retention_by_action_users_monthly
   description: Monthly cohort user counts over time by action type, formatted for time series visualization.
   columns:
@@ -1812,9 +3217,14 @@ models:
     description: The number of active users from this cohort.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_retention_monthly
   description: Monthly cohort user counts over time, formatted for time series visualization.
   columns:
@@ -1831,9 +3241,14 @@ models:
     description: The number of active users from this cohort.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_retention_pct_monthly
   description: Monthly cohort retention heatmap data for all Gnosis Pay activity.
   columns:
@@ -1862,9 +3277,14 @@ models:
     description: The total USD amount for the cohort in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_retention_volume_monthly
   description: Monthly cohort volume retention over time, formatted for time series visualization.
   columns:
@@ -1881,9 +3301,14 @@ models:
     description: The total USD volume for this cohort in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_total_balance
   description: Current total balance across all Gnosis Pay wallets in USD.
   columns:
@@ -1892,9 +3317,14 @@ models:
     description: The total balance in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_total_funded
   description: All-time total count of funded Gnosis Pay wallets (users who made at least one payment).
   columns:
@@ -1903,9 +3333,14 @@ models:
     description: The total number of funded wallets.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_total_payments
   description: All-time total count of Gnosis Pay payments.
   columns:
@@ -1914,9 +3349,14 @@ models:
     description: The total number of payments.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_total_volume
   description: All-time total payment volume for Gnosis Pay in USD.
   columns:
@@ -1925,9 +3365,14 @@ models:
     description: The total payment volume in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_activity
   description: Individual transaction-level activity for a specific Gnosis Pay user, filtered by wallet address.
   columns:
@@ -1972,9 +3417,14 @@ models:
     description: The counterparty address in the transaction.
     data_type: String
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_balances_daily
   description: Daily token balances for a specific Gnosis Pay user in native and USD values.
   columns:
@@ -2005,9 +3455,44 @@ models:
     description: The token balance in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_cashback_daily
   description: Daily cashback amounts for a specific Gnosis Pay user.
   columns:
@@ -2025,10 +3510,58 @@ models:
   - name: value
     description: The cashback amount received on this date.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_lifetime_metrics
   description: Lifetime metrics for a specific Gnosis Pay user, passing through all columns from the fact model.
   columns:
@@ -2093,9 +3626,14 @@ models:
     description: Average monthly payment volume in USD across active months.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_payments_daily
   description: Daily payment amounts by token for a specific Gnosis Pay user.
   columns:
@@ -2117,10 +3655,58 @@ models:
   - name: value
     description: The payment amount in USD on this date.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_total_cashback
   description: All-time total cashback for a specific Gnosis Pay user.
   columns:
@@ -2133,9 +3719,14 @@ models:
     description: The total cashback amount in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_total_payments
   description: All-time total payment count for a specific Gnosis Pay user.
   columns:
@@ -2148,9 +3739,14 @@ models:
     description: The total number of payments.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_user_total_volume
   description: All-time total payment volume for a specific Gnosis Pay user.
   columns:
@@ -2163,9 +3759,14 @@ models:
     description: The total payment volume in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_volume_7d
   description: 7-day payment volume with period-over-period change percentage.
   columns:
@@ -2178,9 +3779,14 @@ models:
     description: The percentage change compared to the previous 7-day period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_volume_payments_by_token_daily
   description: Daily payment volume by token in USD for Gnosis Pay.
   columns:
@@ -2198,10 +3804,58 @@ models:
   - name: value
     description: The payment volume in USD for this token on this date.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_volume_payments_by_token_monthly
   description: Monthly payment volume by token in USD for Gnosis Pay.
   columns:
@@ -2220,9 +3874,14 @@ models:
     description: The payment volume in USD for this token in this month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_volume_payments_by_token_weekly
   description: Weekly payment volume by token in USD for Gnosis Pay.
   columns:
@@ -2240,10 +3899,53 @@ models:
   - name: value
     description: The payment volume in USD for this token in this week.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_wallet_balance_composition
   description: Current balance composition of a Gnosis Pay wallet by token.
   columns:
@@ -2256,5 +3958,10 @@ models:
     description: The balance amount in USD.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary

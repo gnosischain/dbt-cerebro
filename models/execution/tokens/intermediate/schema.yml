@@ -35,33 +35,21 @@ models:
     description: Net change in the account balance.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
-      batch_months: 1    
+      batch_months: 1
       stages:
-        - name: all
-          start_date: "2020-07-01"
-          batch_months: 1000
-          vars:
-            symbol_exclude: "{{ var('symbol_exclude') }}"
-        
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.808910'
-    _generated_fields:
-    - meta.owner
-    - description
-    - columns.token_address.description
-    - columns.AS.data_type
-    - columns.symbol.data_type
-    - columns.date.description
-    - columns.AS.description
-    - config.tags
-    - config.materialized
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.date.data_type
-
+      - name: all
+        start_date: "2020-07-01"
+        batch_months: 1000
+        vars:
+          symbol_exclude: "{{ var('symbol_exclude') }}"
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_tokens_balances_daily
   description: The int_execution_tokens_balances_daily model tracks the daily balances of tokens for various addresses, incorporating net delta changes to maintain an up-to-date view of token holdings over time.
   columns:
@@ -128,80 +116,66 @@ models:
     description: Monotonic ingestion version (nanoseconds).
     data_type: UInt64
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
     full_refresh:
-      batch_months: 1    
+      batch_months: 1
       stages:
         # WxDAI - very high volume, monthly
-        - name: wxdai
-          start_date: "2020-07-01"
-          batch_months: 2
-          vars:
-            symbol: "WxDAI"
-        
+      - name: wxdai
+        start_date: "2020-07-01"
+        batch_months: 2
+        vars:
+          symbol: "WxDAI"
+
         # Major tokens - high volume, monthly
-        - name: major_tokens1
-          start_date: "2020-07-01"
-          batch_months: 6
-          vars:
-            symbol: "GNO"
+      - name: major_tokens1
+        start_date: "2020-07-01"
+        batch_months: 6
+        vars:
+          symbol: "GNO"
 
-        - name: major_tokens2
-          start_date: "2020-07-01"
-          batch_months: 3
-          vars:
-            symbol: "WETH,WBTC"
+      - name: major_tokens2
+        start_date: "2020-07-01"
+        batch_months: 3
+        vars:
+          symbol: "WETH,WBTC"
 
-        - name: major_tokens3
-          start_date: "2020-07-01"
-          batch_months: 3
-          vars:
-            symbol: "USDC"
+      - name: major_tokens3
+        start_date: "2020-07-01"
+        batch_months: 3
+        vars:
+          symbol: "USDC"
 
-        - name: major_tokens4
-          start_date: "2020-07-01"
-          batch_months: 6
-          vars:
-            symbol: "USDT"
-        
+      - name: major_tokens4
+        start_date: "2020-07-01"
+        batch_months: 6
+        vars:
+          symbol: "USDT"
+
         # Newer tokens - medium volume, monthly
-        - name: newer_tokens
-          start_date: "2022-01-01"
-          batch_months: 1
-          vars:
-            symbol: "COW,sGNO,EURe,GBPe,sDAI"
-        
-        # smaller tokens - low volume, monthly
-        - name: small_tokens
-          start_date: "2023-01-01"
-          batch_months: 12         
-          vars:
-            symbol: "bCSPX,bNIU,bCOIN,bIB01,bIBTA,bHIGH,bC3M,SAFE,USDC.e,BRLA,BRZ,bTSLA,bMSTR,bNVDA,bGME,bGOOGL,bMSFT,bERNA"
-        - name: tokens_2025
-          start_date: "2025-01-01"
-          batch_months: 12         
-          vars:
-            symbol: "ZCHF,svZCHF"
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.809006'
-    _generated_fields:
-    - columns.token_address.description
-    - description
-    - columns.token_class.data_type
-    - columns.address.description
-    - columns.symbol.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.net_delta_raw.data_type
-    - columns.address.data_type
-    - columns.net_delta_raw.description
-    - columns.token_class.description
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.date.data_type
+      - name: newer_tokens
+        start_date: "2022-01-01"
+        batch_months: 1
+        vars:
+          symbol: "COW,sGNO,EURe,GBPe,sDAI"
 
+        # smaller tokens - low volume, monthly
+      - name: small_tokens
+        start_date: "2023-01-01"
+        batch_months: 12
+        vars:
+          symbol: "bCSPX,bNIU,bCOIN,bIB01,bIBTA,bHIGH,bC3M,SAFE,USDC.e,BRLA,BRZ,bTSLA,bMSTR,bNVDA,bGME,bGOOGL,bMSFT,bERNA"
+      - name: tokens_2025
+        start_date: "2025-01-01"
+        batch_months: 12
+        vars:
+          symbol: "ZCHF,svZCHF"
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_tokens_transfers_daily
   description: The int_execution_tokens_transfers_daily model aggregates daily transfer metrics for tokens, providing insights into token transfer volumes, counts, and user activity for analytics and reporting purposes.
   columns:
@@ -252,34 +226,24 @@ models:
     description: Number of unique receivers.
     data_type: UInt64
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
       stages:
-        - name: all
-          vars:
-            symbol_exclude: "{{ var('symbol_exclude') }}"
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.809071'
-    _generated_fields:
-    - columns.token_address.description
-    - description
-    - columns.AS.data_type
-    - columns.symbol.data_type
-    - columns.date.description
-    - columns.AS.description
-    - config.tags
-    - config.materialized
-    - columns.token_address.data_type
-    - columns.symbol.description
-    - columns.date.data_type
-
+      - name: all
+        vars:
+          symbol_exclude: "{{ var('symbol_exclude') }}"
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_tokens_supply_holders_daily
   description: Daily supply and holder counts aggregated by token.
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2020-07-01"
@@ -306,10 +270,15 @@ models:
     description: The number of unique addresses holding a positive balance.
     data_type: UInt64
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_tokens_balance_cohorts_daily
   description: Daily token balance cohort distributions, segmenting holders into balance buckets.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2020-07-01"
@@ -349,10 +318,15 @@ models:
     description: Total USD value held within the balance bucket.
     data_type: Float64
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_tokens_balances_by_sector_daily
   description: Daily balances aggregated by sector labels for each token.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2020-07-01"
@@ -381,3 +355,8 @@ models:
   - name: supply_usd
     description: Total USD value held by addresses in this sector.
     data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

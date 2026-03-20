@@ -92,27 +92,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224063'
-    _generated_fields:
-    - description
-    - columns.crawl_error.description
-    - columns.crawl_error.data_type
-    - columns.connect_maddr.description
-    - columns.peer_properties.data_type
-    - config.tags
-    - config.materialized
-    - columns.dial_errors.data_type
-    - columns.visit_ended_at.description
-    - columns.peer_properties.description
-    - columns.agent_version.description
-    - columns.peer_id.data_type
-    - columns.agent_version.data_type
-    - columns.peer_id.description
-    - columns.dial_errors.description
-    - columns.connect_maddr.data_type
-    - columns.visit_ended_at.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv5_clients_daily
   description: The int_p2p_discv5_clients_daily model aggregates daily peer discovery data for P2P clients using the DiscV5 protocol, providing insights into client distribution, platform usage, provider sources, and geographic locations.
   columns:
@@ -157,28 +141,57 @@ models:
   - name: value
     description: Count of peers or occurrences for the given label on the specified date.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224370'
-    _generated_fields:
-    - columns.client.description
-    - description
-    - columns.generic_provider.data_type
-    - columns.client.data_type
-    - columns.date.description
-    - columns.platform.description
-    - columns.platform.data_type
-    - config.tags
-    - config.materialized
-    - columns.generic_provider.description
-    - columns.peer_country.description
-    - columns.peer_country.data_type
-    - columns.peer_id.data_type
-    - columns.peer_id.description
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv5_forks_daily
   description: The `int_p2p_discv5_forks_daily` model tracks daily counts of peers associated with specific current and next forks in the Discv5 protocol, facilitating analysis of fork adoption and transition trends over time.
   columns:
@@ -211,24 +224,57 @@ models:
   - name: cnt
     description: Count of peer visits for the given date, label, and fork.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224667'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.next_fork.data_type
-    - columns.fork.description
-    - columns.fork.data_type
-    - columns.peer_id.data_type
-    - columns.next_fork.description
-    - columns.peer_id.description
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv5_peers
   description: The `int_p2p_discv5_peers` model consolidates peer visit data to analyze peer properties, fork versions, and network behavior within specified timeframes for the Discv5 protocol.
   columns:
@@ -329,19 +375,13 @@ models:
     description: Provider information for the peer.
     data_type: String
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224763'
-    _generated_fields:
-    - description
-    - columns.fork_digest.description
-    - config.tags
-    - config.materialized
-    - columns.fork_digest.data_type
-    - columns.cl_fork_name.description
-    - columns.cl_fork_name.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv5_topology_latest
   description: This model captures the latest peer-to-peer discovery topology, including peer and neighbor information along with associated metadata and geographical details, to analyze network connectivity patterns.
   columns:
@@ -453,25 +493,13 @@ models:
     description: Count of edges between peer and neighbor for the day.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224874'
-    _generated_fields:
-    - description
-    - columns.client.data_type
-    - columns.ip.description
-    - config.tags
-    - config.materialized
-    - columns.cl_fork_name.description
-    - columns.peer_id.data_type
-    - columns.peer_id.description
-    - columns.ip.data_type
-    - columns.cl_fork_name.data_type
-    - columns.cl_next_fork_name.description
-    - columns.cl_next_fork_name.data_type
-    - columns.client.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv4_clients_daily
   description: The `int_p2p_discv4_clients_daily` model aggregates peer discovery data for the discv4 protocol, providing daily metrics on peer attributes to monitor network participation and diversity.
   columns:
@@ -516,28 +544,57 @@ models:
   - name: value
     description: Count of peers corresponding to the metric and label.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.223947'
-    _generated_fields:
-    - columns.client.description
-    - description
-    - columns.generic_provider.data_type
-    - columns.client.data_type
-    - columns.date.description
-    - columns.platform.description
-    - columns.platform.data_type
-    - config.tags
-    - config.materialized
-    - columns.generic_provider.description
-    - columns.peer_country.description
-    - columns.peer_country.data_type
-    - columns.peer_id.data_type
-    - columns.peer_id.description
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv4_topology_latest
   description: The model captures the latest peer-to-peer discovery topology by aggregating neighbor relationships and associated metadata, facilitating network analysis and monitoring of discv4 peers.
   columns:
@@ -625,21 +682,13 @@ models:
     description: Count of edges between peer and neighbor for the given day.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224232'
-    _generated_fields:
-    - description
-    - columns.client.data_type
-    - config.tags
-    - config.materialized
-    - columns.peer_id.data_type
-    - columns.peer_id.description
-    - columns.ip.data_type
-    - columns.ip.description
-    - columns.client.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv4_visits_daily
   description: The `int_p2p_discv4_visits_daily` model aggregates daily peer-to-peer DISCv4 visit data, providing insights into visit volume and success rates for network analysis and monitoring.
   columns:
@@ -654,6 +703,19 @@ models:
     description: The total number of visits that ended on the given date.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: successful_visits
     description: The count of visits that either had no dial errors or where crawl errors are null, indicating successful connection attempts.
     data_type: UInt64
@@ -662,23 +724,43 @@ models:
     description: The number of unique crawl sessions initiated on the given date.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224294'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.total_visits.description
-    - columns.crawls.description
-    - columns.successful_visits.data_type
-    - columns.crawls.data_type
-    - columns.successful_visits.description
-    - columns.total_visits.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_p2p_discv5_visits_daily
   description: The `int_p2p_discv5_visits_daily` model aggregates daily peer-to-peer network visit data, focusing on successful and total visits associated with specific protocol forks for analytical insights.
   columns:
@@ -703,20 +785,57 @@ models:
     description: Total number of visits recorded on the given day.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   - name: successful_visits
     description: Number of visits that were successful, excluding errors or failed attempts.
     data_type: UInt64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.224925'
-    _generated_fields:
-    - description
-    - columns.fork_digest.description
-    - config.tags
-    - config.materialized
-    - columns.fork_digest.data_type
-    - columns.cl_fork_name.description
-    - columns.cl_fork_name.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

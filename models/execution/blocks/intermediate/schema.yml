@@ -22,24 +22,57 @@ models:
   - name: cnt
     description: The total number of execution blocks recorded for the given client and version on that date.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.675421'
-    _generated_fields:
-    - columns.client.description
-    - description
-    - columns.client.data_type
-    - columns.date.description
-    - columns.version.description
-    - config.tags
-    - config.materialized
-    - columns.cnt.data_type
-    - columns.version.data_type
-    - columns.cnt.description
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: int_execution_blocks_gas_usage_daily
   description: This model aggregates daily gas usage and limits from execution blocks to monitor gas consumption efficiency over time.
   columns:
@@ -62,20 +95,40 @@ models:
     description: Fraction of gas used relative to the gas limit, representing utilization efficiency.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.675479'
-    _generated_fields:
-    - description
-    - columns.gas_limit_sum.description
-    - columns.gas_used_fraq.description
-    - columns.gas_limit_sum.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.gas_used_fraq.data_type
-    - columns.gas_used_sum.description
-    - columns.gas_used_sum.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

@@ -13,19 +13,13 @@ models:
     description: The percentage change in the number of transactions compared to the previous period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072373'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.change_pct.description
-    - columns.value.description
-    - columns.value.data_type
-    - columns.change_pct.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_7d
   description: This view provides a snapshot of the number of active accounts involved in API transactions over the last 7 days, enabling monitoring of account engagement trends.
   columns:
@@ -38,19 +32,13 @@ models:
     description: The percentage change in active accounts compared to the previous period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072423'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.change_pct.description
-    - columns.value.description
-    - columns.value.data_type
-    - columns.change_pct.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_project_total
   description: This view provides a snapshot of the total number of active accounts involved in API execution transactions across all projects, aggregated over the entire time period.
   columns:
@@ -63,19 +51,13 @@ models:
     description: The total count of active accounts engaged in API execution transactions, representing an aggregate number.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072591'
-    _generated_fields:
-    - description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_total
   description: The `api_execution_transactions_active_accounts_total` model provides a snapshot of the total number of active accounts involved in API execution transactions over all time, supporting business insights into account engagement levels.
   columns:
@@ -84,17 +66,13 @@ models:
     description: The total count of active accounts involved in API execution transactions, representing a numeric value at a specific point in time.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072745'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_project_monthly_top5
   description: This view aggregates the number of active accounts involved in API execution transactions, focusing on the top 5 projects on a monthly basis to support performance and usage analysis.
   columns:
@@ -113,21 +91,13 @@ models:
     description: The count of active accounts for the specified project and month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072496'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_sector_weekly
   description: This view provides weekly counts of active accounts involved in API execution transactions, segmented by sector, to support monitoring and analysis of transaction activity across different business sectors.
   columns:
@@ -145,22 +115,52 @@ models:
   - name: value
     description: The number of active accounts engaged in API execution transactions during the specified week.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072720'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_sector_hourly
   description: This view aggregates the count of active accounts involved in API execution transactions, segmented by sector and hourly granularity for performance monitoring and analysis.
   columns:
@@ -178,22 +178,57 @@ models:
   - name: value
     description: A bitmap-encoded count of unique active accounts within each sector for the given hour.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072679'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_by_project_monthly_top5
   description: This view aggregates the top 5 projects by transaction count on a monthly basis, enabling analysis of project activity trends over time.
   columns:
@@ -214,19 +249,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072786'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_by_project_total
   description: This view aggregates the total number of API execution transactions across all projects over the entire time period, providing insights into overall transaction volume.
   columns:
@@ -241,17 +268,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072928'
-    _generated_fields:
-    - description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_by_sector_weekly
   description: The api_execution_transactions_by_sector_weekly model aggregates the number of API execution transactions per sector on a weekly basis to support trend analysis and reporting.
   columns:
@@ -269,22 +290,52 @@ models:
   - name: value
     description: The total number of API execution transactions recorded for the sector during the week.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073055'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_by_sector_hourly
   description: This view aggregates the total number of API execution transactions per sector on an hourly basis, providing insights into transaction volume trends across different sectors over time.
   columns:
@@ -302,24 +353,94 @@ models:
   - name: value
     description: The total number of API execution transactions recorded during the specified hour for the given sector.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073016'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_cnt_daily
   description: The api_execution_transactions_cnt_daily model provides a daily summary of successful API transaction counts categorized by transaction type, supporting operational monitoring and trend analysis.
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
   columns:
 
   - name: date
@@ -335,22 +456,16 @@ models:
   - name: value
     description: The number of successful transactions of the specified type on the given date.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        - zero_count
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073095'
-    _generated_fields:
-    - description
-    - columns.transaction_type.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.transaction_type.description
-    - columns.value.description
-    - columns.value.data_type
-    - columns.date.data_type
-
 - name: api_execution_transactions_cnt_total
   description: This view aggregates the total number of successful API transactions grouped by transaction type across all time, providing insights into transaction volume per category.
   columns:
@@ -365,17 +480,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073124'
-    _generated_fields:
-    - description
-    - columns.transaction_type.data_type
-    - config.tags
-    - config.materialized
-    - columns.transaction_type.description
-    - columns.value.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_7d
   description: The api_execution_transactions_fees_native_7d model provides a snapshot of native transaction fees and their percentage change over the last 7 days, supporting analysis of fee trends and performance metrics.
   columns:
@@ -388,19 +497,13 @@ models:
     description: The percentage change in native transaction fees compared to the previous period.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073155'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.change_pct.description
-    - columns.value.description
-    - columns.value.data_type
-    - columns.change_pct.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_project_monthly_top5
   description: This view aggregates the top 5 projects by native transaction fees on a monthly basis, providing insights into fee distribution and trends over time.
   columns:
@@ -421,19 +524,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073194'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_project_total
   description: This view aggregates total native execution transaction fees per project over the entire available time span, enabling analysis of fee distribution across projects.
   columns:
@@ -448,17 +543,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073265'
-    _generated_fields:
-    - description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_sector_weekly
   description: This view aggregates native transaction fees by sector on a weekly basis to support analysis of fee trends across different industry sectors.
   columns:
@@ -476,22 +565,52 @@ models:
   - name: value
     description: The total sum of native transaction fees for the sector during the specified week, in the relevant currency units.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073388'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_sector_hourly
   description: This view aggregates native transaction fees by sector on an hourly basis, providing insights into fee distribution across different sectors over time.
   columns:
@@ -509,22 +628,57 @@ models:
   - name: value
     description: The total sum of native transaction fees for the sector during the hour, rounded to two decimal places.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073348'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      training_period:
+        period: day
+        count: 21
+      seasonality: hour_of_week
+      detection_period:
+        period: hour
+        count: 6
+      detection_delay:
+        period: hour
+        count: 1
+      anomaly_sensitivity: 3.5
+      ignore_small_changes:
+        spike_failure_percent_threshold: 15
+        drop_failure_percent_threshold: 25
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: hour
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_total
   description: The `api_execution_transactions_fees_native_total` model aggregates total native execution transaction fees over all time periods for analytical purposes, supporting business insights into fee accumulation.
   columns:
@@ -533,17 +687,13 @@ models:
     description: The total amount of native execution transaction fees, represented as a numeric value, aggregated across all relevant transactions.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073413'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_gas_share_by_project_daily
   description: This view calculates the daily share of gas used by each project in relation to the total gas consumption across all projects, providing insights into project-specific gas usage patterns over time.
   columns:
@@ -565,20 +715,57 @@ models:
   - name: value
     description: Percentage of gas share for the project on the given date, rounded to 2 decimal places.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073451'
-    _generated_fields:
-    - columns.day_gas_used.description
-    - description
-    - columns.day_gas_used.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_gas_used_daily
   description: This view aggregates daily gas consumption and pricing metrics for successful API transaction executions, facilitating performance and cost analysis at a daily granularity.
   columns:
@@ -597,6 +784,19 @@ models:
     description: Total amount of gas consumed by transactions of the specified type on that date, measured in units of gas.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
   - name: gas_price_avg
     description: Average gas price (e.g., in gwei) paid during transactions of the specified type on that date.
     data_type: Float64
@@ -605,25 +805,43 @@ models:
     description: Median gas price (e.g., in gwei) paid during transactions of the specified type on that date.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073504'
-    _generated_fields:
-    - description
-    - columns.transaction_type.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.gas_used.description
-    - columns.transaction_type.description
-    - columns.gas_used.data_type
-    - columns.gas_price_avg.description
-    - columns.gas_price_avg.data_type
-    - columns.gas_price_median.description
-    - columns.gas_price_median.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_total
   description: The api_execution_transactions_total model provides a consolidated count of API execution transactions over the entire available time span, enabling analysis of total transaction volume.
   columns:
@@ -632,17 +850,13 @@ models:
     description: The total number of API execution transactions recorded, representing a cumulative count across all time periods.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073577'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.value.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_value_daily
   description: This view aggregates daily transaction values for API executions on the xDai network, providing insights into transaction volume and value metrics for operational analysis.
   columns:
@@ -669,25 +883,43 @@ models:
     description: The median transaction value in xDai for successful transactions on that date and type.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073630'
-    _generated_fields:
-    - description
-    - columns.xdai_value.description
-    - columns.xdai_value.data_type
-    - columns.transaction_type.data_type
-    - columns.date.description
-    - config.tags
-    - config.materialized
-    - columns.xdai_value_median.description
-    - columns.xdai_value_median.data_type
-    - columns.transaction_type.description
-    - columns.xdai_value_avg.description
-    - columns.xdai_value_avg.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: fct_execution_transactions_by_project_monthly_top5
   description: This model aggregates and ranks execution transactions by project on a monthly basis, highlighting the top 5 projects per month based on transaction volume and related metrics for business analysis.
   columns:
@@ -732,30 +964,16 @@ models:
     description: Corresponding metric value for the project and month.
     data_type: Float64
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2018-10-01"
       batch_months: 12
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073697'
-    _generated_fields:
-    - description
-    - columns.project.description
-    - columns.fee_native.data_type
-    - columns.fee_native.description
-    - columns.month.description
-    - config.tags
-    - config.materialized
-    - columns.gas_used.description
-    - columns.project.data_type
-    - columns.txs.description
-    - columns.txs.data_type
-    - columns.gas_used.data_type
-    - columns.active_state.data_type
-    - columns.month.data_type
-    - columns.active_state.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_transactions_by_project_snapshots
   description: This model aggregates transaction, fee, and active account data by project over various time windows, enabling comparative analysis of recent and historical performance metrics.
   columns:
@@ -786,15 +1004,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073734'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.max_date.description
-    - columns.max_date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_transactions_snapshots
   description: This table provides snapshot metrics of execution transactions, including counts, fees, and active account counts over various time windows for business analysis and trend monitoring.
   columns:
@@ -821,15 +1035,11 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073884'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-    - columns.max_date.description
-    - columns.max_date.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: fct_execution_transactions_by_sector_weekly
   description: The fct_execution_transactions_by_sector_weekly model aggregates weekly transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across different sectors.
   columns:
@@ -863,25 +1073,11 @@ models:
     full_refresh:
       start_date: "2018-10-01"
       batch_months: 12
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073851'
-    _generated_fields:
-    - columns.active_accounts.description
-    - description
-    - columns.week.data_type
-    - columns.fee_native_sum.data_type
-    - columns.sector.description
-    - config.tags
-    - config.materialized
-    - columns.sector.data_type
-    - columns.fee_native_sum.description
-    - columns.gas_used_sum.description
-    - columns.week.description
-    - columns.txs.description
-    - columns.txs.data_type
-    - columns.active_accounts.data_type
-    - columns.gas_used_sum.data_type
-
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
 - name: api_execution_transactions_by_project_ranges_top20
   description: This view aggregates the top 20 API transaction counts per project within specified time ranges, providing insights into transaction volume distribution and identifying less active projects.
   columns:
@@ -906,21 +1102,13 @@ models:
     description: Project label (or "Others").
     data_type: String
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072883'
-    _generated_fields:
-    - description
-    - columns.bucket.description
-    - config.tags
-    - config.materialized
-    - columns.window.data_type
-    - columns.bucket.data_type
-    - columns.value.description
-    - columns.value.data_type
-    - columns.window.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_project_ranges_top20
   description: This model identifies the top 20 project ranges with the highest number of active accounts over different time windows, aggregating smaller ranges into an 'Others' category for analysis.
   columns:
@@ -945,21 +1133,13 @@ models:
     description: Project label (or "Others").
     data_type: String
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072557'
-    _generated_fields:
-    - description
-    - columns.bucket.description
-    - config.tags
-    - config.materialized
-    - columns.window.data_type
-    - columns.bucket.data_type
-    - columns.value.description
-    - columns.value.data_type
-    - columns.window.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_project_ranges_top20
   description: This view aggregates the top 20 native API transaction fee buckets by project for different time ranges, providing insights into fee distribution and volume.
   columns:
@@ -984,21 +1164,13 @@ models:
     description: Project label (or "Others").
     data_type: String
   meta:
-    owner: analytics_engineer
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073234'
-    _generated_fields:
-    - description
-    - columns.bucket.description
-    - config.tags
-    - config.materialized
-    - columns.window.data_type
-    - columns.bucket.data_type
-    - columns.value.description
-    - columns.value.data_type
-    - columns.window.description
-
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_gas_used_weekly
   description: This view aggregates weekly gas usage for successful API transactions, categorized by transaction type, to support performance and cost analysis over time.
   columns:
@@ -1024,41 +1196,57 @@ models:
   - name: value
     description: Total gas used in transactions on this date.
     data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073552'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.gas_price_avg.description
-    - columns.label.description
-    - columns.gas_price_avg.data_type
-    - columns.gas_price_median.description
-    - columns.gas_price_median.data_type
-    - columns.date.data_type
-
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      training_period:
+        period: week
+        count: 26
+      detection_period:
+        period: week
+        count: 2
+      detection_delay:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: week
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_active_accounts_by_sector_daily
   description: This view provides daily counts of active accounts involved in API transaction initiations, segmented by sector, to monitor sector-specific activity trends over time.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072637'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
   columns:
 
   - name: date
@@ -1075,23 +1263,59 @@ models:
     description: The number of unique active accounts for the given sector on the specified date.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_by_sector_daily
   description: The api_execution_transactions_by_sector_daily model provides daily aggregated counts of API execution transactions categorized by sector, enabling trend analysis and performance monitoring over time.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.072974'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
   columns:
 
   - name: date
@@ -1108,23 +1332,59 @@ models:
     description: The total number of API execution transactions for the given sector on the specified date.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_transactions_fees_native_by_sector_daily
   description: This view aggregates daily native transaction fees by sector, providing insights into sector-specific fee trends over time for operational and strategic analysis.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073308'
-    _generated_fields:
-    - description
-    - columns.date.description
-    - columns.label.data_type
-    - config.tags
-    - config.materialized
-    - columns.value.description
-    - columns.label.description
-    - columns.value.data_type
-    - columns.date.data_type
   columns:
 
   - name: date
@@ -1141,32 +1401,62 @@ models:
     description: The total sum of native transaction fees for the sector on the given date, expressed in the relevant currency units.
     data_type: UInt64
 
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: fct_execution_transactions_by_sector_daily
   description: The fct_execution_transactions_by_sector_daily model aggregates daily execution transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across different sectors.
   meta:
-    owner: analytics-team
+    owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2018-10-01"
       batch_months: 12
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:59.073795'
-    _generated_fields:
-    - columns.active_accounts.description
-    - description
-    - columns.date.description
-    - columns.fee_native_sum.data_type
-    - columns.sector.description
-    - config.tags
-    - config.materialized
-    - columns.sector.data_type
-    - columns.fee_native_sum.description
-    - columns.gas_used_sum.description
-    - columns.txs.description
-    - columns.txs.data_type
-    - columns.active_accounts.data_type
-    - columns.gas_used_sum.data_type
-    - columns.date.data_type
   columns:
 
   - name: date
@@ -1194,3 +1484,8 @@ models:
   - name: fee_native_sum
     description: The total native currency fees accumulated from transactions, rounded to six decimal places.
     data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
