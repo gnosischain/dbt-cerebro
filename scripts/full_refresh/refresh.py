@@ -12,6 +12,9 @@ Usage:
     
     # Add new token without destroying existing data:
     python refresh.py --select model_name --stage new_token --incremental-only
+
+    # Dev workflow: batch refresh in playground, defer upstream refs to prod:
+    python refresh.py --select model_name --defer --state ./prod-state/ --incremental-only
 """
 
 import argparse
@@ -329,7 +332,8 @@ def run_model_batched(
     state: Optional[dict] = None,
     incremental_only: bool = False,
     stage_filter: Optional[List[str]] = None,
-    delay: int = 0
+    delay: int = 0,
+    defer_args: Optional[List[str]] = None
 ) -> bool:
     """
     Run a model with batched execution based on its config.
@@ -344,6 +348,7 @@ def run_model_batched(
         state: Resume state dict
         incremental_only: If True, never use --full-refresh (append only)
         stage_filter: If set, only run stages with names in this list
+        defer_args: Extra dbt flags for deferral (e.g. ["--defer", "--favor-state", "--state", "path"])
     
     Returns True if successful, False otherwise.
     """
@@ -420,6 +425,8 @@ def run_model_batched(
             if is_first_run and not incremental_only:
                 cmd.append("--full-refresh")
                 is_first_run = False
+            if defer_args:
+                cmd.extend(defer_args)
             
             # Format output
             vars_display = {k: v for k, v in stage_vars.items()}
@@ -449,12 +456,15 @@ def run_model_batched(
 def run_model_normal(
     model: str,
     full_refresh: bool,
-    dry_run: bool = False
+    dry_run: bool = False,
+    defer_args: Optional[List[str]] = None
 ) -> bool:
     """Run a model normally (no batching)."""
     cmd = ["run", "-s", model]
     if full_refresh:
         cmd.append("--full-refresh")
+    if defer_args:
+        cmd.extend(defer_args)
     
     refresh_flag = " --full-refresh" if full_refresh else ""
     print(f"\n  {model} (standard run){refresh_flag}")
@@ -485,6 +495,9 @@ Examples:
   
   # Add a new token without full refresh:
   %(prog)s --select int_execution_tokens_balances_daily --stage new_token --incremental-only
+  
+  # Dev workflow - batch refresh, defer upstream refs to prod:
+  %(prog)s --select model_name --defer --state ./prod-state/ --incremental-only
         """
     )
     parser.add_argument(
@@ -519,8 +532,33 @@ Examples:
         default=0,
         help="Seconds to wait between batches, letting background merges drain (e.g., --delay 30)"
     )
+    parser.add_argument(
+        "--defer",
+        action="store_true",
+        help="Defer unselected upstream refs to a production manifest (requires --state)"
+    )
+    parser.add_argument(
+        "--favor-state",
+        action="store_true",
+        help="Prefer production state for upstream refs even if local versions exist"
+    )
+    parser.add_argument(
+        "--state",
+        type=str,
+        default=None,
+        help="Path to directory containing prod manifest.json for deferral (e.g., ./prod-state/)"
+    )
     
     args = parser.parse_args()
+    
+    # Build defer flags to forward to every dbt run command
+    defer_args: List[str] = []
+    if args.defer:
+        defer_args.append("--defer")
+    if args.favor_state:
+        defer_args.append("--favor-state")
+    if args.state:
+        defer_args.extend(["--state", args.state])
     
     # Load or initialize state
     state = load_state() if args.resume else {"completed_models": [], "current_model": None, "current_batch": 0}
@@ -566,10 +604,11 @@ Examples:
                 model, config, True, args.dry_run, state,
                 incremental_only=args.incremental_only,
                 stage_filter=stage_filter,
-                delay=args.delay
+                delay=args.delay,
+                defer_args=defer_args
             )
         else:
-            success = run_model_normal(model, True, args.dry_run)
+            success = run_model_normal(model, True, args.dry_run, defer_args=defer_args)
         
         if not success and not args.dry_run:
             print(f"\nFailed at model: {model}")

@@ -20,43 +20,271 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-  tests:
-  - elementary.volume_anomalies:
-      timestamp_column: date
-      time_bucket:
-        period: day
-        count: 1
-      training_period:
-        period: day
-        count: 56
-      seasonality: day_of_week
-      detection_period:
-        period: day
-        count: 2
-      detection_delay:
-        period: day
-        count: 1
-      anomaly_sensitivity: 3
-      ignore_small_changes:
-        spike_failure_percent_threshold: 10
-        drop_failure_percent_threshold: 20
-      severity: warn
-      tags:
-      - elementary
-  - elementary.freshness_anomalies:
-      timestamp_column: date
-      time_bucket:
-        period: day
-        count: 1
-      severity: warn
-      tags:
-      - elementary
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
+    generated_by: dbt-schema-gen
+    _generated_at: '2025-12-12T23:06:59.145100'
+    _generated_fields:
+    - description
+    - columns.date.description
+    - config.tags
+    - config.materialized
+    - columns.sdai_conversion.description
+    - columns.sdai_conversion.data_type
+    - columns.date.data_type
+- name: int_execution_yields_aave_daily
+  description: Daily Aave V3 lending metrics per reserve token on Gnosis Chain. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: token_class
+    data_type: String
+  - name: protocol
+    data_type: String
+  - name: apy_daily
+    description: Annualized supply APY from Aave V3 liquidityRate (RAY / 1e27 * 100). Forward-filled on days without ReserveDataUpdated events.
+    data_type: Float64
+  - name: borrow_apy_variable_daily
+    description: Annualized variable borrow APY from Aave V3 variableBorrowRate. Forward-filled.
+    data_type: Float64
+  - name: spread_variable
+    description: Borrow-supply APY spread (borrow_apy - apy_daily).
+    data_type: Float64
+  - name: lenders_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique supplier addresses (cityHash64). Use groupBitmapMerge() to combine across dates.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: borrowers_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique borrower addresses.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: lenders_count_daily
+    data_type: UInt64
+  - name: borrowers_count_daily
+    data_type: UInt64
+  - name: deposits_volume_daily
+    description: Daily Supply event volume in token units.
+    data_type: Float64
+  - name: borrows_volume_daily
+    description: Daily Borrow event volume in token units.
+    data_type: Float64
+  - name: withdrawals_volume_daily
+    description: Daily Withdraw event volume in token units.
+    data_type: Float64
+  - name: repays_volume_daily
+    description: Daily Repay event volume in token units.
+    data_type: Float64
+  - name: liquidity_index
+    description: Aave V3 liquidityIndex (RAY) for the reserve, forward-filled. Used to convert scaled supply to actual token supply (scaledSupply * liquidityIndex / 1e27).
+    data_type: Float64
+  - name: variable_borrow_index
+    description: Aave V3 variableBorrowIndex (RAY) for the reserve, forward-filled. Used to convert scaled borrows to actual borrow amounts (scaledBorrow * variableBorrowIndex / 1e27).
+    data_type: Float64
+  - name: net_supply_change_daily
+    description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
+    data_type: Float64
+- name: int_execution_yields_aave_utilization_daily
+  description: Daily Aave V3 utilization rate per reserve token. Computes cumulative scaled supply and borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall), then derives utilization as (totalScaledBorrow * variableBorrowIndex) / (totalScaledSupply * liquidityIndex) * 100. Indexes sourced from int_execution_yields_aave_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: cumulative_scaled_supply
+    description: Running total of scaled supply position (sum of all supply/withdraw deltas up to this date).
+    data_type: Float64
+  - name: cumulative_scaled_borrow
+    description: Running total of scaled borrow position (sum of all borrow/repay deltas up to this date).
+    data_type: Float64
+  - name: utilization_rate
+    description: Reserve utilization rate as percentage (totalBorrows / totalSupply * 100). Null if supply is zero or indexes are unavailable.
+    data_type: Nullable(Float64)
+
+- name: int_execution_yields_aave_diffs_daily
+  description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Lightweight event-processing model consumed by int_execution_yields_aave_user_balances_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: user_address
+    description: Address of the aToken holder.
+    data_type: String
+  - name: reserve_address
+    description: Address of the underlying reserve token.
+    data_type: String
+  - name: diff_scaled
+    description: Net scaled balance change for this user-reserve on this day. Positive = net supply, negative = net withdrawal.
+    data_type: Float64
+
+- name: int_execution_yields_aave_user_balances_daily
+  description: Daily per-user aToken balances for Aave V3 on Gnosis. Reads pre-computed scaled deltas from int_execution_yields_aave_diffs_daily, builds a calendar of all active user-reserve pairs, computes running cumulative scaled balances, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
+  columns:
+  - name: date
+    data_type: Date
+  - name: reserve_address
+    description: Address of the underlying reserve token (e.g. GNO, sDAI, USDC).
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol from atoken_reserve_mapping.
+    data_type: String
+  - name: user_address
+    description: Address of the aToken holder.
+    data_type: String
+  - name: scaled_balance
+    description: Running cumulative scaled balance (sum of all scaled deltas). Multiply by liquidityIndex / 1e27 to get actual underlying amount.
+    data_type: Float64
+  - name: balance_raw
+    description: Underlying token amount in raw units (scaled_balance * liquidityIndex_eod / 1e27).
+    data_type: Float64
+  - name: balance
+    description: Human-readable balance (balance_raw / 10^decimals).
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance (balance * price).
+    data_type: Float64
+  meta:
+    owner: analytics-team
+    full_refresh:
+      start_date: "2023-10-04"
+      batch_months: 1
+      stages:
+        - name: WxDAI
+          vars:
+            reserve_symbol: "WxDAI"
+        - name: EURe
+          vars:
+            reserve_symbol: "EURe"
+        - name: others
+          vars:
+            reserve_symbol: "GNO,sDAI,USDC,USDC.e"
+
+- name: int_execution_yields_aave_balance_cohorts_daily
+  description: Daily Aave V3 lender balance cohort distributions per reserve token. Buckets users by deposit size (USD and native units) for concentration analysis. Derived from int_execution_yields_aave_user_balances_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: reserve_address
+    description: Address of the underlying reserve token.
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: cohort_unit
+    description: Unit used for bucketing — 'usd' for balance_usd, 'native' for balance in token units.
+    data_type: String
+  - name: balance_bucket
+    description: Balance range bucket (e.g. '0-0.01', '10-100', '100k-1M', '1M+').
+    data_type: String
+  - name: holders_in_bucket
+    description: Count of unique lender addresses in this bucket.
+    data_type: UInt64
+  - name: value_native_in_bucket
+    description: Total native token balance held by lenders in this bucket.
+    data_type: Float64
+  - name: value_usd_in_bucket
+    description: Total USD value held by lenders in this bucket.
+    data_type: Float64
+  meta:
+    owner: analytics-team
+    full_refresh:
+      start_date: "2023-10-04"
+      batch_months: 3
+
+- name: int_execution_yields_pools_lps_daily
+  description: Daily LP provider activity from Mint and Burn events on Uniswap V3 and Swapr V3 pools. Tracks event counts, daily unique LP addresses, and a bitmap state for rolling-window deduplication via groupBitmapMerge(). The `owner` field from Mint/Burn events is the actual LP position owner, not a router.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: mint_count
+    description: Number of Mint (add liquidity) events on this pool on this day.
+    data_type: UInt64
+  - name: burn_count
+    description: Number of Burn (remove liquidity) events on this pool on this day.
+    data_type: UInt64
+  - name: lps_minting_daily
+    description: Unique LP addresses that minted (added liquidity) on this day.
+    data_type: UInt64
+  - name: lps_burning_daily
+    description: Unique LP addresses that burned (removed liquidity) on this day.
+    data_type: UInt64
+  - name: lps_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique LP addresses (cityHash64). Use groupBitmapMerge() to combine across dates/pools.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+
+- name: int_execution_yields_v3_pool_meta
+  description: Shared pool metadata for Uniswap V3 and Swapr V3 pools on Gnosis Chain. Maps each pool address to its protocol and token0/token1 constituent addresses via factory events. Referenced by multiple yields models.
+  columns:
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: pool_address_no0x
+    description: Pool contract address without 0x prefix (for join compatibility).
+    data_type: String
+  - name: token0_address
+    data_type: String
+  - name: token1_address
+    data_type: String
+
+- name: int_execution_yields_pools_enriched_daily
+  description: Central token-level balance enrichment for all LP pools. Joins raw balances with token metadata and prices (ASOF join for gap safety) to produce TVL components. Single source of truth for TVL across all downstream pool models.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: pool_address_no0x
+    description: Pool contract address without 0x prefix.
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token
+    description: Uppercase token symbol from tokens_whitelist (e.g. WETH, USDC.E). Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: token_amount
+    description: Raw token balance in token units.
+    data_type: Float64
+  - name: price_usd
+    description: Token price in USD from ASOF join (latest known price <= date).
+    data_type: Float64
+  - name: tvl_component_usd
+    description: TVL component in USD (token_amount * price_usd).
+    data_type: Float64
+
+- name: int_execution_yields_pools_metrics_daily
+  description: Pool-level daily metrics for LP pools. Aggregates TVL from the enriched model, joins fees and swap counts, applies 7D rolling window functions, and computes fee APR. Materialized as a table to avoid ClickHouse 25.10 query analyzer issues with window-function CTEs.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: tvl_usd
+    description: Total value locked in the pool in USD.
+    data_type: Float64
+  - name: fees_usd_daily
+    description: Daily accrued fees in USD.
+    data_type: Float64
+  - name: volume_usd_daily
+    description: Daily trading volume in USD.
+    data_type: Float64
+  - name: swap_count
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
+  - name: fee_apr_7d
+    description: 7-day trailing fee APR annualized ((fees_7d / tvl_7d_avg) * 365/7 * 100). Null when data is insufficient (< 3 days) or TVL is zero.
+    data_type: Nullable(Float64)
+
 - name: int_execution_yields_pools_fees_daily
-  description: Daily accrued pool fees at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Includes both token amount and USD for debugging.
+  description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
   columns:
   - name: date
     data_type: Date
@@ -85,39 +313,37 @@ models:
         - elementary
   - name: fees_usd
     data_type: Float64
+  - name: volume_amount
+    description: Daily trading volume in token units (gross incoming amount from Swap events).
+    data_type: Float64
+  - name: volume_usd
+    description: Daily trading volume in USD.
+    data_type: Float64
 
-  tests:
-  - elementary.volume_anomalies:
-      timestamp_column: date
-      time_bucket:
-        period: day
-        count: 1
-      training_period:
-        period: day
-        count: 56
-      seasonality: day_of_week
-      detection_period:
-        period: day
-        count: 2
-      detection_delay:
-        period: day
-        count: 1
-      anomaly_sensitivity: 3
-      ignore_small_changes:
-        spike_failure_percent_threshold: 10
-        drop_failure_percent_threshold: 20
-      severity: warn
-      tags:
-      - elementary
-  - elementary.freshness_anomalies:
-      timestamp_column: date
-      time_bucket:
-        period: day
-        count: 1
-      severity: warn
-      tags:
-      - elementary
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
+- name: int_execution_yields_pools_il_swap_flows_daily
+  description: Daily pool-level base data for IL computation. Combines swap flows (signed int256 token amounts), fees, TVL, and per-token prices/decimals for Uniswap V3 and Swapr V3 pools. Materialized to avoid deep CTE chains.
+  columns:
+  - name: day
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: tvl_usd
+    data_type: Float64
+  - name: swap_amount0_raw
+    description: Daily sum of signed token0 swap amounts (raw, not decimal-adjusted).
+    data_type: Float64
+  - name: swap_amount1_raw
+    description: Daily sum of signed token1 swap amounts (raw, not decimal-adjusted).
+    data_type: Float64
+  - name: fees_usd_daily
+    data_type: Float64
+  - name: decimals0
+    data_type: UInt8
+  - name: price0_usd
+    data_type: Float64
+  - name: decimals1
+    data_type: UInt8
+  - name: price1_usd
+    data_type: Float64

@@ -1,0 +1,77 @@
+{{
+    config(
+        materialized='table',
+        engine='ReplacingMergeTree()',
+        order_by='(date, protocol, pool_address, token_address)',
+        partition_by='toStartOfMonth(date)',
+        settings={'allow_nullable_key': 1},
+        tags=['dev', 'execution', 'yields', 'pools', 'daily']
+    )
+}}
+
+{#-
+  Per-token TVL composition within pools, with server-side denomination.
+
+  Three TVL columns are pre-computed:
+    tvl_usd        – component TVL in USD
+    tvl_in_token0  – component TVL denominated in pool's token0 (cross-rate)
+    tvl_in_token1  – component TVL denominated in pool's token1 (cross-rate)
+-#}
+
+WITH
+
+pools AS (
+    SELECT DISTINCT
+        date AS date,
+        protocol AS protocol,
+        pool_address AS pool_address,
+        pool AS pool,
+        token AS ref_token
+    FROM {{ ref('fct_execution_yields_pools_daily') }}
+    WHERE date < today()
+),
+
+pool_token_symbols AS (
+    SELECT
+        m.protocol AS protocol,
+        m.pool_address_no0x AS pool_address_no0x,
+        tm0.token AS token0_symbol,
+        tm1.token AS token1_symbol
+    FROM {{ ref('int_execution_yields_v3_pool_meta') }} m
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm0
+        ON tm0.token_address = m.token0_address
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm1
+        ON tm1.token_address = m.token1_address
+)
+
+SELECT
+    be.date AS date,
+    be.protocol AS protocol,
+    be.pool_address AS pool_address,
+    be.token_address AS token_address,
+    be.token AS series,
+    be.token_amount AS token_amount,
+    be.tvl_component_usd AS tvl_usd,
+    be.tvl_component_usd / nullIf(p0.price_usd, 0) AS tvl_in_token0,
+    be.tvl_component_usd / nullIf(p1.price_usd, 0) AS tvl_in_token1,
+    pts.token0_symbol AS token0_symbol,
+    pts.token1_symbol AS token1_symbol,
+    po.ref_token AS ref_token,
+    po.pool AS pool
+FROM {{ ref('int_execution_yields_pools_enriched_daily') }} be
+INNER JOIN pools po
+    ON po.date = be.date
+   AND po.protocol = be.protocol
+   AND po.pool_address = be.pool_address
+INNER JOIN pool_token_symbols pts
+    ON pts.protocol = be.protocol
+   AND pts.pool_address_no0x = be.pool_address_no0x
+LEFT JOIN {{ ref('stg_yields__token_prices_daily') }} p0
+    ON p0.token = pts.token0_symbol
+   AND p0.date = be.date
+LEFT JOIN {{ ref('stg_yields__token_prices_daily') }} p1
+    ON p1.token = pts.token1_symbol
+   AND p1.date = be.date
+WHERE be.token IS NOT NULL
+  AND be.token != ''
+  AND be.date < today()
