@@ -8,7 +8,7 @@
             SELECT database, name
             FROM system.tables
             WHERE database = '{{ db }}'
-              AND name LIKE '%\\_\\_tmp\\_%' ESCAPE '\\'
+              AND name LIKE '%__tmp_%'
         {% endset %}
 
         {% set orphans = run_query(orphan_query).rows %}
