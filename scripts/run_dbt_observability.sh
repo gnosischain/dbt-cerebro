@@ -74,11 +74,34 @@ run_step "dbt-run" \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 
-# ── 4. Tests ─────────────────────────────────────────────────────────────
-run_step "dbt-test" \
-  dbt test --select tag:production \
-  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-  || true
+# ── 3. Tests (batched to stay under ClickHouse max_table_num_to_throw) ──
+# Elementary's on_run_end hook creates temp tables per test result.
+# Running all 900+ tests in one shot exceeds the 1000-table limit.
+# Batching by model layer keeps temp table count manageable; each batch
+# cleans up its temp tables via on_run_end before the next batch starts.
+
+for test_batch in \
+  "tag:production,resource_type:source" \
+  "tag:production,path:models/consensus/staging" \
+  "tag:production,path:models/execution/staging" \
+  "tag:production,path:models/p2p/staging" \
+  "tag:production,path:models/consensus/intermediate" \
+  "tag:production,path:models/execution/intermediate" \
+  "tag:production,path:models/bridges" \
+  "tag:production,path:models/contracts" \
+  "tag:production,path:models/consensus/marts" \
+  "tag:production,path:models/execution/marts" \
+  "tag:production,path:models/p2p/marts" \
+  "tag:production,path:models/probelab" \
+  "tag:production,path:models/crawlers_data" \
+  "tag:production,path:models/ESG" \
+; do
+  batch_name="dbt-test:$(echo "$test_batch" | sed 's/tag:production,//')"
+  run_step "$batch_name" \
+    dbt test --select "$test_batch" \
+    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+    || true
+done
 
 # ── 5. Elementary monitor (only when webhook + env are set) ──────────────
 if [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
@@ -107,6 +130,25 @@ echo "[$(date -u)] Run complete. Results: ${step_results[*]}"
 overall_exit=0
 IFS=',' read -ra MANDATORY <<< "$MANDATORY_STEPS"
 for step in "${MANDATORY[@]}"; do
+  # dbt-test is batched — check all steps starting with "dbt-test:"
+  if [ "$step" = "dbt-test" ]; then
+    batch_found=false
+    for key in "${!step_exit_codes[@]}"; do
+      if [[ "$key" == dbt-test:* ]]; then
+        batch_found=true
+        if [ "${step_exit_codes[$key]}" -ne 0 ]; then
+          echo "[$(date -u)] MANDATORY STEP FAILED: $key (exit ${step_exit_codes[$key]})"
+          overall_exit=1
+        fi
+      fi
+    done
+    if [ "$batch_found" = false ]; then
+      echo "[$(date -u)] WARNING: no dbt-test batches were executed"
+      overall_exit=1
+    fi
+    continue
+  fi
+
   rc="${step_exit_codes[$step]:-}"
   if [ -z "$rc" ]; then
     # Step was not run (e.g., edr-monitor skipped) — only fail if it was mandatory
