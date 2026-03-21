@@ -55,6 +55,11 @@ run_step "cleanup-dbt-trash" \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 
+run_step "kill-failed-mutations" \
+  dbt run-operation kill_failed_mutations \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
 # ── 1. Source freshness ──────────────────────────────────────────────────
 # Note: Elementary's on_run_end hook automatically uploads freshness results
 # to the elementary schema — no separate edr upload step needed.

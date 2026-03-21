@@ -25,6 +25,36 @@
 {% endmacro %}
 
 
+{% macro kill_failed_mutations() %}
+    {# Kill ClickHouse mutations stuck in a failed state.
+       Incremental models use DELETE + INSERT which creates mutations.
+       If a previous run crashed, the mutation references a temp table
+       (__dbt_new_data_*) that no longer exists, poisoning the table
+       so all future writes fail with Code 341. #}
+    {% set failed_query %}
+        SELECT database, table, mutation_id,
+               splitByChar('\n', latest_fail_reason)[1] as reason
+        FROM system.mutations
+        WHERE is_done = 0
+          AND latest_fail_reason != ''
+          AND database = 'dbt'
+    {% endset %}
+
+    {% set failed = run_query(failed_query).rows %}
+    {% if failed | length > 0 %}
+        {{ log("Found " ~ failed | length ~ " failed mutations to kill", info=True) }}
+    {% endif %}
+
+    {% for row in failed %}
+        {% set db = row[0] %}
+        {% set tbl = row[1] %}
+        {% set mid = row[2] %}
+        {{ log("Killing failed mutation " ~ mid ~ " on " ~ db ~ "." ~ tbl, info=True) }}
+        {% do run_query("KILL MUTATION WHERE database = '" ~ db ~ "' AND table = '" ~ tbl ~ "' AND mutation_id = '" ~ mid ~ "'") %}
+    {% endfor %}
+{% endmacro %}
+
+
 {% macro drop_dbt_trash(database_name) %}
     {{ log("Dropping leftover dbt tables in " ~ database_name, info=True) }}
 
