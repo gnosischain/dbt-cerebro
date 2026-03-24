@@ -25,11 +25,13 @@ liquidity_added AS (
         log_index,
         'LiquidityAdded' AS event_type,
         token_idx AS token_index,
-        toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw
+        toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw,
+        toInt256OrNull(replaceAll(fee_val, '"', '')) AS fee_amount_raw
     FROM vault_events
-    ARRAY JOIN 
+    ARRAY JOIN
         range(length(JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')))) AS token_idx,
-        JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')) AS amount_val
+        JSONExtractArrayRaw(ifNull(decoded_params['amountsAddedRaw'], '[]')) AS amount_val,
+        JSONExtractArrayRaw(ifNull(decoded_params['swapFeeAmountsRaw'], '[]')) AS fee_val
     WHERE event_name = 'LiquidityAdded'
       AND decoded_params['pool'] IS NOT NULL
       AND decoded_params['amountsAddedRaw'] IS NOT NULL
@@ -43,11 +45,13 @@ liquidity_removed AS (
         log_index,
         'LiquidityRemoved' AS event_type,
         token_idx AS token_index,
-        -toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw
+        -toInt256OrNull(replaceAll(amount_val, '"', '')) AS delta_amount_raw,
+        toInt256OrNull(replaceAll(fee_val, '"', '')) AS fee_amount_raw
     FROM vault_events
-    ARRAY JOIN 
+    ARRAY JOIN
         range(length(JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')))) AS token_idx,
-        JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')) AS amount_val
+        JSONExtractArrayRaw(ifNull(decoded_params['amountsRemovedRaw'], '[]')) AS amount_val,
+        JSONExtractArrayRaw(ifNull(decoded_params['swapFeeAmountsRaw'], '[]')) AS fee_val
     WHERE event_name = 'LiquidityRemoved'
       AND decoded_params['pool'] IS NOT NULL
       AND decoded_params['amountsRemovedRaw'] IS NOT NULL
@@ -61,7 +65,8 @@ swap_events AS (
         log_index,
         'Swap' AS event_type,
         lower(decoded_params['tokenIn']) AS token_address,
-        toInt256OrNull(decoded_params['amountIn']) AS delta_amount_raw
+        toInt256OrNull(decoded_params['amountIn']) AS delta_amount_raw,
+        toInt256OrNull(decoded_params['swapFeeAmount']) AS fee_amount_raw
     FROM vault_events
     WHERE event_name = 'Swap'
       AND decoded_params['pool'] IS NOT NULL
@@ -77,7 +82,8 @@ swap_events AS (
         log_index,
         'Swap' AS event_type,
         lower(decoded_params['tokenOut']) AS token_address,
-        -toInt256OrNull(decoded_params['amountOut']) AS delta_amount_raw
+        -toInt256OrNull(decoded_params['amountOut']) AS delta_amount_raw,
+        toInt256(0) AS fee_amount_raw
     FROM vault_events
     WHERE event_name = 'Swap'
       AND decoded_params['pool'] IS NOT NULL
@@ -93,7 +99,8 @@ wrap_events AS (
         log_index,
         'Wrap' AS event_type,
         NULL AS pool_address,
-        toInt256OrNull(decoded_params['depositedUnderlying']) AS delta_amount_raw
+        toInt256OrNull(decoded_params['depositedUnderlying']) AS delta_amount_raw,
+        toInt256(0) AS fee_amount_raw
     FROM vault_events
     WHERE event_name = 'Wrap'
       AND decoded_params['wrappedToken'] IS NOT NULL
@@ -108,7 +115,8 @@ unwrap_events AS (
         log_index,
         'Unwrap' AS event_type,
         NULL AS pool_address,
-        -toInt256OrNull(decoded_params['withdrawnUnderlying']) AS delta_amount_raw
+        -toInt256OrNull(decoded_params['withdrawnUnderlying']) AS delta_amount_raw,
+        toInt256(0) AS fee_amount_raw
     FROM vault_events
     WHERE event_name = 'Unwrap'
       AND decoded_params['wrappedToken'] IS NOT NULL
@@ -123,7 +131,8 @@ liquidity_added_to_buffer AS (
         log_index,
         'LiquidityAddedToBuffer' AS event_type,
         NULL AS pool_address,
-        toInt256OrNull(decoded_params['amountUnderlying']) AS delta_amount_raw
+        toInt256OrNull(decoded_params['amountUnderlying']) AS delta_amount_raw,
+        toInt256(0) AS fee_amount_raw
     FROM vault_events
     WHERE event_name = 'LiquidityAddedToBuffer'
       AND decoded_params['wrappedToken'] IS NOT NULL
@@ -139,7 +148,8 @@ SELECT
     token_index,
     NULL AS wrapped_token_address,
     NULL AS token_address,
-    delta_amount_raw
+    delta_amount_raw,
+    coalesce(fee_amount_raw, toInt256(0)) AS fee_amount_raw
 FROM (
     SELECT * FROM liquidity_added
     UNION ALL
@@ -159,7 +169,8 @@ SELECT
     CAST(NULL AS Nullable(UInt64)) AS token_index,
     NULL AS wrapped_token_address,
     token_address,
-    delta_amount_raw
+    delta_amount_raw,
+    coalesce(fee_amount_raw, toInt256(0)) AS fee_amount_raw
 FROM swap_events
 WHERE delta_amount_raw IS NOT NULL
   AND pool_address IS NOT NULL
@@ -176,7 +187,8 @@ SELECT
     CAST(NULL AS Nullable(UInt64)) AS token_index,
     wrapped_token_address,
     NULL AS token_address,
-    delta_amount_raw
+    delta_amount_raw,
+    toInt256(0) AS fee_amount_raw
 FROM (
     SELECT * FROM wrap_events
     UNION ALL
