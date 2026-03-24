@@ -11,12 +11,14 @@
     )
 }}
 
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 WITH
 
--- Extract APY rates from ReserveDataUpdated events
 aave_rate_events AS (
     SELECT
-        toStartOfDay(block_timestamp) AS date,
+        toStartOfDay(block_timestamp) AS event_date,
         lower(decoded_params['reserve']) AS token_address,
         block_timestamp,
         toUInt256OrNull(decoded_params['liquidityRate']) AS liquidity_rate_ray,
@@ -27,13 +29,22 @@ aave_rate_events AS (
     WHERE event_name = 'ReserveDataUpdated'
       AND decoded_params['liquidityRate'] IS NOT NULL
       AND block_timestamp < today()
-      {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+      {% if start_month and end_month %}
+        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+      {% elif is_incremental() %}
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM {{ this }}
+        )
+      {% endif %}
 ),
 
--- Extract activity events (Supply, Borrow, Withdraw, Repay, LiquidationCall) for volumes and user counts
 aave_activity_events AS (
     SELECT
-        toStartOfDay(block_timestamp) AS date,
+        toStartOfDay(block_timestamp) AS event_date,
         lower(decoded_params['reserve']) AS token_address,
         lower(decoded_params['user']) AS user_address,
         event_name AS event_type,
@@ -44,12 +55,22 @@ aave_activity_events AS (
       AND decoded_params['user'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
       AND block_timestamp < today()
-      {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+      {% if start_month and end_month %}
+        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+      {% elif is_incremental() %}
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM {{ this }}
+        )
+      {% endif %}
 
     UNION ALL
 
     SELECT
-        toStartOfDay(block_timestamp) AS date,
+        toStartOfDay(block_timestamp) AS event_date,
         lower(decoded_params['collateralAsset']) AS token_address,
         lower(decoded_params['user']) AS user_address,
         'LiquidationWithdraw' AS event_type,
@@ -60,25 +81,34 @@ aave_activity_events AS (
       AND decoded_params['user'] IS NOT NULL
       AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
       AND block_timestamp < today()
-      {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
+      {% if start_month and end_month %}
+        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+      {% elif is_incremental() %}
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM {{ this }}
+        )
+      {% endif %}
 ),
 
 latest_rates AS (
     SELECT
-        date,
+        event_date,
         token_address,
         argMax(liquidity_rate_ray, block_timestamp) AS liquidity_rate_ray,
         argMax(variable_borrow_rate_ray, block_timestamp) AS variable_borrow_rate_ray,
         argMax(liquidity_index, block_timestamp) AS liquidity_index,
         argMax(variable_borrow_index, block_timestamp) AS variable_borrow_index
     FROM aave_rate_events
-    GROUP BY date, token_address
+    GROUP BY event_date, token_address
 ),
 
--- Aggregate activity metrics by date and token
 activity_agg AS (
     SELECT
-        date,
+        event_date,
         token_address,
         -- Bitmap states for unique user tracking
         groupBitmapState(cityHash64(user_address)) FILTER (WHERE event_type = 'Supply') AS lenders_bitmap_state,
@@ -93,12 +123,12 @@ activity_agg AS (
         sum(amount_raw) FILTER (WHERE event_type = 'Repay') AS repays_volume_raw,
         sum(amount_raw) FILTER (WHERE event_type = 'LiquidationWithdraw') AS liquidated_supply_raw
     FROM aave_activity_events
-    GROUP BY date, token_address
+    GROUP BY event_date, token_address
 ),
 
 with_symbols AS (
     SELECT
-        lr.date,
+        lr.event_date AS metric_date,
         lr.token_address,
         rm.reserve_symbol AS symbol,
         rm.token_class,
@@ -129,7 +159,7 @@ with_symbols AS (
 -- Join yields with activity metrics
 yields_with_activity AS (
     SELECT
-        ws.date,
+        ws.metric_date,
         ws.token_address,
         ws.symbol,
         ws.token_class,
@@ -153,28 +183,15 @@ yields_with_activity AS (
         ) / POWER(10, COALESCE(ws.decimals, 18)) AS net_supply_change_daily
     FROM with_symbols ws
     LEFT JOIN activity_agg aa
-        ON ws.date = aa.date
+        ON ws.metric_date = aa.event_date
         AND ws.token_address = aa.token_address
 ),
 
-{% if is_incremental() %}
-last_known_apy AS (
-    SELECT
-        token_address,
-        argMax(apy_daily, date) AS last_apy,
-        argMax(borrow_apy_variable_daily, date) AS last_borrow_apy,
-        argMax(liquidity_index, date) AS last_liquidity_index,
-        argMax(variable_borrow_index, date) AS last_variable_borrow_index
-    FROM {{ this }}
-    WHERE apy_daily IS NOT NULL
-    GROUP BY token_address
-),
-{% endif %}
 
 date_range AS (
     SELECT 
-        MIN(date) AS min_date,
-        MAX(date) AS max_date
+        MIN(metric_date) AS min_date,
+        MAX(metric_date) AS max_date
     FROM yields_with_activity
 ),
 
@@ -192,66 +209,38 @@ calendar AS (
         tc.token_address,
         tc.symbol,
         tc.token_class,
-        addDays(dr.min_date, offset) AS date
+        addDays(dr.min_date, offset) AS metric_date
     FROM token_combinations tc
     CROSS JOIN date_range dr
     ARRAY JOIN range(toUInt64(dateDiff('day', dr.min_date, dr.max_date) + 1)) AS offset
 ),
 
-filled_yields AS (
+calendar_with_data AS (
     SELECT
-        c.date,
+        c.metric_date,
         c.token_address,
         c.symbol,
         c.token_class,
         'Aave V3' AS protocol,
-        COALESCE(
-            last_value(ywa.apy_daily) IGNORE NULLS OVER (
-                PARTITION BY c.token_address 
-                ORDER BY c.date
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ),
-            {% if is_incremental() %}
-            lka.last_apy
-            {% else %}
-            NULL
-            {% endif %}
+        last_value(ywa.apy_daily) IGNORE NULLS OVER (
+            PARTITION BY c.token_address 
+            ORDER BY c.metric_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS apy_daily,
-        COALESCE(
-            last_value(ywa.borrow_apy_variable_daily) IGNORE NULLS OVER (
-                PARTITION BY c.token_address 
-                ORDER BY c.date
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ),
-            {% if is_incremental() %}
-            lka.last_borrow_apy
-            {% else %}
-            NULL
-            {% endif %}
+        last_value(ywa.borrow_apy_variable_daily) IGNORE NULLS OVER (
+            PARTITION BY c.token_address 
+            ORDER BY c.metric_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS borrow_apy_variable_daily,
-        COALESCE(
-            last_value(ywa.liquidity_index) IGNORE NULLS OVER (
-                PARTITION BY c.token_address 
-                ORDER BY c.date
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ),
-            {% if is_incremental() %}
-            lka.last_liquidity_index
-            {% else %}
-            NULL
-            {% endif %}
+        last_value(ywa.liquidity_index) IGNORE NULLS OVER (
+            PARTITION BY c.token_address 
+            ORDER BY c.metric_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS liquidity_index,
-        COALESCE(
-            last_value(ywa.variable_borrow_index) IGNORE NULLS OVER (
-                PARTITION BY c.token_address 
-                ORDER BY c.date
-                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-            ),
-            {% if is_incremental() %}
-            lka.last_variable_borrow_index
-            {% else %}
-            NULL
-            {% endif %}
+        last_value(ywa.variable_borrow_index) IGNORE NULLS OVER (
+            PARTITION BY c.token_address 
+            ORDER BY c.metric_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS variable_borrow_index,
         ywa.lenders_bitmap_state,
         ywa.borrowers_bitmap_state,
@@ -265,38 +254,60 @@ filled_yields AS (
     FROM calendar c
     LEFT JOIN yields_with_activity ywa
         ON ywa.token_address = c.token_address
-        AND ywa.date = c.date
-    {% if is_incremental() %}
-    LEFT JOIN last_known_apy lka
-        ON lka.token_address = c.token_address
-    {% endif %}
+        AND ywa.metric_date = c.metric_date
 )
 
 SELECT
-    date,
-    token_address,
-    symbol,
-    token_class,
-    protocol,
-    apy_daily,
-    borrow_apy_variable_daily,
+    f.metric_date AS date,
+    f.token_address,
+    f.symbol,
+    f.token_class,
+    f.protocol,
+    {% if is_incremental() %}
+    COALESCE(f.apy_daily, lka.last_apy) AS apy_daily,
+    COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy) AS borrow_apy_variable_daily,
+    {% else %}
+    f.apy_daily,
+    f.borrow_apy_variable_daily,
+    {% endif %}
     CASE 
-        WHEN borrow_apy_variable_daily IS NOT NULL AND apy_daily IS NOT NULL
-        THEN ROUND(borrow_apy_variable_daily - apy_daily, 2)
+        WHEN {% if is_incremental() %}COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy){% else %}f.borrow_apy_variable_daily{% endif %} IS NOT NULL
+         AND {% if is_incremental() %}COALESCE(f.apy_daily, lka.last_apy){% else %}f.apy_daily{% endif %} IS NOT NULL
+        THEN ROUND(
+            {% if is_incremental() %}COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy){% else %}f.borrow_apy_variable_daily{% endif %}
+            - {% if is_incremental() %}COALESCE(f.apy_daily, lka.last_apy){% else %}f.apy_daily{% endif %}, 2)
         ELSE NULL
     END AS spread_variable,
-    liquidity_index,
-    variable_borrow_index,
-    lenders_bitmap_state,
-    borrowers_bitmap_state,
-    lenders_count_daily,
-    borrowers_count_daily,
-    deposits_volume_daily,
-    borrows_volume_daily,
-    withdrawals_volume_daily,
-    repays_volume_daily,
-    net_supply_change_daily
-FROM filled_yields
-WHERE apy_daily IS NOT NULL
-ORDER BY date, token_address
+    {% if is_incremental() %}
+    COALESCE(f.liquidity_index, lka.last_liquidity_index) AS liquidity_index,
+    COALESCE(f.variable_borrow_index, lka.last_variable_borrow_index) AS variable_borrow_index,
+    {% else %}
+    f.liquidity_index,
+    f.variable_borrow_index,
+    {% endif %}
+    f.lenders_bitmap_state,
+    f.borrowers_bitmap_state,
+    f.lenders_count_daily,
+    f.borrowers_count_daily,
+    f.deposits_volume_daily,
+    f.borrows_volume_daily,
+    f.withdrawals_volume_daily,
+    f.repays_volume_daily,
+    f.net_supply_change_daily
+FROM calendar_with_data f
+{% if is_incremental() %}
+LEFT JOIN (
+    SELECT
+        token_address,
+        argMax(apy_daily, `date`) AS last_apy,
+        argMax(borrow_apy_variable_daily, `date`) AS last_borrow_apy,
+        argMax(liquidity_index, `date`) AS last_liquidity_index,
+        argMax(variable_borrow_index, `date`) AS last_variable_borrow_index
+    FROM {{ this }}
+    WHERE apy_daily IS NOT NULL
+    GROUP BY token_address
+) lka ON lka.token_address = f.token_address
+{% endif %}
+WHERE {% if is_incremental() %}COALESCE(f.apy_daily, lka.last_apy){% else %}f.apy_daily{% endif %} IS NOT NULL
+ORDER BY f.metric_date, f.token_address
 
