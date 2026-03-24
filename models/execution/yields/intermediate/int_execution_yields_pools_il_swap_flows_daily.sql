@@ -131,9 +131,9 @@ SELECT
     coalesce(tp1.decimals, 18) AS decimals1,
     tp1.price_usd AS price1_usd
 FROM pool_tvl_daily tvl
-INNER JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
+INNER JOIN {{ ref('stg_pools__v3_pool_registry') }} m
     ON m.protocol = tvl.protocol
-   AND m.pool_address_no0x = tvl.pool_address_no0x
+   AND m.pool_address = tvl.pool_address
 LEFT JOIN swap_flows_daily sf
     ON sf.day = tvl.day
    AND sf.protocol = tvl.protocol

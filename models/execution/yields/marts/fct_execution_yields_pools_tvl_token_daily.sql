@@ -34,10 +34,10 @@ pools AS (
 pool_token_symbols AS (
     SELECT
         m.protocol AS protocol,
-        m.pool_address_no0x AS pool_address_no0x,
+        m.pool_address AS pool_address,
         tm0.token AS token0_symbol,
         tm1.token AS token1_symbol
-    FROM {{ ref('int_execution_yields_v3_pool_meta') }} m
+    FROM {{ ref('stg_pools__v3_pool_registry') }} m
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm0
         ON tm0.token_address = m.token0_address
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm1
@@ -65,7 +65,7 @@ INNER JOIN pools po
    AND po.pool_address = be.pool_address
 INNER JOIN pool_token_symbols pts
     ON pts.protocol = be.protocol
-   AND pts.pool_address_no0x = be.pool_address_no0x
+   AND pts.pool_address = be.pool_address
 LEFT JOIN {{ ref('stg_yields__token_prices_daily') }} p0
     ON p0.token = pts.token0_symbol
    AND p0.date = be.date

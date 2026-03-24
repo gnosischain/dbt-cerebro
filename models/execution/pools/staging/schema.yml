@@ -1,0 +1,90 @@
+version: 2
+
+models:
+- name: stg_pools__v3_pool_registry
+  description: >
+    Complete registry of Uniswap V3 and Swapr V3 (Algebra) pools on Gnosis Chain.
+    Combines factory creation events with pool Initialize events.
+    Includes fee tier, tick spacing, and initialization price/tick.
+    Replaces the former int_execution_yields_v3_pool_meta view.
+  columns:
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: pool_address_no0x
+    description: Pool contract address without 0x prefix (for join compatibility).
+    data_type: String
+  - name: token0_address
+    data_type: String
+  - name: token1_address
+    data_type: String
+  - name: fee_tier_ppm
+    description: Static fee tier in parts per million. Set for UniV3 (100/500/3000/10000), NULL for Swapr (dynamic fees).
+    data_type: Nullable(UInt32)
+  - name: tick_spacing
+    description: Tick spacing for the pool. For Swapr, reflects latest TickSpacing event if changed.
+    data_type: Nullable(Int32)
+  - name: init_tick
+    description: Tick at pool initialization (from Initialize event). NULL if pool was never initialized.
+    data_type: Nullable(Int32)
+  - name: init_sqrt_price_x96
+    description: sqrtPriceX96 at pool initialization. String to preserve full precision.
+    data_type: Nullable(String)
+  - name: created_at
+    description: Block timestamp of the factory creation event.
+    data_type: DateTime
+
+- name: stg_pools__uniswap_v3_events
+  description: >
+    Normalized event deltas for Uniswap V3 pools.
+    Parses Mint, Burn, Swap, Collect, Flash events into signed token deltas per token position.
+  columns:
+  - name: pool_address
+    description: Pool contract address without 0x prefix.
+    data_type: String
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: event_type
+    description: Event name (Mint, Burn, Swap, Collect, Flash).
+    data_type: String
+  - name: token_position
+    description: Which token in the pair (token0 or token1).
+    data_type: String
+  - name: delta_amount_raw
+    description: Signed raw token delta (positive = tokens entering pool, negative = leaving).
+    data_type: Int256
+  - name: delta_category
+    description: >
+      Classification for fee separation logic.
+      Values: liquidity (Mint/Burn), swap_in (positive swap side),
+      swap_out (negative swap side), fee_collection (Collect), flash_fee (Flash).
+    data_type: String
+
+- name: stg_pools__swapr_v3_events
+  description: >
+    Normalized event deltas for Swapr V3 (Algebra) pools.
+    Same structure as stg_pools__uniswap_v3_events.
+  columns:
+  - name: pool_address
+    description: Pool contract address without 0x prefix.
+    data_type: String
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: event_type
+    data_type: String
+  - name: token_position
+    data_type: String
+  - name: delta_amount_raw
+    data_type: Int256
+  - name: delta_category
+    data_type: String

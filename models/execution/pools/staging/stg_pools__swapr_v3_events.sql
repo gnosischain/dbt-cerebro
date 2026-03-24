@@ -25,7 +25,15 @@ SELECT
     log_index,
     event_type,
     token_position,
-    delta_amount_raw
+    delta_amount_raw,
+    multiIf(
+        event_type IN ('Mint', 'Burn'), 'liquidity',
+        event_type = 'Swap' AND delta_amount_raw > toInt256(0), 'swap_in',
+        event_type = 'Swap' AND delta_amount_raw <= toInt256(0), 'swap_out',
+        event_type = 'Collect', 'fee_collection',
+        event_type = 'Flash', 'flash_fee',
+        'other'
+    ) AS delta_category
 FROM (
     SELECT
         pool_address,

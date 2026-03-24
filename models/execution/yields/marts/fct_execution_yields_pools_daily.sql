@@ -117,9 +117,9 @@ pool_labels AS (
         SELECT DISTINCT protocol, pool_address
         FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
     ) p
-    LEFT JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
+    LEFT JOIN {{ ref('stg_pools__v3_pool_registry') }} m
       ON m.protocol = p.protocol
-     AND m.pool_address_no0x = replaceAll(lower(p.pool_address), '0x', '')
+     AND m.pool_address = lower(p.pool_address)
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} t0
       ON t0.token_address = m.token0_address
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} t1

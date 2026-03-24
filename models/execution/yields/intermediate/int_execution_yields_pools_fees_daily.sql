@@ -332,45 +332,6 @@ all_fees_token AS (
     SELECT * FROM swapr_v3_fees_token
 ),
 
-fees_with_token AS (
-    SELECT
-        f.date,
-        f.protocol,
-        f.pool_address_no0x,
-        concat('0x', f.pool_address_no0x) AS pool_address,
-        multiIf(
-            f.token_position = 'token0', m.token0_address,
-            f.token_position = 'token1', m.token1_address,
-            NULL
-        ) AS token_address,
-        f.fee_raw,
-        f.volume_raw
-    FROM all_fees_token f
-    INNER JOIN {{ ref('int_execution_yields_v3_pool_meta') }} m
-      ON m.protocol = f.protocol
-     AND m.pool_address_no0x = f.pool_address_no0x
-    WHERE f.fee_raw IS NOT NULL
-),
-
-fees_token_amounts AS (
-    SELECT
-        f.date,
-        f.protocol,
-        f.pool_address,
-        f.token_address,
-        tm.token,
-        (toFloat64(f.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
-        (toFloat64(f.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
-    FROM fees_with_token f
-    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
-      ON tm.token_address = f.token_address
-     AND f.date >= toDate(tm.date_start)
-     AND (tm.date_end IS NULL OR f.date < toDate(tm.date_end))
-    WHERE f.token_address IS NOT NULL
-      AND tm.token IS NOT NULL
-      AND tm.token != ''
-),
-
 fees_daily AS (
     SELECT
         f.date,
@@ -382,7 +343,41 @@ fees_daily AS (
         sum(f.fee_amount * p.price_usd) AS fees_usd,
         sum(f.volume_amount) AS volume_amount,
         sum(f.volume_amount * p.price_usd) AS volume_usd
-    FROM fees_token_amounts f
+    FROM (
+        SELECT
+            fw.date AS date,
+            fw.protocol AS protocol,
+            fw.pool_address AS pool_address,
+            fw.token_address AS token_address,
+            tm.token AS token,
+            (toFloat64(fw.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
+            (toFloat64(fw.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
+        FROM (
+            SELECT
+                af.date AS date,
+                af.protocol AS protocol,
+                concat('0x', af.pool_address_no0x) AS pool_address,
+                multiIf(
+                    af.token_position = 'token0', m.token0_address,
+                    af.token_position = 'token1', m.token1_address,
+                    NULL
+                ) AS token_address,
+                af.fee_raw AS fee_raw,
+                af.volume_raw AS volume_raw
+            FROM all_fees_token af
+            INNER JOIN {{ ref('stg_pools__v3_pool_registry') }} m
+              ON m.protocol = af.protocol
+             AND m.pool_address = concat('0x', af.pool_address_no0x)
+            WHERE af.fee_raw IS NOT NULL
+        ) fw
+        LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
+          ON tm.token_address = fw.token_address
+         AND fw.date >= toDate(tm.date_start)
+         AND (tm.date_end IS NULL OR fw.date < toDate(tm.date_end))
+        WHERE fw.token_address IS NOT NULL
+          AND tm.token IS NOT NULL
+          AND tm.token != ''
+    ) f
     ASOF LEFT JOIN (
         SELECT * FROM {{ ref('stg_yields__token_prices_daily') }} ORDER BY token, date
     ) p

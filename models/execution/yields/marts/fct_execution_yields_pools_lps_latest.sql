@@ -44,14 +44,14 @@ bounds AS (
 
 pool_token_map AS (
     SELECT pt.pool_address, pt.protocol, tm.token
-    FROM {{ ref('int_execution_yields_v3_pool_meta') }} pt
+    FROM {{ ref('stg_pools__v3_pool_registry') }} pt
     INNER JOIN {{ ref('stg_yields__tokens_meta') }} tm ON tm.token_address = pt.token0_address
     WHERE tm.token IS NOT NULL
 
     UNION ALL
 
     SELECT pt.pool_address, pt.protocol, tm.token
-    FROM {{ ref('int_execution_yields_v3_pool_meta') }} pt
+    FROM {{ ref('stg_pools__v3_pool_registry') }} pt
     INNER JOIN {{ ref('stg_yields__tokens_meta') }} tm ON tm.token_address = pt.token1_address
     WHERE tm.token IS NOT NULL
 ),
