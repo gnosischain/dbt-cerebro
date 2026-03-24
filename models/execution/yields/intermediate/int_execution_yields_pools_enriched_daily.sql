@@ -23,9 +23,9 @@ SELECT
     replaceAll(lower(b.pool_address), '0x', '') AS pool_address_no0x,
     lower(b.token_address) AS token_address,
     tm.token AS token,
-    b.token_amount AS token_amount,
+    b.reserve_amount AS token_amount,
     p.price_usd AS price_usd,
-    b.token_amount * p.price_usd AS tvl_component_usd
+    b.reserve_amount * p.price_usd AS tvl_component_usd
 FROM {{ ref('int_execution_pools_balances_daily') }} b
 LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
   ON tm.token_address = lower(b.token_address)
