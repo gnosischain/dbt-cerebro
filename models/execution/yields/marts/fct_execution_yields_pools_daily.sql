@@ -11,6 +11,22 @@
 
 WITH
 
+{# Balancer V3 pools where ALL tokens have metadata (symbol + price).
+   Pools with partial coverage are excluded to avoid misleading TVL/APR. #}
+balancer_v3_complete_pools AS (
+    SELECT pool_address
+    FROM (
+        SELECT
+            pool_address,
+            count(DISTINCT token_address) AS total_tokens,
+            count(DISTINCT CASE WHEN token IS NOT NULL AND token != '' THEN token_address END) AS known_tokens
+        FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
+        WHERE protocol = 'Balancer V3'
+        GROUP BY pool_address
+    )
+    WHERE total_tokens = known_tokens
+),
+
 token_pool_tvl_daily AS (
     SELECT
         date,
@@ -20,9 +36,10 @@ token_pool_tvl_daily AS (
         token,
         sum(tvl_component_usd) AS token_tvl_usd
     FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
-    WHERE protocol IN ('Uniswap V3', 'Swapr V3')
+    WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
       AND token IS NOT NULL
       AND token != ''
+      AND (protocol != 'Balancer V3' OR pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools))
     GROUP BY date, protocol, pool_address, token_address, token
 ),
 
@@ -176,5 +193,5 @@ LEFT JOIN {{ ref('fct_execution_yields_pools_il_daily') }} il
   ON il.date = b.date
  AND il.protocol = b.protocol
  AND il.pool_address = b.pool_address
-WHERE b.protocol IN ('Uniswap V3', 'Swapr V3')
+WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
   AND b.date < today()

@@ -64,6 +64,19 @@ swap_counts_daily AS (
     WHERE event_name = 'Swap'
       AND block_timestamp < today()
     GROUP BY date, protocol, pool_address
+
+    UNION ALL
+
+    SELECT
+        toDate(toStartOfDay(block_timestamp)) AS date,
+        'Balancer V3' AS protocol,
+        concat('0x', replaceAll(lower(decoded_params['pool']), '0x', '')) AS pool_address,
+        count(*) AS swap_count
+    FROM {{ ref('contracts_BalancerV3_Vault_events') }}
+    WHERE event_name = 'Swap'
+      AND decoded_params['pool'] IS NOT NULL
+      AND block_timestamp < today()
+    GROUP BY date, protocol, pool_address
 ),
 
 pool_metrics_daily AS (
@@ -110,7 +123,7 @@ SELECT
     volume_usd_daily,
     swap_count,
     multiIf(
-        protocol NOT IN ('Uniswap V3', 'Swapr V3'), NULL,
+        protocol NOT IN ('Uniswap V3', 'Swapr V3', 'Balancer V3'), NULL,
         days_in_window < 3, NULL,
         tvl_usd_7d_avg <= 0, NULL,
         (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0

@@ -589,14 +589,16 @@ balancer_balances_final AS (
         b.pool_address AS pool_address,
         b.token_address AS token_address,
         b.balance_raw AS token_amount_raw,
-        b.balance_raw / POWER(10, COALESCE(t.decimals, 18)) AS token_amount,
+        b.balance_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS token_amount,
         b.reserve_raw AS reserve_amount_raw,
-        b.reserve_raw / POWER(10, COALESCE(t.decimals, 18)) AS reserve_amount,
+        b.reserve_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS reserve_amount,
         b.fee_raw AS fee_amount_raw,
-        b.fee_raw / POWER(10, COALESCE(t.decimals, 18)) AS fee_amount
+        b.fee_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS fee_amount
     FROM balancer_balances b
+    LEFT JOIN {{ ref('stg_pools__balancer_v3_token_map') }} wm
+        ON wm.wrapper_address = b.token_address
     LEFT JOIN {{ ref('tokens_whitelist') }} t
-        ON lower(t.address) = b.token_address
+        ON lower(t.address) = coalesce(nullIf(wm.underlying_address, ''), b.token_address)
        AND b.date >= toDate(t.date_start)
        AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     WHERE b.balance_raw != 0

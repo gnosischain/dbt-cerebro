@@ -324,12 +324,98 @@ swapr_v3_fees_token AS (
 ),
 
 /* -----------------------------
+   Balancer V3: explicit fee amounts from Swap events
+------------------------------ */
+balancer_v3_swap_fees AS (
+    SELECT
+        toDate(toStartOfDay(e.block_timestamp)) AS date,
+        'Balancer V3' AS protocol,
+        concat('0x', replaceAll(lower(e.decoded_params['pool']), '0x', '')) AS pool_address,
+        lower(e.decoded_params['tokenIn']) AS token_address,
+        toUInt256OrNull(e.decoded_params['swapFeeAmount']) AS fee_raw,
+        toUInt256OrNull(e.decoded_params['amountIn']) AS volume_raw
+    FROM {{ ref('contracts_BalancerV3_Vault_events') }} e
+    WHERE e.event_name = 'Swap'
+      AND e.block_timestamp < today()
+      AND e.decoded_params['pool'] IS NOT NULL
+      AND e.decoded_params['tokenIn'] IS NOT NULL
+      AND e.decoded_params['swapFeeAmount'] IS NOT NULL
+      AND e.decoded_params['amountIn'] IS NOT NULL
+      {% if start_month and end_month %}
+        AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('e.block_timestamp', 'date', 'true') }}
+      {% endif %}
+),
+
+/* -----------------------------
    Token mapping + aggregation
 ------------------------------ */
 all_fees_token AS (
     SELECT * FROM uniswap_v3_fees_token
     UNION ALL
     SELECT * FROM swapr_v3_fees_token
+),
+
+all_fees_with_token AS (
+    {#- V3 pools: need registry join to map token_position → token_address -#}
+    SELECT
+        fw.date AS date,
+        fw.protocol AS protocol,
+        fw.pool_address AS pool_address,
+        fw.token_address AS token_address,
+        tm.token AS token,
+        (toFloat64(fw.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
+        (toFloat64(fw.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
+    FROM (
+        SELECT
+            af.date AS date,
+            af.protocol AS protocol,
+            concat('0x', af.pool_address_no0x) AS pool_address,
+            multiIf(
+                af.token_position = 'token0', m.token0_address,
+                af.token_position = 'token1', m.token1_address,
+                NULL
+            ) AS token_address,
+            af.fee_raw AS fee_raw,
+            af.volume_raw AS volume_raw
+        FROM all_fees_token af
+        INNER JOIN {{ ref('stg_pools__v3_pool_registry') }} m
+          ON m.protocol = af.protocol
+         AND m.pool_address = concat('0x', af.pool_address_no0x)
+        WHERE af.fee_raw IS NOT NULL
+    ) fw
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
+      ON tm.token_address = fw.token_address
+     AND fw.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR fw.date < toDate(tm.date_end))
+    WHERE fw.token_address IS NOT NULL
+      AND tm.token IS NOT NULL
+      AND tm.token != ''
+
+    UNION ALL
+
+    {# Balancer V3: resolve wrappers to underlying for token metadata #}
+    SELECT
+        bf.date AS date,
+        bf.protocol AS protocol,
+        bf.pool_address AS pool_address,
+        bf.token_address AS token_address,
+        tm.token AS token,
+        (toFloat64(bf.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
+        (toFloat64(bf.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
+    FROM balancer_v3_swap_fees bf
+    LEFT JOIN {{ ref('stg_pools__balancer_v3_token_map') }} wm
+      ON wm.wrapper_address = bf.token_address
+    LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
+      ON tm.token_address = coalesce(nullIf(wm.underlying_address, ''), bf.token_address)
+     AND bf.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR bf.date < toDate(tm.date_end))
+    WHERE bf.token_address IS NOT NULL
+      AND bf.fee_raw IS NOT NULL
+      AND tm.token IS NOT NULL
+      AND tm.token != ''
 ),
 
 fees_daily AS (
@@ -343,41 +429,7 @@ fees_daily AS (
         sum(f.fee_amount * p.price_usd) AS fees_usd,
         sum(f.volume_amount) AS volume_amount,
         sum(f.volume_amount * p.price_usd) AS volume_usd
-    FROM (
-        SELECT
-            fw.date AS date,
-            fw.protocol AS protocol,
-            fw.pool_address AS pool_address,
-            fw.token_address AS token_address,
-            tm.token AS token,
-            (toFloat64(fw.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
-            (toFloat64(fw.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
-        FROM (
-            SELECT
-                af.date AS date,
-                af.protocol AS protocol,
-                concat('0x', af.pool_address_no0x) AS pool_address,
-                multiIf(
-                    af.token_position = 'token0', m.token0_address,
-                    af.token_position = 'token1', m.token1_address,
-                    NULL
-                ) AS token_address,
-                af.fee_raw AS fee_raw,
-                af.volume_raw AS volume_raw
-            FROM all_fees_token af
-            INNER JOIN {{ ref('stg_pools__v3_pool_registry') }} m
-              ON m.protocol = af.protocol
-             AND m.pool_address = concat('0x', af.pool_address_no0x)
-            WHERE af.fee_raw IS NOT NULL
-        ) fw
-        LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
-          ON tm.token_address = fw.token_address
-         AND fw.date >= toDate(tm.date_start)
-         AND (tm.date_end IS NULL OR fw.date < toDate(tm.date_end))
-        WHERE fw.token_address IS NOT NULL
-          AND tm.token IS NOT NULL
-          AND tm.token != ''
-    ) f
+    FROM all_fees_with_token f
     ASOF LEFT JOIN (
         SELECT * FROM {{ ref('stg_yields__token_prices_daily') }} ORDER BY token, date
     ) p

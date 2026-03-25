@@ -13,7 +13,7 @@ SELECT
     lvr_apr_7d,
     net_apr_7d
 FROM {{ ref('fct_execution_yields_pools_daily') }}
-WHERE net_apr_7d IS NOT NULL
+WHERE fee_apr_7d IS NOT NULL
   AND token IS NOT NULL
   AND token != ''
   AND date < today()
