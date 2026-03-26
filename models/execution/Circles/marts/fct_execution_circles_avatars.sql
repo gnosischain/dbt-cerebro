@@ -6,14 +6,12 @@
 }}
 
 WITH dates AS (
-    -- get min/max date 
     SELECT
-        min(date) AS min_date,
-        max(date) AS max_date
+        min(toDate(block_timestamp)) AS min_date,
+        max(toDate(block_timestamp)) AS max_date
     FROM {{ ref('int_execution_circles_v2_avatars') }}
 ),
 date_series AS (
-    -- generate dense series of dates
     SELECT
         toDate(min_date) + number AS date
     FROM dates
@@ -22,6 +20,14 @@ date_series AS (
 avatar_types AS (
     SELECT DISTINCT avatar_type
     FROM {{ ref('int_execution_circles_v2_avatars') }}
+),
+dailies AS (
+    SELECT
+        toDate(block_timestamp) AS date,
+        avatar_type,
+        count() AS cnt
+    FROM {{ ref('int_execution_circles_v2_avatars') }}
+    GROUP BY 1, 2
 ),
 dense_grid AS (
     SELECT
@@ -36,7 +42,7 @@ filled AS (
         g.avatar_type,
         coalesce(t.cnt, 0) AS cnt
     FROM dense_grid g
-    LEFT JOIN {{ ref('int_execution_circles_v2_avatars') }} t
+    LEFT JOIN dailies t
         ON g.date = t.date
        AND g.avatar_type = t.avatar_type
 )

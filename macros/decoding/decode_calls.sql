@@ -143,17 +143,60 @@
 
 {% macro decode_calls(
         tx_table,
-        contract_address,
+        contract_address=null,
+        contract_address_ref=null,
+        contract_type_filter=null,
+        abi_source_address=null,
         output_json_type=false,
         incremental_column='block_timestamp',
         selector_column='to_address',
         start_blocktime=null
 ) %}
 
-{% set addr = contract_address | lower | replace('0x','') %}
+{% if contract_address_ref %}
+  {% if contract_type_filter %}
+    {% set type_where = " WHERE cw.contract_type = '" ~ contract_type_filter ~ "'" %}
+    {% set type_and = " AND cw.contract_type = '" ~ contract_type_filter ~ "'" %}
+  {% else %}
+    {% set type_where = "" %}
+    {% set type_and = "" %}
+  {% endif %}
+  {% set addr_filter = "lower(replaceAll(" ~ selector_column ~ ",'0x','')) IN (SELECT lower(replaceAll(cw.address,'0x','')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% if abi_source_address %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ (abi_source_address | lower | replace('0x', '') | trim) ~ "'" %}
+  {% else %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% endif %}
+{% else %}
+  {% if contract_address is string %}
+    {% set addr_list = [contract_address] %}
+  {% else %}
+    {% set addr_list = contract_address %}
+  {% endif %}
+
+  {% set normalized = [] %}
+  {% for addr in addr_list %}
+    {% set normalized_addr = addr | lower | replace('0x', '') | trim %}
+    {% set _ = normalized.append(normalized_addr) %}
+  {% endfor %}
+
+  {% if normalized | length > 1 %}
+    {% set addr_quoted = [] %}
+    {% for addr in normalized %}
+      {% set _ = addr_quoted.append("'" ~ addr ~ "'") %}
+    {% endfor %}
+    {% set addr_filter = "lower(replaceAll(" ~ selector_column ~ ", '0x', '')) IN (" ~ addr_quoted | join(', ') ~ ")" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (" ~ addr_quoted | join(', ') ~ ")" %}
+  {% else %}
+    {% set addr = normalized[0] %}
+    {% set addr_filter = "replaceAll(lower(" ~ selector_column ~ "),'0x','') = '" ~ addr ~ "'" %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ addr ~ "'" %}
+  {% endif %}
+{% endif %}
 
 {% set sig_sql %}
 SELECT
+    replaceAll(lower(contract_address), '0x', '') AS abi_contract_address,
     substring(signature,1,8) AS selector,
     function_name,
     arraySort(x -> toInt32OrZero(JSONExtractRaw(x,'position')),
@@ -161,7 +204,7 @@ SELECT
     arrayMap(x -> JSONExtractString(x,'name'), params_raw) AS names,
     arrayMap(x -> JSONExtractString(x,'type'), params_raw) AS types
 FROM {{ ref('function_signatures') }}
-WHERE replaceAll(lower(contract_address),'0x','') = '{{ addr }}'
+WHERE {{ abi_filter }}
 {% endset %}
 
 {% set sql_body %}
@@ -177,7 +220,7 @@ WITH
           ORDER BY insert_version DESC
         ) AS _dedup_rn
       FROM {{ tx_table }}
-      WHERE replaceAll(lower({{ selector_column }}),'0x','') = '{{ addr }}'
+      WHERE {{ addr_filter }}
         {% if start_blocktime %}
           AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
         {% endif %}
@@ -196,6 +239,28 @@ WITH
     )
     WHERE _dedup_rn = 1
   ),
+  {% if contract_address_ref %}
+  tx_with_abi AS (
+    SELECT
+      t.*,
+      {% if abi_source_address %}
+      '{{ abi_source_address | lower | replace('0x', '') | trim }}' AS abi_join_address
+      {% else %}
+      lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) AS abi_join_address
+      {% endif %}
+    FROM tx t
+    ANY LEFT JOIN {{ contract_address_ref }} cw
+      ON lower(replaceAll(t.{{ selector_column }}, '0x', '')) = lower(replaceAll(cw.address, '0x', ''))
+      {{ type_and }}
+  ),
+  {% else %}
+  tx_with_abi AS (
+    SELECT
+      t.*,
+      lower(replaceAll(t.{{ selector_column }}, '0x', '')) AS abi_join_address
+    FROM tx t
+  ),
+  {% endif %}
   abi AS ( {{ sig_sql }} ),
 
   process AS (
@@ -374,9 +439,10 @@ WITH
         toJSONString(mapFromArrays(param_names, param_values_str)) AS decoded_input
       {% endif %}
 
-    FROM tx AS t
+    FROM tx_with_abi AS t
     ANY LEFT JOIN abi AS a
       ON substring(replaceAll(t.input,'0x',''),1,8) = a.selector
+     AND t.abi_join_address = a.abi_contract_address
   )
 
 SELECT

@@ -47,7 +47,7 @@
         {% set result = {
             'abi_json': abi_result[0][0],
             'contract_name': abi_result[0][1],
-            'implementations': abi_result[0][3]
+            'implementations': abi_result[0][2]
         } %}
         
         {{ return(result) }}

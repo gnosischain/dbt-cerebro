@@ -64,6 +64,7 @@
         contract_address=null,
         contract_address_ref=null,
         contract_type_filter=null,
+        abi_source_address=null,
         output_json_type=false,
         incremental_column='block_timestamp',
         address_column='address',
@@ -74,11 +75,17 @@
 {% if contract_address_ref %}
   {% if contract_type_filter %}
     {% set type_where = " WHERE cw.contract_type = '" ~ contract_type_filter ~ "'" %}
+    {% set type_and = " AND cw.contract_type = '" ~ contract_type_filter ~ "'" %}
   {% else %}
     {% set type_where = "" %}
+    {% set type_and = "" %}
   {% endif %}
   {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
-  {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% if abi_source_address %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ (abi_source_address | lower | replace('0x', '') | trim) ~ "'" %}
+  {% else %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% endif %}
 {% else %}
   {# EXISTING: Original logic - works exactly as before #}
   {# — Normalize contract_address to list — #}
@@ -115,6 +122,7 @@
 {# — pull in the ABI for this contract(s) — #}
 {% set sig_sql %}
 SELECT
+  replaceAll(lower(contract_address), '0x', '')          AS abi_contract_address,
   replace(signature,'0x','')                     AS topic0_sig,
   event_name,
   arrayMap(x->JSONExtractString(x,'name'),
@@ -161,6 +169,29 @@ logs AS (
   )
   WHERE _dedup_rn = 1
 ),
+
+{% if contract_address_ref %}
+logs_with_abi AS (
+  SELECT
+    l.*,
+    {% if abi_source_address %}
+    '{{ abi_source_address | lower | replace('0x', '') | trim }}' AS abi_join_address
+    {% else %}
+    lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) AS abi_join_address
+    {% endif %}
+  FROM logs l
+  ANY LEFT JOIN {{ contract_address_ref }} cw
+    ON lower(replaceAll(l.{{ address_column }}, '0x', '')) = lower(replaceAll(cw.address, '0x', ''))
+    {{ type_and }}
+),
+{% else %}
+logs_with_abi AS (
+  SELECT
+    l.*,
+    lower(replaceAll(l.{{ address_column }}, '0x', '')) AS abi_join_address
+  FROM logs l
+),
+{% endif %}
 
 abi AS ( {{ sig_sql }} ),
 
@@ -435,10 +466,10 @@ process AS (
       toJSONString(mapFromArrays(param_names, param_values)) AS decoded_params
     {% endif %}
 
-  FROM logs AS l
+  FROM logs_with_abi AS l
   ANY LEFT JOIN abi AS a
-    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
+   AND l.abi_join_address = a.abi_contract_address
 )
 
 SELECT

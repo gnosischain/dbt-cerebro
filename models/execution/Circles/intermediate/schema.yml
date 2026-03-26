@@ -2,82 +2,20 @@ version: 2
 models:
 
 - name: int_execution_circles_backing
-  description: The `int_execution_circles_backing` model aggregates daily counts of completed circles backing events to monitor execution volume and trends over time.
+  description: The `int_execution_circles_backing` model captures Circles backing lifecycle events with decoded participants and metadata for downstream analytics.
   columns:
-
-  - name: date
-    description: The start of the day (UTC) for which the backing event counts are aggregated.
-    data_type: DateTime64
-    tests:
-    - not_null:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: cnt
-    description: The total number of 'CirclesBackingCompleted' events recorded on the given date.
-    data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
-- name: int_execution_circles_transitive_transfers
-  description: The model calculates daily transitive transfer volumes between avatars involved in circle-based contracts, aggregating total amounts and transfer counts for each avatar pair.
-  columns:
-
-  - name: date
-    description: The date (at day granularity) when the transfer event occurred.
-    data_type: Date
-    tests:
-    - not_null:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: AS
-    description: ''
-    data_type: ''
-
-  - name: from_avatar
-    description: Originator address extracted from decoded parameters.
-    data_type: String
-
-  - name: to_avatar
-    description: Recipient address extracted from decoded parameters.
-    data_type: String
-
-  - name: total_amount
-    description: Sum of amounts (in wei) transferred within the circle.
-    data_type: UInt64
-
-  - name: cnt
-    description: Count of transfer events aggregated.
-    data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
-- name: int_execution_circles_v1_avatars
-  description: The model tracks user registration events related to avatars within the execution circles, capturing registration timestamps, user addresses, and inviter information for analytical purposes.
-  columns:
-
   - name: block_timestamp
-    description: The timestamp when the registration event occurred, indicating the exact time of user registration.
+    description: UTC timestamp of the block containing the backing event.
     data_type: DateTime64
     tests:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: user_address
-    description: The blockchain address of the user who registered an avatar, decoded from event parameters.
+  - name: event_name
+    description: Name of the Circles backing event.
     data_type: String
-
-  - name: inviter_address
-    description: The blockchain address of the inviter who referred the new user, decoded from event parameters.
+  - name: lifecycle_stage
+    description: Normalized backing lifecycle stage derived from the event name.
     data_type: String
   meta:
     owner: analytics_team
@@ -87,51 +25,29 @@ models:
       severity: warn
       tags:
       - elementary
-- name: int_execution_circles_v2_avatars
-  description: This model aggregates daily counts of avatar registrations by type (Human, Group, Organization) to monitor user onboarding activities within the platform.
-  columns:
 
-  - name: date
-    description: The date (at day granularity) when the registration events occurred.
+- name: int_execution_circles_v1_avatars
+  description: The model captures Circles v1 signup events and normalizes avatar registration details for downstream analytics.
+  columns:
+  - name: block_timestamp
+    description: The timestamp when the signup event occurred.
     data_type: DateTime64
     tests:
     - not_null:
         config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: avatar
+    description: The avatar address registered by the v1 signup event.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: avatar_type
-    description: The category of the registered avatar, classified as Human, Group, or Organization.
+    description: The normalized Circles avatar category for the signup event.
     data_type: String
-
-  - name: cnt
-    description: The total number of registration events for the given avatar type on the specified date.
-    data_type: UInt64
-
-  - name: block_timestamp
-    description: UTC timestamp of the block containing the event.
-    data_type: DateTime
-
-  - name: event_name
-    description: Name of the registration event ('RegisterHuman', 'RegisterGroup', 'RegisterOrganization').
-    data_type: String
-
-  - name: transaction_hash
-    description: Hash of the transaction that triggered the event.
-    data_type: String
-
-  - name: from_address
-    description: Address that initiated the registration.
-    data_type: String
-
-  - name: to_address
-    description: Recipient address associated with the registration.
-    data_type: String
-
-  - name: registration_event_id
-    description: Unique identifier for the registration event.
-    data_type: String
-
-  - name: source_table
-    description: Source table name for lineage tracking.
+  - name: source_event_name
+    description: Original source event name used for lineage.
     data_type: String
   meta:
     owner: analytics_team
@@ -141,3 +57,120 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_execution_circles_v2_avatars
+  description: This model normalizes Circles v2 avatar registration events into a shared avatar shape for downstream analytics.
+  columns:
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the registration event.
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: avatar
+    description: The avatar address registered by the v2 event.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: avatar_type
+    description: The category of avatar registered by the event.
+    data_type: String
+  - name: source_event_name
+    description: Original source event name used for lineage.
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_circles_avatars
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_tokens
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+  columns:
+    - name: token
+      tests: [not_null]
+- name: int_execution_circles_trust_updates
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_trust_relations
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+  columns:
+    - name: truster
+      tests: [not_null]
+    - name: trustee
+      tests: [not_null]
+    - name: valid_from
+      tests: [not_null]
+- name: int_execution_circles_v1_token_transfers
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_v2_transfers
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_wrapper_transfers
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_transfers
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_transfer_summary
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_balance_diffs
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_balances_daily
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+  columns:
+    - name: date
+      tests: [not_null]
+    - name: account
+      tests: [not_null]
+- name: int_execution_circles_wrappers
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_group_registrations
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+  columns:
+    - name: group_address
+      tests: [not_null]
+- name: int_execution_circles_group_settings_updates
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_group_membership_timeline
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_group_collateral_diffs
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_group_collateral_balances_daily
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_group_vault_balances_hourly
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_payments
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_offer_cycles
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_supply_daily
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+- name: int_execution_circles_supply_hourly
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]

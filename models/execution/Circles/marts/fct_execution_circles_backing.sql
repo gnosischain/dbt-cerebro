@@ -6,11 +6,11 @@
 }}
 
 WITH dates AS (
-    -- get min/max date 
     SELECT
-        min(date) AS min_date,
-        max(date) AS max_date
+        min(toDate(block_timestamp)) AS min_date,
+        max(toDate(block_timestamp)) AS max_date
     FROM {{ ref('int_execution_circles_backing') }}
+    WHERE event_name = 'CirclesBackingCompleted'
 ),
 date_series AS (
     -- generate dense series of dates
@@ -25,7 +25,14 @@ filled AS (
         g.date,
         coalesce(t.cnt, 0) AS cnt
     FROM date_series g
-    LEFT JOIN {{ ref('int_execution_circles_backing') }} t
+    LEFT JOIN (
+        SELECT
+            toDate(block_timestamp) AS date,
+            count() AS cnt
+        FROM {{ ref('int_execution_circles_backing') }}
+        WHERE event_name = 'CirclesBackingCompleted'
+        GROUP BY 1
+    ) t
         ON g.date = t.date
 )
 
