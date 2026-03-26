@@ -5,7 +5,7 @@
         order_by='(day, protocol, pool_address)',
         partition_by='toStartOfMonth(day)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'yields', 'pools', 'il', 'intermediate']
+        tags=['production', 'execution', 'yields', 'pools', 'il', 'intermediate']
     )
 }}
 

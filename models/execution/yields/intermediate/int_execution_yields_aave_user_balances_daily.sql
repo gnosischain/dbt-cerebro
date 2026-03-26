@@ -7,7 +7,7 @@
         unique_key='(date, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','yields','aave','user_balances'],
+        tags=['production','execution','yields','aave','user_balances'],
         incremental_predicates=(
             [
                 "toStartOfMonth(date) >= toDate('" ~ var('start_month') ~ "')",

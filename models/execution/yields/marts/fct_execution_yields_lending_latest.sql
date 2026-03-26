@@ -3,7 +3,7 @@
         materialized='table',
         engine='ReplacingMergeTree()',
         order_by='(window, label, token)',
-        tags=['dev','execution','yields','lending']
+        tags=['production','execution','yields','lending']
     )
 }}
 

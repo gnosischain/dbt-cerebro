@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(protocol, pool_address)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'pools', 'staging']
+        tags=['production', 'execution', 'pools', 'staging']
     )
 }}
 
