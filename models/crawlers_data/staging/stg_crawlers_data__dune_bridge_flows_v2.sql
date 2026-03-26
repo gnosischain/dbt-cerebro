@@ -1,6 +1,6 @@
 {{ config(
     materialized = 'view',
-    tags = ['dev', 'staging', 'dune', 'bridges', 'v2']
+    tags = ['production', 'staging', 'dune', 'bridges', 'v2']
 ) }}
 
 -- V2: Expects pre-aggregated daily data from Dune (with date, txs columns)
