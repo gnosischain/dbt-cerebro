@@ -6,7 +6,7 @@
     unique_key = '(date, bridge, source_chain, dest_chain, token, direction)',
     partition_by = 'toStartOfMonth(date)',
     settings = {'allow_nullable_key': 1},
-    tags = ['production', 'intermediate', 'bridges', 'v2']
+    tags = ['dev', 'intermediate', 'bridges', 'v2']
 ) }}
 
 -- V2: Passthrough version - expects pre-aggregated daily data from staging
