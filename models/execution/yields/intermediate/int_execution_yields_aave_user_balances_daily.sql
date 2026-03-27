@@ -1,21 +1,13 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, reserve_address, user_address)',
         unique_key='(date, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','yields','aave','user_balances'],
-        incremental_predicates=(
-            [
-                "toStartOfMonth(date) >= toDate('" ~ var('start_month') ~ "')",
-                "toStartOfMonth(date) <= toDate('" ~ var('end_month') ~ "')"
-            ]
-            if var('start_month', none) and var('end_month', none)
-            else []
-        )
+        tags=['production','execution','yields','aave','user_balances']
     )
 }}
 
