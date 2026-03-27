@@ -67,17 +67,12 @@ swapr_v3_lp_events AS (
       {% endif %}
 ),
 
-balancer_v3_lp_events AS (
+balancer_v3_lp_events_raw AS (
     SELECT
-        toDate(toStartOfDay(block_timestamp)) AS date,
-        'Balancer V3' AS protocol,
-        concat('0x', replaceAll(lower(decoded_params['pool']), '0x', '')) AS pool_address,
-        multiIf(
-            event_name = 'LiquidityAdded', 'Mint',
-            event_name = 'LiquidityRemoved', 'Burn',
-            event_name
-        ) AS event_name,
-        lower(decoded_params['liquidityProvider']) AS lp_address
+        block_timestamp,
+        event_name AS raw_event_name,
+        decoded_params['pool'] AS pool_param,
+        decoded_params['liquidityProvider'] AS lp_param
     FROM {{ ref('contracts_BalancerV3_Vault_events') }}
     WHERE event_name IN ('LiquidityAdded', 'LiquidityRemoved')
       AND decoded_params['pool'] IS NOT NULL
@@ -89,6 +84,20 @@ balancer_v3_lp_events AS (
       {% else %}
         {{ apply_monthly_incremental_filter('block_timestamp', 'date', 'true') }}
       {% endif %}
+),
+
+balancer_v3_lp_events AS (
+    SELECT
+        toDate(toStartOfDay(block_timestamp)) AS date,
+        'Balancer V3' AS protocol,
+        concat('0x', replaceAll(lower(pool_param), '0x', '')) AS pool_address,
+        multiIf(
+            raw_event_name = 'LiquidityAdded', 'Mint',
+            raw_event_name = 'LiquidityRemoved', 'Burn',
+            raw_event_name
+        ) AS event_name,
+        lower(lp_param) AS lp_address
+    FROM balancer_v3_lp_events_raw
 ),
 
 all_lp_events AS (

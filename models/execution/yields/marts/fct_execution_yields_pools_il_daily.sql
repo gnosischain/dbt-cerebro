@@ -24,7 +24,10 @@
 
   swap_flow_usd_d  =  amount0_d / 10^dec0 × P0_d  +  amount1_d / 10^dec1 × P1_d
   swap_flow_usd_7d =  Σ(swap_flow_usd_d)  over 7-day window
-  lvr_apr_7d       =  -(swap_flow_usd_7d / avg_tvl_7d) × (365 / 7) × 100
+  lvr_apr_7d       =  (swap_flow_usd_7d - fees_usd_7d) / avg_tvl_7d × (365 / 7) × 100
+
+  Swap event amounts include fees on the input side, so fees_usd_7d is
+  subtracted to isolate the pure rebalancing cost (LVR).
 -#}
 
 SELECT
@@ -34,7 +37,7 @@ SELECT
     CASE
         WHEN t.days_in_window < 3 THEN NULL
         WHEN t.tvl_usd_7d_avg IS NULL OR t.tvl_usd_7d_avg <= 0 THEN NULL
-        ELSE -t.swap_flow_usd_7d
+        ELSE (t.swap_flow_usd_7d - t.fees_usd_7d)
              / t.tvl_usd_7d_avg * (365.0 / 7.0) * 100.0
     END AS lvr_apr_7d
 FROM (

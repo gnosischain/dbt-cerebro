@@ -27,20 +27,75 @@ balancer_v3_complete_pools AS (
     WHERE total_tokens = known_tokens
 ),
 
-token_pool_tvl_daily AS (
+{# Resolve token symbols from the pool registry without date_end filtering.
+   Covers V3 pools where migrated tokens (e.g. EURe, GBPe) have date_end in
+   the whitelist but still exist in active pools. Each address appears once
+   in the whitelist, so no duplication risk. #}
+registry_pool_tokens AS (
+    SELECT protocol, pool_address, token_address, token
+    FROM (
+        SELECT
+            m.protocol,
+            m.pool_address,
+            m.token0_address AS token_address,
+            t.token AS token
+        FROM {{ ref('stg_pools__v3_pool_registry') }} m
+        INNER JOIN {{ ref('stg_yields__tokens_meta') }} t
+          ON t.token_address = m.token0_address
+        WHERE m.protocol IN ('Uniswap V3', 'Swapr V3')
+
+        UNION ALL
+
+        SELECT
+            m.protocol,
+            m.pool_address,
+            m.token1_address AS token_address,
+            t.token AS token
+        FROM {{ ref('stg_pools__v3_pool_registry') }} m
+        INNER JOIN {{ ref('stg_yields__tokens_meta') }} t
+          ON t.token_address = m.token1_address
+        WHERE m.protocol IN ('Uniswap V3', 'Swapr V3')
+    )
+    WHERE token IS NOT NULL AND token != ''
+
+    UNION ALL
+
+    SELECT DISTINCT
+        protocol,
+        pool_address,
+        token_address,
+        token
+    FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
+    WHERE protocol = 'Balancer V3'
+      AND token IS NOT NULL AND token != ''
+      AND pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools)
+),
+
+{# Pool-level TVL from enriched (respects date_end for price safety). #}
+pool_tvl_daily AS (
     SELECT
         date,
         protocol,
         pool_address,
-        token_address,
-        token,
-        sum(tvl_component_usd) AS token_tvl_usd
+        sum(tvl_component_usd) AS pool_tvl_usd
     FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
     WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
-      AND token IS NOT NULL
-      AND token != ''
       AND (protocol != 'Balancer V3' OR pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools))
-    GROUP BY date, protocol, pool_address, token_address, token
+    GROUP BY date, protocol, pool_address
+),
+
+token_pool_tvl_daily AS (
+    SELECT
+        p.date AS date,
+        p.protocol AS protocol,
+        p.pool_address AS pool_address,
+        r.token_address AS token_address,
+        r.token AS token,
+        p.pool_tvl_usd AS token_tvl_usd
+    FROM pool_tvl_daily p
+    INNER JOIN registry_pool_tokens r
+      ON r.protocol = p.protocol
+     AND r.pool_address = p.pool_address
 ),
 
 token_pool_tvl_scored AS (
@@ -95,13 +150,8 @@ pool_symbol_lists AS (
         arraySort(groupUniqArray(token)) AS tokens_sorted,
         countDistinct(token) AS tokens_cnt
     FROM (
-        SELECT DISTINCT
-            protocol,
-            pool_address,
-            token
-        FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
-        WHERE token IS NOT NULL
-          AND token != ''
+        SELECT DISTINCT protocol, pool_address, token
+        FROM registry_pool_tokens
     )
     GROUP BY protocol, pool_address
 ),
@@ -146,16 +196,23 @@ pool_labels AS (
      AND sl.pool_address = p.pool_address
 ),
 
+{# Dates × pools from enriched, crossed with registry tokens so that
+   migrated tokens (e.g. old EURe) still appear as filter options. #}
 distinct_token_pool_dates AS (
-    SELECT DISTINCT
-        date,
-        protocol,
-        pool_address,
-        token_address,
-        token
-    FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
-    WHERE token IS NOT NULL
-      AND token != ''
+    SELECT
+        d.date AS date,
+        d.protocol AS protocol,
+        d.pool_address AS pool_address,
+        r.token_address AS token_address,
+        r.token AS token
+    FROM (
+        SELECT DISTINCT date, protocol, pool_address
+        FROM {{ ref('int_execution_yields_pools_enriched_daily') }}
+        WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+    ) d
+    INNER JOIN registry_pool_tokens r
+      ON r.protocol = d.protocol
+     AND r.pool_address = d.pool_address
 )
 
 SELECT
@@ -173,7 +230,7 @@ SELECT
     il.lvr_apr_7d AS lvr_apr_7d,
     CASE
         WHEN pm.fee_apr_7d IS NOT NULL AND il.lvr_apr_7d IS NOT NULL
-        THEN pm.fee_apr_7d - il.lvr_apr_7d
+        THEN pm.fee_apr_7d + il.lvr_apr_7d
         ELSE NULL
     END AS net_apr_7d
 FROM distinct_token_pool_dates b
