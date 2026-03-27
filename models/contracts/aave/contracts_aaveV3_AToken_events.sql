@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized            = 'incremental',
-        incremental_strategy    = 'delete+insert',
+        incremental_strategy    = ('append' if var('start_month', none) else 'delete+insert'),
         engine                  = 'ReplacingMergeTree()',
         order_by                = '(block_timestamp, log_index)',
         unique_key              = '(block_timestamp, log_index)',
@@ -12,7 +12,7 @@
         pre_hook                = [
                                     "SET allow_experimental_json_type = 1"
                                 ],
-        tags                    = ['dev','aave','v3','contracts','events','atoken']
+        tags                    = ['production','aave','v3','contracts','events','atoken']
     )
 }}
 

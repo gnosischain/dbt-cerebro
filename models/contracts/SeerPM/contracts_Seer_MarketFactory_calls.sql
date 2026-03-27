@@ -12,7 +12,7 @@
         pre_hook                = [
                                     "SET allow_experimental_json_type = 1"
                                 ],
-        tags                    = ['dev','contracts','seermarketfactory','calls']
+        tags                    = ['production','contracts','seermarketfactory','calls']
     )
 }}
 
