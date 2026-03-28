@@ -6,6 +6,7 @@
         order_by='(date, protocol, pool_address, token_address)',
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
+        pre_hook=["SET join_use_nulls = 0"],
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'pools', 'balances', 'intermediate']
     )
@@ -152,7 +153,7 @@ swapr_v3_daily_deltas AS (
             sw.token_address AS token_address,
             sw.delta_amount_raw AS delta_amount_raw,
             sw.delta_category AS delta_category,
-            toUInt32(coalesce(f.fee_ppm, ff.first_fee_ppm, 0)) AS effective_fee_ppm
+            toUInt32(if(f.fee_ppm > 0, f.fee_ppm, coalesce(ff.first_fee_ppm, 0))) AS effective_fee_ppm
         FROM (
             SELECT
                 'Swapr V3' AS protocol,
@@ -289,11 +290,11 @@ v3_balances_final AS (
         b.pool_address AS pool_address,
         b.token_address AS token_address,
         b.balance_raw AS token_amount_raw,
-        b.balance_raw / POWER(10, COALESCE(t.decimals, 18)) AS token_amount,
+        b.balance_raw / POWER(10, if(t.decimals > 0, t.decimals, 18)) AS token_amount,
         b.reserve_raw AS reserve_amount_raw,
-        b.reserve_raw / POWER(10, COALESCE(t.decimals, 18)) AS reserve_amount,
+        b.reserve_raw / POWER(10, if(t.decimals > 0, t.decimals, 18)) AS reserve_amount,
         b.fee_raw AS fee_amount_raw,
-        b.fee_raw / POWER(10, COALESCE(t.decimals, 18)) AS fee_amount
+        b.fee_raw / POWER(10, if(t.decimals > 0, t.decimals, 18)) AS fee_amount
     FROM v3_balances b
     LEFT JOIN {{ ref('tokens_whitelist') }} t
         ON lower(t.address) = b.token_address
@@ -417,7 +418,7 @@ balancer_v2_deltas AS (
         lower(e.token_address) AS token_address,
         e.delta_amount_raw,
         toInt256(0) AS fee_amount_raw,
-        coalesce(r.pool_address, e.pool_id) AS pool_address
+        if(r.pool_address != '', r.pool_address, e.pool_id) AS pool_address
     FROM {{ ref('stg_pools__balancer_v2_events') }} e
     LEFT JOIN balancer_v2_pool_registry r
         ON r.pool_id = e.pool_id
@@ -589,11 +590,11 @@ balancer_balances_final AS (
         b.pool_address AS pool_address,
         b.token_address AS token_address,
         b.balance_raw AS token_amount_raw,
-        b.balance_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS token_amount,
+        b.balance_raw / POWER(10, if(t.decimals > 0, t.decimals, if(wm.wrapper_decimals > 0, wm.wrapper_decimals, 18))) AS token_amount,
         b.reserve_raw AS reserve_amount_raw,
-        b.reserve_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS reserve_amount,
+        b.reserve_raw / POWER(10, if(t.decimals > 0, t.decimals, if(wm.wrapper_decimals > 0, wm.wrapper_decimals, 18))) AS reserve_amount,
         b.fee_raw AS fee_amount_raw,
-        b.fee_raw / POWER(10, COALESCE(t.decimals, wm.wrapper_decimals, 18)) AS fee_amount
+        b.fee_raw / POWER(10, if(t.decimals > 0, t.decimals, if(wm.wrapper_decimals > 0, wm.wrapper_decimals, 18))) AS fee_amount
     FROM balancer_balances b
     LEFT JOIN {{ ref('stg_pools__balancer_v3_token_map') }} wm
         ON wm.wrapper_address = b.token_address

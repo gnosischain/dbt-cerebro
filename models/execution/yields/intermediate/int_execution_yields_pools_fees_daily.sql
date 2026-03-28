@@ -6,6 +6,7 @@
         order_by='(date, protocol, pool_address, token_address)',
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
+        pre_hook=["SET join_use_nulls = 0"],
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'yields', 'pools', 'fees', 'accrued', 'intermediate']
     )
@@ -124,7 +125,7 @@ swapr_v3_swaps_with_fee AS (
         s.pool_address AS pool_address_no0x,
         s.token_position AS token_position,
         s.delta_amount_raw AS delta_amount_raw,
-        coalesce(f.fee_ppm, ff.first_fee_ppm) AS fee_ppm
+        if(f.fee_ppm > 0, f.fee_ppm, ff.first_fee_ppm) AS fee_ppm
     FROM (
         SELECT
             toDate(block_timestamp) AS date,
@@ -234,8 +235,8 @@ all_fees_with_token AS (
         fw.pool_address AS pool_address,
         fw.token_address AS token_address,
         tm.token AS token,
-        (toFloat64(fw.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
-        (toFloat64(fw.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
+        (toFloat64(fw.fee_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS fee_amount,
+        (toFloat64(fw.volume_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS volume_amount
     FROM (
         SELECT
             af.date AS date,
@@ -271,8 +272,8 @@ all_fees_with_token AS (
         bf.pool_address AS pool_address,
         bf.token_address AS token_address,
         tm.token AS token,
-        (toFloat64(bf.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount,
-        (toFloat64(bf.volume_raw) / pow(10, coalesce(tm.decimals, 18))) AS volume_amount
+        (toFloat64(bf.fee_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS fee_amount,
+        (toFloat64(bf.volume_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS volume_amount
     FROM balancer_v3_swap_fees bf
     LEFT JOIN {{ ref('stg_pools__balancer_v3_token_map') }} wm
       ON wm.wrapper_address = bf.token_address
