@@ -1,0 +1,29 @@
+version: 2
+models:
+
+- name: stg_yields__tokens_meta
+  description: Normalized token metadata from the tokens_whitelist seed. Provides lowercase address, uppercase symbol (nullable via nullIf), decimals, and validity window (date_start/date_end). Single source of truth for token lookups across all yields models.
+  columns:
+  - name: token_address
+    description: Lowercase token contract address.
+    data_type: String
+  - name: token
+    description: Uppercase token symbol (e.g. WETH, USDC.E). Null for empty/whitespace-only symbols.
+    data_type: Nullable(String)
+  - name: decimals
+    data_type: UInt8
+  - name: date_start
+    data_type: Date
+  - name: date_end
+    data_type: Nullable(Date)
+
+- name: stg_yields__token_prices_daily
+  description: Normalized daily token prices keyed by uppercase symbol. Wraps int_execution_token_prices_daily with consistent types and column naming. Referenced by enriched, fees, TVL, and LVR models.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    description: Uppercase token symbol matching stg_yields__tokens_meta.token.
+    data_type: Nullable(String)
+  - name: price_usd
+    data_type: Float64

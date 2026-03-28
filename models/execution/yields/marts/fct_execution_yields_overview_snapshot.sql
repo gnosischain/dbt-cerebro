@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(metric)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'yields', 'overview', 'snapshot']
+        tags=['production', 'execution', 'yields', 'overview', 'snapshot']
     )
 }}
 
@@ -41,14 +41,12 @@ FROM (
     -- LP Best APR (latest) with pool name
     lp_best_apr_latest AS (
         SELECT
-            f.fee_apr_7d AS apr,
-            f.pool AS pool_name
+            argMax(f.fee_apr_7d, f.fee_apr_7d) AS apr,
+            argMax(f.pool, f.fee_apr_7d) AS pool_name
         FROM {{ ref('fct_execution_yields_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
-        ORDER BY f.fee_apr_7d DESC
-        LIMIT 1
     ),
     
     -- LP Best APR (7 days ago)
@@ -70,15 +68,13 @@ FROM (
     -- Best Lending APY (latest) with token name
     lending_best_apy_latest AS (
         SELECT
-            a.apy_daily AS apy,
-            a.symbol AS token_name
+            argMax(a.apy_daily, a.apy_daily) AS apy,
+            argMax(a.symbol, a.apy_daily) AS token_name
         FROM {{ ref('int_execution_yields_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
-        ORDER BY a.apy_daily DESC
-        LIMIT 1
     ),
     
     -- Best Lending APY (7 days ago)
@@ -90,30 +86,22 @@ FROM (
           AND a.apy_daily IS NOT NULL
     ),
     
-    -- Total unique lenders (all-time) using bitmap merge
-    lending_lenders_total AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS total_lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }}
-        WHERE lenders_bitmap_state IS NOT NULL
+    -- Active lenders (current): users with positive supply balance on latest date
+    lending_active_lenders_latest AS (
+        SELECT toUInt64(count(DISTINCT user_address)) AS lenders
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date
+          AND b.balance > 0
     ),
-    
-    -- Lenders (7D window for change calculation)
-    lending_lenders_7d AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
-        CROSS JOIN lending_latest_date d
-        WHERE a.date > d.max_date - INTERVAL 7 DAY
-          AND a.date <= d.max_date
-          AND a.lenders_bitmap_state IS NOT NULL
-    ),
-    
-    lending_lenders_prior_7d AS (
-        SELECT toUInt64(groupBitmapMerge(lenders_bitmap_state)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
-        CROSS JOIN lending_latest_date d
-        WHERE a.date > d.max_date - INTERVAL 14 DAY
-          AND a.date <= d.max_date - INTERVAL 7 DAY
-          AND a.lenders_bitmap_state IS NOT NULL
+
+    -- Active lenders (7 days ago) for change calculation
+    lending_active_lenders_7d_ago AS (
+        SELECT toUInt64(count(DISTINCT user_address)) AS lenders
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date - INTERVAL 7 DAY
+          AND b.balance > 0
     ),
     
     
@@ -126,7 +114,7 @@ FROM (
     
     -- sDAI APY (latest)
     sdai_apy_latest AS (
-        SELECT apy
+        SELECT any(apy) AS apy
         FROM {{ ref('fct_yields_sdai_apy_daily') }} s
         CROSS JOIN sdai_latest_date d
         WHERE s.date = d.max_date
@@ -135,7 +123,7 @@ FROM (
     
     -- sDAI APY (7 days ago)
     sdai_apy_7d_ago AS (
-        SELECT apy
+        SELECT any(apy) AS apy
         FROM {{ ref('fct_yields_sdai_apy_daily') }} s
         CROSS JOIN sdai_latest_date d
         WHERE s.date = d.max_date - INTERVAL 7 DAY
@@ -152,10 +140,33 @@ FROM (
     
     -- sDAI Supply (7 days ago)
     sdai_supply_7d_ago AS (
-        SELECT supply
+        SELECT any(supply) AS supply
         FROM {{ ref('fct_execution_tokens_metrics_daily') }}
         WHERE upper(symbol) = 'SDAI'
           AND date = (SELECT max(date) - INTERVAL 7 DAY FROM {{ ref('fct_execution_tokens_metrics_daily') }} WHERE upper(symbol) = 'SDAI' AND date < today())
+    ),
+
+    lending_tvl_latest_date AS (
+        SELECT max(date) AS max_date
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }}
+        WHERE date < today()
+          AND balance_usd > 0
+    ),
+
+    lending_tvl_latest AS (
+        SELECT coalesce(sum(balance_usd), 0) AS tvl
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date
+          AND b.balance_usd > 0
+    ),
+
+    lending_tvl_7d_ago AS (
+        SELECT coalesce(sum(balance_usd), 0) AS tvl
+        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        CROSS JOIN lending_tvl_latest_date d
+        WHERE b.date = d.max_date - INTERVAL 7 DAY
+          AND b.balance_usd > 0
     )
 
     
@@ -210,10 +221,10 @@ FROM (
     
     UNION ALL
     
-    -- 4. Total Lenders (all-time)
+    -- 4. Active Lenders (current open positions)
     SELECT
         'lending_lenders_total' AS metric,
-        toFloat64(t.total_lenders) AS value,
+        toFloat64(c.lenders) AS value,
         round(
             CASE
                 WHEN p.lenders IS NULL OR p.lenders = 0 THEN NULL
@@ -222,9 +233,8 @@ FROM (
             2
         ) AS change_pct,
         NULL AS label
-    FROM lending_lenders_total t
-    CROSS JOIN lending_lenders_7d c
-    CROSS JOIN lending_lenders_prior_7d p
+    FROM lending_active_lenders_latest c
+    CROSS JOIN lending_active_lenders_7d_ago p
     
     UNION ALL
     
@@ -259,4 +269,21 @@ FROM (
         NULL AS label
     FROM sdai_supply_latest l
     CROSS JOIN sdai_supply_7d_ago p
+    
+    UNION ALL
+    
+    -- 7. Lending TVL Total
+    SELECT
+        'lending_tvl_total' AS metric,
+        l.tvl AS value,
+        round(
+            CASE
+                WHEN p.tvl IS NULL OR p.tvl = 0 THEN NULL
+                ELSE ((l.tvl / p.tvl) - 1) * 100
+            END,
+            2
+        ) AS change_pct,
+        NULL AS label
+    FROM lending_tvl_latest l
+    CROSS JOIN lending_tvl_7d_ago p
 )

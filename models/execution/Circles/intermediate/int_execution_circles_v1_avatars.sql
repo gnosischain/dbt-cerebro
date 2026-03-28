@@ -21,4 +21,4 @@ SELECT
 FROM {{ ref('contracts_circles_v2_Hub_events') }}
 WHERE 
     event_name = 'RegisterHuman'
-    {{ apply_monthly_incremental_filter(source_field='block_timestamp',destination_field='date',add_and=false) }}
+    {{ apply_monthly_incremental_filter(source_field='block_timestamp',destination_field='date',add_and=true) }}

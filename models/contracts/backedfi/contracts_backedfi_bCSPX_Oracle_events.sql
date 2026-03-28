@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized            = 'incremental',
-        incremental_strategy    = 'delete+insert',
+        incremental_strategy    = ('append' if var('start_month', none) else 'delete+insert'),
         engine                  = 'ReplacingMergeTree()',
         order_by                = '(block_timestamp, log_index)',
         unique_key              = '(block_timestamp, log_index)',

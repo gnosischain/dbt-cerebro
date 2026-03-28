@@ -1,11 +1,17 @@
 {{
     config(
         materialized='view',
-        tags=['dev', 'execution', 'pools', 'uniswap_v3', 'staging']
+        tags=['production', 'execution', 'pools', 'uniswap_v3', 'staging']
     )
 }}
 
-WITH pool_events AS (
+WITH constants AS (
+    SELECT
+        toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819967') AS max_int256,
+        toUInt256('115792089237316195423570985008687907853269984665640564039457584007913129639936') AS two_256
+),
+
+pool_events AS (
     SELECT
         replaceAll(lower(contract_address), '0x', '') AS pool_address,
         block_timestamp,
@@ -82,7 +88,11 @@ swap_events AS (
         log_index,
         'Swap' AS event_type,
         'token0' AS token_position,
-        toInt256OrNull(decoded_params['amount0']) AS delta_amount_raw
+        if(
+            toUInt256OrNull(decoded_params['amount0']) > (SELECT max_int256 FROM constants),
+            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(decoded_params['amount0'])),
+            toInt256(toUInt256OrNull(decoded_params['amount0']))
+        ) AS delta_amount_raw
     FROM pool_events
     WHERE event_name = 'Swap'
       AND decoded_params['amount0'] IS NOT NULL
@@ -96,7 +106,11 @@ swap_events AS (
         log_index,
         'Swap' AS event_type,
         'token1' AS token_position,
-        toInt256OrNull(decoded_params['amount1']) AS delta_amount_raw
+        if(
+            toUInt256OrNull(decoded_params['amount1']) > (SELECT max_int256 FROM constants),
+            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(decoded_params['amount1'])),
+            toInt256(toUInt256OrNull(decoded_params['amount1']))
+        ) AS delta_amount_raw
     FROM pool_events
     WHERE event_name = 'Swap'
       AND decoded_params['amount1'] IS NOT NULL
@@ -167,7 +181,15 @@ SELECT
     log_index,
     event_type,
     token_position,
-    delta_amount_raw
+    delta_amount_raw,
+    multiIf(
+        event_type IN ('Mint', 'Burn'), 'liquidity',
+        event_type = 'Swap' AND delta_amount_raw > toInt256(0), 'swap_in',
+        event_type = 'Swap' AND delta_amount_raw <= toInt256(0), 'swap_out',
+        event_type = 'Collect', 'fee_collection',
+        event_type = 'Flash', 'flash_fee',
+        'other'
+    ) AS delta_category
 FROM (
     SELECT * FROM mint_events
     UNION ALL

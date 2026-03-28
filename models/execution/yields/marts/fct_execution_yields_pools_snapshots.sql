@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(token, metric)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'yields', 'pools', 'snapshots']
+        tags=['production', 'execution', 'yields', 'pools', 'snapshots']
     )
 }}
 
@@ -75,18 +75,48 @@ FROM (
         GROUP BY f.token
     ),
 
+    volume_7d AS (
+        SELECT
+            f.token,
+            sum(f.volume_usd_daily) AS volume_usd
+        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        INNER JOIN token_latest_dates tld ON tld.token = f.token
+        WHERE f.date > tld.token_max_date - INTERVAL 7 DAY
+          AND f.date <= tld.token_max_date
+          AND f.token IS NOT NULL
+          AND f.token != ''
+        GROUP BY f.token
+    ),
+
+    volume_prior_7d AS (
+        SELECT
+            f.token,
+            sum(f.volume_usd_daily) AS volume_usd
+        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        INNER JOIN token_latest_dates tld ON tld.token = f.token
+        WHERE f.date > tld.token_max_date - INTERVAL 14 DAY
+          AND f.date <= tld.token_max_date - INTERVAL 7 DAY
+          AND f.token IS NOT NULL
+          AND f.token != ''
+        GROUP BY f.token
+    ),
+
     combined AS (
         SELECT
             tld.token AS token,
             tl.tvl_usd AS tvl_latest,
             t7.tvl_usd AS tvl_7d_ago,
             f7.fees_usd AS fees_7d,
-            fp.fees_usd AS fees_prior_7d
+            fp.fees_usd AS fees_prior_7d,
+            v7.volume_usd AS volume_7d,
+            vp.volume_usd AS volume_prior_7d
         FROM token_latest_dates tld
         LEFT JOIN tvl_latest tl ON tl.token = tld.token
         LEFT JOIN tvl_7d_ago t7 ON t7.token = tld.token
         LEFT JOIN fees_7d f7 ON f7.token = tld.token
         LEFT JOIN fees_prior_7d fp ON fp.token = tld.token
+        LEFT JOIN volume_7d v7 ON v7.token = tld.token
+        LEFT JOIN volume_prior_7d vp ON vp.token = tld.token
     )
 
     SELECT
@@ -118,4 +148,20 @@ FROM (
         ) AS change_pct
     FROM combined
     WHERE fees_7d IS NOT NULL
+
+    UNION ALL
+
+    SELECT
+        token,
+        'Volume_7D' AS metric,
+        volume_7d AS value,
+        round(
+            CASE
+                WHEN volume_prior_7d IS NULL OR volume_prior_7d = 0 THEN NULL
+                ELSE ((volume_7d / volume_prior_7d) - 1) * 100
+            END,
+            2
+        ) AS change_pct
+    FROM combined
+    WHERE volume_7d IS NOT NULL
 )
