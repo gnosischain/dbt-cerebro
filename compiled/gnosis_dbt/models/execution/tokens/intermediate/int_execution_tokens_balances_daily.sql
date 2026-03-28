@@ -47,6 +47,10 @@ WITH deltas AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -86,6 +90,10 @@ WITH deltas AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -119,6 +127,10 @@ WITH deltas AS (
           'aGnosDAI', 
         
           'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
         
           'spGNO', 
         
@@ -174,6 +186,10 @@ current_partition AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -214,6 +230,10 @@ prev_balances AS (
           'aGnosDAI', 
         
           'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
         
           'spGNO', 
         
@@ -336,6 +356,10 @@ prices AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -375,6 +399,10 @@ prices AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -408,6 +436,10 @@ prices AS (
           'aGnosDAI', 
         
           'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
         
           'spGNO', 
         

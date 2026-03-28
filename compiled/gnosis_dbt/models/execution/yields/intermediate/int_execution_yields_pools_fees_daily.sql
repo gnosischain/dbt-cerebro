@@ -4,154 +4,94 @@
 WITH
 constants AS (
     SELECT
-        toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819967') AS max_int256,
-        toUInt256('115792089237316195423570985008687907853269984665640564039457584007913129639936') AS two_256,
         toUInt64(4294967296) AS log_index_factor, -- 2^32
         toUInt64(1000000) AS fee_denom
 ),
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        decimals,
-        date_start,
-        date_end
-    FROM `dbt`.`tokens_whitelist`
-),
-
-prices AS (
-    SELECT
-        toDate(date) AS date,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        toFloat64(price) AS price_usd
-    FROM `dbt`.`int_execution_token_prices_daily`
-    WHERE date < today()
-      
-        
-  
-
-      
-),
-
 /* -----------------------------
-   Uniswap V3: pool meta + fee tier
+   Uniswap V3: static fee tier per pool
 ------------------------------ */
-uniswap_v3_pools AS (
+uniswap_v3_fee_tiers AS (
     SELECT DISTINCT
         replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
         toUInt32OrNull(decoded_params['fee']) AS fee_ppm
     FROM `dbt`.`contracts_UniswapV3_Factory_events`
     WHERE event_name = 'PoolCreated'
       AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
       AND decoded_params['fee'] IS NOT NULL
-),
-
-uniswap_v3_swaps_raw AS (
-    SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        e.block_timestamp,
-        e.log_index,
-        (toUInt64(toUnixTimestamp(e.block_timestamp)) * (SELECT log_index_factor FROM constants) + toUInt64(e.log_index)) AS event_order,
-        toUInt256OrNull(e.decoded_params['amount0']) AS amount0_u,
-        toUInt256OrNull(e.decoded_params['amount1']) AS amount1_u
-    FROM `dbt`.`contracts_UniswapV3_Pool_events` e
-    WHERE e.event_name = 'Swap'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['amount0'] IS NOT NULL
-      AND e.decoded_params['amount1'] IS NOT NULL
-      
-        
-  
-
-      
-),
-
-uniswap_v3_swaps AS (
-    SELECT
-        s.date,
-        s.pool_address_no0x,
-        if(
-            s.amount0_u > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - s.amount0_u),
-            toInt256(s.amount0_u)
-        ) AS amount0,
-        if(
-            s.amount1_u > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - s.amount1_u),
-            toInt256(s.amount1_u)
-        ) AS amount1,
-        p.fee_ppm AS fee_ppm
-    FROM uniswap_v3_swaps_raw s
-    INNER JOIN uniswap_v3_pools p
-        ON p.pool_address_no0x = s.pool_address_no0x
-    WHERE s.amount0_u IS NOT NULL
-      AND s.amount1_u IS NOT NULL
-      AND p.fee_ppm IS NOT NULL
 ),
 
 uniswap_v3_swap_fees_token AS (
     SELECT
-        date,
+        toDate(e.block_timestamp) AS date,
         'Uniswap V3' AS protocol,
-        pool_address_no0x,
-        'token0' AS token_position,
-        toUInt256(intDiv(greatest(amount0, toInt256(0)) * toInt256(fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw
-    FROM uniswap_v3_swaps
+        e.pool_address AS pool_address_no0x,
+        e.token_position,
+        toUInt256(intDiv(e.delta_amount_raw * toInt256(ft.fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw,
+        toUInt256(e.delta_amount_raw) AS volume_raw
+    FROM `dbt`.`stg_pools__uniswap_v3_events` e
+    INNER JOIN uniswap_v3_fee_tiers ft
+        ON ft.pool_address_no0x = e.pool_address
+    WHERE e.delta_category = 'swap_in'
+      AND ft.fee_ppm IS NOT NULL
+      
+        
+  
+    
+    
 
-    UNION ALL
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
 
-    SELECT
-        date,
-        'Uniswap V3' AS protocol,
-        pool_address_no0x,
-        'token1' AS token_position,
-        toUInt256(intDiv(greatest(amount1, toInt256(0)) * toInt256(fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw
-    FROM uniswap_v3_swaps
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
+
+      
 ),
 
 uniswap_v3_flash_fees_token AS (
     SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
+        toDate(e.block_timestamp) AS date,
         'Uniswap V3' AS protocol,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        'token0' AS token_position,
-        toUInt256(
-            toUInt256OrNull(e.decoded_params['paid0']) - toUInt256OrNull(e.decoded_params['amount0'])
-        ) AS fee_raw
-    FROM `dbt`.`contracts_UniswapV3_Pool_events` e
-    WHERE e.event_name = 'Flash'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['paid0'] IS NOT NULL
-      AND e.decoded_params['amount0'] IS NOT NULL
+        e.pool_address AS pool_address_no0x,
+        e.token_position,
+        toUInt256(e.delta_amount_raw) AS fee_raw,
+        toUInt256(0) AS volume_raw
+    FROM `dbt`.`stg_pools__uniswap_v3_events` e
+    WHERE e.delta_category = 'flash_fee'
+      AND e.delta_amount_raw > toInt256(0)
       
         
   
+    
+    
 
-      
-
-    UNION ALL
-
-    SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
-        'Uniswap V3' AS protocol,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        'token1' AS token_position,
-        toUInt256(
-            toUInt256OrNull(e.decoded_params['paid1']) - toUInt256OrNull(e.decoded_params['amount1'])
-        ) AS fee_raw
-    FROM `dbt`.`contracts_UniswapV3_Pool_events` e
-    WHERE e.event_name = 'Flash'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['paid1'] IS NOT NULL
-      AND e.decoded_params['amount1'] IS NOT NULL
-      
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
         
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
   
 
       
@@ -164,20 +104,8 @@ uniswap_v3_fees_token AS (
 ),
 
 /* -----------------------------
-   Swapr V3 (Algebra): pool meta + dynamic fee schedule
+   Swapr V3 (Algebra): dynamic fee schedule
 ------------------------------ */
-swapr_v3_pools AS (
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address
-    FROM `dbt`.`contracts_Swapr_v3_AlgebraFactory_events`
-    WHERE event_name = 'Pool'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-),
-
 swapr_v3_fee_events AS (
     SELECT
         replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
@@ -189,11 +117,6 @@ swapr_v3_fee_events AS (
     WHERE e.event_name = 'Fee'
       AND e.block_timestamp < today()
       AND e.decoded_params['fee'] IS NOT NULL
-      
-        
-  
-
-      
 ),
 
 swapr_v3_first_fee AS (
@@ -205,54 +128,58 @@ swapr_v3_first_fee AS (
     GROUP BY pool_address_no0x
 ),
 
-swapr_v3_swaps_raw AS (
-    SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        e.block_timestamp,
-        e.log_index,
-        (toUInt64(toUnixTimestamp(e.block_timestamp)) * (SELECT log_index_factor FROM constants) + toUInt64(e.log_index)) AS event_order,
-        toUInt256OrNull(e.decoded_params['amount0']) AS amount0_u,
-        toUInt256OrNull(e.decoded_params['amount1']) AS amount1_u
-    FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events` e
-    WHERE e.event_name = 'Swap'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['amount0'] IS NOT NULL
-      AND e.decoded_params['amount1'] IS NOT NULL
-      
-        
-  
-
-      
-),
-
 swapr_v3_swaps_with_fee AS (
     SELECT
-        s.date,
-        s.pool_address_no0x,
-        if(
-            s.amount0_u > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - s.amount0_u),
-            toInt256(s.amount0_u)
-        ) AS amount0,
-        if(
-            s.amount1_u > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - s.amount1_u),
-            toInt256(s.amount1_u)
-        ) AS amount1,
-        coalesce(f.fee_ppm, ff.first_fee_ppm) AS fee_ppm
+        s.date AS date,
+        s.pool_address AS pool_address_no0x,
+        s.token_position AS token_position,
+        s.delta_amount_raw AS delta_amount_raw,
+        if(f.fee_ppm > 0, f.fee_ppm, ff.first_fee_ppm) AS fee_ppm
     FROM (
-        SELECT * FROM swapr_v3_swaps_raw
-        ORDER BY pool_address_no0x, event_order
+        SELECT
+            toDate(block_timestamp) AS date,
+            pool_address,
+            block_timestamp,
+            log_index,
+            token_position,
+            delta_amount_raw,
+            (toUInt64(toUnixTimestamp(block_timestamp)) * (SELECT log_index_factor FROM constants) + toUInt64(log_index)) AS event_order
+        FROM `dbt`.`stg_pools__swapr_v3_events`
+        WHERE delta_category = 'swap_in'
+          
+            
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
+
+          
+        ORDER BY pool_address, event_order
     ) s
     ASOF LEFT JOIN (
         SELECT * FROM swapr_v3_fee_events
         ORDER BY pool_address_no0x, event_order
     ) f
-      ON s.pool_address_no0x = f.pool_address_no0x
+      ON s.pool_address = f.pool_address_no0x
      AND s.event_order >= f.event_order
     LEFT JOIN swapr_v3_first_fee ff
-      ON ff.pool_address_no0x = s.pool_address_no0x
+      ON ff.pool_address_no0x = s.pool_address
     WHERE coalesce(f.fee_ppm, ff.first_fee_ppm) IS NOT NULL
 ),
 
@@ -260,59 +187,45 @@ swapr_v3_swap_fees_token AS (
     SELECT
         date,
         'Swapr V3' AS protocol,
-        s.pool_address_no0x,
-        'token0' AS token_position,
-        toUInt256(intDiv(greatest(amount0, toInt256(0)) * toInt256(fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw
-    FROM swapr_v3_swaps_with_fee s
-
-    UNION ALL
-
-    SELECT
-        date,
-        'Swapr V3' AS protocol,
-        s.pool_address_no0x,
-        'token1' AS token_position,
-        toUInt256(intDiv(greatest(amount1, toInt256(0)) * toInt256(fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw
-    FROM swapr_v3_swaps_with_fee s
+        pool_address_no0x,
+        token_position,
+        toUInt256(intDiv(delta_amount_raw * toInt256(fee_ppm), toInt256((SELECT fee_denom FROM constants)))) AS fee_raw,
+        toUInt256(delta_amount_raw) AS volume_raw
+    FROM swapr_v3_swaps_with_fee
 ),
 
 swapr_v3_flash_fees_token AS (
     SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
+        toDate(e.block_timestamp) AS date,
         'Swapr V3' AS protocol,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        'token0' AS token_position,
-        toUInt256(
-            toUInt256OrNull(e.decoded_params['paid0']) - toUInt256OrNull(e.decoded_params['amount0'])
-        ) AS fee_raw
-    FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events` e
-    WHERE e.event_name = 'Flash'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['paid0'] IS NOT NULL
-      AND e.decoded_params['amount0'] IS NOT NULL
+        e.pool_address AS pool_address_no0x,
+        e.token_position,
+        toUInt256(e.delta_amount_raw) AS fee_raw,
+        toUInt256(0) AS volume_raw
+    FROM `dbt`.`stg_pools__swapr_v3_events` e
+    WHERE e.delta_category = 'flash_fee'
+      AND e.delta_amount_raw > toInt256(0)
       
         
   
+    
+    
 
-      
-
-    UNION ALL
-
-    SELECT
-        toDate(toStartOfDay(e.block_timestamp)) AS date,
-        'Swapr V3' AS protocol,
-        replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        'token1' AS token_position,
-        toUInt256(
-            toUInt256OrNull(e.decoded_params['paid1']) - toUInt256OrNull(e.decoded_params['amount1'])
-        ) AS fee_raw
-    FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events` e
-    WHERE e.event_name = 'Flash'
-      AND e.block_timestamp < today()
-      AND e.decoded_params['paid1'] IS NOT NULL
-      AND e.decoded_params['amount1'] IS NOT NULL
-      
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
         
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
   
 
       
@@ -325,65 +238,112 @@ swapr_v3_fees_token AS (
 ),
 
 /* -----------------------------
-   Token mapping + aggregation
+   Balancer V3: explicit fee amounts from Swap events
 ------------------------------ */
-v3_pool_meta AS (
+balancer_v3_swap_fees AS (
     SELECT
-        'Uniswap V3' AS protocol,
-        pool_address_no0x,
-        token0_address,
-        token1_address
-    FROM uniswap_v3_pools
+        toDate(toStartOfDay(e.block_timestamp)) AS date,
+        'Balancer V3' AS protocol,
+        concat('0x', replaceAll(lower(e.decoded_params['pool']), '0x', '')) AS pool_address,
+        lower(e.decoded_params['tokenIn']) AS token_address,
+        toUInt256OrNull(e.decoded_params['swapFeeAmount']) AS fee_raw,
+        toUInt256OrNull(e.decoded_params['amountIn']) AS volume_raw
+    FROM `dbt`.`contracts_BalancerV3_Vault_events` e
+    WHERE e.event_name = 'Swap'
+      AND e.block_timestamp < today()
+      AND e.decoded_params['pool'] IS NOT NULL
+      AND e.decoded_params['tokenIn'] IS NOT NULL
+      AND e.decoded_params['swapFeeAmount'] IS NOT NULL
+      AND e.decoded_params['amountIn'] IS NOT NULL
+      
+        
+  
+    
+    
 
-    UNION ALL
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
 
-    SELECT
-        'Swapr V3' AS protocol,
-        pool_address_no0x,
-        token0_address,
-        token1_address
-    FROM swapr_v3_pools
+      FROM `dbt`.`int_execution_yields_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
+
+      
 ),
 
+/* -----------------------------
+   Token mapping + aggregation
+------------------------------ */
 all_fees_token AS (
     SELECT * FROM uniswap_v3_fees_token
     UNION ALL
     SELECT * FROM swapr_v3_fees_token
 ),
 
-fees_with_token AS (
-    SELECT
-        f.date,
-        f.protocol,
-        f.pool_address_no0x,
-        concat('0x', f.pool_address_no0x) AS pool_address,
-        multiIf(
-            f.token_position = 'token0', m.token0_address,
-            f.token_position = 'token1', m.token1_address,
-            NULL
-        ) AS token_address,
-        f.fee_raw
-    FROM all_fees_token f
-    INNER JOIN v3_pool_meta m
-      ON m.protocol = f.protocol
-     AND m.pool_address_no0x = f.pool_address_no0x
-    WHERE f.fee_raw IS NOT NULL
-),
+all_fees_with_token AS (SELECT
+        fw.date AS date,
+        fw.protocol AS protocol,
+        fw.pool_address AS pool_address,
+        fw.token_address AS token_address,
+        tm.token AS token,
+        (toFloat64(fw.fee_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS fee_amount,
+        (toFloat64(fw.volume_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS volume_amount
+    FROM (
+        SELECT
+            af.date AS date,
+            af.protocol AS protocol,
+            concat('0x', af.pool_address_no0x) AS pool_address,
+            multiIf(
+                af.token_position = 'token0', m.token0_address,
+                af.token_position = 'token1', m.token1_address,
+                NULL
+            ) AS token_address,
+            af.fee_raw AS fee_raw,
+            af.volume_raw AS volume_raw
+        FROM all_fees_token af
+        INNER JOIN `dbt`.`stg_pools__v3_pool_registry` m
+          ON m.protocol = af.protocol
+         AND m.pool_address = concat('0x', af.pool_address_no0x)
+        WHERE af.fee_raw IS NOT NULL
+    ) fw
+    LEFT JOIN `dbt`.`stg_yields__tokens_meta` tm
+      ON tm.token_address = fw.token_address
+     AND fw.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR fw.date < toDate(tm.date_end))
+    WHERE fw.token_address IS NOT NULL
+      AND tm.token IS NOT NULL
+      AND tm.token != ''
 
-fees_token_amounts AS (
+    UNION ALL
+
+    
     SELECT
-        f.date,
-        f.protocol,
-        f.pool_address,
-        f.token_address,
-        tm.token,
-        (toFloat64(f.fee_raw) / pow(10, coalesce(tm.decimals, 18))) AS fee_amount
-    FROM fees_with_token f
-    LEFT JOIN token_meta tm
-      ON tm.token_address = f.token_address
-     AND f.date >= toDate(tm.date_start)
-     AND (tm.date_end IS NULL OR f.date < toDate(tm.date_end))
-    WHERE f.token_address IS NOT NULL
+        bf.date AS date,
+        bf.protocol AS protocol,
+        bf.pool_address AS pool_address,
+        bf.token_address AS token_address,
+        tm.token AS token,
+        (toFloat64(bf.fee_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS fee_amount,
+        (toFloat64(bf.volume_raw) / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS volume_amount
+    FROM balancer_v3_swap_fees bf
+    LEFT JOIN `dbt`.`stg_pools__balancer_v3_token_map` wm
+      ON wm.wrapper_address = bf.token_address
+    LEFT JOIN `dbt`.`stg_yields__tokens_meta` tm
+      ON tm.token_address = coalesce(nullIf(wm.underlying_address, ''), bf.token_address)
+     AND bf.date >= toDate(tm.date_start)
+     AND (tm.date_end IS NULL OR bf.date < toDate(tm.date_end))
+    WHERE bf.token_address IS NOT NULL
+      AND bf.fee_raw IS NOT NULL
       AND tm.token IS NOT NULL
       AND tm.token != ''
 ),
@@ -396,11 +356,15 @@ fees_daily AS (
         f.token_address,
         f.token,
         sum(f.fee_amount) AS fee_amount,
-        sum(f.fee_amount * coalesce(p.price_usd, 0)) AS fees_usd
-    FROM fees_token_amounts f
-    LEFT JOIN prices p
-      ON p.date = f.date
-     AND p.token = f.token
+        sum(f.fee_amount * p.price_usd) AS fees_usd,
+        sum(f.volume_amount) AS volume_amount,
+        sum(f.volume_amount * p.price_usd) AS volume_usd
+    FROM all_fees_with_token f
+    ASOF LEFT JOIN (
+        SELECT * FROM `dbt`.`stg_yields__token_prices_daily` ORDER BY token, date
+    ) p
+      ON p.token = f.token
+     AND f.date >= p.date
     GROUP BY f.date, f.protocol, f.pool_address, f.token_address, f.token
 )
 
@@ -411,6 +375,8 @@ SELECT
     token_address,
     token,
     fee_amount,
-    fees_usd
+    fees_usd,
+    volume_amount,
+    volume_usd
 FROM fees_daily
 WHERE date < today()

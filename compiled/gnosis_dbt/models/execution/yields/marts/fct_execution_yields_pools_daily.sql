@@ -1,93 +1,88 @@
 
 
 WITH
-balances_base AS (
-    SELECT
-        toDate(b.date) AS date,
-        b.protocol AS protocol,
-        lower(b.pool_address) AS pool_address_raw,
-        lower(b.token_address) AS token_address,
-        b.token_amount AS token_amount
-    FROM `dbt`.`int_execution_pools_balances_daily` b
-    WHERE b.date < today()
+
+
+balancer_v3_complete_pools AS (
+    SELECT pool_address
+    FROM (
+        SELECT
+            pool_address,
+            count(DISTINCT token_address) AS total_tokens,
+            count(DISTINCT CASE WHEN token IS NOT NULL AND token != '' THEN token_address END) AS known_tokens
+        FROM `dbt`.`int_execution_yields_pools_enriched_daily`
+        WHERE protocol = 'Balancer V3'
+        GROUP BY pool_address
+    )
+    WHERE total_tokens = known_tokens
 ),
 
-balances_canon AS (
-    SELECT
-        date,
+
+registry_pool_tokens AS (
+    SELECT protocol, pool_address, token_address, token
+    FROM (
+        SELECT
+            m.protocol,
+            m.pool_address,
+            m.token0_address AS token_address,
+            t.token AS token
+        FROM `dbt`.`stg_pools__v3_pool_registry` m
+        INNER JOIN `dbt`.`stg_yields__tokens_meta` t
+          ON t.token_address = m.token0_address
+        WHERE m.protocol IN ('Uniswap V3', 'Swapr V3')
+
+        UNION ALL
+
+        SELECT
+            m.protocol,
+            m.pool_address,
+            m.token1_address AS token_address,
+            t.token AS token
+        FROM `dbt`.`stg_pools__v3_pool_registry` m
+        INNER JOIN `dbt`.`stg_yields__tokens_meta` t
+          ON t.token_address = m.token1_address
+        WHERE m.protocol IN ('Uniswap V3', 'Swapr V3')
+    )
+    WHERE token IS NOT NULL AND token != ''
+
+    UNION ALL
+
+    SELECT DISTINCT
         protocol,
-        multiIf(
-            startsWith(pool_address_raw, '0x'),
-            pool_address_raw,
-            concat('0x', pool_address_raw)
-        ) AS pool_address,
-        replaceAll(
-            multiIf(
-                startsWith(pool_address_raw, '0x'),
-                pool_address_raw,
-                concat('0x', pool_address_raw)
-            ),
-            '0x',
-            ''
-        ) AS pool_address_no0x,
+        pool_address,
         token_address,
-        token_amount
-    FROM balances_base
+        token
+    FROM `dbt`.`int_execution_yields_pools_enriched_daily`
+    WHERE protocol = 'Balancer V3'
+      AND token IS NOT NULL AND token != ''
+      AND pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools)
 ),
 
-token_meta AS (
-    SELECT
-        lower(address) AS token_address,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        decimals,
-        date_start,
-        date_end
-    FROM `dbt`.`tokens_whitelist`
-),
 
-prices AS (
-    SELECT
-        toDate(date) AS date,
-        nullIf(upper(trimBoth(symbol)), '') AS token,
-        toFloat64(price) AS price_usd
-    FROM `dbt`.`int_execution_token_prices_daily`
-    WHERE date < today()
-),
-
-balances_enriched AS (
-    SELECT
-        b.date AS date,
-        b.protocol AS protocol,
-        b.pool_address AS pool_address,
-        b.pool_address_no0x AS pool_address_no0x,
-        b.token_address AS token_address,
-        tm.token AS token,
-        b.token_amount AS token_amount,
-        p.price_usd AS price_usd,
-        b.token_amount * coalesce(p.price_usd, 0) AS tvl_component_usd
-    FROM balances_canon b
-    LEFT JOIN token_meta tm
-      ON tm.token_address = b.token_address
-     AND b.date >= toDate(tm.date_start)
-     AND (tm.date_end IS NULL OR b.date < toDate(tm.date_end))
-    LEFT JOIN prices p
-      ON p.date = b.date
-     AND p.token = tm.token
-),
-
-token_pool_tvl_daily AS (
+pool_tvl_daily AS (
     SELECT
         date,
         protocol,
         pool_address,
-        token_address,
-        token,
-        sum(tvl_component_usd) AS token_tvl_usd
-    FROM balances_enriched
-    WHERE protocol IN ('Uniswap V3', 'Swapr V3')
-      AND token IS NOT NULL
-      AND token != ''
-    GROUP BY date, protocol, pool_address, token_address, token
+        sum(tvl_component_usd) AS pool_tvl_usd
+    FROM `dbt`.`int_execution_yields_pools_enriched_daily`
+    WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+      AND (protocol != 'Balancer V3' OR pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools))
+    GROUP BY date, protocol, pool_address
+),
+
+token_pool_tvl_daily AS (
+    SELECT
+        p.date AS date,
+        p.protocol AS protocol,
+        p.pool_address AS pool_address,
+        r.token_address AS token_address,
+        r.token AS token,
+        p.pool_tvl_usd AS token_tvl_usd
+    FROM pool_tvl_daily p
+    INNER JOIN registry_pool_tokens r
+      ON r.protocol = p.protocol
+     AND r.pool_address = p.pool_address
 ),
 
 token_pool_tvl_scored AS (
@@ -135,49 +130,6 @@ top_pools_by_token AS (
     WHERE pool_rank <= 5
 ),
 
-pool_tvl_daily AS (
-    SELECT
-        date,
-        protocol,
-        pool_address,
-        any(pool_address_no0x) AS pool_address_no0x,
-        sum(tvl_component_usd) AS tvl_usd
-    FROM balances_enriched
-    GROUP BY date, protocol, pool_address
-),
-
-uniswap_v3_pools AS (
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
-        'Uniswap V3' AS protocol
-    FROM `dbt`.`contracts_UniswapV3_Factory_events`
-    WHERE event_name = 'PoolCreated'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-),
-
-swapr_v3_pools AS (
-    SELECT DISTINCT
-        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        lower(decoded_params['token0']) AS token0_address,
-        lower(decoded_params['token1']) AS token1_address,
-        'Swapr V3' AS protocol
-    FROM `dbt`.`contracts_Swapr_v3_AlgebraFactory_events`
-    WHERE event_name = 'Pool'
-      AND decoded_params['pool'] IS NOT NULL
-      AND decoded_params['token0'] IS NOT NULL
-      AND decoded_params['token1'] IS NOT NULL
-),
-
-v3_pool_meta AS (
-    SELECT * FROM uniswap_v3_pools
-    UNION ALL
-    SELECT * FROM swapr_v3_pools
-),
-
 pool_symbol_lists AS (
     SELECT
         protocol,
@@ -185,13 +137,8 @@ pool_symbol_lists AS (
         arraySort(groupUniqArray(token)) AS tokens_sorted,
         countDistinct(token) AS tokens_cnt
     FROM (
-        SELECT
-            protocol,
-            pool_address,
-            token
-        FROM balances_enriched
-        WHERE token IS NOT NULL
-          AND token != ''
+        SELECT DISTINCT protocol, pool_address, token
+        FROM registry_pool_tokens
     )
     GROUP BY protocol, pool_address
 ),
@@ -200,7 +147,6 @@ pool_labels AS (
     SELECT
         p.protocol AS protocol,
         p.pool_address AS pool_address,
-        -- Default label for Balancer or unknown: sym1/sym2/sym3(+N) • protocol • 0x…suffix
         multiIf(
             p.protocol IN ('Uniswap V3', 'Swapr V3'),
             concat(
@@ -222,117 +168,73 @@ pool_labels AS (
             )
         ) AS pool
     FROM (
-        SELECT DISTINCT protocol, pool_address FROM balances_canon
+        SELECT DISTINCT protocol, pool_address
+        FROM `dbt`.`int_execution_yields_pools_enriched_daily`
     ) p
-    LEFT JOIN v3_pool_meta m
+    LEFT JOIN `dbt`.`stg_pools__v3_pool_registry` m
       ON m.protocol = p.protocol
-     AND m.pool_address_no0x = replaceAll(lower(p.pool_address), '0x', '')
-    LEFT JOIN token_meta t0
+     AND m.pool_address = lower(p.pool_address)
+    LEFT JOIN `dbt`.`stg_yields__tokens_meta` t0
       ON t0.token_address = m.token0_address
-    LEFT JOIN token_meta t1
+    LEFT JOIN `dbt`.`stg_yields__tokens_meta` t1
       ON t1.token_address = m.token1_address
     LEFT JOIN pool_symbol_lists sl
       ON sl.protocol = p.protocol
      AND sl.pool_address = p.pool_address
 ),
 
--- Accrued fees (gross) from Swap + Flash events (Uniswap V3 + Swapr V3 only)
-fees_usd_daily AS (
-    SELECT
-        date,
-        protocol,
-        pool_address,
-        sum(fees_usd) AS fees_usd_daily
-    FROM `dbt`.`int_execution_yields_pools_fees_daily`
-    WHERE date < today()
-    GROUP BY date, protocol, pool_address
-),
 
-pool_metrics_daily AS (
+distinct_token_pool_dates AS (
     SELECT
-        t.date,
-        t.protocol,
-        t.pool_address,
-        t.tvl_usd,
-        coalesce(f.fees_usd_daily, 0) AS fees_usd_daily,
-        sum(coalesce(f.fees_usd_daily, 0)) OVER (
-            PARTITION BY t.protocol, t.pool_address
-            ORDER BY t.date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-        ) AS fees_usd_7d,
-        avg(t.tvl_usd) OVER (
-            PARTITION BY t.protocol, t.pool_address
-            ORDER BY t.date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-        ) AS tvl_usd_7d_avg
-    FROM pool_tvl_daily t
-    LEFT JOIN fees_usd_daily f
-      ON f.date = t.date
-     AND f.protocol = t.protocol
-     AND f.pool_address = t.pool_address
-),
-
-pool_metrics_final AS (
-    SELECT
-        date,
-        protocol,
-        pool_address,
-        tvl_usd,
-        fees_usd_daily,
-        multiIf(
-            protocol IN ('Uniswap V3', 'Swapr V3') AND tvl_usd_7d_avg > 0,
-            (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0,
-            NULL
-        ) AS fee_apr_7d
-    FROM pool_metrics_daily
-),
-
-final AS (
-    SELECT
-        b.date AS date,
-        b.protocol AS protocol,
-        b.pool_address AS pool_address,
-        pl.pool AS pool,
-        b.token_address AS token_address,
-        b.token AS token,
-        pm.tvl_usd AS tvl_usd,
-        pm.fees_usd_daily AS fees_usd_daily,
-        pm.fee_apr_7d AS fee_apr_7d
+        d.date AS date,
+        d.protocol AS protocol,
+        d.pool_address AS pool_address,
+        r.token_address AS token_address,
+        r.token AS token
     FROM (
-        SELECT DISTINCT
-            date,
-            protocol,
-            pool_address,
-            token_address,
-            token
-        FROM balances_enriched
-        WHERE token IS NOT NULL
-          AND token != ''
-    ) b
-    INNER JOIN top_pools_by_token tp
-      ON tp.token = b.token
-     AND tp.protocol = b.protocol
-     AND tp.pool_address = b.pool_address
-     AND tp.token_address = b.token_address
-    LEFT JOIN pool_labels pl
-      ON pl.protocol = b.protocol
-     AND pl.pool_address = b.pool_address
-    LEFT JOIN pool_metrics_final pm
-      ON pm.date = b.date
-     AND pm.protocol = b.protocol
-     AND pm.pool_address = b.pool_address
-    WHERE b.protocol IN ('Uniswap V3', 'Swapr V3')
+        SELECT DISTINCT date, protocol, pool_address
+        FROM `dbt`.`int_execution_yields_pools_enriched_daily`
+        WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+    ) d
+    INNER JOIN registry_pool_tokens r
+      ON r.protocol = d.protocol
+     AND r.pool_address = d.pool_address
 )
 
 SELECT
-    date,
-    protocol,
-    pool_address,
-    pool,
-    token_address,
-    token,
-    tvl_usd,
-    fees_usd_daily,
-    fee_apr_7d
-FROM final
-WHERE date < today()
+    b.date AS date,
+    b.protocol AS protocol,
+    b.pool_address AS pool_address,
+    pl.pool AS pool,
+    b.token_address AS token_address,
+    b.token AS token,
+    pm.tvl_usd AS tvl_usd,
+    pm.fees_usd_daily AS fees_usd_daily,
+    pm.volume_usd_daily AS volume_usd_daily,
+    pm.swap_count AS swap_count,
+    pm.fee_apr_7d AS fee_apr_7d,
+    il.lvr_apr_7d AS lvr_apr_7d,
+    CASE
+        WHEN pm.fee_apr_7d IS NOT NULL AND il.lvr_apr_7d IS NOT NULL
+        THEN pm.fee_apr_7d + il.lvr_apr_7d
+        ELSE NULL
+    END AS net_apr_7d
+FROM distinct_token_pool_dates b
+INNER JOIN top_pools_by_token tp
+  ON tp.token = b.token
+ AND tp.protocol = b.protocol
+ AND tp.pool_address = b.pool_address
+ AND tp.token_address = b.token_address
+LEFT JOIN pool_labels pl
+  ON pl.protocol = b.protocol
+ AND pl.pool_address = b.pool_address
+LEFT JOIN `dbt`.`int_execution_yields_pools_metrics_daily` pm
+  ON pm.date = b.date
+ AND pm.protocol = b.protocol
+ AND pm.pool_address = b.pool_address
+LEFT JOIN `dbt`.`fct_execution_yields_pools_il_daily` il
+  ON il.date = b.date
+ AND il.protocol = b.protocol
+ AND il.pool_address = b.pool_address
+WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+  AND b.date < today()

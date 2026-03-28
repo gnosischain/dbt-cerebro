@@ -46,6 +46,10 @@ WITH base AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -85,6 +89,10 @@ WITH base AS (
         
           'aGnoUSDC', 
         
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
           'spGNO', 
         
           'spUSDT', 
@@ -118,6 +126,10 @@ WITH base AS (
           'aGnosDAI', 
         
           'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
         
           'spGNO', 
         

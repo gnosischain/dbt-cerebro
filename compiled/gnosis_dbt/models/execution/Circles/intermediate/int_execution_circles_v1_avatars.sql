@@ -13,7 +13,7 @@ WHERE
     
     
 
-   WHERE 
+   AND 
     toStartOfMonth(toDate(block_timestamp)) >= (
       SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_circles_v1_avatars` AS x1

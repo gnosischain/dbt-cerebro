@@ -80,6 +80,58 @@ prev_borrowers AS (
         AND d.date <= b.prev_end
         AND d.borrowers_bitmap_state IS NOT NULL
     GROUP BY b.window, d.symbol
+),
+
+curr_lenders_all AS (
+    SELECT
+        b.window,
+        'ALL' AS token,
+        toUInt64(groupBitmapMerge(d.lenders_bitmap_state)) AS value
+    FROM `dbt`.`int_execution_yields_aave_daily` d
+    INNER JOIN bounds b
+        ON d.date > b.curr_start
+        AND d.date <= b.curr_end
+        AND d.lenders_bitmap_state IS NOT NULL
+    GROUP BY b.window
+),
+
+prev_lenders_all AS (
+    SELECT
+        b.window,
+        'ALL' AS token,
+        toUInt64(groupBitmapMerge(d.lenders_bitmap_state)) AS value
+    FROM `dbt`.`int_execution_yields_aave_daily` d
+    INNER JOIN bounds b
+        ON d.date > b.prev_start
+        AND d.date <= b.prev_end
+        AND d.lenders_bitmap_state IS NOT NULL
+    GROUP BY b.window
+),
+
+curr_borrowers_all AS (
+    SELECT
+        b.window,
+        'ALL' AS token,
+        toUInt64(groupBitmapMerge(d.borrowers_bitmap_state)) AS value
+    FROM `dbt`.`int_execution_yields_aave_daily` d
+    INNER JOIN bounds b
+        ON d.date > b.curr_start
+        AND d.date <= b.curr_end
+        AND d.borrowers_bitmap_state IS NOT NULL
+    GROUP BY b.window
+),
+
+prev_borrowers_all AS (
+    SELECT
+        b.window,
+        'ALL' AS token,
+        toUInt64(groupBitmapMerge(d.borrowers_bitmap_state)) AS value
+    FROM `dbt`.`int_execution_yields_aave_daily` d
+    INNER JOIN bounds b
+        ON d.date > b.prev_start
+        AND d.date <= b.prev_end
+        AND d.borrowers_bitmap_state IS NOT NULL
+    GROUP BY b.window
 )
 
 SELECT
@@ -87,7 +139,10 @@ SELECT
     c.window,
     c.token,
     toFloat64(COALESCE(c.value, 0)) AS value,
-    ROUND((COALESCE(c.value / NULLIF(p.value, 0), 0) - 1) * 100, 1) AS change_pct
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
 FROM curr_lenders c
 LEFT JOIN prev_lenders p ON p.window = c.window AND p.token = c.token
 
@@ -98,6 +153,37 @@ SELECT
     c.window,
     c.token,
     toFloat64(COALESCE(c.value, 0)) AS value,
-    ROUND((COALESCE(c.value / NULLIF(p.value, 0), 0) - 1) * 100, 1) AS change_pct
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
 FROM curr_borrowers c
 LEFT JOIN prev_borrowers p ON p.window = c.window AND p.token = c.token
+
+UNION ALL
+
+SELECT
+    'Lenders' AS label,
+    c.window,
+    c.token,
+    toFloat64(COALESCE(c.value, 0)) AS value,
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
+FROM curr_lenders_all c
+LEFT JOIN prev_lenders_all p ON p.window = c.window
+
+UNION ALL
+
+SELECT
+    'Borrowers' AS label,
+    c.window,
+    c.token,
+    toFloat64(COALESCE(c.value, 0)) AS value,
+    CASE
+        WHEN p.value IS NULL OR p.value = 0 THEN NULL
+        ELSE ROUND((toFloat64(c.value) / toFloat64(p.value) - 1) * 100, 1)
+    END AS change_pct
+FROM curr_borrowers_all c
+LEFT JOIN prev_borrowers_all p ON p.window = c.window

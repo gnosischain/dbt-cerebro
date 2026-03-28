@@ -68,6 +68,26 @@ labeled AS (
       'Others'
     ) AS sector
   FROM src
+),
+
+deduped AS (
+  SELECT
+    address,
+    project,
+    sector,
+    introduced_at
+  FROM (
+    SELECT
+      *,
+      row_number() OVER (
+        PARTITION BY address
+        ORDER BY
+          lower(project) = 'gpay' DESC,
+          project
+      ) AS rn
+    FROM labeled
+  )
+  WHERE rn = 1
 )
 
 SELECT
@@ -75,4 +95,4 @@ SELECT
   project,
   sector,
   introduced_at
-FROM labeled
+FROM deduped
