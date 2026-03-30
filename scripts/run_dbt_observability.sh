@@ -85,6 +85,17 @@ run_step "dbt-run" \
 # Running all 900+ tests in one shot exceeds the 1000-table limit.
 # Batching by model layer keeps temp table count manageable; each batch
 # cleans up its temp tables via on_run_end before the next batch starts.
+#
+# TEST_MODE controls the test_recency_filter macro behavior:
+#   "daily" (default) — not_null/unique tests scan only the last 7 days
+#   "full"            — all tests scan the full table (weekly runs)
+
+TEST_MODE="${TEST_MODE:-daily}"
+if [ "$TEST_MODE" = "full" ]; then
+  DBT_TEST_VARS='--vars {test_full_refresh: true}'
+else
+  DBT_TEST_VARS=""
+fi
 
 for test_batch in \
   "tag:production,resource_type:source" \
@@ -105,6 +116,7 @@ for test_batch in \
   batch_name="dbt-test:$(echo "$test_batch" | sed 's/tag:production,//')"
   run_step "$batch_name" \
     dbt test --select "$test_batch" \
+    $DBT_TEST_VARS \
     --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
     || true
 done

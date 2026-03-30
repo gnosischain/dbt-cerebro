@@ -101,15 +101,17 @@ models:
       tags:
       - elementary
 - name: int_esg_dynamic_power_consumption
-  description: The int_esg_dynamic_power_consumption model calculates estimated power consumption metrics for different node categories across geographic regions, incorporating empirical data, client efficiency, and PUE factors to support ESG and power usage analysis.
+  description: The int_esg_dynamic_power_consumption model calculates estimated power consumption metrics for different node categories across geographic regions, incorporating empirical data, client efficiency,
+    and PUE factors to support ESG and power usage analysis.
   columns:
 
   - name: date
     description: The date for which the power consumption data is recorded, representing the month of analysis.
     data_type: Date
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: node_category
     description: The classification of nodes based on hardware or operational type, such as 'home_staker', 'professional_operator', or 'cloud_hosted'.
     data_type: String
@@ -233,9 +235,12 @@ models:
     description: Unique identifier for each peer node observed in the network.
     data_type: UInt64
     tests:
-    - unique
-    - not_null
-
+    - unique:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: ip_address
     description: The IP address associated with the peer node during the last observation.
     data_type: String
@@ -332,15 +337,17 @@ models:
       tags:
       - elementary
 - name: int_esg_node_client_distribution
-  description: This model estimates the distribution of client nodes across different node categories by integrating client counts from multiple sources and applying scaling factors, aiding in understanding network composition and client deployment.
+  description: This model estimates the distribution of client nodes across different node categories by integrating client counts from multiple sources and applying scaling factors, aiding in understanding
+    network composition and client deployment.
   columns:
 
   - name: date
     description: The date for which the node classification and client distribution data is recorded.
     data_type: Date
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: node_category
     description: The classification category of nodes, such as consensus or execution types.
     data_type: String
@@ -416,8 +423,9 @@ models:
     description: The date for which the geographic distribution data is applicable, formatted as a date.
     data_type: Date
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: node_category
     description: The classification category of nodes, indicating different types or segments within the network.
     data_type: String
@@ -490,7 +498,8 @@ models:
       tags:
       - elementary
 - name: int_esg_node_population_chao1
-  description: The int_esg_node_population_chao1 model calculates the estimated diversity of peer nodes based on connection attempts, providing insights into node population dynamics and connection reliability over time.
+  description: The int_esg_node_population_chao1 model calculates the estimated diversity of peer nodes based on connection attempts, providing insights into node population dynamics and connection reliability
+    over time.
   columns:
 
   - name: observation_date

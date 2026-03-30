@@ -2,21 +2,24 @@ version: 2
 models:
 
 - name: int_execution_transactions_info_daily
-  description: The `int_execution_transactions_info_daily` model aggregates daily transaction data from the execution layer, providing insights into transaction counts, success rates, gas consumption, and value metrics for analysis and reporting.
+  description: The `int_execution_transactions_info_daily` model aggregates daily transaction data from the execution layer, providing insights into transaction counts, success rates, gas consumption, and
+    value metrics for analysis and reporting.
   columns:
 
   - name: block_timestamp
     description: The exact timestamp when the transaction was recorded on the blockchain.
     data_type: DateTime64
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: date
     description: The date (YYYY-MM-DD) extracted from `block_timestamp`, used for daily aggregation.
     data_type: Date
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: transaction_type
     description: The category or type of transaction, represented as a string.
     data_type: String
@@ -205,7 +208,8 @@ models:
       tags:
       - elementary
 - name: int_execution_transactions_by_project_hourly_recent
-  description: This model aggregates hourly execution transaction data by project for the recent two-day period, providing insights into transaction volume, active accounts, and associated fees for business analysis.
+  description: This model aggregates hourly execution transaction data by project for the recent two-day period, providing insights into transaction volume, active accounts, and associated fees for business
+    analysis.
   columns:
 
   - name: address
