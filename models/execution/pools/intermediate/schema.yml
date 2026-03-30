@@ -1,0 +1,145 @@
+version: 2
+models:
+
+- name: int_execution_yields_pools_lps_daily
+  description: Daily LP provider activity from Mint and Burn events on Uniswap V3 and Swapr V3 pools. Tracks event counts, daily unique LP addresses, and a bitmap state for rolling-window deduplication via groupBitmapMerge(). The `owner` field from Mint/Burn events is the actual LP position owner, not a router.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: mint_count
+    description: Number of Mint (add liquidity) events on this pool on this day.
+    data_type: UInt64
+  - name: burn_count
+    description: Number of Burn (remove liquidity) events on this pool on this day.
+    data_type: UInt64
+  - name: lps_minting_daily
+    description: Unique LP addresses that minted (added liquidity) on this day.
+    data_type: UInt64
+  - name: lps_burning_daily
+    description: Unique LP addresses that burned (removed liquidity) on this day.
+    data_type: UInt64
+  - name: lps_bitmap_state
+    description: ClickHouse AggregateFunction bitmap state for unique LP addresses (cityHash64). Use groupBitmapMerge() to combine across dates/pools.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+
+- name: int_execution_yields_pools_enriched_daily
+  description: Central token-level balance enrichment for all LP pools. Joins raw balances with token metadata and prices (ASOF join for gap safety) to produce TVL components. Single source of truth for TVL across all downstream pool models.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: pool_address_no0x
+    description: Pool contract address without 0x prefix.
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token
+    description: Uppercase token symbol from tokens_whitelist (e.g. WETH, USDC.E). Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: token_amount
+    description: Raw token balance in token units.
+    data_type: Float64
+  - name: price_usd
+    description: Token price in USD from ASOF join (latest known price <= date).
+    data_type: Float64
+  - name: tvl_component_usd
+    description: TVL component in USD (token_amount * price_usd).
+    data_type: Float64
+
+- name: int_execution_yields_pools_metrics_daily
+  description: Pool-level daily metrics for LP pools. Aggregates TVL from the enriched model, joins fees and swap counts, applies 7D rolling window functions, and computes fee APR. Materialized as a table to avoid ClickHouse 25.10 query analyzer issues with window-function CTEs.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: tvl_usd
+    description: Total value locked in the pool in USD.
+    data_type: Float64
+  - name: fees_usd_daily
+    description: Daily accrued fees in USD.
+    data_type: Float64
+  - name: volume_usd_daily
+    description: Daily trading volume in USD.
+    data_type: Float64
+  - name: swap_count
+    description: Number of Swap events on this pool on this day.
+    data_type: UInt64
+  - name: fee_apr_7d
+    description: 7-day trailing fee APR annualized ((fees_7d / tvl_7d_avg) * 365/7 * 100). Null when data is insufficient (< 3 days) or TVL is zero.
+    data_type: Nullable(Float64)
+
+- name: int_execution_yields_pools_fees_daily
+  description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token
+    data_type: String
+  - name: fee_amount
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
+  - name: fees_usd
+    data_type: Float64
+  - name: volume_amount
+    description: Daily trading volume in token units (gross incoming amount from Swap events).
+    data_type: Float64
+  - name: volume_usd
+    description: Daily trading volume in USD.
+    data_type: Float64
+
+- name: int_execution_yields_pools_il_swap_flows_daily
+  description: Daily pool-level base data for LVR computation. Combines swap flows (signed int256 token amounts), fees, TVL, and per-token prices/decimals for Uniswap V3 and Swapr V3 pools. Materialized to avoid deep CTE chains.
+  columns:
+  - name: day
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: tvl_usd
+    data_type: Float64
+  - name: swap_amount0_raw
+    description: Daily sum of signed token0 swap amounts (raw, not decimal-adjusted).
+    data_type: Float64
+  - name: swap_amount1_raw
+    description: Daily sum of signed token1 swap amounts (raw, not decimal-adjusted).
+    data_type: Float64
+  - name: fees_usd_daily
+    data_type: Float64
+  - name: decimals0
+    data_type: UInt8
+  - name: price0_usd
+    data_type: Float64
+  - name: decimals1
+    data_type: UInt8
+  - name: price1_usd
+    data_type: Float64
