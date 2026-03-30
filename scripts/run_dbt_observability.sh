@@ -30,6 +30,7 @@ SEMANTIC_BUILD_METRICS_PATH="${PROJECT_DIR}/target/semantic_build_metrics.prom"
 MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run,edr-report}"
 
 mkdir -p "$SEMANTIC_METRICS_DIR"
+mkdir -p "$(dirname "$REPORT_PATH")"
 
 declare -A step_exit_codes
 step_results=()
