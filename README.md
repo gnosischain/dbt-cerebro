@@ -712,22 +712,9 @@ The report is generated as `reports/elementary_report.html` — an interactive s
 - Schema change diffs
 - Model-level test coverage
 
-### Classification Artifact
+### Adding Tests to New Models
 
-All 354 models are classified in `scripts/analysis/elementary_model_classification.csv` with columns:
-`model_name`, `schema_file`, `module`, `tags`, `tier`, `class`, `timestamp_column`, `has_full_refresh`, `has_existing_elementary_tests`, `rollout_wave`, `anomaly_enabled`, `kpi_columns`, `dimension_columns`, `schema_change_enabled`, `notes`
-
-### Migration Scripts
-
-One-time scripts used to roll out the observability layer (committed for auditability):
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/cleanup_schema_meta.py` | Remove schema-gen noise, normalize owners to `analytics_team` |
-| `scripts/classify_models.py` | Classify all models by cadence/type, emit CSV |
-| `scripts/add_elementary_tests.py` | Idempotent YAML patcher: add Elementary tests per classification |
-
-All support `--dry-run`. Require `ruamel.yaml` (`pip install -r requirements-dev.txt`).
+Tests are defined directly in each model's `schema.yml`. When adding a new model, copy the test block from a neighbouring model in the same file and adjust the `timestamp_column` if needed.
 
 ### MCP Integration
 
@@ -856,8 +843,6 @@ dbt-cerebro/
 │   ├── full_refresh/              # Batched backfill orchestrator
 │   ├── analysis/                  # Model classification CSV
 │   ├── cleanup_schema_meta.py     # Meta cleanup migration
-│   ├── classify_models.py         # Model classifier
-│   ├── add_elementary_tests.py    # Test rollout script
 │   └── run_dbt_observability.sh   # Shared cron orchestrator
 ├── cron.sh                        # Production cron wrapper
 ├── cron_preview.sh                # Preview cron wrapper
@@ -906,8 +891,7 @@ Tables with `freshness: null` in their source YAML are skipped. If a table unexp
 
 All 59 `meta.full_refresh` models skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
 1. The model has `meta.full_refresh` in its `schema.yml`
-2. Re-run `scripts/classify_models.py` to update the classification CSV
-3. Re-run `scripts/add_elementary_tests.py` (idempotent — safe to re-run)
+2. Check the model's `schema.yml` for correct test configuration
 
 #### Docker container won't start
 

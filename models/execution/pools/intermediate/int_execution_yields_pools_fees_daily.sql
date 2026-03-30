@@ -258,7 +258,6 @@ all_fees_with_token AS (
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
       ON tm.token_address = fw.token_address
      AND fw.date >= toDate(tm.date_start)
-     AND (tm.date_end IS NULL OR fw.date < toDate(tm.date_end))
     WHERE fw.token_address IS NOT NULL
       AND tm.token IS NOT NULL
       AND tm.token != ''
@@ -280,7 +279,6 @@ all_fees_with_token AS (
     LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
       ON tm.token_address = coalesce(nullIf(wm.underlying_address, ''), bf.token_address)
      AND bf.date >= toDate(tm.date_start)
-     AND (tm.date_end IS NULL OR bf.date < toDate(tm.date_end))
     WHERE bf.token_address IS NOT NULL
       AND bf.fee_raw IS NOT NULL
       AND tm.token IS NOT NULL

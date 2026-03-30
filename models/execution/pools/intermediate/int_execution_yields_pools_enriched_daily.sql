@@ -17,6 +17,9 @@
 
   For Balancer V3 ERC4626 wrappers (waGno*), resolves to the underlying
   token for symbol and price lookups (wrapper ≈ 1:1 with underlying).
+
+  Token metadata join intentionally ignores date_end so that migrated tokens
+  (e.g. old EURe contract) still get symbol + price in active pools.
 -#}
 
 SELECT
@@ -35,7 +38,6 @@ LEFT JOIN {{ ref('stg_pools__balancer_v3_token_map') }} wm
 LEFT JOIN {{ ref('stg_yields__tokens_meta') }} tm
   ON tm.token_address = coalesce(nullIf(wm.underlying_address, ''), lower(b.token_address))
  AND toDate(b.date) >= toDate(tm.date_start)
- AND (tm.date_end IS NULL OR toDate(b.date) < toDate(tm.date_end))
 ASOF LEFT JOIN (
     SELECT * FROM {{ ref('stg_yields__token_prices_daily') }} ORDER BY token, date
 ) p
