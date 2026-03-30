@@ -89,6 +89,28 @@ jobs:
         run: |
           dbt docs generate 
 
+      - name: Assert docs artifacts
+        run: |
+          test -f target/manifest.json
+          test -f target/catalog.json
+          test -f target/semantic_manifest.json
+
+      - name: Build semantic registry
+        run: |
+          python scripts/semantic/build_registry.py --target-dir target
+
+      - name: Build semantic docs
+        run: |
+          python scripts/semantic/build_semantic_docs.py --target-dir target
+
+      - name: Assert semantic outputs
+        run: |
+          test -f target/semantic_registry.json
+          test -f target/semantic_validation_report.json
+          test -f target/semantic_docs_index.json
+          test -f target/semantic_build_summary.json
+          test -f target/semantic_build_metrics.prom
+
       - name: Deploy docs to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
