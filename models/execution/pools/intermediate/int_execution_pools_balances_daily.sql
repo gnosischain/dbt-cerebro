@@ -213,11 +213,11 @@ v3_prev_balances AS (
         token_amount_raw AS balance_raw,
         reserve_amount_raw AS reserve_raw,
         fee_amount_raw AS fee_raw
-    FROM {{ this }}
+    FROM {{ this }} FINAL
     WHERE protocol IN ('Uniswap V3', 'Swapr V3')
       AND date = (
         SELECT max(date)
-        FROM {{ this }}
+        FROM {{ this }} FINAL
         WHERE date < toDate('{{ start_month }}')
           AND protocol IN ('Uniswap V3', 'Swapr V3')
       )
@@ -231,11 +231,11 @@ v3_prev_balances AS (
         token_amount_raw AS balance_raw,
         reserve_amount_raw AS reserve_raw,
         fee_amount_raw AS fee_raw
-    FROM {{ this }}
+    FROM {{ this }} FINAL
     WHERE protocol IN ('Uniswap V3', 'Swapr V3')
       AND date = (
         SELECT max(date)
-        FROM {{ this }}
+        FROM {{ this }} FINAL
         WHERE protocol IN ('Uniswap V3', 'Swapr V3')
       )
 ),
@@ -299,7 +299,6 @@ v3_balances_final AS (
     LEFT JOIN {{ ref('tokens_whitelist') }} t
         ON lower(t.address) = b.token_address
        AND b.date >= toDate(t.date_start)
-       AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     WHERE b.balance_raw != 0
 ),
 
@@ -513,11 +512,11 @@ balancer_prev_balances AS (
         token_amount_raw AS balance_raw,
         reserve_amount_raw AS reserve_raw,
         fee_amount_raw AS fee_raw
-    FROM {{ this }}
+    FROM {{ this }} FINAL
     WHERE protocol IN ('Balancer V2', 'Balancer V3')
       AND date = (
         SELECT max(date)
-        FROM {{ this }}
+        FROM {{ this }} FINAL
         WHERE date < toDate('{{ start_month }}')
           AND protocol IN ('Balancer V2', 'Balancer V3')
       )
@@ -531,11 +530,11 @@ balancer_prev_balances AS (
         token_amount_raw AS balance_raw,
         reserve_amount_raw AS reserve_raw,
         fee_amount_raw AS fee_raw
-    FROM {{ this }}
+    FROM {{ this }} FINAL
     WHERE protocol IN ('Balancer V2', 'Balancer V3')
       AND date = (
         SELECT max(date)
-        FROM {{ this }}
+        FROM {{ this }} FINAL
         WHERE protocol IN ('Balancer V2', 'Balancer V3')
       )
 ),
@@ -601,7 +600,6 @@ balancer_balances_final AS (
     LEFT JOIN {{ ref('tokens_whitelist') }} t
         ON lower(t.address) = coalesce(nullIf(wm.underlying_address, ''), b.token_address)
        AND b.date >= toDate(t.date_start)
-       AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
     WHERE b.balance_raw != 0
 ),
 
