@@ -29,7 +29,7 @@ FROM (
     
     pools_latest_date AS (
         SELECT max(date) AS max_date
-        FROM {{ ref('fct_execution_yields_pools_daily') }}
+        FROM {{ ref('fct_execution_pools_daily') }}
         WHERE date < today()
     ),
     
@@ -37,7 +37,7 @@ FROM (
         SELECT
             f.pool,
             sum(f.fees_usd_daily) AS fees_7d
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date > d.max_date - INTERVAL 7 DAY
           AND f.date <= d.max_date
@@ -62,7 +62,7 @@ FROM (
             f.net_apr_7d AS net_apr_7d,
             NULL AS utilization_rate,
             f.protocol AS protocol
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         LEFT JOIN lp_pool_fees_7d pf ON pf.pool = f.pool
         WHERE f.date = d.max_date
@@ -99,7 +99,7 @@ FROM (
     
     lending_latest_date AS (
         SELECT max(date) AS max_date
-        FROM {{ ref('int_execution_yields_aave_daily') }}
+        FROM {{ ref('int_execution_lending_aave_daily') }}
         WHERE date < today()
     ),
 
@@ -109,7 +109,7 @@ FROM (
             argMax(cumulative_scaled_supply, date) AS cumulative_scaled_supply,
             argMax(cumulative_scaled_borrow, date) AS cumulative_scaled_borrow,
             argMax(utilization_rate, date) AS latest_utilization_rate
-        FROM {{ ref('int_execution_yields_aave_utilization_daily') }}
+        FROM {{ ref('int_execution_lending_aave_utilization_daily') }}
         WHERE utilization_rate IS NOT NULL
         GROUP BY token_address
     ),
@@ -133,7 +133,7 @@ FROM (
             NULL AS net_apr_7d,
             lc.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
+        FROM {{ ref('int_execution_lending_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         LEFT JOIN lending_cumulative_latest lc
             ON lc.token_address = a.token_address
