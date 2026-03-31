@@ -13,6 +13,8 @@
 #   OBSERVABILITY_ARTIFACT_MODE - "none" (default) or "s3"
 #   MANDATORY_STEPS       - comma-separated list of step names that must pass
 #                           for exit 0 (default: "dbt-run,edr-report")
+#   DBT_RUN_BATCH_SLEEP_SECONDS - pause between generated dbt-run batches
+#                                 (default: 0)
 #
 # The script never exits early — it always completes all steps, then reports
 # a summary and exits non-zero if any mandatory step failed.
@@ -51,6 +53,27 @@ run_step() {
   return $rc
 }
 
+check_batched_step_prefix() {
+  local prefix="$1"
+  local found=false
+  local key
+
+  for key in "${!step_exit_codes[@]}"; do
+    if [[ "$key" == "${prefix}:"* ]]; then
+      found=true
+      if [ "${step_exit_codes[$key]}" -ne 0 ]; then
+        echo "[$(date -u)] MANDATORY STEP FAILED: $key (exit ${step_exit_codes[$key]})"
+        overall_exit=1
+      fi
+    fi
+  done
+
+  if [ "$found" = false ]; then
+    echo "[$(date -u)] WARNING: no ${prefix} batches were executed"
+    overall_exit=1
+  fi
+}
+
 # ── 0. Clean orphaned tmp tables from previous crashed runs ──────────────
 run_step "cleanup-tmp-tables" \
   dbt run-operation clean_elementary_orphaned_tables \
@@ -76,10 +99,41 @@ run_step "source-freshness" \
   || true
 
 # ── 2. Main pipeline ────────────────────────────────────────────────────
-run_step "dbt-run" \
-  dbt run --select tag:production \
-  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-  || true
+# Batch the current production selection automatically from the dbt graph.
+# Batches are built from complete runnable chains, then grouped by chain count.
+DBT_RUN_BATCH_SIZE="${DBT_RUN_BATCH_SIZE:-5}"
+DBT_RUN_BATCH_SLEEP_SECONDS="${DBT_RUN_BATCH_SLEEP_SECONDS:-0}"
+RUN_BATCH_PLAN="$(mktemp)"
+
+if python "$PROJECT_DIR/scripts/refresh/dbt_run_batches.py" \
+  --select tag:production \
+  --batch-size "$DBT_RUN_BATCH_SIZE" \
+  --project-dir "$PROJECT_DIR" \
+  --profiles-dir "$PROFILES_DIR" > "$RUN_BATCH_PLAN"
+then
+  mapfile -t run_batches < "$RUN_BATCH_PLAN"
+  for batch_index in "${!run_batches[@]}"; do
+    IFS=$'\t' read -r batch_id batch_count chain_count batch_selector <<< "${run_batches[$batch_index]}"
+    echo "[$(date -u)] dbt-run batch ${batch_id} (${batch_count} model(s), ${chain_count} chain(s)): ${batch_selector}"
+
+    run_step "dbt-run:${batch_id}" \
+      dbt run --select "$batch_selector" \
+      --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+      || true
+
+    if [ "$DBT_RUN_BATCH_SLEEP_SECONDS" -gt 0 ] && [ "$batch_index" -lt "$(( ${#run_batches[@]} - 1 ))" ]; then
+      echo "[$(date -u)] Sleeping ${DBT_RUN_BATCH_SLEEP_SECONDS}s before next dbt-run batch"
+      sleep "$DBT_RUN_BATCH_SLEEP_SECONDS"
+    fi
+  done
+else
+  plan_rc=$?
+  step_exit_codes["dbt-run:plan"]=$plan_rc
+  step_results+=("dbt-run:plan=FAIL(rc=$plan_rc)")
+  echo "[$(date -u)] Failed: dbt-run:plan (exit $plan_rc)"
+fi
+
+rm -f "$RUN_BATCH_PLAN"
 
 # ── 3. Tests (batched to stay under ClickHouse max_table_num_to_throw) ──
 # Elementary's on_run_end hook creates temp tables per test result.
@@ -167,22 +221,8 @@ echo "[$(date -u)] Run complete. Results: ${step_results[*]}"
 overall_exit=0
 IFS=',' read -ra MANDATORY <<< "$MANDATORY_STEPS"
 for step in "${MANDATORY[@]}"; do
-  # dbt-test is batched — check all steps starting with "dbt-test:"
-  if [ "$step" = "dbt-test" ]; then
-    batch_found=false
-    for key in "${!step_exit_codes[@]}"; do
-      if [[ "$key" == dbt-test:* ]]; then
-        batch_found=true
-        if [ "${step_exit_codes[$key]}" -ne 0 ]; then
-          echo "[$(date -u)] MANDATORY STEP FAILED: $key (exit ${step_exit_codes[$key]})"
-          overall_exit=1
-        fi
-      fi
-    done
-    if [ "$batch_found" = false ]; then
-      echo "[$(date -u)] WARNING: no dbt-test batches were executed"
-      overall_exit=1
-    fi
+  if [ "$step" = "dbt-test" ] || [ "$step" = "dbt-run" ]; then
+    check_batched_step_prefix "$step"
     continue
   fi
 
