@@ -9,8 +9,9 @@ models:
     description: The specific day when the execution blocks were recorded, truncated to the start of the day.
     data_type: DateTime64
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: client
     description: The name of the client associated with the execution blocks, with certain values mapped to 'Unknown' for consistency.
     data_type: String
@@ -81,8 +82,9 @@ models:
     description: The specific calendar date for the aggregated gas data.
     data_type: Date
     tests:
-    - not_null
-
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: gas_used_sum
     description: Total gas used in execution blocks on the given date, measured in gas units.
     data_type: UInt64

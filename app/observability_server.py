@@ -71,7 +71,7 @@ class ObservabilityHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _serve_metrics(self):
-        body = generate_latest()
+        body = generate_latest() + self._semantic_metrics_payload()
         self.send_response(200)
         self.send_header("Content-Type", CONTENT_TYPE_LATEST)
         self.send_header("Content-Length", str(len(body)))
@@ -91,6 +91,36 @@ class ObservabilityHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _semantic_metrics_payload(self) -> bytes:
+        metric_paths = []
+        seen = set()
+        for directory in (
+            Path(RUNTIME_DATA_DIR),
+            Path(RUNTIME_DATA_DIR) / "metrics",
+            Path(RUNTIME_DATA_DIR) / "target",
+        ):
+            if not directory.exists():
+                continue
+            for path in sorted(directory.glob("*.prom")):
+                resolved = path.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                metric_paths.append(path)
+
+        chunks = []
+        for path in metric_paths:
+            try:
+                content = path.read_bytes().strip()
+            except OSError:
+                continue
+            if content:
+                chunks.append(content)
+
+        if not chunks:
+            return b""
+        return b"\n" + b"\n".join(chunks) + b"\n"
 
 
 def main():

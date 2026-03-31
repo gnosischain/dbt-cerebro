@@ -47,7 +47,7 @@ RUN mkdir -p /home/appuser/.dbt && \
 ENV RUNTIME_DATA_DIR=/data
 ENV EDR_PROJECT_DIR=/usr/local/lib/python3.11/site-packages/elementary/monitor/dbt_project
 RUN rm -rf /app/logs /app/reports /app/target /app/edr_target && \
-    mkdir -p /data/logs /data/reports /data/target /data/edr_target \
+    mkdir -p /data/logs /data/reports /data/target /data/metrics /data/edr_target \
              /data/edr_packages /data/edr_target_internal && \
     ln -sfn /data/logs /app/logs && \
     ln -sfn /data/reports /app/reports && \

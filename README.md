@@ -11,6 +11,7 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 - [Quick Start](#quick-start)
 - [Environment Setup](#environment-setup)
 - [Local Development](#local-development)
+- [Semantic Layer Workflow](#semantic-layer-workflow)
 - [Docker Deployment](#docker-deployment)
 - [Data Modeling Conventions](#data-modeling-conventions)
 - [Observability and Testing](#observability-and-testing)
@@ -258,13 +259,267 @@ EDR_REPORT_ENV=dev /app/scripts/run_dbt_observability.sh
 
 The orchestrator runs these steps in order:
 1. `dbt source freshness` — check source data staleness
-2. `edr run-operation upload-source-freshness` — upload results to Elementary
-3. `dbt run --select tag:production` — run all production models
-4. `dbt test --select tag:production` — run all tests (including Elementary anomaly tests)
-5. `edr monitor` — send Slack alerts (only when `SLACK_WEBHOOK` is set)
-6. `edr report` — generate the HTML observability report
+2. `dbt run --select tag:production` — run all production models
+3. batched `dbt test` runs — execute model and Elementary tests without exhausting ClickHouse temp tables
+4. `dbt docs generate` — refresh manifest, catalog, and semantic manifest artifacts
+5. `python scripts/semantic/build_registry.py --target-dir target` — build semantic registry, validation report, summary, and Prometheus text metrics
+6. `python scripts/semantic/build_semantic_docs.py --target-dir target` — build semantic docs pages and docs index
+7. `edr monitor` — send Slack alerts (only when `SLACK_WEBHOOK` is set)
+8. `edr report` — generate the HTML observability report
 
 Each step's exit code is captured independently. The script never exits early — it always completes all steps, then prints a summary and exits non-zero if any mandatory step failed.
+
+## Semantic Layer Workflow
+
+The semantic layer in `dbt-cerebro` is not a second dbt project. It is a repository-local authoring and compilation system that sits next to normal dbt modeling.
+
+### Naming and scope
+
+The docs use three names that should not be mixed together:
+
+- `dbt`: the upstream build toolchain, especially dbt Core, dbt docs artifacts, and MetricFlow validation
+- `dbt-cerebro`: this repository, including its custom semantic authoring, compiler scripts, docs builder, and cron/orchestrator
+- `cerebro-mcp`: the downstream runtime that later loads the published semantic artifacts
+
+When this README says `Cerebro`, it means the broader product family. When it describes behavior in this repo, it should say `dbt-cerebro`.
+
+The short version:
+
+- dbt remains the source of truth for SQL models, sources, columns, tests, lineage, and generated artifacts such as `manifest.json` and `catalog.json`
+- `dbt-cerebro` adds a richer semantic layer on top of those dbt artifacts using custom authoring in `semantic/authoring/**`
+- the `dbt-cerebro` semantic compiler merges dbt artifacts plus semantic authoring into a stable registry, validation report, docs index, docs pages, and Prometheus build metrics
+- the cron/orchestrator builds both layers together in the runtime environment, and CI publishes the static artifact set
+- `cerebro-mcp` later consumes the published semantic artifacts at runtime
+
+### Why the semantic flow is split from dbt
+
+We originally tried placing the broad semantic surface directly under `models/**/semantic_models.yml`, but dbt `1.9.x` and MetricFlow validate every semantic model they see. That is good for a small approved MetricFlow surface, but it is too strict for the broader semantic authoring needs inside `dbt-cerebro`:
+
+- candidate semantic models for every reviewable public model
+- richer relationship metadata than dbt currently supports
+- docs-only coverage for models that are not yet execution-safe
+- broader naming and authoring iteration before something is approved
+
+Because of that, the project now uses this rule:
+
+- active semantic authoring lives in `semantic/authoring/**/semantic_models.yml`
+- `semantic/relationships/*.yml` and `semantic/overrides/*.yml` hold `dbt-cerebro`-specific graph behavior and overrides
+- `models/**/semantic_models.yml` is reserved for a future dbt-native-approved subset only after a model has been intentionally remodeled into a MetricFlow-valid shape
+- today, there are no active semantic model files under `models/**`
+
+This keeps `dbt docs generate` stable while still letting `dbt-cerebro` maintain full semantic coverage.
+
+### New concepts
+
+These are the key concepts behind the new flow.
+
+- `semantic authoring`: the human-maintained semantic definitions in `semantic/authoring/**`
+- `candidate`: scaffolded or partially reviewed semantics that exist for coverage and docs, but are not yet approved for public execution
+- `approved`: a semantic model, metric, or relationship that has been explicitly reviewed and is allowed to drive runtime semantic execution
+- `docs_only`: a model or source that still appears in the registry and docs, even if it has no executable semantics
+- `relationship authoring`: curated join rules in `semantic/relationships/*.yml`; these are not inferred as approved from lineage alone
+- `override authoring`: aliases, preferences, deprecations, and docs enrichment in `semantic/overrides/*.yml`
+- `semantic registry`: the compiled artifact that combines dbt metadata and semantic authoring into one runtime-friendly document
+- `semantic docs`: generated pages and a search index built from the registry
+- `time spine`: the shared MetricFlow-compatible date spine that allows dbt semantic parsing and gives the `dbt-cerebro` semantic layer a standard daily backbone for cumulative and gap-filled logic
+
+### What lives where
+
+| Surface | Purpose | Owned by | Used by |
+|-------|--------|---------|--------|
+| `models/**` | SQL models, dbt docs/tests/lineage, time spine registration | `dbt-cerebro` dbt project | dbt and `dbt-cerebro` compiler |
+| `semantic/authoring/**` | semantic models and metrics under review | `dbt-cerebro` semantic layer | registry/docs compiler |
+| `semantic/relationships/*.yml` | curated graph edges and join safety rules | `dbt-cerebro` semantic layer | planner/runtime |
+| `semantic/overrides/*.yml` | aliases, deprecations, docs enrichment, preferences | `dbt-cerebro` semantic layer | compiler/runtime/docs |
+| `target/manifest.json`, `target/catalog.json`, `target/semantic_manifest.json` | dbt-generated metadata | dbt | registry compiler |
+| `target/semantic_registry.json`, `target/semantic_docs/**` | runtime semantic artifacts | `dbt-cerebro` semantic compiler | `cerebro-mcp` |
+
+### End-to-end flow
+
+```mermaid
+flowchart TD
+    A["Developer edits dbt SQL models, schema.yml, tests"] --> B["dbt docs generate"]
+    C["Developer edits semantic/authoring, relationships, overrides"] --> D["build_registry.py"]
+    B --> E["manifest.json"]
+    B --> F["catalog.json"]
+    B --> G["semantic_manifest.json"]
+    E --> D
+    F --> D
+    G --> D
+    C --> D
+    D --> H["semantic_registry.json"]
+    D --> I["semantic_validation_report.json"]
+    D --> J["semantic_build_summary.json"]
+    D --> K["semantic_build_metrics.prom"]
+    H --> L["build_semantic_docs.py"]
+    L --> M["semantic_docs/**"]
+    L --> N["semantic_docs_index.json"]
+    M --> O["Published target/ artifacts"]
+    N --> O
+    H --> O
+    I --> O
+    J --> O
+    K --> P["dbt observability /metrics"]
+    O --> Q["cerebro-mcp snapshot loader"]
+```
+
+### dbt metadata flow and the dbt-cerebro semantic flow are running in parallel
+
+The easiest mental model is:
+
+- dbt builds the warehouse and emits metadata
+- `dbt-cerebro` reads that metadata and adds a semantic layer on top
+
+dbt is not aware of most `dbt-cerebro` semantic authoring. The semantic compiler is intentionally downstream of dbt.
+
+That means:
+
+- adding a new dbt model does not automatically make it an approved semantic model
+- semantic coverage can advance without changing the SQL model itself
+- semantic docs and semantic registry builds depend on `dbt docs generate`, but not the other way around
+- failures in broad candidate semantics should not break `dbt docs generate`
+
+### Manual intervention points
+
+The semantic flow is not fully automatic on purpose. These are the places where people intervene.
+
+1. Add or change a dbt model.
+2. Regenerate dbt artifacts with `dbt docs generate`.
+3. Scaffold missing candidate semantics with `scaffold_candidates.py`.
+4. Review the scaffolded semantics and clean up vague names such as `value`, `label`, or raw field names that are not meaningful to users.
+5. Decide whether the model stays `candidate`, becomes `approved`, or remains effectively docs-only.
+6. Add curated relationships if the model must participate in cross-model semantic routing.
+7. Rebuild and validate the registry before merge.
+
+Things that are automatic:
+
+- registry coverage for every first-party model and source
+- docs page generation for compiled semantic artifacts
+- Prometheus text metrics generation for semantic builds
+- publication of semantic artifacts during the CI release flow
+
+Things that are intentionally manual:
+
+- approving a model for execution
+- approving a metric for user-facing use
+- approving a relationship for graph routing
+- deciding if a model should ever become dbt-native-valid semantic YAML under `models/**`
+
+### Local build flow
+
+Use this sequence when working on semantics locally:
+
+```bash
+dbt docs generate
+python scripts/semantic/scaffold_candidates.py --target-dir target
+python scripts/semantic/scaffold_candidates.py --target-dir target --write
+python scripts/semantic/report_candidates.py --target-dir target
+python scripts/semantic/build_registry.py --validate --target-dir target
+python scripts/semantic/build_semantic_docs.py --target-dir target
+```
+
+Generated semantic artifacts:
+
+- `target/semantic_registry.json`
+- `target/semantic_validation_report.json`
+- `target/semantic_docs_index.json`
+- `target/semantic_docs/`
+- `target/semantic_build_summary.json`
+- `target/semantic_build_metrics.prom`
+
+Semantic parsing also depends on the shared MetricFlow time spine model in [schema.yml](/Users/hugser/Documents/Gnosis/repos/dbt-cerebro/models/shared/marts/schema.yml). Keep `dim_time_spine_daily` registered with `time_spine.standard_granularity_column: day` and `granularity: day` on the `day` column.
+
+### Adding a future model
+
+For every new analytical model:
+
+1. Add the normal dbt SQL, docs, tests, and metadata.
+2. Run `dbt docs generate`.
+3. Run the scaffold generator and write the missing candidate into `semantic/authoring/`.
+4. Review whether that model is a public semantic surface, an internal bridge, or docs-only coverage.
+5. If it is public, add clear entities, dimensions, measures, and curated relationships.
+6. Promote to `approved` only after explicit review.
+7. Rebuild the registry, validation report, and semantic docs before merge.
+
+### No-duplicates rule
+
+The project now follows a strict no-duplicates rule:
+
+- do not define the same semantic model in both `semantic/authoring/**` and `models/**`
+- by default, keep semantic authoring only in `semantic/authoring/**`
+- only move a definition into `models/**/semantic_models.yml` if it has been intentionally rewritten to satisfy dbt-native MetricFlow constraints
+- when that future move happens, remove the duplicate from `semantic/authoring/**`
+
+### What the cron/orchestrator actually does
+
+Production does not just run dbt and stop. The orchestrator builds the semantic layer as part of the same operational run.
+
+The script is [run_dbt_observability.sh](/Users/hugser/Documents/Gnosis/repos/dbt-cerebro/scripts/run_dbt_observability.sh), and the semantic portion of the flow is:
+
+```mermaid
+flowchart TD
+    A["cleanup tmp tables / trash / failed mutations"] --> B["dbt source freshness"]
+    B --> C["dbt run --select tag:production"]
+    C --> D["batched dbt test runs"]
+    D --> E["dbt docs generate"]
+    E --> F["build_registry.py"]
+    F --> G["build_semantic_docs.py"]
+    G --> H["copy semantic_build_metrics.prom into runtime metrics dir"]
+    H --> I["optional edr monitor"]
+    I --> J["edr report"]
+```
+
+### What is automatic in cron vs what is not
+
+Automatic in cron:
+
+- regenerate dbt metadata artifacts
+- rebuild semantic registry and docs artifacts
+- emit semantic build metrics
+- expose those metrics through the dbt observability server
+
+Automatic in CI/release:
+
+- run `dbt docs generate`
+- rebuild semantic registry and semantic docs in a clean GitHub Actions environment
+- publish the built `target/` directory to `gh-pages`
+
+Not automatic in cron:
+
+- semantic approvals
+- relationship curation
+- semantic naming cleanup
+- promotion from candidate to approved
+
+Cron builds whatever is already in the repo inside the deployed runtime. CI is what republishes the static artifact set externally. Neither path makes judgment calls.
+
+### What gets published
+
+After a successful CI docs deployment, the semantic system expects these published artifacts:
+
+- `manifest.json`
+- `catalog.json`
+- `semantic_manifest.json`
+- `semantic_registry.json`
+- `semantic_validation_report.json`
+- `semantic_docs_index.json`
+- `semantic_build_summary.json`
+- `semantic_build_metrics.prom`
+- `semantic_docs/**`
+
+`cerebro-mcp` later downloads those artifacts and builds its runtime semantic snapshot from them.
+
+### Runtime semantic observability
+
+The semantic build writes Prometheus text metrics into `target/semantic_build_metrics.prom`. The orchestrator copies that file into the runtime metrics directory, and the dbt observability server appends `.prom` files from runtime storage into `/metrics`.
+
+That means the dbt service exposes:
+
+- standard dbt observability information
+- semantic build success/failure
+- semantic build duration
+- semantic coverage counts
+- semantic validation warning/error counts
 
 ## Docker Deployment
 
@@ -457,22 +712,9 @@ The report is generated as `reports/elementary_report.html` — an interactive s
 - Schema change diffs
 - Model-level test coverage
 
-### Classification Artifact
+### Adding Tests to New Models
 
-All 354 models are classified in `scripts/analysis/elementary_model_classification.csv` with columns:
-`model_name`, `schema_file`, `module`, `tags`, `tier`, `class`, `timestamp_column`, `has_full_refresh`, `has_existing_elementary_tests`, `rollout_wave`, `anomaly_enabled`, `kpi_columns`, `dimension_columns`, `schema_change_enabled`, `notes`
-
-### Migration Scripts
-
-One-time scripts used to roll out the observability layer (committed for auditability):
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/cleanup_schema_meta.py` | Remove schema-gen noise, normalize owners to `analytics_team` |
-| `scripts/classify_models.py` | Classify all models by cadence/type, emit CSV |
-| `scripts/add_elementary_tests.py` | Idempotent YAML patcher: add Elementary tests per classification |
-
-All support `--dry-run`. Require `ruamel.yaml` (`pip install -r requirements-dev.txt`).
+Tests are defined directly in each model's `schema.yml`. When adding a new model, copy the test block from a neighbouring model in the same file and adjust the `timestamp_column` if needed.
 
 ### MCP Integration
 
@@ -601,8 +843,6 @@ dbt-cerebro/
 │   ├── full_refresh/              # Batched backfill orchestrator
 │   ├── analysis/                  # Model classification CSV
 │   ├── cleanup_schema_meta.py     # Meta cleanup migration
-│   ├── classify_models.py         # Model classifier
-│   ├── add_elementary_tests.py    # Test rollout script
 │   └── run_dbt_observability.sh   # Shared cron orchestrator
 ├── cron.sh                        # Production cron wrapper
 ├── cron_preview.sh                # Preview cron wrapper
@@ -651,8 +891,7 @@ Tables with `freshness: null` in their source YAML are skipped. If a table unexp
 
 All 59 `meta.full_refresh` models skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
 1. The model has `meta.full_refresh` in its `schema.yml`
-2. Re-run `scripts/classify_models.py` to update the classification CSV
-3. Re-run `scripts/add_elementary_tests.py` (idempotent — safe to re-run)
+2. Check the model's `schema.yml` for correct test configuration
 
 #### Docker container won't start
 

@@ -21,9 +21,16 @@ PROFILES_DIR="${PROFILES_DIR:-/home/appuser/.dbt}"
 PROJECT_DIR="${PROJECT_DIR:-/app}"
 REPORT_PATH="${PROJECT_DIR}/reports/elementary_report.html"
 EDR_TARGET="${PROJECT_DIR}/edr_target"
+RUNTIME_DATA_DIR="${RUNTIME_DATA_DIR:-/data}"
+SEMANTIC_METRICS_DIR="${SEMANTIC_METRICS_DIR:-${RUNTIME_DATA_DIR}/metrics}"
+SEMANTIC_BUILD_SUMMARY_PATH="${PROJECT_DIR}/target/semantic_build_summary.json"
+SEMANTIC_BUILD_METRICS_PATH="${PROJECT_DIR}/target/semantic_build_metrics.prom"
 
 # Default mandatory steps (preview). Prod wrapper overrides this.
 MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run,edr-report}"
+
+mkdir -p "$SEMANTIC_METRICS_DIR"
+mkdir -p "$(dirname "$REPORT_PATH")"
 
 declare -A step_exit_codes
 step_results=()
@@ -79,6 +86,17 @@ run_step "dbt-run" \
 # Running all 900+ tests in one shot exceeds the 1000-table limit.
 # Batching by model layer keeps temp table count manageable; each batch
 # cleans up its temp tables via on_run_end before the next batch starts.
+#
+# TEST_MODE controls the test_recency_filter macro behavior:
+#   "daily" (default) — not_null/unique tests scan only the last 7 days
+#   "full"            — all tests scan the full table (weekly runs)
+
+TEST_MODE="${TEST_MODE:-daily}"
+if [ "$TEST_MODE" = "full" ]; then
+  DBT_TEST_VARS='--vars {test_full_refresh: true}'
+else
+  DBT_TEST_VARS=""
+fi
 
 for test_batch in \
   "tag:production,resource_type:source" \
@@ -99,9 +117,28 @@ for test_batch in \
   batch_name="dbt-test:$(echo "$test_batch" | sed 's/tag:production,//')"
   run_step "$batch_name" \
     dbt test --select "$test_batch" \
+    $DBT_TEST_VARS \
     --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
     || true
 done
+
+# ── 4. Semantic docs and registry artifacts ──────────────────────────────
+run_step "dbt-docs" \
+  dbt docs generate \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+run_step "semantic-registry" \
+  python "$PROJECT_DIR/scripts/semantic/build_registry.py" --target-dir "$PROJECT_DIR/target" \
+  || true
+
+run_step "semantic-docs" \
+  python "$PROJECT_DIR/scripts/semantic/build_semantic_docs.py" --target-dir "$PROJECT_DIR/target" \
+  || true
+
+if [ -f "$SEMANTIC_BUILD_METRICS_PATH" ]; then
+  cp "$SEMANTIC_BUILD_METRICS_PATH" "$SEMANTIC_METRICS_DIR/semantic_build_metrics.prom"
+fi
 
 # ── 5. Elementary monitor (only when webhook + env are set) ──────────────
 if [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
