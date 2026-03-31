@@ -616,7 +616,7 @@ sources:
 | `consensus` | warn 26h / error 48h | Daily pipeline cadence |
 | `p2p` (nebula) | warn 36h / error 72h | Crawl-based ingestion |
 | `probelab` | warn 36h / error 72h | External rollups |
-| `crawlers_data` (Dune) | Exempt | No reliable timestamp |
+| `crawlers_data` (Dune) | Mixed table-level SLA | `dune_bridge_flows`/`dune_labels`: warn 18h / error 30h; `dune_prices`/`dune_gno_supply`: warn 36h / error 48h so a 06:00 run still errors when the latest business date falls back from yesterday to D-2 |
 
 ## Observability and Testing
 
@@ -636,7 +636,7 @@ sources:
 | Freshness anomaly tests | 132 |
 | Schema change tests | 281 |
 | Column anomaly tests | 108 |
-| Sources with freshness | 4 (+ 1 exempt) |
+| Sources with freshness | 5 |
 
 ### Elementary Test Types by Model Class
 
