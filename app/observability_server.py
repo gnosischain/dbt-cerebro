@@ -100,7 +100,10 @@ class ObservabilityHandler(SimpleHTTPRequestHandler):
             Path(RUNTIME_DATA_DIR) / "metrics",
             Path(RUNTIME_DATA_DIR) / "target",
         ):
-            if not directory.exists():
+            try:
+                if not directory.exists():
+                    continue
+            except PermissionError:
                 continue
             for path in sorted(directory.glob("*.prom")):
                 resolved = path.resolve()
