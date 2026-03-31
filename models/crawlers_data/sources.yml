@@ -12,18 +12,19 @@ sources:
     tables:
       - name: dune_labels
         loaded_at_field: introduced_at
-      # These are business-date sources. Around the daily ~06:00 freshness run,
-      # a healthy source should still top out at yesterday's date, so 36h/48h
-      # catches a missing D-1 without false-alerting on normal daily cadence.
+      # ClickHouse source freshness expects a timestamp, so cast the business
+      # date to DateTime. Around the daily ~06:00 freshness run, a healthy
+      # source should still top out at yesterday's date, so 36h/48h catches
+      # a missing D-1 without false-alerting on normal daily cadence.
       - name: dune_prices
-        loaded_at_field: block_date
+        loaded_at_field: "toDateTime(block_date)"
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
       - name: dune_bridge_flows
         loaded_at_field: timestamp
       - name: dune_gno_supply
-        loaded_at_field: block_date
+        loaded_at_field: "toDateTime(block_date)"
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
