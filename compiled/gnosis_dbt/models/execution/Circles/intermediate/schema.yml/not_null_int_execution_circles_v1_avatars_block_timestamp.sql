@@ -5,7 +5,7 @@
 
 
 select block_timestamp
-from `dbt`.`int_execution_circles_v1_avatars`
+from (select * from `dbt`.`int_execution_circles_v1_avatars` where toDate(block_timestamp) >= today() - 7) dbt_subquery
 where block_timestamp is null
 
 

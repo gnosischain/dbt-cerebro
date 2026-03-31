@@ -5,7 +5,7 @@
 
 
 select month
-from `dbt`.`api_execution_gpay_kpi_monthly`
+from (select * from `dbt`.`api_execution_gpay_kpi_monthly` where toDate(month) >= today() - 7) dbt_subquery
 where month is null
 
 

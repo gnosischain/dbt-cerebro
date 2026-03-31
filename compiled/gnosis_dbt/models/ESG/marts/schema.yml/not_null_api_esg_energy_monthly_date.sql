@@ -5,7 +5,7 @@
 
 
 select date
-from `dbt`.`api_esg_energy_monthly`
+from (select * from `dbt`.`api_esg_energy_monthly` where toDate(date) >= today() - 7) dbt_subquery
 where date is null
 
 

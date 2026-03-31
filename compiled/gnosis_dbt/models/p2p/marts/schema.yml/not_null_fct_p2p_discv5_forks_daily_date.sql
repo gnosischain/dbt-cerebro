@@ -5,7 +5,7 @@
 
 
 select date
-from `dbt`.`fct_p2p_discv5_forks_daily`
+from (select * from `dbt`.`fct_p2p_discv5_forks_daily` where toDate(date) >= today() - 7) dbt_subquery
 where date is null
 
 

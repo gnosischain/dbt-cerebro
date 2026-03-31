@@ -150,7 +150,7 @@ process AS (
                     )
                   ),
 
-                startsWith(ni_base_types[j+1], 'uint') OR startsWith(ni_base_types[j+1], 'int'),
+                startsWith(ni_base_types[j+1], 'uint'),
                   toString(
                     reinterpretAsUInt256(
                       reverse(
@@ -158,6 +158,21 @@ process AS (
                           substring(
                             data_hex,
                             1 + toUInt32(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))) * 2 + 64 + k*64,
+                            64
+                          )
+                        )
+                      )
+                    )
+                  ),
+
+                  startsWith(ni_base_types[j+1], 'int'),
+                  toString(
+                    reinterpretAsInt256(
+                      reverse(
+                        unhex(
+                          substring(
+                            data_hex,
+                            1 + toUInt32(reinterpretAsInt256(reverse(unhex(data_words[j+1])))) * 2 + 64 + k*64,
                             64
                           )
                         )
@@ -229,8 +244,11 @@ process AS (
               ni_types[j+1] = 'address',
                 concat('0x', substring(data_words[j+1], 25, 40)),
 
-              startsWith(ni_types[j+1],'uint') OR startsWith(ni_types[j+1],'int'),
+              startsWith(ni_types[j+1],'uint'),
                 toString(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))),
+
+              startsWith(ni_types[j+1],'int'),
+                toString(reinterpretAsInt256(reverse(unhex(data_words[j+1])))),
 
               NULL
             ),
@@ -284,9 +302,19 @@ process AS (
                 25, 40
               )
             ),
-          startsWith(param_types[i+1],'uint') OR startsWith(param_types[i+1],'int'),
+          startsWith(param_types[i+1],'uint'),
             toString(
               reinterpretAsUInt256(
+                reverse(
+                  unhex(
+                    replaceAll(arrayElement(raw_topics, indexOf(indexed_positions, i)), '0x','')
+                  )
+                )
+              )
+            ),
+          startsWith(param_types[i+1],'int'),
+            toString(
+              reinterpretAsInt256(
                 reverse(
                   unhex(
                     replaceAll(arrayElement(raw_topics, indexOf(indexed_positions, i)), '0x','')

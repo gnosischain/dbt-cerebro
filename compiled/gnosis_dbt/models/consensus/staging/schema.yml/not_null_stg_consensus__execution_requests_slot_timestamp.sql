@@ -5,7 +5,7 @@
 
 
 select slot_timestamp
-from `dbt`.`stg_consensus__execution_requests`
+from (select * from `dbt`.`stg_consensus__execution_requests` where toDate(slot_timestamp) >= today() - 7) dbt_subquery
 where slot_timestamp is null
 
 

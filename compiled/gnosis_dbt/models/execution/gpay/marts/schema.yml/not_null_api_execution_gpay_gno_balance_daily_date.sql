@@ -5,7 +5,7 @@
 
 
 select date
-from `dbt`.`api_execution_gpay_gno_balance_daily`
+from (select * from `dbt`.`api_execution_gpay_gno_balance_daily` where toDate(date) >= today() - 7) dbt_subquery
 where date is null
 
 

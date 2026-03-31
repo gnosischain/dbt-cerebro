@@ -5,7 +5,7 @@
 
 
 select date
-from `dbt`.`api_execution_rwa_backedfi_prices_daily`
+from (select * from `dbt`.`api_execution_rwa_backedfi_prices_daily` where toDate(date) >= today() - 7) dbt_subquery
 where date is null
 
 

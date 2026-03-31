@@ -5,7 +5,7 @@
 
 
 select proposer_index
-from `dbt`.`stg_consensus__blocks`
+from (select * from `dbt`.`stg_consensus__blocks` where toDate(slot_timestamp) >= today() - 7) dbt_subquery
 where proposer_index is null
 
 
