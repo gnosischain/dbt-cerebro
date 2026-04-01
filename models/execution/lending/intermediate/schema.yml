@@ -1,7 +1,7 @@
 version: 2
 models:
 
-- name: int_execution_yields_aave_daily
+- name: int_execution_lending_aave_daily
   description: Daily Aave V3 lending metrics per reserve token on Gnosis Chain. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
   columns:
   - name: date
@@ -54,8 +54,8 @@ models:
   - name: net_supply_change_daily
     description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
     data_type: Float64
-- name: int_execution_yields_aave_utilization_daily
-  description: Daily Aave V3 utilization rate per reserve token. Computes cumulative scaled supply and borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall), then derives utilization as (totalScaledBorrow * variableBorrowIndex) / (totalScaledSupply * liquidityIndex) * 100. Indexes sourced from int_execution_yields_aave_daily.
+- name: int_execution_lending_aave_utilization_daily
+  description: Daily Aave V3 utilization rate per reserve token. Computes cumulative scaled supply and borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall), then derives utilization as (totalScaledBorrow * variableBorrowIndex) / (totalScaledSupply * liquidityIndex) * 100. Indexes sourced from int_execution_lending_aave_daily.
   columns:
   - name: date
     data_type: Date
@@ -71,8 +71,8 @@ models:
     description: Reserve utilization rate as percentage (totalBorrows / totalSupply * 100). Null if supply is zero or indexes are unavailable.
     data_type: Nullable(Float64)
 
-- name: int_execution_yields_aave_diffs_daily
-  description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Lightweight event-processing model consumed by int_execution_yields_aave_user_balances_daily.
+- name: int_execution_lending_aave_diffs_daily
+  description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Lightweight event-processing model consumed by int_execution_lending_aave_user_balances_daily.
   columns:
   - name: date
     data_type: Date
@@ -86,8 +86,8 @@ models:
     description: Net scaled balance change for this user-reserve on this day. Positive = net supply, negative = net withdrawal.
     data_type: Float64
 
-- name: int_execution_yields_aave_user_balances_daily
-  description: Daily per-user aToken balances for Aave V3 on Gnosis. Reads pre-computed scaled deltas from int_execution_yields_aave_diffs_daily, builds a calendar of all active user-reserve pairs, computes running cumulative scaled balances, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
+- name: int_execution_lending_aave_user_balances_daily
+  description: Daily per-user aToken balances for Aave V3 on Gnosis. Reads pre-computed scaled deltas from int_execution_lending_aave_diffs_daily, builds a calendar of all active user-reserve pairs, computes running cumulative scaled balances, then converts to underlying amounts using end-of-day liquidityIndex. Scoped to reserves in atoken_reserve_mapping seed.
   columns:
   - name: date
     data_type: Date
@@ -128,8 +128,8 @@ models:
           vars:
             reserve_symbol: "GNO,sDAI,USDC,USDC.e"
 
-- name: int_execution_yields_aave_balance_cohorts_daily
-  description: Daily Aave V3 lender balance cohort distributions per reserve token. Buckets users by deposit size (USD and native units) for concentration analysis. Derived from int_execution_yields_aave_user_balances_daily.
+- name: int_execution_lending_aave_balance_cohorts_daily
+  description: Daily Aave V3 lender balance cohort distributions per reserve token. Buckets users by deposit size (USD and native units) for concentration analysis. Derived from int_execution_lending_aave_user_balances_daily.
   columns:
   - name: date
     data_type: Date

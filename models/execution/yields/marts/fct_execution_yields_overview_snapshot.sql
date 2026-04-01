@@ -18,14 +18,14 @@ FROM (
     
     pools_latest_date AS (
         SELECT max(date) AS max_date
-        FROM {{ ref('fct_execution_yields_pools_daily') }}
+        FROM {{ ref('fct_execution_pools_daily') }}
         WHERE date < today()
     ),
     
     -- LP Total TVL (latest)
     lp_tvl_latest AS (
         SELECT sum(tvl_usd) AS tvl
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date
     ),
@@ -33,7 +33,7 @@ FROM (
     -- LP Total TVL (7 days ago)
     lp_tvl_7d_ago AS (
         SELECT sum(tvl_usd) AS tvl
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date - INTERVAL 7 DAY
     ),
@@ -43,7 +43,7 @@ FROM (
         SELECT
             argMax(f.fee_apr_7d, f.fee_apr_7d) AS apr,
             argMax(f.pool, f.fee_apr_7d) AS pool_name
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
@@ -52,7 +52,7 @@ FROM (
     -- LP Best APR (7 days ago)
     lp_best_apr_7d_ago AS (
         SELECT max(fee_apr_7d) AS apr
-        FROM {{ ref('fct_execution_yields_pools_daily') }} f
+        FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         WHERE f.date = d.max_date - INTERVAL 7 DAY
           AND f.fee_apr_7d IS NOT NULL
@@ -61,7 +61,7 @@ FROM (
     
     lending_latest_date AS (
         SELECT max(date) AS max_date
-        FROM {{ ref('int_execution_yields_aave_daily') }}
+        FROM {{ ref('int_execution_lending_aave_daily') }}
         WHERE date < today()
     ),
     
@@ -70,7 +70,7 @@ FROM (
         SELECT
             argMax(a.apy_daily, a.apy_daily) AS apy,
             argMax(a.symbol, a.apy_daily) AS token_name
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
+        FROM {{ ref('int_execution_lending_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
@@ -80,7 +80,7 @@ FROM (
     -- Best Lending APY (7 days ago)
     lending_best_apy_7d_ago AS (
         SELECT max(apy_daily) AS apy
-        FROM {{ ref('int_execution_yields_aave_daily') }} a
+        FROM {{ ref('int_execution_lending_aave_daily') }} a
         CROSS JOIN lending_latest_date d
         WHERE a.date = d.max_date - INTERVAL 7 DAY
           AND a.apy_daily IS NOT NULL
@@ -89,7 +89,7 @@ FROM (
     -- Active lenders (current): users with positive supply balance on latest date
     lending_active_lenders_latest AS (
         SELECT toUInt64(count(DISTINCT user_address)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date
           AND b.balance > 0
@@ -98,7 +98,7 @@ FROM (
     -- Active lenders (7 days ago) for change calculation
     lending_active_lenders_7d_ago AS (
         SELECT toUInt64(count(DISTINCT user_address)) AS lenders
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date - INTERVAL 7 DAY
           AND b.balance > 0
@@ -148,14 +148,14 @@ FROM (
 
     lending_tvl_latest_date AS (
         SELECT max(date) AS max_date
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }}
+        FROM {{ ref('int_execution_lending_aave_user_balances_daily') }}
         WHERE date < today()
           AND balance_usd > 0
     ),
 
     lending_tvl_latest AS (
         SELECT coalesce(sum(balance_usd), 0) AS tvl
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date
           AND b.balance_usd > 0
@@ -163,7 +163,7 @@ FROM (
 
     lending_tvl_7d_ago AS (
         SELECT coalesce(sum(balance_usd), 0) AS tvl
-        FROM {{ ref('int_execution_yields_aave_user_balances_daily') }} b
+        FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date - INTERVAL 7 DAY
           AND b.balance_usd > 0
