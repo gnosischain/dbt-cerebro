@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production', 'execution', 'tier1', 'api:yields_pools', 'metric:volume_7d', 'granularity:snapshot']
+        tags=['production', 'execution', 'tier1', 'api:execution_pools', 'metric:volume_7d', 'granularity:snapshot']
     )
 }}
 

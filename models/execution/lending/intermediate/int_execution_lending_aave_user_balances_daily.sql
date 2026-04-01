@@ -8,7 +8,7 @@
         partition_by='toStartOfMonth(date)',
         pre_hook=["SET join_use_nulls = 0"],
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','yields','aave','user_balances']
+        tags=['production','execution','lending','aave','user_balances']
     )
 }}
 
