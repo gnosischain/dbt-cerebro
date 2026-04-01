@@ -36,7 +36,7 @@ pool_tvl_daily AS (
         pool_address,
         pool_address_no0x,
         sum(tvl_component_usd) AS tvl_usd
-    FROM {{ ref('int_execution_pools_enriched_daily') }}
+    FROM {{ ref('int_execution_pools_balances_daily') }}
     WHERE protocol IN ('Uniswap V3', 'Swapr V3')
     GROUP BY date, protocol, pool_address, pool_address_no0x
 ),
