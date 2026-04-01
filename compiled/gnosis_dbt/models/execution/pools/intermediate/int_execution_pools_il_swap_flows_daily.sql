@@ -1,11 +1,5 @@
 WITH
 
-constants AS (
-    SELECT
-        toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819967') AS max_int256,
-        toUInt256('115792089237316195423570985008687907853269984665640564039457584007913129639936') AS two_256
-),
-
 token_prices_by_address AS (
     SELECT
         tm.token_address,
@@ -35,16 +29,8 @@ uniswap_v3_swap_flows AS (
         toDate(toStartOfDay(e.block_timestamp)) AS day,
         'Uniswap V3' AS protocol,
         replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        if(
-            toUInt256OrNull(e.decoded_params['amount0']) > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(e.decoded_params['amount0'])),
-            toInt256(toUInt256OrNull(e.decoded_params['amount0']))
-        ) AS amount0,
-        if(
-            toUInt256OrNull(e.decoded_params['amount1']) > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(e.decoded_params['amount1'])),
-            toInt256(toUInt256OrNull(e.decoded_params['amount1']))
-        ) AS amount1
+        toInt256OrNull(e.decoded_params['amount0']) AS amount0,
+        toInt256OrNull(e.decoded_params['amount1']) AS amount1
     FROM `dbt`.`contracts_UniswapV3_Pool_events` e
     WHERE e.event_name = 'Swap'
       AND e.block_timestamp < today()
@@ -57,16 +43,8 @@ swapr_v3_swap_flows AS (
         toDate(toStartOfDay(e.block_timestamp)) AS day,
         'Swapr V3' AS protocol,
         replaceAll(lower(e.contract_address), '0x', '') AS pool_address_no0x,
-        if(
-            toUInt256OrNull(e.decoded_params['amount0']) > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(e.decoded_params['amount0'])),
-            toInt256(toUInt256OrNull(e.decoded_params['amount0']))
-        ) AS amount0,
-        if(
-            toUInt256OrNull(e.decoded_params['amount1']) > (SELECT max_int256 FROM constants),
-            -toInt256((SELECT two_256 FROM constants) - toUInt256OrNull(e.decoded_params['amount1'])),
-            toInt256(toUInt256OrNull(e.decoded_params['amount1']))
-        ) AS amount1
+        toInt256OrNull(e.decoded_params['amount0']) AS amount0,
+        toInt256OrNull(e.decoded_params['amount1']) AS amount1
     FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events` e
     WHERE e.event_name = 'Swap'
       AND e.block_timestamp < today()
