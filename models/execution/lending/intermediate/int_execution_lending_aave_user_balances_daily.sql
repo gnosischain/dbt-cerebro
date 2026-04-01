@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='append',
         engine='ReplacingMergeTree()',
         order_by='(date, reserve_address, user_address)',
         unique_key='(date, reserve_address, user_address)',
@@ -98,78 +98,68 @@ prev_balances AS (
       AND t1.reserve_address IN (SELECT reserve_address FROM reserve_map)
 ),
 
-keys AS (
-    SELECT DISTINCT
-        user_address,
-        reserve_address
-    FROM (
-        SELECT user_address, reserve_address
-        FROM prev_balances
-        UNION ALL
-        SELECT user_address, reserve_address
-        FROM deltas
-    )
-),
-
-calendar AS (
+-- Seed previous balances as starting events, then append new deltas
+seeded_events AS (
     SELECT
-        k.user_address AS user_address,
-        k.reserve_address AS reserve_address,
-        addDays(cp.max_date + 1, offset) AS date
-    FROM keys k
+        addDays(cp.max_date, 1) AS date,
+        p.user_address AS user_address,
+        p.reserve_address AS reserve_address,
+        p.scaled_balance AS diff_scaled
+    FROM prev_balances p
     CROSS JOIN current_partition cp
-    CROSS JOIN overall_max_date o
-    ARRAY JOIN range(
-        dateDiff('day', cp.max_date, o.max_date)
-    ) AS offset
-),
-
-{% else %}
-
-calendar AS (
+    UNION ALL
     SELECT
-        user_address,
-        reserve_address,
-        addDays(min_date, offset) AS date
-    FROM (
-        SELECT
-            d.user_address AS user_address,
-            d.reserve_address AS reserve_address,
-            min(d.date) AS min_date,
-            dateDiff('day', min(d.date), any(o.max_date)) AS num_days
-        FROM deltas d
-        CROSS JOIN overall_max_date o
-        GROUP BY d.user_address, d.reserve_address
-    )
-    ARRAY JOIN range(toUInt64(num_days + 1)) AS offset
+        d.date AS date,
+        d.user_address AS user_address,
+        d.reserve_address AS reserve_address,
+        d.diff_scaled AS diff_scaled
+    FROM deltas d
 ),
 
 {% endif %}
 
+-- Compute cumulative balance at each event point only (sparse)
+cumulative_at_events AS (
+    SELECT
+        date,
+        user_address,
+        reserve_address,
+        sum(diff_scaled) OVER (
+            PARTITION BY user_address, reserve_address
+            ORDER BY date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS scaled_balance
+    FROM {% if is_incremental() %}seeded_events{% else %}deltas{% endif %}
+),
+
+-- Determine how far to forward-fill each event
+with_next_event AS (
+    SELECT
+        date,
+        user_address,
+        reserve_address,
+        scaled_balance,
+        leadInFrame(date, 1, toDate('2099-01-01')) OVER (
+            PARTITION BY user_address, reserve_address
+            ORDER BY date
+            ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+        ) AS next_event_date
+    FROM cumulative_at_events
+),
+
+-- Expand sparse events to daily rows via ARRAY JOIN
 daily_balances AS (
     SELECT
-        c.date AS date,
-        c.user_address AS user_address,
-        c.reserve_address AS reserve_address,
-        sum(coalesce(d.diff_scaled, 0)) OVER (
-            PARTITION BY c.user_address, c.reserve_address
-            ORDER BY c.date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        )
-        {% if is_incremental() %}
-            + coalesce(p.scaled_balance, 0)
-        {% endif %}
-        AS scaled_balance
-    FROM calendar c
-    LEFT JOIN deltas d
-        ON d.user_address = c.user_address
-       AND d.reserve_address = c.reserve_address
-       AND d.date = c.date
-    {% if is_incremental() %}
-    LEFT JOIN prev_balances p
-        ON p.user_address = c.user_address
-       AND p.reserve_address = c.reserve_address
-    {% endif %}
+        addDays(w.date, number) AS date,
+        w.user_address AS user_address,
+        w.reserve_address AS reserve_address,
+        w.scaled_balance AS scaled_balance
+    FROM with_next_event w
+    CROSS JOIN overall_max_date omd
+    ARRAY JOIN range(toUInt64(greatest(
+        dateDiff('day', w.date, least(w.next_event_date, addDays(omd.max_date, 1))),
+        0
+    ))) AS number
 ),
 
 balances_with_index AS (
