@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier0','api:yields_lending_lenders_count', 'granularity:last_7d']
+        tags=['production','execution','tier0','api:execution_lending_lenders_count', 'granularity:last_7d']
     )
 }}
 
