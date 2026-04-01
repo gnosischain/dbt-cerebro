@@ -66,28 +66,19 @@ labeled AS (
       'Infrastructure & DevTools',
 
       'Others'
-    ) AS sector
+    ) AS sector,
+    (lower(project) != 'gpay', project) AS dedup_key
   FROM src
 ),
 
 deduped AS (
   SELECT
     address,
-    project,
-    sector,
-    introduced_at
-  FROM (
-    SELECT
-      *,
-      row_number() OVER (
-        PARTITION BY address
-        ORDER BY
-          lower(project) = 'gpay' DESC,
-          project
-      ) AS rn
-    FROM labeled
-  )
-  WHERE rn = 1
+    argMin(project,       dedup_key) AS project,
+    argMin(sector,        dedup_key) AS sector,
+    argMin(introduced_at, dedup_key) AS introduced_at
+  FROM labeled
+  GROUP BY address
 )
 
 SELECT

@@ -15,13 +15,42 @@ SELECT
     lvr_apr_7d,
     net_apr_7d,
     utilization_rate,
-    protocol
+    protocol,
+    fee_pct
 FROM (
     WITH
     
+    pool_fee_tiers AS (
+        SELECT pool_address, fee_tier_ppm / 10000.0 AS fee_pct
+        FROM `dbt`.`stg_pools__v3_pool_registry`
+        WHERE protocol = 'Uniswap V3'
+          AND fee_tier_ppm IS NOT NULL
+
+        UNION ALL
+
+        SELECT
+            concat('0x', lower(contract_address)) AS pool_address,
+            argMax(toUInt32OrNull(decoded_params['fee']), block_timestamp) / 10000.0 AS fee_pct
+        FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events`
+        WHERE event_name = 'Fee'
+          AND decoded_params['fee'] IS NOT NULL
+        GROUP BY pool_address
+
+        UNION ALL
+
+        SELECT
+            lower(decoded_params['pool']) AS pool_address,
+            argMax(toFloat64OrNull(decoded_params['swapFeePercentage']), block_timestamp) / 1e16 AS fee_pct
+        FROM `dbt`.`contracts_BalancerV3_Vault_events`
+        WHERE event_name = 'SwapFeePercentageChanged'
+          AND decoded_params['pool'] IS NOT NULL
+          AND decoded_params['swapFeePercentage'] IS NOT NULL
+        GROUP BY pool_address
+    ),
+
     pools_latest_date AS (
         SELECT max(date) AS max_date
-        FROM `dbt`.`fct_execution_yields_pools_daily`
+        FROM `dbt`.`fct_execution_pools_daily`
         WHERE date < today()
     ),
     
@@ -29,7 +58,7 @@ FROM (
         SELECT
             f.pool,
             sum(f.fees_usd_daily) AS fees_7d
-        FROM `dbt`.`fct_execution_yields_pools_daily` f
+        FROM `dbt`.`fct_execution_pools_daily` f
         CROSS JOIN pools_latest_date d
         WHERE f.date > d.max_date - INTERVAL 7 DAY
           AND f.date <= d.max_date
@@ -53,10 +82,12 @@ FROM (
             f.lvr_apr_7d AS lvr_apr_7d,
             f.net_apr_7d AS net_apr_7d,
             NULL AS utilization_rate,
-            f.protocol AS protocol
-        FROM `dbt`.`fct_execution_yields_pools_daily` f
+            f.protocol AS protocol,
+            ft.fee_pct AS fee_pct
+        FROM `dbt`.`fct_execution_pools_daily` f
         CROSS JOIN pools_latest_date d
         LEFT JOIN lp_pool_fees_7d pf ON pf.pool = f.pool
+        LEFT JOIN pool_fee_tiers ft ON ft.pool_address = f.pool_address
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
           AND f.pool IS NOT NULL
@@ -78,7 +109,8 @@ FROM (
             lvr_apr_7d,
             net_apr_7d,
             utilization_rate,
-            protocol
+            protocol,
+            fee_pct
         FROM (
             SELECT
                 *,
@@ -91,7 +123,7 @@ FROM (
     
     lending_latest_date AS (
         SELECT max(date) AS max_date
-        FROM `dbt`.`int_execution_yields_aave_daily`
+        FROM `dbt`.`int_execution_lending_aave_daily`
         WHERE date < today()
     ),
 
@@ -101,7 +133,7 @@ FROM (
             argMax(cumulative_scaled_supply, date) AS cumulative_scaled_supply,
             argMax(cumulative_scaled_borrow, date) AS cumulative_scaled_borrow,
             argMax(utilization_rate, date) AS latest_utilization_rate
-        FROM `dbt`.`int_execution_yields_aave_utilization_daily`
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily`
         WHERE utilization_rate IS NOT NULL
         GROUP BY token_address
     ),
@@ -124,8 +156,9 @@ FROM (
             NULL AS lvr_apr_7d,
             NULL AS net_apr_7d,
             lc.latest_utilization_rate AS utilization_rate,
-            a.protocol AS protocol
-        FROM `dbt`.`int_execution_yields_aave_daily` a
+            a.protocol AS protocol,
+            NULL AS fee_pct
+        FROM `dbt`.`int_execution_lending_aave_daily` a
         CROSS JOIN lending_latest_date d
         LEFT JOIN lending_cumulative_latest lc
             ON lc.token_address = a.token_address
@@ -140,12 +173,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol
+    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lending_markets
 )
 ORDER BY yield_pct DESC
