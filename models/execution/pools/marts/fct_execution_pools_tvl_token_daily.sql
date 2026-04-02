@@ -42,7 +42,7 @@ pool_token_symbols AS (
             protocol,
             pool_address,
             arraySort(groupUniqArray(token)) AS tokens_sorted
-        FROM {{ ref('int_execution_pools_enriched_daily') }}
+        FROM {{ ref('int_execution_pools_balances_daily') }}
         WHERE token IS NOT NULL AND token != ''
         GROUP BY protocol, pool_address
     )
@@ -54,7 +54,7 @@ SELECT
     be.pool_address AS pool_address,
     be.token_address AS token_address,
     be.token AS series,
-    be.token_amount AS token_amount,
+    be.reserve_amount AS token_amount,
     be.tvl_component_usd AS tvl_usd,
     be.tvl_component_usd / nullIf(p0.price_usd, 0) AS tvl_in_token0,
     be.tvl_component_usd / nullIf(p1.price_usd, 0) AS tvl_in_token1,
@@ -62,7 +62,7 @@ SELECT
     pts.token1_symbol AS token1_symbol,
     po.ref_token AS ref_token,
     po.pool AS pool
-FROM {{ ref('int_execution_pools_enriched_daily') }} be
+FROM {{ ref('int_execution_pools_balances_daily') }} be
 INNER JOIN pools po
     ON po.date = be.date
    AND po.protocol = be.protocol

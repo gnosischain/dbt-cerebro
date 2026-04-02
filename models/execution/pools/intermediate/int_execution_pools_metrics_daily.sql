@@ -26,7 +26,7 @@ pool_tvl_daily AS (
         protocol,
         pool_address,
         sum(tvl_component_usd) AS tvl_usd
-    FROM {{ ref('int_execution_pools_enriched_daily') }}
+    FROM {{ ref('int_execution_pools_balances_daily') }}
     GROUP BY date, protocol, pool_address
 ),
 

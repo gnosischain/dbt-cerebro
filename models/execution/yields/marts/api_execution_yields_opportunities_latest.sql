@@ -10,8 +10,8 @@ SELECT
     token,
     name,
     address,
-    yield_pct,
-    yield_label,
+    yield_apr,
+    yield_apy,
     borrow_apy,
     tvl,
     total_supplied,
@@ -23,4 +23,4 @@ SELECT
     protocol,
     fee_pct
 FROM {{ ref('fct_execution_yields_opportunities_latest') }}
-ORDER BY yield_pct DESC
+ORDER BY COALESCE(yield_apr, yield_apy) DESC

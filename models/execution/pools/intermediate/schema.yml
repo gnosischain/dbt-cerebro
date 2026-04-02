@@ -26,9 +26,9 @@ models:
     description: ClickHouse AggregateFunction bitmap state for unique LP addresses (cityHash64). Use groupBitmapMerge() to combine across dates/pools.
     data_type: AggregateFunction(groupBitmap, UInt64)
 
-- name: int_execution_pools_enriched_daily
-  description: Central token-level balance enrichment for all LP pools. Joins raw balances with token metadata and prices (ASOF join for gap safety) to produce TVL components. Single source of truth for TVL across all downstream pool models.
-  columns:
+- name: int_execution_pools_uniswap_v3_daily
+  description: Daily Uniswap V3 pool token balances with oracle price enrichment. Built from event deltas (Mint, Burn, Swap, Collect, Flash) with static fee rates from PoolCreated. Separates reserves from unclaimed fees. Includes oracle price, TVL in USD, and pool-implied token price.
+  columns: &protocol_model_columns
   - name: date
     data_type: Date
   - name: protocol
@@ -44,15 +44,49 @@ models:
   - name: token
     description: Uppercase token symbol from tokens_whitelist (e.g. WETH, USDC.E). Nullable for unknown tokens.
     data_type: Nullable(String)
+  - name: token_amount_raw
+    description: Total token balance in raw units (Int256).
+    data_type: Int256
   - name: token_amount
-    description: Raw token balance in token units.
+    description: Total token balance in token units.
+    data_type: Float64
+  - name: reserve_amount_raw
+    description: TVL-contributing reserve balance in raw units (Int256).
+    data_type: Int256
+  - name: reserve_amount
+    description: TVL-contributing reserve balance in token units.
+    data_type: Float64
+  - name: fee_amount_raw
+    description: Unclaimed fee balance in raw units (Int256).
+    data_type: Int256
+  - name: fee_amount
+    description: Unclaimed fee balance in token units.
     data_type: Float64
   - name: price_usd
-    description: Token price in USD from ASOF join (latest known price <= date).
+    description: Oracle token price in USD (from Dune, ASOF join).
     data_type: Float64
   - name: tvl_component_usd
-    description: TVL component in USD (token_amount * price_usd).
+    description: TVL component in USD (reserve_amount * price_usd).
     data_type: Float64
+  - name: pool_implied_price_usd
+    description: Token price implied by pool reserves (other side TVL / this reserve). Informational only, not used for TVL calculation.
+    data_type: Nullable(Float64)
+
+- name: int_execution_pools_swapr_v3_daily
+  description: Daily Swapr V3 pool token balances with oracle price enrichment. Built from event deltas with dynamic fee rates via Fee events (ASOF join). Separates reserves from unclaimed fees. Includes oracle price, TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balancer_v2_daily
+  description: Daily Balancer V2 pool token balances with oracle price enrichment. Built from delta events (PoolBalanceChanged, Swap, PoolBalanceManaged). Fee separation not yet implemented. Excludes BPT tokens. Includes oracle price, TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balancer_v3_daily
+  description: Daily Balancer V3 pool token balances with oracle price enrichment. Built from delta events with token config resolution for sentinel addresses. ERC4626 wrappers resolved to underlying for price lookup. Excludes BPT tokens. Includes oracle price, TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balances_daily
+  description: Combined daily pool token balances across all DEX protocols. Thin UNION ALL view of the four protocol-level models (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+  columns: *protocol_model_columns
 
 - name: int_execution_pools_metrics_daily
   description: Pool-level daily metrics for LP pools. Aggregates TVL from the enriched model, joins fees and swap counts, applies 7D rolling window functions, and computes fee APR. Materialized as a table to avoid ClickHouse 25.10 query analyzer issues with window-function CTEs.
