@@ -47,7 +47,7 @@ pools AS (
 
 daily_deltas AS (
     SELECT
-        toStartOfDay(e.block_timestamp) AS date,
+        toDate(toStartOfDay(e.block_timestamp)) AS date,
         concat('0x', e.pool_address) AS pool_address,
         multiIf(
             e.token_position = 'token0', p.token0_address,

@@ -103,7 +103,7 @@ daily_deltas AS (
                     e.token_position = 'token1', p.token1_address,
                     NULL
                 ) AS token_address,
-                toStartOfDay(e.block_timestamp) AS date,
+                toDate(toStartOfDay(e.block_timestamp)) AS date,
                 e.delta_amount_raw AS delta_amount_raw,
                 e.delta_category AS delta_category,
                 (toUInt64(toUnixTimestamp(e.block_timestamp)) * toUInt64(4294967296) + toUInt64(e.log_index)) AS event_order

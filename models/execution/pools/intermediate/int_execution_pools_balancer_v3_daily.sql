@@ -165,7 +165,7 @@ all_deltas AS (
 
 daily_deltas AS (
     SELECT
-        toStartOfDay(block_timestamp) AS date,
+        toDate(toStartOfDay(block_timestamp)) AS date,
         concat('0x', pool_address) AS pool_address,
         token_address,
         sum(delta_amount_raw) AS daily_delta_raw,

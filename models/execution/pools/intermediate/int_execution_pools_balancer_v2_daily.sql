@@ -39,7 +39,7 @@ pool_registry AS (
 
 raw_deltas AS (
     SELECT
-        toStartOfDay(e.block_timestamp) AS date,
+        toDate(toStartOfDay(e.block_timestamp)) AS date,
         if(r.pool_address != '', r.pool_address, e.pool_id) AS pool_address,
         lower(e.token_address) AS token_address,
         e.delta_amount_raw,
