@@ -14,6 +14,7 @@ WITH balancer_v2_pool_registry AS (
 )
 
 SELECT
+    e.block_number,
     e.block_timestamp,
     e.transaction_hash,
     e.log_index,

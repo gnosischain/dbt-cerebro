@@ -57,6 +57,7 @@ all_swaps AS (
 )
 
 SELECT
+    s.block_number,
     s.block_timestamp,
     s.transaction_hash,
     s.log_index,

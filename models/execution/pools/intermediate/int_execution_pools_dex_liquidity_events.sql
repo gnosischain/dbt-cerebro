@@ -23,7 +23,12 @@
 
   Each protocol's event decoding lives in its own staging model
   (stg_pools__dex_liquidity_<protocol>) for easy addition of new protocols.
-  This model unions them, enriches with token metadata, and adds USD prices.
+  This model unions them, enriches with token metadata, adds USD prices,
+  and joins execution.transactions for tx_from / tx_to.
+
+  The tx join uses IN (SELECT ... FROM events_base) so ClickHouse builds a
+  small hash set of event tx hashes and probes the large transactions table,
+  rather than loading the full right side into memory.
 
   Protocols:
     - Uniswap V3  : stg_pools__dex_liquidity_uniswap_v3
@@ -55,8 +60,9 @@ all_liquidity AS (
     SELECT * FROM {{ ref('stg_pools__dex_liquidity_balancer_v3') }}
 ),
 
-with_meta AS (
+events_base AS (
     SELECT
+        l.block_number,
         l.block_timestamp,
         l.transaction_hash,
         l.log_index,
@@ -78,6 +84,25 @@ with_meta AS (
       {% endif %}
 ),
 
+tx_context AS (
+    SELECT DISTINCT transaction_hash, from_address, to_address
+    FROM {{ source('execution', 'transactions') }}
+    WHERE transaction_hash IN (SELECT DISTINCT transaction_hash FROM events_base)
+      {% if start_month and end_month %}
+      AND block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
+      AND block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
+      {% endif %}
+),
+
+with_meta AS (
+    SELECT
+        e.*,
+        lower(tx.from_address) AS tx_from,
+        lower(tx.to_address)   AS tx_to
+    FROM events_base e
+    LEFT JOIN tx_context tx ON tx.transaction_hash = e.transaction_hash
+),
+
 with_price AS (
     SELECT
         s.*,
@@ -93,6 +118,7 @@ with_price AS (
 )
 
 SELECT
+    block_number,
     block_timestamp,
     transaction_hash,
     log_index,
@@ -104,6 +130,8 @@ SELECT
     token_symbol,
     amount_raw,
     amount,
-    amount * token_price_usd AS amount_usd
+    amount * token_price_usd AS amount_usd,
+    tx_from,
+    tx_to
 FROM with_price
 ORDER BY block_timestamp, transaction_hash, log_index, token_address

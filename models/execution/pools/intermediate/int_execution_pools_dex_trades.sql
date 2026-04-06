@@ -12,13 +12,16 @@
 }}
 
 {#-
-  DEX swap events enriched with USD prices.
+  DEX swap events enriched with USD prices and transaction context.
   Reads from int_execution_pools_dex_trades_raw (materialized, month-partitioned)
-  and adds daily USD prices via ASOF joins.
+  and adds:
+    - Daily USD prices via ASOF joins
+    - tx_from / tx_to from int_execution_pools_dex_trades_tx_context
 
-  Split from raw swap extraction so that:
-    - The heavy work (JSON decoding from 4 event tables) materializes first
-    - Price enrichment reads partition-pruned data, staying within memory limits
+  The tx_from/tx_to lookup is a separate materialized table (~300-400K rows
+  per month, 4 columns) so the right side of this join is ~80MB per month
+  instead of multi-GB from the full execution.transactions table.
+  This keeps total memory well within limits alongside the ASOF price joins.
 -#}
 
 {% set start_month = var('start_month', none) %}
@@ -27,21 +30,30 @@
 WITH
 
 swaps AS (
-    SELECT *
-    FROM {{ ref('int_execution_pools_dex_trades_raw') }}
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
-      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
-    {% endif %}
+    SELECT
+        s.*,
+        tx.tx_from,
+        tx.tx_to
+    FROM (
+        SELECT *
+        FROM {{ ref('int_execution_pools_dex_trades_raw') }}
+        {% if start_month and end_month %}
+        WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+          AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        {% else %}
+          {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp') }}
+        {% endif %}
+    ) s
+    LEFT JOIN (
+        SELECT transaction_hash, tx_from, tx_to
+        FROM {{ ref('int_execution_pools_dex_trades_tx_context') }}
+        {% if start_month and end_month %}
+        WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+          AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        {% endif %}
+    ) tx ON tx.transaction_hash = s.transaction_hash
 ),
 
--- =============================================
--- ASOF join: USD price for the bought token.
--- Chained sequentially so ClickHouse can resolve
--- both ASOF joins without conflicting sort requirements.
--- =============================================
 with_bought_price AS (
     SELECT
         s.*,
@@ -60,9 +72,6 @@ with_bought_price AS (
         AND toDate(s.block_timestamp) >= pb.date
 ),
 
--- =============================================
--- ASOF join: USD price for the sold token.
--- =============================================
 with_sold_price AS (
     SELECT
         s.*,
@@ -82,6 +91,7 @@ with_sold_price AS (
 )
 
 SELECT
+    block_number,
     block_timestamp,
     transaction_hash,
     log_index,
@@ -99,5 +109,7 @@ SELECT
         amount_bought * token_bought_price_usd,
         amount_sold   * token_sold_price_usd
     )                   AS amount_usd,
-    taker
+    coalesce(taker, tx_from) AS taker,
+    tx_from,
+    tx_to
 FROM with_sold_price

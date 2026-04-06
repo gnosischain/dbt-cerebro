@@ -118,8 +118,11 @@ models:
   meta:
     full_refresh:
       start_date: "2022-04-01"
-      batch_months: 12
+      batch_months: 6
   columns:
+  - name: block_number
+    description: Block height containing the swap event.
+    data_type: UInt32
   - name: block_timestamp
     data_type: DateTime
   - name: transaction_hash
@@ -160,13 +163,34 @@ models:
     description: Address receiving the bought tokens. From Swap event recipient field for Uniswap V3 and Swapr V3; NULL for Balancer (event does not include recipient).
     data_type: Nullable(String)
 
-- name: int_execution_pools_dex_trades
-  description: DEX swap events enriched with USD prices. Reads from int_execution_pools_dex_trades_raw and adds daily USD prices via ASOF joins. Source of truth for trade-level analytics with USD values.
+- name: int_execution_pools_dex_trades_tx_context
+  description: Thin lookup mapping swap transaction hashes to sender (tx_from) and recipient (tx_to) addresses. Only contains transactions that appear in int_execution_pools_dex_trades_raw, keeping the table small (~300-400K rows per month). Used by int_execution_pools_dex_trades as a lightweight join instead of the full execution.transactions table.
   meta:
     full_refresh:
       start_date: "2022-04-01"
-      batch_months: 12
+      batch_months: 3
   columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: tx_from
+    description: EOA address that signed the transaction (lowercase, with 0x prefix).
+    data_type: String
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract (lowercase, with 0x prefix).
+    data_type: String
+
+- name: int_execution_pools_dex_trades
+  description: DEX swap events enriched with USD prices and transaction context. Reads from int_execution_pools_dex_trades_raw, adds daily USD prices via ASOF joins, and joins int_execution_pools_dex_trades_tx_context for tx_from/tx_to. Source of truth for trade-level analytics with USD values.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 1
+  columns:
+  - name: block_number
+    description: Block height containing the swap event.
+    data_type: UInt32
   - name: block_timestamp
     data_type: DateTime
   - name: transaction_hash
@@ -207,16 +231,25 @@ models:
     description: Trade value in USD. Uses bought-side price where available, falls back to sold-side.
     data_type: Nullable(Float64)
   - name: taker
-    description: Address receiving the bought tokens. From Swap event recipient field for Uniswap V3 and Swapr V3; NULL for Balancer (event does not include recipient).
+    description: Address receiving the bought tokens. Uses Swap event recipient for Uniswap V3 and Swapr V3; falls back to tx_from for Balancer where the event has no recipient.
+    data_type: Nullable(String)
+  - name: tx_from
+    description: EOA address that signed the transaction (from execution.transactions).
+    data_type: Nullable(String)
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract.
     data_type: Nullable(String)
 
 - name: int_execution_pools_dex_liquidity_events
-  description: Individual LP add/remove events across all protocols on Gnosis Chain. One row per (event, token) — not pivoted to wide format because Balancer pools can hold 2–8 tokens. Unions per-protocol staging models (stg_pools__dex_liquidity_*) and enriches with token metadata and USD prices. New protocols can be added by creating a staging model and adding it to the UNION ALL.
+  description: Individual LP add/remove events across all protocols on Gnosis Chain. One row per (event, token) — not pivoted to wide format because Balancer pools can hold 2–8 tokens. Unions per-protocol staging models (stg_pools__dex_liquidity_*) and enriches with token metadata, USD prices, and transaction context. New protocols can be added by creating a staging model and adding it to the UNION ALL.
   meta:
     full_refresh:
       start_date: "2022-04-01"
       batch_months: 12
   columns:
+  - name: block_number
+    description: Block height containing the liquidity event.
+    data_type: UInt32
   - name: block_timestamp
     data_type: DateTime
   - name: transaction_hash
@@ -250,6 +283,12 @@ models:
   - name: amount_usd
     description: Token amount in USD.
     data_type: Nullable(Float64)
+  - name: tx_from
+    description: EOA address that signed the transaction (from execution.transactions).
+    data_type: Nullable(String)
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract.
+    data_type: Nullable(String)
 
 - name: int_execution_pools_fees_daily
   description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
