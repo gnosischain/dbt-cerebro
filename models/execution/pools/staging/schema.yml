@@ -118,6 +118,76 @@ models:
     description: 0-based position of this token in the pool, matching the index of amountsAddedRaw/amountsRemovedRaw in liquidity events.
     data_type: UInt64
 
+- name: stg_pools__dex_trades_uniswap_v3
+  description: Uniswap V3 swap events decoded from Pool Swap events. Determines bought/sold via amount0/amount1 sign convention. Ephemeral — inlined into int_execution_pools_dex_trades_raw.
+  columns: &dex_trades_columns
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: token_bought_address
+    data_type: String
+  - name: amount_bought_raw
+    data_type: Nullable(UInt256)
+  - name: token_sold_address
+    data_type: String
+  - name: amount_sold_raw
+    data_type: Nullable(UInt256)
+  - name: taker
+    data_type: Nullable(String)
+
+- name: stg_pools__dex_trades_swapr_v3
+  description: Swapr V3 (Algebra fork) swap events. Same sign logic as Uniswap V3. Ephemeral.
+  columns: *dex_trades_columns
+
+- name: stg_pools__dex_trades_balancer_v2
+  description: Balancer V2 Vault Swap events with tokenIn/tokenOut fields. Pool ID resolved to pool address via PoolRegistered. Ephemeral.
+  columns: *dex_trades_columns
+
+- name: stg_pools__dex_trades_balancer_v3
+  description: Balancer V3 Vault Swap events with wrapper-to-underlying token resolution via stg_pools__balancer_v3_token_map. Ephemeral.
+  columns: *dex_trades_columns
+
+- name: stg_pools__dex_liquidity_uniswap_v3
+  description: Uniswap V3 Mint/Burn events unpacked into one row per token per event. Ephemeral — inlined into int_execution_pools_dex_liquidity_events.
+  columns: &dex_liquidity_columns
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: provider
+    data_type: String
+  - name: event_type
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: amount_raw
+    data_type: Nullable(UInt256)
+
+- name: stg_pools__dex_liquidity_swapr_v3
+  description: Swapr V3 Mint/Burn events. Same structure as Uniswap V3. Ephemeral.
+  columns: *dex_liquidity_columns
+
+- name: stg_pools__dex_liquidity_balancer_v2
+  description: Balancer V2 PoolBalanceChanged events with JSON array unpacking for multi-token pools. Ephemeral.
+  columns: *dex_liquidity_columns
+
+- name: stg_pools__dex_liquidity_balancer_v3
+  description: Balancer V3 LiquidityAdded/LiquidityRemoved events with positional array unpacking and wrapper-to-underlying token resolution. Ephemeral.
+  columns: *dex_liquidity_columns
+
 - name: stg_pools__token_prices_daily
   description: Normalized daily token prices keyed by uppercase symbol. Wraps int_execution_token_prices_daily with consistent types and column naming. Referenced by enriched, fees, TVL, and LVR models.
   columns:
