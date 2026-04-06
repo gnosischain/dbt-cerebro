@@ -113,6 +113,144 @@ models:
     description: 7-day trailing fee APR annualized ((fees_7d / tvl_7d_avg) * 365/7 * 100). Null when data is insufficient (< 3 days) or TVL is zero.
     data_type: Nullable(Float64)
 
+- name: int_execution_pools_dex_trades_raw
+  description: Raw DEX swap events across all protocols on Gnosis Chain. One row per swap with token metadata but no USD prices. Reads directly from contract event decoders to access swap parameters discarded by the staging layer. Covers Uniswap V3, Swapr V3, Balancer V2, Balancer V3.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 12
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_address
+    description: Address of the token received by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_symbol
+    description: Symbol of the bought token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    description: Amount of token bought in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    description: Amount of token bought in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    description: Address of the token spent by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_sold_symbol
+    description: Symbol of the sold token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    description: Amount of token sold in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    description: Amount of token sold in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: taker
+    description: Address receiving the bought tokens. From Swap event recipient field for Uniswap V3 and Swapr V3; NULL for Balancer (event does not include recipient).
+    data_type: Nullable(String)
+
+- name: int_execution_pools_dex_trades
+  description: DEX swap events enriched with USD prices. Reads from int_execution_pools_dex_trades_raw and adds daily USD prices via ASOF joins. Source of truth for trade-level analytics with USD values.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 12
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_address
+    description: Address of the token received by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_symbol
+    description: Symbol of the bought token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    description: Amount of token bought in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    description: Amount of token bought in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    description: Address of the token spent by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_sold_symbol
+    description: Symbol of the sold token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    description: Amount of token sold in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    description: Amount of token sold in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Trade value in USD. Uses bought-side price where available, falls back to sold-side.
+    data_type: Nullable(Float64)
+  - name: taker
+    description: Address receiving the bought tokens. From Swap event recipient field for Uniswap V3 and Swapr V3; NULL for Balancer (event does not include recipient).
+    data_type: Nullable(String)
+
+- name: int_execution_pools_liquidity_events
+  description: Individual LP add/remove events across all protocols on Gnosis Chain. One row per (event, token) — not pivoted to wide format because Balancer pools can hold 2–8 tokens. Covers Uniswap V3, Swapr V3, Balancer V2, Balancer V3. Provider address available for all covered protocols.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 12
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: provider
+    description: LP wallet address that added or removed liquidity.
+    data_type: String
+  - name: event_type
+    description: Direction of the liquidity event — mint (add) or burn (remove).
+    data_type: String
+  - name: token_address
+    description: Token address for this row (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_symbol
+    description: Token symbol. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Token amount in raw units (always positive; direction given by event_type).
+    data_type: Nullable(UInt256)
+  - name: amount
+    description: Token amount in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Token amount in USD.
+    data_type: Nullable(Float64)
+
 - name: int_execution_pools_fees_daily
   description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
   meta:
