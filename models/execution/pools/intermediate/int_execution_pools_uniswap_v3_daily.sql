@@ -12,17 +12,7 @@
     )
 }}
 
-{#-
-  Daily Uniswap V3 pool token balances with oracle price enrichment.
-
-  Built from event deltas (Mint, Burn, Swap, Collect, Flash).
-  Separates reserves (TVL-contributing) from unclaimed fees:
-    * reserve_amount: Mint/Burn liquidity + swap deltas net of fees
-    * fee_amount: swap fee income - collected fees + flash loan fees
-  Fee rates: static from PoolCreated events (fee_tier_ppm).
-
-  Includes oracle price (Dune), TVL in USD, and pool-implied token price.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

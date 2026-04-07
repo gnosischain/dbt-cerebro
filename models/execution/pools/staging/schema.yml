@@ -4,9 +4,10 @@ models:
 - name: stg_pools__v3_pool_registry
   description: >
     Complete registry of Uniswap V3 and Swapr V3 (Algebra) pools on Gnosis Chain.
-    Combines factory creation events with pool Initialize events.
-    Includes fee tier, tick spacing, and initialization price/tick.
-    Replaces the former int_execution_yields_v3_pool_meta view.
+    Combines factory creation events with pool Initialize events to produce a single
+    source of truth for pool metadata. Includes fee tier (static for UniV3, NULL for
+    Swapr with dynamic fees), tick spacing, initialization price/tick, and creation
+    timestamp. Replaces the former int_execution_yields_v3_pool_meta view.
   columns:
   - name: protocol
     data_type: String
@@ -90,7 +91,11 @@ models:
     data_type: String
 
 - name: stg_pools__tokens_meta
-  description: Normalized token metadata from the tokens_whitelist seed. Provides lowercase address, uppercase symbol (nullable via nullIf), decimals, and validity window (date_start/date_end). Single source of truth for token lookups across all pool models.
+  description: >
+    Normalized token metadata from the tokens_whitelist seed. Provides lowercase address,
+    uppercase symbol (nullable via nullIf), decimals, and validity window
+    (date_start/date_end). Single source of truth for token_address → symbol mapping
+    across all pool models.
   columns:
   - name: token_address
     description: Lowercase token contract address.
@@ -106,7 +111,14 @@ models:
     data_type: Nullable(Date)
 
 - name: stg_pools__balancer_v3_pool_tokens
-  description: Ordered token list per Balancer V3 pool derived from Swap events. Balancer V3 stores tokens in ascending address order; ROW_NUMBER() over sorted unique token addresses reproduces the same 0-based index used in LiquidityAdded/LiquidityRemoved amountsRaw arrays. Tokens are the ERC4626 wrappers the pool actually holds. Only pools with at least one Swap event appear.
+  description: >
+    Ordered token list per Balancer V3 pool derived from Swap events. Balancer V3 stores
+    tokens in ascending address order; ROW_NUMBER() over sorted unique token addresses
+    reproduces the same 0-based index used in LiquidityAdded/LiquidityRemoved amountsRaw
+    arrays. Tokens are the ERC4626 wrappers the pool actually holds (e.g. waGnoGNO,
+    waGnoWETH) — resolve to underlying via stg_pools__balancer_v3_token_map for price
+    lookups. Only pools with at least one Swap event appear; pools with deposited
+    liquidity but zero swaps are excluded (negligible activity in practice).
   columns:
   - name: pool_address
     description: Pool contract address without 0x prefix.
@@ -202,3 +214,21 @@ models:
     data_type: Nullable(String)
   - name: price_usd
     data_type: Float64
+
+- name: stg_pools__balancer_v3_token_map
+  description: >
+    Balancer V3 ERC4626 wrapper → underlying token mapping. Used to resolve wrapped
+    Aave tokens (waGno*) to their underlying for price lookups and token symbol
+    resolution. Hardcoded for the 5 Aave wrappers on Gnosis Chain; wrapper tokens
+    are ~1:1 with underlying (plus accrued yield).
+  columns:
+  - name: wrapper_address
+    description: ERC4626 wrapper token address (lowercase).
+    data_type: String
+  - name: wrapper_symbol
+    data_type: String
+  - name: wrapper_decimals
+    data_type: UInt8
+  - name: underlying_address
+    description: Underlying token address that the wrapper resolves to.
+    data_type: String

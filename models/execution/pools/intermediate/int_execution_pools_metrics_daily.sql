@@ -9,14 +9,7 @@
     )
 }}
 
-{#-
-  Pool-level daily metrics: TVL, fees, volume, swap count, and 7D trailing
-  fee APR. Aggregates token-level TVL from the enriched model, joins fees
-  and swap counts, then applies rolling window functions.
-
-  Materialized as a table to avoid ClickHouse 25.10 query analyzer issues
-  with window-function CTEs in downstream joins.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

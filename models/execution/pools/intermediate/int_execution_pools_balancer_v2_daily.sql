@@ -12,15 +12,7 @@
     )
 }}
 
-{#-
-  Daily Balancer V2 pool token balances with oracle price enrichment.
-
-  Built from delta events (PoolBalanceChanged, Swap, PoolBalanceManaged).
-  Fee separation not yet implemented (reserve_amount = token_amount, fee_amount = 0).
-  Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
-
-  Includes oracle price (Dune), TVL in USD, and pool-implied token price.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

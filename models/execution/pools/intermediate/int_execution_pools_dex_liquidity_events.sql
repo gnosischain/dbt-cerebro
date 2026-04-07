@@ -14,35 +14,7 @@
     )
 }}
 
-{#-
-  Individual LP add/remove events across all protocols on Gnosis Chain.
-  One row per (event, token) — deliberately not pivoted to wide format
-  because Balancer pools can hold 2–8 tokens, making a fixed-width
-  schema incorrect. Consumers aggregate per event when needed.
-
-  Each protocol's event decoding lives in its own staging model
-  (stg_pools__dex_liquidity_<protocol>) for easy addition of new protocols.
-  This model unions them, enriches with token metadata, adds USD prices,
-  and joins execution.transactions for tx_from / tx_to.
-
-  The tx join uses IN (SELECT ... FROM events_base) so ClickHouse builds a
-  small hash set of event tx hashes and probes the large transactions table,
-  rather than loading the full right side into memory.
-
-  Protocols:
-    - Uniswap V3  : stg_pools__dex_liquidity_uniswap_v3
-    - Swapr V3    : stg_pools__dex_liquidity_swapr_v3
-    - Balancer V2 : stg_pools__dex_liquidity_balancer_v2
-    - Balancer V3 : stg_pools__dex_liquidity_balancer_v3
-
-  event_type values: 'mint' | 'burn'
-  amount_raw is always positive; event_type conveys direction.
-
-  Batching:
-    When called with start_month/end_month vars (e.g. via the full-refresh script),
-    each protocol model filters to that month window. Otherwise falls back to the
-    incremental filter based on max(block_timestamp) in the existing table.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}

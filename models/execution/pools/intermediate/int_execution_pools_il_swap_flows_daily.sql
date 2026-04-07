@@ -9,11 +9,7 @@
     )
 }}
 
-{#-
-  Daily pool-level base data for IL computation: swap flows, fees, TVL, and
-  token prices/decimals. Materialized to avoid deep CTE chains that trigger
-  ClickHouse 25.10 query analyzer issues with window functions.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

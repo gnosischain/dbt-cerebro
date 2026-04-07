@@ -12,19 +12,7 @@
     )
 }}
 
-{#-
-  Daily Balancer V3 pool token balances with oracle price enrichment.
-
-  Built from delta events (LiquidityAdded, LiquidityRemoved, Swap).
-  Token resolution uses PoolRegistered tokenConfig with sentinel-address
-  inference from Swap events. ERC4626 wrappers (waGno*) are resolved to
-  underlying tokens for symbol and price lookups.
-
-  Fee separation uses event-level swapFeeAmountsRaw.
-  Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
-
-  Includes oracle price (Dune), TVL in USD, and pool-implied token price.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

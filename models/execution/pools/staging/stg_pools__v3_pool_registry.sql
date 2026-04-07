@@ -8,19 +8,7 @@
     )
 }}
 
-{#-
-  Complete registry of Uniswap V3 and Swapr V3 (Algebra) pools on Gnosis Chain.
-  Combines factory creation events with pool Initialize events to produce
-  a single source of truth for pool metadata.
-
-  Columns:
-    - protocol, pool_address, pool_address_no0x
-    - token0_address, token1_address
-    - fee_tier_ppm: static fee for UniV3 (from PoolCreated); NULL for Swapr (dynamic fees)
-    - tick_spacing
-    - init_tick, init_sqrt_price_x96: from the Initialize event (NULL if pool never initialized)
-    - created_at: block_timestamp of the factory creation event
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

@@ -9,14 +9,7 @@
     )
 }}
 
-{#-
-  Per-token TVL composition within pools, with server-side denomination.
-
-  Three TVL columns are pre-computed:
-    tvl_usd        – component TVL in USD
-    tvl_in_token0  – component TVL denominated in pool's token0 (cross-rate)
-    tvl_in_token1  – component TVL denominated in pool's token1 (cross-rate)
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

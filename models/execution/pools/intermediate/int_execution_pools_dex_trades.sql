@@ -11,18 +11,7 @@
     )
 }}
 
-{#-
-  DEX swap events enriched with USD prices and transaction context.
-  Reads from int_execution_pools_dex_trades_raw (materialized, month-partitioned)
-  and adds:
-    - Daily USD prices via ASOF joins
-    - tx_from / tx_to from int_execution_pools_dex_trades_tx_context
-
-  The tx_from/tx_to lookup is a separate materialized table (~300-400K rows
-  per month, 4 columns) so the right side of this join is ~80MB per month
-  instead of multi-GB from the full execution.transactions table.
-  This keeps total memory well within limits alongside the ASOF price joins.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}

@@ -12,18 +12,7 @@
     )
 }}
 
-{#-
-  Accrued pool fees + trading volume from Swap + Flash at pool×token grain.
-  Output: (date, protocol, pool_address, token_address, token, fee_amount, fees_usd, volume_amount, volume_usd)
-
-  Notes:
-  - V3 swap/flash deltas are sourced from the staging models (stg_pools__uniswap_v3_events,
-    stg_pools__swapr_v3_events) which handle int256 two's-complement decoding.
-  - Fees are applied in ppm with 1e6 denominator.
-  - Volume = gross incoming token amount per swap (the positive side). Flash loans contribute 0 volume.
-  - Swapr V3 (Algebra) fee is dynamic (Fee events); we apply the latest fee as-of each swap,
-    and backfill swaps before first Fee with the pool's first observed fee.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

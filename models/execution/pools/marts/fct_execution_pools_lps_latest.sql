@@ -8,14 +8,7 @@
     )
 }}
 
-{#-
-  Unique LP provider counts per token over rolling time windows,
-  with change_pct vs the prior window. Mirrors the lending pattern
-  in fct_execution_lending_latest.
-
-  Uses bitmap merge to deduplicate LP addresses across pools and days
-  within each window.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

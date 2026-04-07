@@ -15,31 +15,7 @@
     )
 }}
 
-{#-
-  Raw DEX swap events across all protocols on Gnosis Chain.
-  One row per swap with token metadata (symbol, decimals, human amounts).
-  No USD price enrichment — that lives in int_execution_pools_dex_trades.
-
-  Each protocol's event decoding lives in its own staging model
-  (stg_pools__dex_trades_<protocol>) for easy addition of new protocols.
-  This model unions them and enriches with token metadata.
-
-  Protocols:
-    - Uniswap V3  : stg_pools__dex_trades_uniswap_v3
-    - Swapr V3    : stg_pools__dex_trades_swapr_v3
-    - Balancer V2 : stg_pools__dex_trades_balancer_v2
-    - Balancer V3 : stg_pools__dex_trades_balancer_v3
-
-  Taker notes:
-    - UniswapV3/Swapr V3: recipient = address receiving bought tokens (correct
-      even when routed through a contract, unlike tx_from which would give the router)
-    - Balancer V2/V3: no caller/recipient in Swap event → NULL
-
-  Batching:
-    When called with start_month/end_month vars (e.g. via the full-refresh script),
-    each protocol model filters to that month window. Otherwise falls back to the
-    incremental filter based on max(block_timestamp) in the existing table.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}

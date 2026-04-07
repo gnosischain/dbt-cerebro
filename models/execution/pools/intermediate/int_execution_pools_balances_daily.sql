@@ -9,17 +9,7 @@
     )
 }}
 
-{#-
-  Combined daily pool token balances across all supported DEX protocols.
-  Thin UNION ALL of protocol-level models that each handle their own
-  event processing, fee separation, incremental logic, and price enrichment.
-
-  Protocol models:
-    - int_execution_pools_uniswap_v3_daily (Uniswap V3)
-    - int_execution_pools_swapr_v3_daily   (Swapr V3)
-    - int_execution_pools_balancer_v2_daily (Balancer V2)
-    - int_execution_pools_balancer_v3_daily (Balancer V3)
--#}
+{#- Model documentation in schema.yml -#}
 
 SELECT * FROM {{ ref('int_execution_pools_uniswap_v3_daily') }}
 

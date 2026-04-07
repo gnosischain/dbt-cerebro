@@ -8,22 +8,7 @@
     )
 }}
 
-{#-
-  Ordered token list per Balancer V3 pool, derived from Swap events.
-
-  Balancer V3 stores pool tokens in ascending address order at creation time.
-  ROW_NUMBER() over sorted unique token addresses reproduces this ordering,
-  giving the same 0-based index used in LiquidityAdded/LiquidityRemoved
-  amountsAddedRaw/amountsRemovedRaw arrays.
-
-  Tokens are the ERC4626 wrapper tokens that the pool actually holds
-  (e.g. waGnoGNO, waGnoWETH). Resolve to underlying via
-  stg_pools__balancer_v3_token_map for price lookups.
-
-  Limitation: only pools that have seen at least one Swap event appear.
-  Pools with deposited liquidity but zero swaps are excluded — acceptable
-  in practice since such pools have negligible activity.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH unique_pool_tokens AS (
     SELECT DISTINCT

@@ -11,16 +11,7 @@
     )
 }}
 
-{#-
-  Thin lookup: maps swap transaction hashes to sender (tx_from) and
-  recipient (tx_to).  Only stores rows for transactions that appear in
-  int_execution_pools_dex_trades_raw, so the table stays small (~300-400K
-  distinct hashes per month, 4 columns).
-
-  Used by int_execution_pools_dex_trades as a lightweight right-side join
-  (~80MB per month) instead of hitting the full execution.transactions
-  table inside the same query that also runs ASOF price joins.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
