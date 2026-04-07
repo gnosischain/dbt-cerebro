@@ -10,9 +10,9 @@ SELECT
     e.log_index,
     'Balancer V3'                                                                    AS protocol,
     concat('0x', replaceAll(lower(decoded_params['pool']), '0x', ''))               AS pool_address,
-    coalesce(nullIf(wm_out.underlying_address, ''), lower(decoded_params['tokenOut'])) AS token_bought_address,
+    coalesce(wm_out.underlying_address, lower(decoded_params['tokenOut']))             AS token_bought_address,
     toUInt256OrNull(decoded_params['amountOut'])                                     AS amount_bought_raw,
-    coalesce(nullIf(wm_in.underlying_address, ''), lower(decoded_params['tokenIn'])) AS token_sold_address,
+    coalesce(wm_in.underlying_address, lower(decoded_params['tokenIn']))             AS token_sold_address,
     toUInt256OrNull(decoded_params['amountIn'])                                      AS amount_sold_raw,
     CAST(NULL AS Nullable(String))                                                   AS taker
 FROM {{ ref('contracts_BalancerV3_Vault_events') }} e

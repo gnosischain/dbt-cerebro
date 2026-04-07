@@ -8,7 +8,6 @@
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         pre_hook=[
-            "SET join_use_nulls = 0",
             "SET allow_experimental_json_type = 1"
         ],
         tags=['production', 'execution', 'pools', 'trades', 'intermediate']

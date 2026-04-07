@@ -12,7 +12,7 @@ SELECT
     concat('0x', replaceAll(lower(decoded_params['pool']), '0x', ''))               AS pool_address,
     lower(decoded_params['liquidityProvider'])                                       AS provider,
     multiIf(e.event_name = 'LiquidityAdded', 'mint', 'burn')                        AS event_type,
-    coalesce(nullIf(wm.underlying_address, ''), nullIf(pt.token_address, ''))         AS token_address,
+    coalesce(wm.underlying_address, pt.token_address)                                 AS token_address,
     abs(toInt256OrNull(replaceAll(amount_val, '"', '')))                             AS amount_raw
 FROM {{ ref('contracts_BalancerV3_Vault_events') }} e
 ARRAY JOIN
