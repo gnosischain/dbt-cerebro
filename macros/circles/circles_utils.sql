@@ -51,3 +51,15 @@ concat(
 )
 {%- endmacro %}
 
+{% macro circles_metadata_digest_hex(expr) -%}
+lower(replaceRegexpOne({{ expr }}, '^0x', ''))
+{%- endmacro %}
+
+{% macro circles_metadata_digest_to_cid_v0(expr) -%}
+base58Encode(unhex(concat('1220', {{ circles_metadata_digest_hex(expr) }})))
+{%- endmacro %}
+
+{% macro circles_metadata_gateway_url(expr) -%}
+concat('{{ var("circles_ipfs_gateway", "https://ipfs.io/ipfs/") }}', {{ circles_metadata_digest_to_cid_v0(expr) }})
+{%- endmacro %}
+

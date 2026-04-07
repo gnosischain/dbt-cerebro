@@ -777,3 +777,91 @@ models:
     data_type: Map(String, String)
   meta: *id002
   tests: *id001
+- name: int_execution_circles_v2_avatar_metadata_targets
+  description: Deterministic queue of every (avatar, metadata_digest) pair announced by the Circles v2 NameRegistry. Drives both the one-time IPFS backfill script and the nightly fetch macro.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+  - name: metadata_digest
+    description: 0x-prefixed hex of the 32-byte sha2-256 metadata digest.
+    data_type: String
+    tests:
+    - not_null
+  - name: metadata_digest_hex
+    description: Lowercase hex digest with the 0x prefix stripped.
+    data_type: String
+  - name: ipfs_cid_v0
+    description: CIDv0 derived from `metadata_digest` (`base58Encode('1220' + digest)`).
+    data_type: String
+    tests:
+    - not_null
+  - name: gateway_url
+    description: Full IPFS gateway URL using the configured `circles_ipfs_gateway` var.
+    data_type: String
+  - name: block_timestamp
+    description: Timestamp of the latest UpdateMetadataDigest event for this pair.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt32
+  - name: is_current_avatar_metadata
+    description: True when this row is the most recent metadata digest for the avatar.
+    data_type: Bool
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - avatar
+      - metadata_digest
+  meta: *id002
+- name: int_execution_circles_v2_avatar_metadata
+  description: Current parsed IPFS metadata per Circles v2 avatar. Joins each avatar's most recent metadata digest to the latest fetched payload in `circles_avatar_metadata_raw`.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: onchain_name
+    description: Name set on-chain at registration (Group/Org only).
+    data_type: Nullable(String)
+  - name: metadata_digest
+    description: 0x-prefixed hex digest of the current metadata payload.
+    data_type: Nullable(String)
+  - name: ipfs_cid_v0
+    description: CIDv0 of the current metadata payload.
+    data_type: Nullable(String)
+  - name: gateway_url
+    description: Gateway URL fetched at materialization time.
+    data_type: Nullable(String)
+  - name: metadata_name
+    description: '`name` field extracted from the metadata JSON.'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from the metadata JSON.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` (or `image` fallback) from the metadata JSON.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` from the metadata JSON.'
+    data_type: String
+  - name: metadata_attributes_json
+    description: Raw `attributes` array from the metadata JSON.
+    data_type: String
+  - name: metadata_body
+    description: Full raw response body for the current metadata digest.
+    data_type: Nullable(String)
+  - name: metadata_fetched_at
+    description: Timestamp the current payload was fetched.
+    data_type: Nullable(DateTime)
+  meta: *id002

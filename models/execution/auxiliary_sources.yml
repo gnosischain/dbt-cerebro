@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: auxiliary
+    description: "Auxiliary tables that live alongside dbt models in the dbt schema but are populated outside the model graph (e.g. by run-operation macros or one-off backfill scripts)."
+    schema: dbt
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+    tables:
+      - name: circles_avatar_metadata_raw
+        description: "Raw IPFS responses for Circles avatar metadata digests. Populated by `scripts/circles/backfill_avatar_metadata.py` for the historical backfill and by `dbt run-operation fetch_and_insert_circles_metadata` for daily deltas."
+        loaded_at_field: fetched_at
+        columns:
+          - name: avatar
+            description: "Lowercase Circles avatar address."
+          - name: metadata_digest
+            description: "0x-prefixed hex of the 32-byte sha2-256 metadata digest emitted by NameRegistry."
+          - name: ipfs_cid_v0
+            description: "CIDv0 derived from `metadata_digest` (`base58Encode('1220' + digest)`)."
+          - name: gateway_url
+            description: "Full IPFS gateway URL used at fetch time."
+          - name: http_status
+            description: "HTTP status code returned by the gateway."
+          - name: content_type
+            description: "Content-Type header returned by the gateway."
+          - name: body
+            description: "Raw response body (typically JSON metadata)."
+          - name: error
+            description: "Error message recorded when the fetch failed; empty on success."
+          - name: fetched_at
+            description: "Timestamp at which the row was inserted."
