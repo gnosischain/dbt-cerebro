@@ -691,6 +691,77 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+- name: stg_consensus__validators_all
+  description: This view consolidates validator information from the consensus layer, focusing on active validators with a positive balance to support network analysis and validator status tracking.
+  columns:
+
+  - name: slot
+    description: The slot number representing the specific time interval in the consensus protocol.
+    data_type: UInt64
+
+  - name: validator_index
+    description: Unique identifier assigned to each validator within the network.
+    data_type: UInt64
+    tests:
+    - unique:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance
+    description: The current balance of the validator in Gwei, indicating stake amount.
+    data_type: UInt64
+
+  - name: status
+    description: The current operational status of the validator (e.g., active, pending, exited).
+    data_type: String
+
+  - name: pubkey
+    description: The public key associated with the validator, used for cryptographic identification.
+    data_type: String
+
+  - name: withdrawal_credentials
+    description: Credentials used to authorize validator withdrawals, typically a hash of the withdrawal address.
+    data_type: String
+
+  - name: effective_balance
+    description: The balance used for consensus and reward calculations, capped at a protocol-defined maximum.
+    data_type: UInt64
+
+  - name: slashed
+    description: Boolean indicator showing whether the validator has been penalized for misconduct.
+    data_type: UInt64
+
+  - name: activation_eligibility_epoch
+    description: Epoch when the validator became eligible for activation.
+    data_type: UInt64
+
+  - name: activation_epoch
+    description: Epoch when the validator was activated and began participating in consensus.
+    data_type: UInt64
+
+  - name: exit_epoch
+    description: Epoch when the validator exited the active set, ceasing participation.
+    data_type: UInt64
+
+  - name: withdrawable_epoch
+    description: Epoch when the validator's funds become available for withdrawal.
+    data_type: UInt64
+
+  - name: slot_timestamp
+    description: Timestamp corresponding to the slot, providing a human-readable time reference.
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: insert_version
+    description: Monotonic version number for data ingestion.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
 - name: stg_consensus__withdrawals
   description: The stg_consensus__withdrawals model consolidates withdrawal event data from the consensus layer, enabling analysis of validator withdrawals over blockchain slots.
   columns:

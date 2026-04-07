@@ -54,6 +54,6 @@ SELECT
     exit_epoch,
     withdrawable_epoch,
     slot_timestamp
-FROM {{ source('consensus', 'validators') }} FINAL
-WHERE slot = (SELECT MAX(slot) FROM {{ source('consensus', 'validators') }} )
+FROM {{ ref('stg_consensus__validators_all') }} FINAL
+WHERE slot = (SELECT MAX(slot) FROM {{ ref('stg_consensus__validators_all') }} )
 ORDER BY validator_index
