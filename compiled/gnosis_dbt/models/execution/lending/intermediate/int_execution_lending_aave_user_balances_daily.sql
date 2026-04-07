@@ -32,6 +32,25 @@ deltas AS (
       
         
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(d.date)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_user_balances_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(d.date) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_user_balances_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
       
 ),
@@ -64,6 +83,44 @@ overall_max_date AS (
 ),
 
 
+current_partition AS (
+    SELECT
+        max(date) AS max_date
+    FROM `dbt`.`int_execution_lending_aave_user_balances_daily`
+    WHERE date < yesterday()
+      AND reserve_address IN (SELECT reserve_address FROM reserve_map)
+),
+
+prev_balances AS (
+    SELECT
+        t1.user_address AS user_address,
+        t1.reserve_address AS reserve_address,
+        t1.scaled_balance AS scaled_balance
+    FROM `dbt`.`int_execution_lending_aave_user_balances_daily` t1
+    CROSS JOIN current_partition t2
+    WHERE t1.date = t2.max_date
+      AND t1.reserve_address IN (SELECT reserve_address FROM reserve_map)
+),
+
+-- Seed previous balances as starting events, then append new deltas
+seeded_events AS (
+    SELECT
+        addDays(cp.max_date, 1) AS date,
+        p.user_address AS user_address,
+        p.reserve_address AS reserve_address,
+        p.scaled_balance AS diff_scaled
+    FROM prev_balances p
+    CROSS JOIN current_partition cp
+    UNION ALL
+    SELECT
+        d.date AS date,
+        d.user_address AS user_address,
+        d.reserve_address AS reserve_address,
+        d.diff_scaled AS diff_scaled
+    FROM deltas d
+),
+
+
 
 -- Compute cumulative balance at each event point only (sparse)
 cumulative_at_events AS (
@@ -76,7 +133,7 @@ cumulative_at_events AS (
             ORDER BY date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS scaled_balance
-    FROM deltas
+    FROM seeded_events
 ),
 
 -- Determine how far to forward-fill each event

@@ -37,6 +37,25 @@ uniswap_v3_swap_fees_token AS (
       
         
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
       
 ),
@@ -54,6 +73,25 @@ uniswap_v3_flash_fees_token AS (
       AND e.delta_amount_raw > toInt256(0)
       
         
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
   
 
       
@@ -111,6 +149,25 @@ swapr_v3_swaps_with_fee AS (
           
             
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
           
         ORDER BY pool_address, event_order
@@ -151,6 +208,25 @@ swapr_v3_flash_fees_token AS (
       
         
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
       
 ),
@@ -181,6 +257,25 @@ balancer_v3_swap_fees AS (
       AND e.decoded_params['amountIn'] IS NOT NULL
       
         
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(e.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_pools_fees_daily` AS x2
+      WHERE 1=1 
+    )
   
 
       

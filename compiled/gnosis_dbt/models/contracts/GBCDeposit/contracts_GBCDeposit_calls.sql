@@ -4,6 +4,22 @@
 
 
 
+  
+    
+  
+
+  
+  
+    
+    
+  
+
+  
+    
+    
+    
+  
+
 
 
 
@@ -34,8 +50,17 @@ WITH
     )
     WHERE _dedup_rn = 1
   ),
+  
+  tx_with_abi AS (
+    SELECT
+      t.*,
+      lower(replaceAll(t.to_address, '0x', '')) AS abi_join_address
+    FROM tx t
+  ),
+  
   abi AS ( 
 SELECT
+    replaceAll(lower(contract_address), '0x', '') AS abi_contract_address,
     substring(signature,1,8) AS selector,
     function_name,
     arraySort(x -> toInt32OrZero(JSONExtractRaw(x,'position')),
@@ -51,6 +76,7 @@ WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414
       t.block_number,
       t.block_timestamp,
       t.transaction_hash,
+      t.to_address AS contract_address,
       t.nonce,
       t.gas_price,
       t.value_string AS value,
@@ -154,7 +180,7 @@ WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414
                         ))))
                       )
                     ),
-                  if(
+                  multiIf(
                     base_types[i+1] = 'address',
                     arrayMap(k ->
                       concat('0x',
@@ -167,6 +193,57 @@ WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414
                           25, 40
                         )
                       ),
+                      range(
+                        toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          substring(args_raw_hex,
+                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                    64)
+                        ))))
+                      )
+                    ),
+                    base_types[i+1] = 'bytes32',
+                    arrayMap(k ->
+                      concat('0x',
+                        substring(
+                          args_raw_hex,
+                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          64
+                        )
+                      ),
+                      range(
+                        toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          substring(args_raw_hex,
+                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                    64)
+                        ))))
+                      )
+                    ),
+                    startsWith(base_types[i+1], 'uint'),
+                    arrayMap(k ->
+                      toString(reinterpretAsUInt256(reverse(unhex(
+                        substring(
+                          args_raw_hex,
+                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          64
+                        )
+                      )))),
+                      range(
+                        toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          substring(args_raw_hex,
+                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                    64)
+                        ))))
+                      )
+                    ),
+                    startsWith(base_types[i+1], 'int'),
+                    arrayMap(k ->
+                      toString(reinterpretAsInt256(reverse(unhex(
+                        substring(
+                          args_raw_hex,
+                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          64
+                        )
+                      )))),
                       range(
                         toUInt64(reinterpretAsUInt256(reverse(unhex(
                           substring(args_raw_hex,
@@ -190,10 +267,18 @@ WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414
                   )))) * 2
                 ),
                 if(arrayElement(head_words,i+1) IS NULL, NULL,
-                  if(
+                  multiIf(
                     param_types[i+1] = 'address',
                       concat('0x', substring(arrayElement(head_words,i+1), 25, 40)),
-                      concat('0x', arrayElement(head_words,i+1))
+                    param_types[i+1] = 'bool',
+                      if(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1)))) = 0, 'false', 'true'),
+                    startsWith(param_types[i+1], 'uint'),
+                      toString(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))),
+                    startsWith(param_types[i+1], 'int'),
+                      toString(reinterpretAsInt256(reverse(unhex(arrayElement(head_words,i+1))))),
+                    param_types[i+1] = 'bytes32',
+                      concat('0x', arrayElement(head_words,i+1)),
+                    concat('0x', arrayElement(head_words,i+1))
                   )
                 )
               )
@@ -220,15 +305,17 @@ WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414
         mapFromArrays(param_names, param_values_str) AS decoded_input
       
 
-    FROM tx AS t
+    FROM tx_with_abi AS t
     ANY LEFT JOIN abi AS a
       ON substring(replaceAll(t.input,'0x',''),1,8) = a.selector
+     AND t.abi_join_address = a.abi_contract_address
   )
 
 SELECT
   block_number,
   block_timestamp,
   transaction_hash,
+  contract_address,
   nonce,
   gas_price,
   value,

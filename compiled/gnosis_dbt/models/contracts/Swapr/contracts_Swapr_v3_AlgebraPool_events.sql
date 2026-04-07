@@ -8,8 +8,11 @@
 
   
     
+    
   
   
+  
+    
   
 
 
@@ -46,8 +49,23 @@ logs AS (
   WHERE _dedup_rn = 1
 ),
 
+
+logs_with_abi AS (
+  SELECT
+    l.*,
+    
+    lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) AS abi_join_address
+    
+  FROM logs l
+  ANY LEFT JOIN `dbt`.`contracts_whitelist` cw
+    ON lower(replaceAll(l.address, '0x', '')) = lower(replaceAll(cw.address, '0x', ''))
+     AND cw.contract_type = 'SwaprPool'
+),
+
+
 abi AS ( 
 SELECT
+  replaceAll(lower(contract_address), '0x', '')          AS abi_contract_address,
   replace(signature,'0x','')                     AS topic0_sig,
   event_name,
   arrayMap(x->JSONExtractString(x,'name'),
@@ -57,7 +75,7 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
+WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
  ),
 
 process AS (
@@ -329,10 +347,10 @@ process AS (
       mapFromArrays(param_names, param_values) AS decoded_params
     
 
-  FROM logs AS l
+  FROM logs_with_abi AS l
   ANY LEFT JOIN abi AS a
-    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
+   AND l.abi_join_address = a.abi_contract_address
 )
 
 SELECT

@@ -60,8 +60,18 @@ logs AS (
   WHERE _dedup_rn = 1
 ),
 
+
+logs_with_abi AS (
+  SELECT
+    l.*,
+    lower(replaceAll(l.address, '0x', '')) AS abi_join_address
+  FROM logs l
+),
+
+
 abi AS ( 
 SELECT
+  replaceAll(lower(contract_address), '0x', '')          AS abi_contract_address,
   replace(signature,'0x','')                     AS topic0_sig,
   event_name,
   arrayMap(x->JSONExtractString(x,'name'),
@@ -343,10 +353,10 @@ process AS (
       mapFromArrays(param_names, param_values) AS decoded_params
     
 
-  FROM logs AS l
+  FROM logs_with_abi AS l
   ANY LEFT JOIN abi AS a
-    --ON l.topic0 = concat('0x', a.topic0_sig)
     ON replaceAll(l.topic0,'0x','') = a.topic0_sig
+   AND l.abi_join_address = a.abi_contract_address
 )
 
 SELECT

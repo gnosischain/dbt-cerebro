@@ -19,6 +19,13 @@ aave_rate_events AS (
       AND decoded_params['liquidityRate'] IS NOT NULL
       AND block_timestamp < today()
       
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
+      
 ),
 
 aave_activity_events AS (
@@ -35,6 +42,13 @@ aave_activity_events AS (
       AND decoded_params['amount'] IS NOT NULL
       AND block_timestamp < today()
       
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
+      
 
     UNION ALL
 
@@ -50,6 +64,13 @@ aave_activity_events AS (
       AND decoded_params['user'] IS NOT NULL
       AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
       AND block_timestamp < today()
+      
+        AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
+        AND toDate(block_timestamp) >= (
+          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
+        )
       
 ),
 
@@ -223,20 +244,20 @@ SELECT
     f.token_class,
     f.protocol,
     
-    f.apy_daily,
-    f.borrow_apy_variable_daily,
+    COALESCE(f.apy_daily, lka.last_apy) AS apy_daily,
+    COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy) AS borrow_apy_variable_daily,
     
     CASE 
-        WHEN f.borrow_apy_variable_daily IS NOT NULL
-         AND f.apy_daily IS NOT NULL
+        WHEN COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy) IS NOT NULL
+         AND COALESCE(f.apy_daily, lka.last_apy) IS NOT NULL
         THEN ROUND(
-            f.borrow_apy_variable_daily
-            - f.apy_daily, 2)
+            COALESCE(f.borrow_apy_variable_daily, lka.last_borrow_apy)
+            - COALESCE(f.apy_daily, lka.last_apy), 2)
         ELSE NULL
     END AS spread_variable,
     
-    f.liquidity_index,
-    f.variable_borrow_index,
+    COALESCE(f.liquidity_index, lka.last_liquidity_index) AS liquidity_index,
+    COALESCE(f.variable_borrow_index, lka.last_variable_borrow_index) AS variable_borrow_index,
     
     f.lenders_bitmap_state,
     f.borrowers_bitmap_state,
@@ -249,5 +270,17 @@ SELECT
     f.net_supply_change_daily
 FROM calendar_with_data f
 
-WHERE f.apy_daily IS NOT NULL
+LEFT JOIN (
+    SELECT
+        token_address,
+        argMax(apy_daily, `date`) AS last_apy,
+        argMax(borrow_apy_variable_daily, `date`) AS last_borrow_apy,
+        argMax(liquidity_index, `date`) AS last_liquidity_index,
+        argMax(variable_borrow_index, `date`) AS last_variable_borrow_index
+    FROM `dbt`.`int_execution_lending_aave_daily`
+    WHERE apy_daily IS NOT NULL
+    GROUP BY token_address
+) lka ON lka.token_address = f.token_address
+
+WHERE COALESCE(f.apy_daily, lka.last_apy) IS NOT NULL
 ORDER BY f.metric_date, f.token_address

@@ -13,6 +13,25 @@ reserve_index_by_tx AS (
       AND block_timestamp < today()
       
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
     GROUP BY transaction_hash, lower(decoded_params['reserve'])
 ),
@@ -31,6 +50,25 @@ supply_events AS (
       AND block_timestamp < today()
       
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
 
     UNION ALL
@@ -47,6 +85,25 @@ supply_events AS (
       AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
       AND block_timestamp < today()
       
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
   
 
 ),
@@ -65,6 +122,25 @@ borrow_events AS (
       AND block_timestamp < today()
       
   
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
+  
 
 
     UNION ALL
@@ -81,6 +157,25 @@ borrow_events AS (
       AND decoded_params['debtToCover'] IS NOT NULL
       AND block_timestamp < today()
       
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
   
 
 ),
@@ -144,6 +239,15 @@ deltas AS (
 ),
 
 
+prev_cumulative AS (
+    SELECT
+        token_address,
+        argMax(cumulative_scaled_supply, date) AS prev_supply,
+        argMax(cumulative_scaled_borrow, date) AS prev_borrow
+    FROM `dbt`.`int_execution_lending_aave_utilization_daily`
+    GROUP BY token_address
+),
+
 
 with_cumulative AS (
     SELECT
@@ -154,14 +258,21 @@ with_cumulative AS (
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
+            + coalesce(p.prev_supply, 0)
+        
         AS cumulative_scaled_supply,
         sum(d.delta_borrow) OVER (
             PARTITION BY d.token_address ORDER BY d.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
+            + coalesce(p.prev_borrow, 0)
+        
         AS cumulative_scaled_borrow
     FROM deltas d
+    
+    LEFT JOIN prev_cumulative p
+        ON p.token_address = d.token_address
     
 ),
 
