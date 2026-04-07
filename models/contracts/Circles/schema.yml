@@ -1,52 +1,411 @@
 version: 2
 models:
+
   - name: contracts_circles_registry
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+    description: Registry of all Circles protocol contracts, combining static entries with dynamically discovered factory children.
     columns:
       - name: address
+        description: Contract address (lowercased with 0x prefix)
+        data_type: String
         tests: [not_null]
       - name: contract_type
+        description: Logical contract type (e.g., HubV2, BaseGroupRuntime, PaymentGatewayRuntime)
+        data_type: String
         tests: [not_null]
+      - name: abi_source_address
+        description: Address used to resolve the ABI for this contract
+        data_type: String
+      - name: is_dynamic
+        description: Whether this contract was dynamically discovered from a factory (1) or statically defined (0)
+        data_type: UInt8
+      - name: start_blocktime
+        description: Earliest block timestamp to consider for this contract
+        data_type: String
+      - name: discovery_source
+        description: How this contract was discovered (static or factory event name)
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  # ──────────────────────────────────────────────
+  # Events models
+  # ──────────────────────────────────────────────
+
   - name: contracts_circles_v1_Hub_events
-    meta: {owner: analytics_team, authoritative: false}
+    description: Decoded event logs for the Circles v1 Hub contract.
+    columns: &event_columns
+      - name: block_number
+        description: Block number containing the event
+        data_type: UInt64
+      - name: block_timestamp
+        description: Timestamp of the block in UTC
+        data_type: DateTime
+      - name: transaction_hash
+        description: Hash of the transaction that emitted the event
+        data_type: String
+      - name: transaction_index
+        description: Index of the transaction within the block
+        data_type: UInt64
+      - name: log_index
+        description: Index of the log within the block
+        data_type: UInt64
+      - name: contract_address
+        description: Address of the contract emitting the event
+        data_type: String
+      - name: event_name
+        description: Name of the emitted event
+        data_type: String
+      - name: decoded_params
+        description: Map of decoded event parameters (name to value)
+        data_type: Map(String, String)
+    meta: &meta_events_v1
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2020-10-01"
+        batch_months: 6
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
   - name: contracts_circles_v2_Hub_events
-    meta: {owner: analytics_team, authoritative: false}
+    description: Decoded event logs for the Circles v2 Hub contract.
+    columns: *event_columns
+    meta: &meta_events_2024_10
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2024-10-01"
+        batch_months: 6
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
   - name: contracts_circles_v2_NameRegistry_events
-    meta: {owner: analytics_team, authoritative: false}
+    description: Decoded event logs for the Circles v2 NameRegistry contract.
+    columns: *event_columns
+    meta: *meta_events_2024_10
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_CirclesBackingFactory_events
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_StandardTreasury_events
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_BaseGroupFactory_events
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_CMGroupDeployer_events
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_BaseGroup_events
-    meta: {owner: analytics_team, authoritative: false}
-    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
   - name: contracts_circles_v2_ERC20Lift_events
-    meta: {owner: analytics_team, authoritative: false}
+    description: Decoded event logs for the Circles v2 ERC20Lift contract (wrapper factory).
+    columns: *event_columns
+    meta: *meta_events_2024_10
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_ReferralsModule_events
-    meta: {owner: analytics_team, authoritative: false}
+
+  - name: contracts_circles_v2_StandardTreasury_events
+    description: Decoded event logs for the Circles v2 StandardTreasury contract.
+    columns: *event_columns
+    meta: *meta_events_2024_10
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_InvitationModule_events
-    meta: {owner: analytics_team, authoritative: false}
+
+  - name: contracts_circles_v2_CMGroupDeployer_events
+    description: Decoded event logs for the Circles v2 CMGroupDeployer contract.
+    columns: *event_columns
+    meta: &meta_events_2025_02
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-02-01"
+        batch_months: 6
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_InvitationFarm_events
-    meta: {owner: analytics_team, authoritative: false}
+
+  - name: contracts_circles_v2_BaseGroupFactory_events
+    description: Decoded event logs for the Circles v2 BaseGroupFactory contract.
+    columns: *event_columns
+    meta: &meta_events_2025_04
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-04-01"
+        batch_months: 6
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
-  - name: contracts_circles_v2_PaymentGatewayFactory_events
-    meta: {owner: analytics_team, authoritative: false}
+
+  - name: contracts_circles_v2_BaseGroup_events
+    description: Decoded event logs for dynamically discovered Circles v2 BaseGroup runtime contracts.
+    columns: *event_columns
+    meta: *meta_events_2025_04
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_CirclesBackingFactory_events
+    description: Decoded event logs for the Circles v2 CirclesBackingFactory contract.
+    columns: *event_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_AffiliateGroupRegistry_events
+    description: Decoded event logs for the Circles v2 AffiliateGroupRegistry contract.
+    columns: *event_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_GroupLBPFactory_events
+    description: Decoded event logs for the Circles v2 GroupLBPFactory contracts (old and new).
+    columns: *event_columns
+    meta: &meta_events_2025_05
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-05-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20TokenOfferFactory_events
+    description: Decoded event logs for the Circles v2 ERC20TokenOfferFactory contract.
+    columns: *event_columns
+    meta: &meta_events_2025_08
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-08-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationEscrow_events
+    description: Decoded event logs for the Circles v2 InvitationEscrow contract.
+    columns: *event_columns
+    meta: &meta_events_2025_09
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-09-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
   - name: contracts_circles_v2_ERC20TokenOfferCycle_events
-    meta: {owner: analytics_team, authoritative: false}
+    description: Decoded event logs for the Circles v2 ERC20TokenOfferCycle contracts (v1, v2, v3).
+    columns: *event_columns
+    meta: *meta_events_2025_09
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20TokenOffer_events
+    description: Decoded event logs for dynamically discovered Circles v2 ERC20TokenOffer runtime contracts.
+    columns: *event_columns
+    meta: &meta_events_2025_10
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationFarm_events
+    description: Decoded event logs for the Circles v2 InvitationFarm contract.
+    columns: *event_columns
+    meta: *meta_events_2025_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationModule_events
+    description: Decoded event logs for the Circles v2 InvitationModule contract.
+    columns: *event_columns
+    meta: &meta_events_2025_11
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-11-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ReferralsModule_events
+    description: Decoded event logs for the Circles v2 ReferralsModule contract.
+    columns: *event_columns
+    meta: *meta_events_2025_11
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_PaymentGatewayFactory_events
+    description: Decoded event logs for the Circles v2 PaymentGatewayFactory contract.
+    columns: *event_columns
+    meta: &meta_events_2025_12
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-12-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_PaymentGateway_events
+    description: Decoded event logs for dynamically discovered Circles v2 PaymentGateway runtime contracts.
+    columns: *event_columns
+    meta: *meta_events_2025_12
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationQuotaGrantModule_events
+    description: Decoded event logs for the Circles v2 InvitationQuotaGrantModule contract.
+    columns: *event_columns
+    meta: &meta_events_2026_02
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2026-02-01"
+        batch_months: 6
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  # ──────────────────────────────────────────────
+  # Calls models
+  # ──────────────────────────────────────────────
+
+  - name: contracts_circles_v1_Hub_calls
+    description: Decoded function calls for the Circles v1 Hub contract.
+    columns: &call_columns
+      - name: block_number
+        description: Block number containing the transaction
+        data_type: UInt64
+      - name: block_timestamp
+        description: Timestamp of the block in UTC
+        data_type: DateTime
+      - name: transaction_hash
+        description: Hash of the transaction
+        data_type: String
+      - name: nonce
+        description: Transaction nonce
+        data_type: UInt64
+      - name: gas_price
+        description: Gas price in wei
+        data_type: UInt256
+      - name: value
+        description: Value transferred with the call in wei
+        data_type: String
+      - name: function_name
+        description: Name of the called function
+        data_type: String
+      - name: decoded_input
+        description: Map of decoded function input parameters (name to value)
+        data_type: Map(String, String)
+    meta: *meta_events_v1
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_Hub_calls
+    description: Decoded function calls for the Circles v2 Hub contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_NameRegistry_calls
+    description: Decoded function calls for the Circles v2 NameRegistry contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20Lift_calls
+    description: Decoded function calls for the Circles v2 ERC20Lift contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_StandardTreasury_calls
+    description: Decoded function calls for the Circles v2 StandardTreasury contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_BaseMintPolicy_calls
+    description: Decoded function calls for the Circles v2 BaseMintPolicy contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_BaseGroupMintRouter_calls
+    description: Decoded function calls for the Circles v2 BaseGroupMintRouter contract.
+    columns: *call_columns
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_CMGroupDeployer_calls
+    description: Decoded function calls for the Circles v2 CMGroupDeployer contract.
+    columns: *call_columns
+    meta: *meta_events_2025_02
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_BaseGroupFactory_calls
+    description: Decoded function calls for the Circles v2 BaseGroupFactory contract.
+    columns: *call_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_BaseGroup_calls
+    description: Decoded function calls for dynamically discovered Circles v2 BaseGroup runtime contracts.
+    columns: *call_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_CirclesBackingFactory_calls
+    description: Decoded function calls for the Circles v2 CirclesBackingFactory contract.
+    columns: *call_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_AffiliateGroupRegistry_calls
+    description: Decoded function calls for the Circles v2 AffiliateGroupRegistry contract.
+    columns: *call_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_CirclesBackingCondition_calls
+    description: Decoded function calls for the Circles v2 CirclesBackingCondition contract.
+    columns: *call_columns
+    meta: *meta_events_2025_04
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_GroupLBPFactory_calls
+    description: Decoded function calls for the Circles v2 GroupLBPFactory contracts (old and new).
+    columns: *call_columns
+    meta: *meta_events_2025_05
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20TokenOfferFactory_calls
+    description: Decoded function calls for the Circles v2 ERC20TokenOfferFactory contract.
+    columns: *call_columns
+    meta: *meta_events_2025_08
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationEscrow_calls
+    description: Decoded function calls for the Circles v2 InvitationEscrow contract.
+    columns: *call_columns
+    meta: *meta_events_2025_09
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20TokenOfferCycle_calls
+    description: Decoded function calls for the Circles v2 ERC20TokenOfferCycle contracts (v1, v2, v3).
+    columns: *call_columns
+    meta: *meta_events_2025_09
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ERC20TokenOffer_calls
+    description: Decoded function calls for dynamically discovered Circles v2 ERC20TokenOffer runtime contracts.
+    columns: *call_columns
+    meta: *meta_events_2025_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationFarm_calls
+    description: Decoded function calls for the Circles v2 InvitationFarm contract.
+    columns: *call_columns
+    meta: *meta_events_2025_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationModule_calls
+    description: Decoded function calls for the Circles v2 InvitationModule contract.
+    columns: *call_columns
+    meta: *meta_events_2025_11
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_ReferralsModule_calls
+    description: Decoded function calls for the Circles v2 ReferralsModule contract.
+    columns: *call_columns
+    meta: *meta_events_2025_11
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_PaymentGatewayFactory_calls
+    description: Decoded function calls for the Circles v2 PaymentGatewayFactory contract.
+    columns: *call_columns
+    meta: *meta_events_2025_12
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_PaymentGateway_calls
+    description: Decoded function calls for dynamically discovered Circles v2 PaymentGateway runtime contracts.
+    columns: *call_columns
+    meta: *meta_events_2025_12
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+  - name: contracts_circles_v2_InvitationQuotaGrantModule_calls
+    description: Decoded function calls for the Circles v2 InvitationQuotaGrantModule contract.
+    columns: *call_columns
+    meta: *meta_events_2026_02
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]

@@ -1,14 +1,14 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
-        order_by='(block_timestamp, log_index)',
-        unique_key='(block_timestamp, log_index)',
+        order_by='(block_timestamp, transaction_hash, log_index)',
+        unique_key='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         pre_hook=["SET allow_experimental_json_type = 1"],
-        tags=['dev', 'contracts', 'circles', 'events']
+        tags=['dev', 'contracts', 'circles_v2', 'events']
     )
 }}
 
@@ -17,5 +17,5 @@
     contract_address='0x00738aca013B7B2e6cfE1690F0021C3182Fa40B5',
     output_json_type=true,
     incremental_column='block_timestamp',
-    start_blocktime='2024-10-01'
+    start_blocktime='2025-11-01'
 ) }}

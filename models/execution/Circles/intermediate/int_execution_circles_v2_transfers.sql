@@ -1,84 +1,77 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index, batch_index)',
         unique_key='(transaction_hash, log_index, batch_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'circles', 'transfers']
+        tags=['production', 'execution', 'circles_v2', 'transfers']
     )
 }}
 
-WITH single_rows AS (
-    SELECT
-        block_number,
-        block_timestamp,
-        lower(transaction_hash) AS transaction_hash,
-        transaction_index,
-        log_index,
-        0 AS batch_index,
-        lower(decoded_params['operator']) AS operator,
-        lower(decoded_params['from']) AS from_address,
-        lower(decoded_params['to']) AS to_address,
-        toString(toUInt256OrZero(decoded_params['id'])) AS token_id,
-        toUInt256OrZero(decoded_params['value']) AS amount_raw,
-        lower(contract_address) AS token_address,
-        'CrcV2_TransferSingle' AS transfer_type
-    FROM {{ ref('contracts_circles_v2_Hub_events') }}
-    WHERE event_name = 'TransferSingle'
-      {{ apply_monthly_incremental_filter(source_field='block_timestamp', destination_field='block_timestamp', add_and=true) }}
-),
-batch_rows AS (
-    SELECT
-        block_number,
-        block_timestamp,
-        lower(transaction_hash) AS transaction_hash,
-        transaction_index,
-        log_index,
-        arrayEnumerate(JSONExtract(decoded_params['ids'], 'Array(String)')) AS batch_indexes,
-        lower(decoded_params['operator']) AS operator,
-        lower(decoded_params['from']) AS from_address,
-        lower(decoded_params['to']) AS to_address,
-        JSONExtract(decoded_params['ids'], 'Array(String)') AS token_ids,
-        JSONExtract(decoded_params['values'], 'Array(String)') AS values,
-        lower(contract_address) AS token_address
-    FROM {{ ref('contracts_circles_v2_Hub_events') }}
-    WHERE event_name = 'TransferBatch'
-      {{ apply_monthly_incremental_filter(source_field='block_timestamp', destination_field='block_timestamp', add_and=true) }}
-),
-exploded_batch_rows AS (
-    SELECT
-        block_number,
-        block_timestamp,
-        transaction_hash,
-        transaction_index,
-        log_index,
-        batch_tuple.1 AS batch_index,
-        operator,
-        from_address,
-        to_address,
-        batch_tuple.2.1 AS token_id,
-        toUInt256(batch_tuple.2.2) AS amount_raw,
-        token_address,
-        'CrcV2_TransferBatch' AS transfer_type
-    FROM (
-        SELECT
-            block_number,
-            block_timestamp,
-            transaction_hash,
-            transaction_index,
-            log_index,
-            operator,
-            from_address,
-            to_address,
-            token_address,
-            arrayJoin(arrayZip(batch_indexes, arrayZip(token_ids, values))) AS batch_tuple
-        FROM batch_rows
-    )
-)
+{% set start_month = var('start_month', none) %}
+{% set end_month = var('end_month', none) %}
+-- Hub ERC-1155 transfers (always in demurrage units)
+SELECT
+    block_number,
+    block_timestamp,
+    transaction_hash,
+    transaction_index,
+    log_index,
+    batch_index,
+    operator,
+    from_address,
+    to_address,
+    token_address,
+    amount_raw,
+    amount_raw AS amount_demurraged_raw,
+    'demurrage' AS unit_type,
+    transfer_type
+FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
+WHERE 1 = 1
+  {% if start_month and end_month %}
+    AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter(source_field='block_timestamp', destination_field='block_timestamp', add_and=true) }}
+  {% endif %}
 
-SELECT * FROM single_rows
 UNION ALL
-SELECT * FROM exploded_batch_rows
+
+-- Wrapper ERC-20 transfers (static amounts converted to demurrage)
+SELECT
+    wt.block_number,
+    wt.block_timestamp,
+    wt.transaction_hash,
+    wt.transaction_index,
+    wt.log_index,
+    0 AS batch_index,
+    '' AS operator,
+    wt.from_address,
+    wt.to_address,
+    wt.token_address,
+    wt.amount_raw,
+    if(w.circles_type = 1,
+       toUInt256(
+           multiplyDecimal(
+               toDecimal256(wt.amount_raw, 0),
+               {{ circles_demurrage_factor('1602720000', 'toUInt64(toUnixTimestamp(wt.block_timestamp))') }},
+               0
+           )
+       ),
+       wt.amount_raw
+    ) AS amount_demurraged_raw,
+    if(w.circles_type = 1, 'static', 'demurrage') AS unit_type,
+    'CrcV2_ERC20WrapperTransfer' AS transfer_type
+FROM {{ ref('int_execution_circles_v2_wrapper_transfers') }} wt
+INNER JOIN {{ ref('int_execution_circles_v2_wrappers') }} w
+    ON wt.token_address = w.wrapper_address
+WHERE 1 = 1
+  {% if start_month and end_month %}
+    AND toStartOfMonth(toDate(wt.block_timestamp)) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(toDate(wt.block_timestamp)) <= toDate('{{ end_month }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter(source_field='wt.block_timestamp', destination_field='block_timestamp', add_and=true) }}
+  {% endif %}
