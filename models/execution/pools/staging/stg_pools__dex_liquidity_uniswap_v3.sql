@@ -11,16 +11,27 @@ SELECT
     'Uniswap V3'                                    AS protocol,
     r.pool_address                                  AS pool_address,
     lower(decoded_params['owner'])                  AS provider,
-    multiIf(e.event_name = 'Mint', 'mint', 'burn') AS event_type,
+    multiIf(
+        e.event_name = 'Mint', 'mint',
+        e.event_name = 'Burn', 'burn',
+        'collect'
+    )                                               AS event_type,
     r.token0_address                                AS token_address,
-    abs(toInt256OrNull(decoded_params['amount0']))  AS amount_raw
+    abs(toInt256OrNull(decoded_params['amount0']))  AS amount_raw,
+    toInt32OrNull(decoded_params['tickLower'])       AS tick_lower,
+    toInt32OrNull(decoded_params['tickUpper'])       AS tick_upper,
+    multiIf(
+        e.event_name = 'Mint',  toInt256OrNull(decoded_params['amount']),
+        e.event_name = 'Burn', -toInt256OrNull(decoded_params['amount']),
+        NULL
+    )                                               AS liquidity_delta
 FROM {{ ref('contracts_UniswapV3_Pool_events') }} e
 INNER JOIN (
     SELECT pool_address, pool_address_no0x, token0_address, token1_address
     FROM {{ ref('stg_pools__v3_pool_registry') }}
     WHERE protocol = 'Uniswap V3'
 ) r ON r.pool_address_no0x = e.contract_address
-WHERE e.event_name IN ('Mint', 'Burn')
+WHERE e.event_name IN ('Mint', 'Burn', 'Collect')
   AND e.block_timestamp < today()
   AND decoded_params['amount0'] IS NOT NULL
   {% if start_month and end_month %}
@@ -38,16 +49,27 @@ SELECT
     'Uniswap V3'                                    AS protocol,
     r.pool_address                                  AS pool_address,
     lower(decoded_params['owner'])                  AS provider,
-    multiIf(e.event_name = 'Mint', 'mint', 'burn') AS event_type,
+    multiIf(
+        e.event_name = 'Mint', 'mint',
+        e.event_name = 'Burn', 'burn',
+        'collect'
+    )                                               AS event_type,
     r.token1_address                                AS token_address,
-    abs(toInt256OrNull(decoded_params['amount1']))  AS amount_raw
+    abs(toInt256OrNull(decoded_params['amount1']))  AS amount_raw,
+    toInt32OrNull(decoded_params['tickLower'])       AS tick_lower,
+    toInt32OrNull(decoded_params['tickUpper'])       AS tick_upper,
+    multiIf(
+        e.event_name = 'Mint',  toInt256OrNull(decoded_params['amount']),
+        e.event_name = 'Burn', -toInt256OrNull(decoded_params['amount']),
+        NULL
+    )                                               AS liquidity_delta
 FROM {{ ref('contracts_UniswapV3_Pool_events') }} e
 INNER JOIN (
     SELECT pool_address, pool_address_no0x, token0_address, token1_address
     FROM {{ ref('stg_pools__v3_pool_registry') }}
     WHERE protocol = 'Uniswap V3'
 ) r ON r.pool_address_no0x = e.contract_address
-WHERE e.event_name IN ('Mint', 'Burn')
+WHERE e.event_name IN ('Mint', 'Burn', 'Collect')
   AND e.block_timestamp < today()
   AND decoded_params['amount1'] IS NOT NULL
   {% if start_month and end_month %}

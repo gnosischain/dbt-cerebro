@@ -169,7 +169,10 @@ models:
   columns: *dex_trades_columns
 
 - name: stg_pools__dex_liquidity_uniswap_v3
-  description: Uniswap V3 Mint/Burn events unpacked into one row per token per event. Ephemeral — inlined into int_execution_pools_dex_liquidity_events.
+  description: >
+    Uniswap V3 Mint, Burn, and Collect (fee claim) events unpacked into one row per
+    token per event. Includes tick range and liquidity delta for position tracking.
+    Ephemeral — inlined into int_execution_pools_dex_liquidity_events.
   columns: &dex_liquidity_columns
   - name: block_number
     data_type: UInt32
@@ -186,22 +189,41 @@ models:
   - name: provider
     data_type: String
   - name: event_type
+    description: "Direction/type of event: mint (add liquidity), burn (remove liquidity), or collect (claim fees; V3 only)."
     data_type: String
   - name: token_address
     data_type: String
   - name: amount_raw
     data_type: Nullable(UInt256)
+  - name: tick_lower
+    description: Lower tick bound of the position. Set for V3 Mint/Burn/Collect events, NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: tick_upper
+    description: Upper tick bound of the position. Set for V3 Mint/Burn/Collect events, NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: liquidity_delta
+    description: Signed change in liquidity units. Positive for Mint, negative for Burn, NULL for Collect and Balancer events. Same value on both token rows of the same event.
+    data_type: Nullable(Int256)
 
 - name: stg_pools__dex_liquidity_swapr_v3
-  description: Swapr V3 Mint/Burn events. Same structure as Uniswap V3. Ephemeral.
+  description: >
+    Swapr V3 (Algebra) Mint, Burn, and Collect events. Same structure as Uniswap V3.
+    Uses bottomTick/topTick (Algebra naming) mapped to tick_lower/tick_upper.
+    Ephemeral.
   columns: *dex_liquidity_columns
 
 - name: stg_pools__dex_liquidity_balancer_v2
-  description: Balancer V2 PoolBalanceChanged events with JSON array unpacking for multi-token pools. Ephemeral.
+  description: >
+    Balancer V2 PoolBalanceChanged events with JSON array unpacking for multi-token
+    pools. tick_lower, tick_upper, and liquidity_delta are NULL (full-range pools,
+    no concentrated liquidity). Ephemeral.
   columns: *dex_liquidity_columns
 
 - name: stg_pools__dex_liquidity_balancer_v3
-  description: Balancer V3 LiquidityAdded/LiquidityRemoved events with positional array unpacking and wrapper-to-underlying token resolution. Ephemeral.
+  description: >
+    Balancer V3 LiquidityAdded/LiquidityRemoved events with positional array
+    unpacking and wrapper-to-underlying token resolution. tick_lower, tick_upper,
+    and liquidity_delta are NULL (full-range pools). Ephemeral.
   columns: *dex_liquidity_columns
 
 - name: stg_pools__token_prices_daily
@@ -232,3 +254,19 @@ models:
   - name: underlying_address
     description: Underlying token address that the wrapper resolves to.
     data_type: String
+
+- name: stg_pools__v3_current_tick
+  description: >
+    Latest tick per V3 pool derived from the most recent Swap event. Used
+    to determine whether concentrated-liquidity LP positions are in-range.
+    Covers Uniswap V3 and Swapr V3 pools; Balancer pools have no tick
+    concept and are excluded.
+  columns:
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: protocol
+    data_type: String
+  - name: current_tick
+    description: Tick value from the most recent Swap event on this pool.
+    data_type: Nullable(Int32)

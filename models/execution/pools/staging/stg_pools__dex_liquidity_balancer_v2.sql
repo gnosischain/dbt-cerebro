@@ -34,7 +34,10 @@ SELECT
         startsWith(replaceAll(delta_val, '"', ''), '-'),
         toInt256OrNull(replaceAll(delta_val, '"', '')),
         reinterpretAsInt256(toUInt256OrNull(replaceAll(delta_val, '"', '')))
-    ))                                              AS amount_raw
+    ))                                              AS amount_raw,
+    CAST(NULL AS Nullable(Int32))                   AS tick_lower,
+    CAST(NULL AS Nullable(Int32))                   AS tick_upper,
+    CAST(NULL AS Nullable(Int256))                  AS liquidity_delta
 FROM {{ ref('contracts_BalancerV2_Vault_events') }} e
 LEFT JOIN balancer_v2_pool_registry r
     ON r.pool_id = lower(decoded_params['poolId'])

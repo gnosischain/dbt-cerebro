@@ -13,7 +13,10 @@ SELECT
     lower(decoded_params['liquidityProvider'])                                       AS provider,
     multiIf(e.event_name = 'LiquidityAdded', 'mint', 'burn')                        AS event_type,
     coalesce(wm.underlying_address, pt.token_address)                                 AS token_address,
-    abs(toInt256OrNull(replaceAll(amount_val, '"', '')))                             AS amount_raw
+    abs(toInt256OrNull(replaceAll(amount_val, '"', '')))                             AS amount_raw,
+    CAST(NULL AS Nullable(Int32))                                                     AS tick_lower,
+    CAST(NULL AS Nullable(Int32))                                                     AS tick_upper,
+    CAST(NULL AS Nullable(Int256))                                                    AS liquidity_delta
 FROM {{ ref('contracts_BalancerV3_Vault_events') }} e
 ARRAY JOIN
     range(length(JSONExtractArrayRaw(ifNull(

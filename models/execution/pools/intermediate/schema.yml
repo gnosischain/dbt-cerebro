@@ -304,7 +304,7 @@ models:
 
 - name: int_execution_pools_dex_liquidity_events
   description: >
-    Individual LP add/remove events across all protocols on Gnosis Chain.
+    Individual LP add/remove/collect events across all protocols on Gnosis Chain.
     One row per (event, token) — not pivoted to wide format because Balancer pools can
     hold 2–8 tokens, making a fixed-width schema incorrect.
     Each protocol's event decoding lives in its own staging model
@@ -314,10 +314,12 @@ models:
     hashes and probes the large transactions table, rather than loading the full right
     side into memory.
     Protocols: Uniswap V3, Swapr V3, Balancer V2, Balancer V3.
-    event_type values: 'mint' (add) or 'burn' (remove). amount_raw is always positive;
-    event_type conveys direction. When called with start_month/end_month vars each
-    protocol model filters to that month window; otherwise falls back to the incremental
-    filter.
+    event_type values: 'mint' (add), 'burn' (remove), or 'collect' (claim fees; V3
+    only). amount_raw is always positive; event_type conveys direction.
+    Includes V3 tick range (tick_lower/tick_upper) and signed liquidity delta for
+    position-level tracking and in-range analysis.
+    When called with start_month/end_month vars each protocol model filters to that
+    month window; otherwise falls back to the incremental filter.
   meta:
     full_refresh:
       start_date: "2022-04-01"
@@ -339,10 +341,10 @@ models:
     description: Pool contract address (lowercase, with 0x prefix).
     data_type: String
   - name: provider
-    description: LP wallet address that added or removed liquidity.
+    description: LP wallet address that added or removed liquidity (or claimed fees).
     data_type: String
   - name: event_type
-    description: Direction of the liquidity event — mint (add) or burn (remove).
+    description: "Type of event: mint (add liquidity), burn (remove liquidity), or collect (claim fees; V3 only)."
     data_type: String
   - name: token_address
     description: Token address for this row (lowercase, with 0x prefix).
@@ -359,6 +361,15 @@ models:
   - name: amount_usd
     description: Token amount in USD.
     data_type: Nullable(Float64)
+  - name: tick_lower
+    description: Lower tick bound of the LP position. Set for V3 events (Uniswap V3, Swapr V3), NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: tick_upper
+    description: Upper tick bound of the LP position. Set for V3 events (Uniswap V3, Swapr V3), NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: liquidity_delta
+    description: Signed change in V3 liquidity units. Positive for Mint, negative for Burn, NULL for Collect and Balancer events. Same value on both token rows of the same event — deduplicate by (transaction_hash, log_index) when summing.
+    data_type: Nullable(Int256)
   - name: tx_from
     description: EOA address that signed the transaction (from execution.transactions).
     data_type: Nullable(String)

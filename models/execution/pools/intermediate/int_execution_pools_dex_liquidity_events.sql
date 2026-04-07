@@ -44,7 +44,10 @@ events_base AS (
         l.token_address,
         tm.token                                                                 AS token_symbol,
         l.amount_raw,
-        l.amount_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18))         AS amount
+        l.amount_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18))         AS amount,
+        l.tick_lower,
+        l.tick_upper,
+        l.liquidity_delta
     FROM all_liquidity l
     LEFT JOIN {{ ref('stg_pools__tokens_meta') }} tm
         ON  tm.token_address          = l.token_address
@@ -102,6 +105,9 @@ SELECT
     amount_raw,
     amount,
     amount * token_price_usd AS amount_usd,
+    tick_lower,
+    tick_upper,
+    liquidity_delta,
     tx_from,
     tx_to
 FROM with_price
