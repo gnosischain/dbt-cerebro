@@ -10,6 +10,15 @@
     
     
   
+
+  
+  
+  
+    
+    
+    
+  
+
   
   
     
@@ -54,7 +63,7 @@ logs_with_abi AS (
   SELECT
     l.*,
     
-    lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) AS abi_join_address
+    lower(replaceAll(cw.address, '0x', '')) AS abi_join_address
     
   FROM logs l
   ANY LEFT JOIN `dbt`.`contracts_whitelist` cw
@@ -75,7 +84,7 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
+WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
  ),
 
 process AS (

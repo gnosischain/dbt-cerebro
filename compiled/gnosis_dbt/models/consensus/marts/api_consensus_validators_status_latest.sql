@@ -14,6 +14,6 @@ SELECT
     exit_epoch,
     withdrawable_epoch,
     slot_timestamp
-FROM `consensus`.`validators` FINAL
-WHERE slot = (SELECT MAX(slot) FROM `consensus`.`validators` )
+FROM `dbt`.`stg_consensus__validators_all` FINAL
+WHERE slot = (SELECT MAX(slot) FROM `dbt`.`stg_consensus__validators_all` )
 ORDER BY validator_index
