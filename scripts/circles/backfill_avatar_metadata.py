@@ -89,10 +89,52 @@ USER_AGENT = "gnosis-dbt-circles-metadata-backfill/1.0"
 # ClickHouse client
 # ----------------------------------------------------------------------
 
+# ClickHouse native-TCP ports. clickhouse-connect is HTTP-only, so it
+# can never talk to these. We explicitly reject them when they leak in
+# via CLICKHOUSE_PORT from a dbt-oriented environment (dbt-clickhouse's
+# default driver uses the native protocol on 9000/9440).
+_NATIVE_TCP_PORTS = {9000, 9440}
+
+
+def _resolve_http_port() -> int:
+    """
+    Pick the right port for clickhouse-connect (HTTP interface only).
+
+    Resolution order:
+      1. `CLICKHOUSE_HTTP_PORT` — dedicated HTTP-interface override,
+         used when the environment's `CLICKHOUSE_PORT` is pinned to the
+         native TCP port for dbt-clickhouse.
+      2. `CLICKHOUSE_PORT` — generic ClickHouse port, but ONLY when
+         it's not one of the known native TCP ports. Setting it to
+         9000/9440 is a dbt-native config that does not apply to an
+         HTTP client.
+      3. Safe default: 8443 when `CLICKHOUSE_SECURE=true` (ClickHouse
+         Cloud HTTPS), 8123 otherwise (plain HTTP).
+    """
+    secure = os.environ.get("CLICKHOUSE_SECURE", "True").lower() == "true"
+    default_http = 8443 if secure else 8123
+
+    http_port = os.environ.get("CLICKHOUSE_HTTP_PORT")
+    if http_port:
+        return int(http_port)
+
+    generic = os.environ.get("CLICKHOUSE_PORT")
+    if generic and int(generic) not in _NATIVE_TCP_PORTS:
+        return int(generic)
+
+    return default_http
+
+
 def make_client():
+    port = _resolve_http_port()
+    host = os.environ.get("CLICKHOUSE_URL", "localhost")
+    logger.info(
+        "Connecting to ClickHouse at %s:%d (HTTP interface)",
+        host, port,
+    )
     return clickhouse_connect.get_client(
-        host=os.environ.get("CLICKHOUSE_URL", "localhost"),
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+        host=host,
+        port=port,
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
         database=os.environ.get("CLICKHOUSE_DATABASE", "dbt"),
