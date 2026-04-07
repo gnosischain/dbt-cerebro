@@ -725,48 +725,388 @@ All test and metadata definitions in `schema.yml` compile into `manifest.json`, 
 
 ### Overview
 
-The contract decoding system transforms raw blockchain data into human-readable formats:
+The contract decoding system transforms raw on-chain data (`execution.logs.data`, `execution.transactions.input`) into typed, query-friendly columns. There are two layers:
+
+1. **ABI preparation** — fetch a contract's ABI from Blockscout, persist it, and generate per-event/per-function lookup seeds (`event_signatures`, `function_signatures`) keyed by `(contract_address, topic0_or_selector)`.
+2. **Decoding macros** — `decode_logs` and `decode_calls` are general-purpose dbt macros that read raw `execution.logs` / `execution.transactions`, JOIN to the signature seeds, and emit one row per decoded event/call with a typed `decoded_params` map.
+
+The system supports four distinct decoding patterns, in order of complexity:
+
+| Pattern | When to use | Example |
+|---|---|---|
+| **Single static address** | One immutable contract, no proxy | `decode_logs(contract_address='0x29b9a…')` for the Circles V1 Hub |
+| **Multiple static addresses** | Small fixed set, e.g. all aTokens for one protocol | `decode_logs(contract_address=['0x…', '0x…'])` |
+| **Whitelist seed** (`contract_address_ref`) | Many contracts of the same type that all share one ABI per pool | `decode_logs(contract_address_ref=ref('contracts_whitelist'), contract_type_filter='UniswapV3Pool')` |
+| **Proxy / factory registry** (`contract_address_ref` with `abi_source_address`) | Proxy contracts (ABI lives at the implementation address) and factory-discovered children | `decode_logs(contract_address_ref=ref('contracts_circles_registry'), contract_type_filter='BaseGroupRuntime')` |
+
+The same two macros (`decode_logs`, `decode_calls`) handle all four patterns. Which path runs is decided by which arguments you pass.
+
+### Architecture diagram
 
 ```mermaid
 graph TD
-    A[Contract Address] --> B[Fetch ABI from Blockscout]
-    B --> C[Store in contracts_abi table]
-    C --> D[Generate Signatures<br/>Python Script]
-    D --> E[Store in Seed Files]
-    E --> F[dbt seed]
-    F --> G[Function Signatures Table]
-    F --> H[Event Signatures Table]
+    A[Contract address] --> B[fetch_and_insert_abi macro<br/>Blockscout HTTP]
+    B --> C[contracts_abi table]
+    C --> D[signature_generator.py<br/>Python: keccak + canonicalize]
+    D --> E1[event_signatures.csv seed]
+    D --> E2[function_signatures.csv seed]
+    E1 -- dbt seed --> F1[event_signatures table]
+    E2 -- dbt seed --> F2[function_signatures table]
 
-    I[Raw Transactions] --> J[decode_calls macro]
-    K[Raw Logs] --> L[decode_logs macro]
+    G1[Static address list] --> H[decode_logs / decode_calls<br/>macro]
+    G2[contracts_whitelist seed] --> H
+    G3[contracts_circles_registry view<br/>= static seed UNION factory children] --> H
+    G4[contracts_factory_registry seed] -- resolve_factory_children --> G3
 
-    G --> J
-    H --> L
+    F1 --> H
+    F2 --> H
+    I[execution.logs / .transactions] --> H
 
-    J --> M[Decoded Calls]
-    L --> N[Decoded Events]
+    H --> J[Decoded events/calls model<br/>contracts_<protocol>_<contract>_events]
+    J --> K[Downstream intermediate / mart models]
 ```
 
-### Adding New Contracts
+### The two decoding macros
+
+Both live under `macros/decoding/` and share an identical parameter shape.
+
+**`decode_logs(...)`** decodes events from `execution.logs`.
+**`decode_calls(...)`** decodes function calls from `execution.transactions`.
+
+#### Public parameters
+
+| Parameter | Default | Used by | Purpose |
+|---|---|---|---|
+| `source_table` / `tx_table` | required | both | The raw source — usually `source('execution', 'logs')` or `source('execution', 'transactions')` |
+| `contract_address` | `null` | both | Static path: a single hex string OR an array of hex strings. Mutually exclusive with `contract_address_ref` |
+| `contract_address_ref` | `null` | both | Registry path: a `ref(...)` to a seed/model with at least `(address, contract_type)` columns. Mutually exclusive with `contract_address` |
+| `contract_type_filter` | `null` | both | Optional filter applied when using `contract_address_ref`: only rows where `cw.contract_type = '<filter>'` participate. Lets one whitelist seed serve many model files |
+| `abi_source_address` | `null` | both | Force every row to use this address for ABI lookup, regardless of the actual contract address. Used for single-proxy decoding where every emitter shares one implementation |
+| `output_json_type` | `false` | both | `true` → returns a native ClickHouse `Map(String, String)` (enables `decoded_params['key']` access). `false` → returns a JSON string. Map type is recommended for new models |
+| `incremental_column` | `'block_timestamp'` | both | Used for incremental high-watermark filtering and the `start_month` / `end_month` batch window |
+| `address_column` | `'address'` (logs) / `'to_address'` (calls) | one each | Which column on the source table to filter by |
+| `start_blocktime` | `null` | both | Hard lower bound: `WHERE incremental_column >= toDateTime('<value>')`. Set to the deployment date to skip pre-deployment scans |
+
+#### CTE structure (both macros)
+
+```
+WITH
+  logs (or tx)        — source rows + ROW_NUMBER dedup by (block_number, tx_index, log_index)
+  logs_with_abi       — JOIN to the whitelist/registry seed → adds `abi_join_address`
+  abi                 — SELECT from event_signatures / function_signatures, filtered to relevant ABIs
+  process             — full decode logic: split data, decode each param by ABI type
+SELECT … FROM process
+```
+
+The dedup pass replaced the older `FROM source FINAL` because `FINAL` was forcing whole-table merges on every incremental run. The `ROW_NUMBER OVER (PARTITION BY block_number, transaction_index, log_index ORDER BY insert_version DESC)` keeps the latest row per log without the merge cost.
+
+### Pattern 1 + 2: Static address(es)
+
+Simplest case. The macro normalizes the address(es), builds a `WHERE address IN (…)` filter, and joins to the signature seeds via the contract address itself.
+
+```sql
+{{ decode_logs(
+    source_table     = source('execution', 'logs'),
+    contract_address = '0x29b9a7fbb8995b2423a71cc17cf9810798f6c543',  -- Circles V1 Hub
+    output_json_type = true,
+    incremental_column = 'block_timestamp',
+    start_blocktime  = '2020-10-01'
+) }}
+```
+
+For multiple addresses pass a list:
+
+```sql
+{{ decode_logs(
+    source_table     = source('execution', 'logs'),
+    contract_address = ['0xfa…', '0x4d…', '0x83…'],
+    ...
+) }}
+```
+
+### Pattern 3: Whitelist seed (`contracts_whitelist`)
+
+When you have many contracts of the same type that all share one ABI **per contract**, list them in a flat seed and reference it via `contract_address_ref`. Used today for UniswapV3 and Swapr V3 pools — each pool has its own contract address, but the ABI is the same shape for every pool, so they all hit the same `event_signatures` rows once an ABI for one of them has been generated.
+
+`seeds/contracts_whitelist.csv`:
+
+```csv
+address,contract_type
+0xe29f8626abf208db55c5d6f0c49e5089bdb2baa8,UniswapV3Pool
+0x7440d14fac56ea9e6d0c9621dd807b9d96933666,UniswapV3Pool
+0x01343cf42c7f1f71b230126dda3b7b2c108e9f2e,SwaprPool
+…
+```
+
+The model file:
+
+```sql
+{{ decode_logs(
+    source_table         = source('execution','logs'),
+    contract_address_ref = ref('contracts_whitelist'),
+    contract_type_filter = 'UniswapV3Pool',
+    output_json_type     = true,
+    incremental_column   = 'block_timestamp',
+    start_blocktime      = '2022-04-22'
+) }}
+```
+
+The macro emits a JOIN like:
+
+```sql
+ANY LEFT JOIN dbt.contracts_whitelist cw
+    ON lower(replaceAll(l.address, '0x', '')) = lower(replaceAll(cw.address, '0x', ''))
+   AND cw.contract_type = 'UniswapV3Pool'
+```
+
+…and uses `cw.address` as `abi_join_address`. Every pool resolves to its own `event_signatures` rows.
+
+### Pattern 4: Proxy / factory registry
+
+Many protocols deploy **proxy contracts**: the bytecode at address `A` is a thin proxy that delegates to an implementation at address `B`. The on-chain events are emitted from `A`, but the ABI is published under `B`. To decode events on `A`, you need to look up signatures by `B`'s address, not `A`'s.
+
+This is where `abi_source_address` comes in. The registry seed has an extra column:
+
+`seeds/contracts_circles_registry_static.csv`:
+
+```csv
+address,contract_type,abi_source_address,is_dynamic,start_blocktime,discovery_source
+0x29b9a7fbb8995b2423a71cc17cf9810798f6c543,HubV1,0x29b9a7fbb8995b2423a71cc17cf9810798f6c543,0,2020-10-01,static
+0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8,HubV2,0xc12c1e50abb450d6205ea2c3fa861b3b834d13e8,0,2024-10-01,static
+0xfeca40eb02fb1f4f5f795fc7a03c1a27819b1ded,CMGroupDeployer,0xfeca40eb02fb1f4f5f795fc7a03c1a27819b1ded,0,2025-02-01,static
+…
+```
+
+The decoder, when joining, uses `coalesce(nullIf(cw.abi_source_address, ''), cw.address)` as the `abi_join_address`. So:
+
+- If `abi_source_address` is set on a row → ABI lookup uses **that** address (the implementation)
+- If it's empty/null → ABI lookup falls back to the contract's own address (no proxy)
+
+This lets a single registry hold both proxies and non-proxies in one table.
+
+### Compile-time seed introspection
+
+The decoder works with **both** flat whitelist seeds (no `abi_source_address` column) and rich registries (with `abi_source_address`). It detects which case it's in at compile time, via dbt's adapter API:
+
+```jinja
+{% set has_abi_source_col = false %}
+{% if execute %}
+  {% set _cw_columns = adapter.get_columns_in_relation(contract_address_ref) %}
+  {% set _cw_column_names = _cw_columns | map(attribute='name') | map('lower') | list %}
+  {% if 'abi_source_address' in _cw_column_names %}
+    {% set has_abi_source_col = true %}
+  {% endif %}
+{% endif %}
+```
+
+When the flag is `true`, the macro emits the proxy-aware `coalesce(nullIf(cw.abi_source_address, ''), cw.address)` expression. When `false`, it emits a bare `cw.address` reference. This means a model authored against `contracts_whitelist` (no proxies) and a model authored against `contracts_circles_registry` (with proxies) both work without any caller-side branching.
+
+If you ever see a `Code: 47. DB::Exception: Identifier 'cw.abi_source_address' cannot be resolved` error, it means either the macro was compiled before this introspection was added, or your registry seed is missing the column it claims to have.
+
+### Factory discovery
+
+Some protocols deploy contracts dynamically via factory contracts. Circles V2 is a heavy user — every Group, every PaymentGateway, every ERC20 wrapper is created on demand. We can't list all of them in a static seed because new ones land every day.
+
+The factory pattern works like this:
+
+1. **Seed declares the factories** — `seeds/contracts_factory_registry.csv`:
+   ```csv
+   factory_address,factory_events_model,creation_event_name,child_address_param,child_contract_type,child_abi_source_address,protocol,start_blocktime
+   0xd0b5bd9962197beac4cba24244ec3587f19bd06d,contracts_circles_v2_BaseGroupFactory_events,BaseGroupCreated,group,BaseGroupRuntime,0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac,circles_v2,2025-04-01
+   0xfeca40eb02fb1f4f5f795fc7a03c1a27819b1ded,contracts_circles_v2_CMGroupDeployer_events,CMGroupCreated,proxy,BaseGroupRuntime,0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac,circles_v2,2025-02-01
+   0x5f99a795dd2743c36d63511f0d4bc667e6d3cdb5,contracts_circles_v2_ERC20Lift_events,ERC20WrapperDeployed,erc20Wrapper,ERC20Wrapper,,circles_v2,2024-10-01
+   …
+   ```
+   Each row says: "the factory at `factory_address` emits `creation_event_name` events from which I can extract a child contract address out of the `child_address_param` decoded parameter; that child should be tagged with `child_contract_type` and decoded using ABI from `child_abi_source_address`."
+
+2. **The factory itself is decoded first** — `contracts_circles_v2_BaseGroupFactory_events.sql` is a normal decode-logs model that targets the factory address. This produces a table of every `BaseGroupCreated` event with its `decoded_params['group']` payload.
+
+3. **`resolve_factory_children` macro** (`macros/contracts/resolve_factory_children.sql`) reads `contracts_factory_registry` at compile time and generates a `UNION ALL` query. For each factory row it emits:
+   ```sql
+   SELECT
+     lower(decoded_params['{{ child_address_param }}']) AS address,
+     '{{ child_contract_type }}'                         AS contract_type,
+     lower('{{ child_abi_source_address }}')             AS abi_source_address,
+     toUInt8(1)                                          AS is_dynamic,
+     '{{ start_blocktime }}'                             AS start_blocktime,
+     '{{ creation_event_name }}'                         AS discovery_source
+   FROM {{ ref(factory_events_model) }}
+   WHERE event_name = '{{ creation_event_name }}'
+   GROUP BY 1
+   ```
+   It also accepts a `protocol=` filter so you can scope the discovery to one protocol family.
+
+4. **Per-protocol registry view** unions the static seed with the dynamic discoveries — see `models/contracts/Circles/contracts_circles_registry.sql`:
+   ```sql
+   {{ config(materialized='view', tags=['production', 'contracts', 'circles_v2', 'registry']) }}
+
+   -- depends_on: {{ ref('contracts_factory_registry') }}
+   -- depends_on: {{ ref('contracts_circles_v2_BaseGroupFactory_events') }}
+   -- depends_on: {{ ref('contracts_circles_v2_CMGroupDeployer_events') }}
+   -- depends_on: {{ ref('contracts_circles_v2_ERC20Lift_events') }}
+   -- … one per factory_events_model …
+
+   WITH static_registry AS (
+       SELECT
+           lower(address)            AS address,
+           contract_type,
+           lower(abi_source_address) AS abi_source_address,
+           toUInt8(is_dynamic)       AS is_dynamic,
+           start_blocktime,
+           discovery_source
+       FROM {{ ref('contracts_circles_registry_static') }}
+   )
+
+   SELECT * FROM static_registry
+   UNION ALL
+   {{ resolve_factory_children(protocol='circles_v2') }}
+   ```
+
+   The `-- depends_on:` comments are **load-bearing**. Because `resolve_factory_children` loops at compile time over the seed's contents, dbt can't statically infer which factory event models the view depends on. Adding explicit `-- depends_on: {{ ref(...) }}` comments tells dbt to materialize those models first. Forgetting them will cause "model not found" errors when dbt tries to compile the registry view in isolation.
+
+5. **Child decode models** then point at the registry view, scoped by `contract_type_filter`:
+   ```sql
+   {{ decode_logs(
+       source_table         = source('execution', 'logs'),
+       contract_address_ref = ref('contracts_circles_registry'),
+       contract_type_filter = 'BaseGroupRuntime',
+       output_json_type     = true,
+       incremental_column   = 'block_timestamp',
+       start_blocktime      = '2025-04-01'
+   ) }}
+   ```
+   Every `BaseGroupRuntime` row in the registry — both the statically declared ones and the factory-discovered ones — is decoded by this single model. New groups appear automatically on the next nightly run.
+
+#### Build order for factory-driven decoding
+
+The dependency chain runs in this order each night:
+
+```
+contracts_factory_registry seed         (loaded once via dbt seed)
+        ↓
+contracts_circles_v2_BaseGroupFactory_events   (decode the factory itself)
+contracts_circles_v2_CMGroupDeployer_events
+contracts_circles_v2_ERC20Lift_events
+…                                       (one model per factory_events_model)
+        ↓
+contracts_circles_registry              (view: static UNION resolve_factory_children)
+        ↓
+contracts_circles_v2_BaseGroup_events   (decode all groups, both static + discovered)
+contracts_circles_v2_PaymentGateway_events
+contracts_circles_v2_ERC20TokenOffer_events
+…
+```
+
+The `-- depends_on:` comments in `contracts_circles_registry.sql` enforce this order automatically.
+
+### The supporting seeds
+
+| Seed | What it stores | Who writes it | Consumed by |
+|---|---|---|---|
+| `contracts_abi` | Raw ABI JSON per contract address (and per implementation for proxies). One row per contract or proxy/impl pair. | `dbt run-operation fetch_and_insert_abi` (which calls Blockscout) → manually re-exported via `scripts/abi/export_contracts_abi.py` to keep the seed CSV in sync | `signature_generator.py` (only) |
+| `event_signatures` | Pre-computed `(contract_address, topic0_hash, event_name, params, indexed/non_indexed split)` rows. One row per event per ABI. | `scripts/signatures/signature_generator.py` (parses contracts_abi.csv, computes keccak hashes, canonicalizes types) | `decode_logs` macro (JOIN target) |
+| `function_signatures` | Same idea but for function selectors. One row per function per ABI. | Same script | `decode_calls` macro (JOIN target) |
+| `contracts_whitelist` | Flat list of `(address, contract_type)`. No proxy support. | Manual edits to the CSV | `decode_logs` / `decode_calls` via `contract_address_ref` |
+| `contracts_circles_registry_static` | Curated `(address, contract_type, abi_source_address, is_dynamic=0, start_blocktime, discovery_source='static')` for the Circles V2 protocol. The `abi_source_address` column lets it support proxies. | Manual edits to the CSV | `contracts_circles_registry` view (which UNIONs it with factory discoveries) |
+| `contracts_factory_registry` | Per-factory metadata: which factory address, which event signals child creation, which decoded param holds the child address, what contract_type to assign, what `abi_source_address` to use for the children, and which protocol family it belongs to. | Manual edits to the CSV | `resolve_factory_children` macro |
+
+### The signature generator
+
+`scripts/signatures/signature_generator.py` is the bridge between raw ABI JSON and the decoder-friendly seeds. It:
+
+1. Reads `seeds/contracts_abi.csv` (the source of truth for ABIs).
+2. For each ABI, walks every event and function definition.
+3. **Canonicalizes types** — `uint` becomes `uint256`, `tuple` becomes `(type1,type2,...)` recursively, `tuple[]` becomes `(type1,type2,...)[]`, etc. This matches the canonical Solidity type signature exactly so the keccak hash agrees with what gets emitted on-chain.
+4. **Computes the topic0 / selector** — `keccak256("EventName(canonical_types)")` for events (full 32-byte hash, no `0x`), or its first 4 bytes for function selectors.
+5. **Splits parameters** for events into `indexed_params` (in topics) and `non_indexed_params` (in data), preserving the original component structure for tuples.
+6. Writes `seeds/event_signatures.csv` and `seeds/function_signatures.csv` ready for `dbt seed`.
+
+Run it whenever you add a new ABI:
+
+```bash
+python scripts/signatures/signature_generator.py
+```
+
+### Adding a new contract — full workflow
 
 ```bash
 docker exec -it dbt /bin/bash
 
-# 1. Fetch ABI
+# 1. Fetch the ABI from Blockscout into the contracts_abi table.
 dbt run-operation fetch_and_insert_abi --args '{"address": "0xContractAddress"}'
 
-# 2. Export ABIs to CSV (CRITICAL: prevents data loss on next dbt seed)
+# 2. Re-export contracts_abi from ClickHouse to its seed CSV — CRITICAL,
+#    otherwise the next `dbt seed` will overwrite the new row from disk.
 python scripts/abi/export_contracts_abi.py
 
-# 3. Generate signature files
+# 3. Regenerate event_signatures.csv and function_signatures.csv from contracts_abi.csv.
 python scripts/signatures/signature_generator.py
 
-# 4. Load seeds
-dbt seed
+# 4. Load the updated seeds into ClickHouse.
+dbt seed --select contracts_abi event_signatures function_signatures
 
-# 5. Create model SQL and schema.yml entry, then run
-dbt run --select your_contract_events
+# 5. Create the decode model file under models/contracts/<Protocol>/, e.g.
+#    contracts_<protocol>_<contract>_events.sql with a decode_logs(...) call.
+#    Add a matching schema.yml entry.
+
+# 6. Run the new model.
+dbt run --select contracts_<protocol>_<contract>_events
 ```
+
+### Adding a new factory — extra steps
+
+When the contract you want to decode is a factory whose children should also be decoded automatically:
+
+```bash
+# 1-4 above (fetch the factory's own ABI). Then also fetch the child ABI:
+dbt run-operation fetch_and_insert_abi --args '{"address": "0xChildImplementationAddress"}'
+python scripts/abi/export_contracts_abi.py
+python scripts/signatures/signature_generator.py
+dbt seed --select contracts_abi event_signatures function_signatures
+
+# 5. Create the factory's own events model so its creation events get decoded:
+#    models/contracts/<Protocol>/contracts_<protocol>_<Factory>_events.sql
+#    using decode_logs(contract_address='0xFactoryAddress', ...)
+
+# 6. Append a row to seeds/contracts_factory_registry.csv:
+#    factory_address,factory_events_model,creation_event_name,child_address_param,
+#    child_contract_type,child_abi_source_address,protocol,start_blocktime
+#
+#    Use the parameter name from the creation event for child_address_param
+#    (e.g. 'group' for BaseGroupCreated). Set child_abi_source_address to the
+#    address whose ABI was used in step 1 above.
+
+# 7. Reload the seed:
+dbt seed --select contracts_factory_registry
+
+# 8. Add a new -- depends_on: {{ ref('contracts_<protocol>_<Factory>_events') }}
+#    line to the per-protocol registry view (e.g. contracts_circles_registry.sql)
+#    so dbt knows to build the factory model BEFORE the registry view.
+
+# 9. Create the per-child-type decode model:
+#    models/contracts/<Protocol>/contracts_<protocol>_<ChildType>_events.sql
+#    using decode_logs(contract_address_ref=ref('contracts_<protocol>_registry'),
+#                      contract_type_filter='<ChildType>')
+
+# 10. Run the chain:
+dbt run --select contracts_<protocol>_<Factory>_events \
+                 contracts_<protocol>_registry \
+                 contracts_<protocol>_<ChildType>_events
+```
+
+### Troubleshooting
+
+**`Code: 47. DB::Exception: Identifier 'cw.abi_source_address' cannot be resolved`**
+The decoder is trying to reference `abi_source_address` on a seed that doesn't have that column. Either upgrade the seed to include `abi_source_address` (recommended for proxy registries), or rely on the macro's compile-time introspection to fall back to `cw.address` automatically. If the introspection isn't kicking in, your `decode_logs.sql` / `decode_calls.sql` may be older than the fix that introduced the `has_abi_source_col` flag — pull the latest macros.
+
+**Decoded events have empty `decoded_params`**
+The contract address has no matching row in `event_signatures` for the topic0. Check (a) that you ran `signature_generator.py` after fetching the ABI, (b) that the ABI in `contracts_abi.csv` has the event you expect, and (c) that the address you're joining on matches the one in `event_signatures` — for proxies, the ABI is keyed on the implementation address.
+
+**A factory-discovered child doesn't show up in the registry view**
+Check the factory events model has actually run and contains rows with `event_name = '<creation_event_name>'`. Then confirm that `decoded_params` contains the `child_address_param` key referenced in `contracts_factory_registry.csv`. The macro does `decoded_params['<child_address_param>']` — a typo in the seed will silently produce empty addresses.
+
+**`model not found` when building `contracts_<protocol>_registry`**
+Add the missing factory events model to the `-- depends_on:` comments at the top of the registry view. dbt cannot infer dynamic `ref(...)` calls inside `resolve_factory_children`'s loop.
 
 ## Circles V2 Avatar IPFS Metadata
 
@@ -778,25 +1118,22 @@ Circles v2 publishes avatar profiles (name, description, preview image, etc.) of
 flowchart LR
   A["contracts_circles_v2_NameRegistry_events<br/>(UpdateMetadataDigest)"]
     --> B["dbt view:<br/>int_execution_circles_v2_avatar_metadata_targets<br/>(avatar, digest, CIDv0, gateway URL)"]
-  B -- one-time backfill --> C["scripts/circles/<br/>backfill_avatar_metadata.py<br/>(threadpool, gateway fallback,<br/>retries, batched inserts)"]
-  B -- nightly delta --> D["dbt run-operation<br/>fetch_and_insert_circles_metadata<br/>(ClickHouse url() + INSERT)"]
+  B -- backfill + nightly delta --> C["scripts/circles/<br/>backfill_avatar_metadata.py<br/>(threadpool, gateway fallback,<br/>retries, batched inserts,<br/>per-row error handling)"]
   C --> E["raw table:<br/>circles_avatar_metadata_raw<br/>(ReplacingMergeTree)"]
-  D --> E
   E --> F["dbt view:<br/>int_execution_circles_v2_avatar_metadata<br/>(typed name/description/imageUrl/...)"]
   F --> G["downstream Circles models / marts"]
 ```
 
-Two write paths land in the same raw table; downstream dbt models do not care which produced the row. Both paths use a `LEFT ANTI JOIN` against `circles_avatar_metadata_raw` so re-runs only fetch what is missing.
+The Python script handles both the historical backfill and the nightly delta. It uses a `LEFT ANTI JOIN` against `circles_avatar_metadata_raw` so re-runs only fetch what is missing, and persists every result (success OR failure) so dead CIDs (those with no providers in the public IPFS DHT) are recorded once and excluded from future runs forever.
 
 | Component | Type | Path |
 |---|---|---|
 | `circles_metadata_digest_to_cid_v0` / `_gateway_url` | Jinja macros | `macros/circles/circles_utils.sql` |
 | `create_circles_avatar_metadata_table` | DDL macro | `macros/circles/create_circles_avatar_metadata_table.sql` |
-| `fetch_and_insert_circles_metadata` | run-operation macro | `macros/circles/fetch_and_insert_circles_metadata.sql` |
 | `int_execution_circles_v2_avatar_metadata_targets` | dbt view | `models/execution/Circles/intermediate/` |
 | `int_execution_circles_v2_avatar_metadata` | dbt view (typed) | `models/execution/Circles/intermediate/` |
 | `circles_avatar_metadata_raw` | ClickHouse table (`auxiliary` source) | created by the DDL macro |
-| `backfill_avatar_metadata.py` | one-time Python script | `scripts/circles/` |
+| `backfill_avatar_metadata.py` | Python script (backfill + nightly delta) | `scripts/circles/` |
 
 ### Initial setup (one-time)
 
@@ -814,9 +1151,10 @@ dbt run --select int_execution_circles_v2_avatar_metadata_targets
 python scripts/circles/backfill_avatar_metadata.py --limit 100 --dry-run
 
 # 4. Run the full backfill.
-#    Fetches every unresolved digest from the IPFS gateway with concurrency,
-#    retries on 429/5xx, falls back across ipfs.io / cloudflare-ipfs.com / dweb.link,
-#    and inserts in batches. ~40k digests typically takes ~90 minutes.
+#    Fetches every unresolved digest with concurrency (30 workers), retries
+#    on 429/5xx, falls back across ipfs.io / w3s.link / nftstorage.link /
+#    4everland / pinata / dweb.link, and inserts in batches. ~40k digests
+#    typically takes ~90 minutes the first time.
 python scripts/circles/backfill_avatar_metadata.py
 
 # 5. Materialize the parsed view that joins raw payloads back to avatars.
@@ -837,19 +1175,25 @@ python scripts/circles/backfill_avatar_metadata.py \
 
 ### Daily updates (automatic)
 
-The nightly observability orchestrator (`scripts/run_dbt_observability.sh`) handles steady-state deltas between source freshness and the main `tag:production` batch run:
+The nightly observability orchestrator (`scripts/run_dbt_observability.sh`) handles steady-state deltas between source freshness and the main `tag:production` batch run by invoking the **same Python script** used for the historical backfill:
 
 ```bash
-# Refresh the queue view so the macro sees yesterday's new digests.
+# 1. Refresh the queue view so today's new UpdateMetadataDigest events are visible.
 dbt run --select int_execution_circles_v2_avatar_metadata_targets
 
-# Fetch up to 500 unresolved digests via ClickHouse url() + INSERT.
-dbt run-operation fetch_and_insert_circles_metadata --args '{"batch_size": 500}'
+# 2. Fetch every unresolved (avatar, metadata_digest) pair, concurrently,
+#    with per-row error handling and gateway fallback.
+python scripts/circles/backfill_avatar_metadata.py \
+  --concurrency 30 \
+  --max-retries 1 \
+  --request-timeout 15
 ```
 
-Steady-state volume is in the low hundreds per day, well within the macro's per-row `url()` call budget. The parsed view `int_execution_circles_v2_avatar_metadata` is rebuilt as part of the normal `tag:production` run that follows.
+Steady-state volume is in the low hundreds per day. With 30 worker threads, even a 2,000-row catch-up backlog finishes in ~5 minutes; a typical nightly delta finishes in under a minute. The parsed view `int_execution_circles_v2_avatar_metadata` is rebuilt as part of the normal `tag:production` run that follows.
 
-The macro records successful fetches only — a failed `url()` call surfaces as a run-operation error and the offending row is retried automatically on the next nightly invocation.
+The script persists **every** result, success or failure. CIDs that the public IPFS network can no longer resolve (e.g. content with no providers in the DHT, returning 504 from every gateway) are recorded once with `http_status != 200` and `error != ''`, then excluded from future runs by the `LEFT ANTI JOIN` against `circles_avatar_metadata_raw`. This is why nightly runs stay fast — the queue contains only genuinely new digests, never the long tail of permanently-unreachable historical ones.
+
+> **Historical note** — earlier versions of this pipeline used a `dbt run-operation fetch_and_insert_circles_metadata` macro that called ClickHouse's `url()` table function row by row. That approach was structurally broken: Jinja can't catch `run_query` exceptions, ClickHouse `url()` retries internally for 5–10 minutes per dead CID, and failures were never persisted, so the queue clogged forever. The Python script fixes all four problems and is now the canonical fetcher for both backfill and nightly delta.
 
 ### Configuring the IPFS gateway
 

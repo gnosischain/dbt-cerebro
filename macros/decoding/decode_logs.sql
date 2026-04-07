@@ -80,11 +80,39 @@
     {% set type_where = "" %}
     {% set type_and = "" %}
   {% endif %}
+
+  {# ----------------------------------------------------------------
+     Detect whether the referenced whitelist/registry seed exposes an
+     `abi_source_address` column. This column is present on proxy
+     registries like `contracts_circles_registry` (where the ABI lives
+     at a different address than the deployed contract) but NOT on
+     simple flat whitelists like `contracts_whitelist` (used for
+     UniswapV3 / Swapr V3 pools where each pool is its own contract
+     with its own ABI).
+
+     When the column is missing, fall back to using `cw.address`
+     directly so the JOIN and subquery references stay valid.
+
+     We introspect the relation at compile time via the adapter; the
+     `{% if execute %}` guard means this no-ops at parse time and only
+     runs once the model is actually being built.
+     ---------------------------------------------------------------- #}
+  {% set has_abi_source_col = false %}
+  {% if execute %}
+    {% set _cw_columns = adapter.get_columns_in_relation(contract_address_ref) %}
+    {% set _cw_column_names = _cw_columns | map(attribute='name') | map('lower') | list %}
+    {% if 'abi_source_address' in _cw_column_names %}
+      {% set has_abi_source_col = true %}
+    {% endif %}
+  {% endif %}
+
   {% set addr_filter = "lower(replaceAll(" ~ address_column ~ ", '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
   {% if abi_source_address %}
     {% set abi_filter = "replaceAll(lower(contract_address),'0x','') = '" ~ (abi_source_address | lower | replace('0x', '') | trim) ~ "'" %}
-  {% else %}
+  {% elif has_abi_source_col %}
     {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
+  {% else %}
+    {% set abi_filter = "replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM " ~ contract_address_ref ~ " cw" ~ type_where ~ ")" %}
   {% endif %}
 {% else %}
   {# EXISTING: Original logic - works exactly as before #}
@@ -176,8 +204,10 @@ logs_with_abi AS (
     l.*,
     {% if abi_source_address %}
     '{{ abi_source_address | lower | replace('0x', '') | trim }}' AS abi_join_address
-    {% else %}
+    {% elif has_abi_source_col %}
     lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) AS abi_join_address
+    {% else %}
+    lower(replaceAll(cw.address, '0x', '')) AS abi_join_address
     {% endif %}
   FROM logs l
   ANY LEFT JOIN {{ contract_address_ref }} cw
