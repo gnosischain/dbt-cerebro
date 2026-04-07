@@ -1,14 +1,13 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index, token_address)',
         unique_key='(block_timestamp, transaction_hash, log_index, token_address)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         pre_hook=[
-            "SET join_use_nulls = 0",
             "SET allow_experimental_json_type = 1"
         ],
         tags=['production', 'execution', 'pools', 'liquidity', 'intermediate']
