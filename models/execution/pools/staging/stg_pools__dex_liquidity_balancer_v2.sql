@@ -1,4 +1,4 @@
-{{ config(materialized='ephemeral') }}
+{{ config(materialized='view') }}
 
 {%- set start_month = var('start_month', none) -%}
 {%- set end_month   = var('end_month',   none) -%}

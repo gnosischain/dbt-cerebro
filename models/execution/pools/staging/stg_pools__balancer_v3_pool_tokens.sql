@@ -1,12 +1,4 @@
-{{
-    config(
-        materialized='table',
-        engine='ReplacingMergeTree()',
-        order_by='(pool_address, token_index)',
-        settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'balancer_v3', 'staging']
-    )
-}}
+{{ config(materialized='view') }}
 
 {#- Model documentation in schema.yml -#}
 
