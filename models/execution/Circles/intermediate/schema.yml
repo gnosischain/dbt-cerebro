@@ -844,19 +844,19 @@ models:
     description: Gateway URL fetched at materialization time.
     data_type: Nullable(String)
   - name: metadata_name
-    description: '`name` field extracted from the metadata JSON.'
+    description: '`name` field extracted from the metadata JSON. Populated for ~99.9% of fetched payloads.'
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from the metadata JSON. Rarely populated (group/org tokens only).'
     data_type: String
   - name: metadata_description
-    description: '`description` field extracted from the metadata JSON.'
+    description: '`description` field extracted from the metadata JSON. Populated for ~20% of payloads.'
     data_type: String
   - name: metadata_image_url
-    description: '`imageUrl` (or `image` fallback) from the metadata JSON.'
+    description: '`imageUrl` field from the metadata JSON. Populated for ~1.5% of payloads.'
     data_type: String
   - name: metadata_preview_image_url
-    description: '`previewImageUrl` from the metadata JSON.'
-    data_type: String
-  - name: metadata_attributes_json
-    description: Raw `attributes` array from the metadata JSON.
+    description: '`previewImageUrl` field from the metadata JSON. Populated for ~53% of payloads.'
     data_type: String
   - name: metadata_body
     description: Full raw response body for the current metadata digest.
@@ -864,4 +864,73 @@ models:
   - name: metadata_fetched_at
     description: Timestamp the current payload was fetched.
     data_type: Nullable(DateTime)
+  meta: *id002
+- name: int_execution_circles_v2_avatar_metadata_history
+  description: SCD-style historical view of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by the NameRegistry, in event order, with valid_from / valid_to / is_current columns so the dashboard can render the full timeline of name + image updates per avatar. Materialized incrementally; nightly runs recompute the full history only for avatars that received a new event since the previous build.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: onchain_name
+    description: Name set on-chain at registration (Group/Org only).
+    data_type: Nullable(String)
+  - name: metadata_digest
+    description: 0x-prefixed hex digest emitted by this UpdateMetadataDigest event.
+    data_type: String
+    tests:
+    - not_null
+  - name: ipfs_cid_v0
+    description: CIDv0 derived from `metadata_digest` (`base58Encode('1220' + digest)`).
+    data_type: String
+  - name: gateway_url
+    description: Full IPFS gateway URL using the configured `circles_ipfs_gateway` var.
+    data_type: String
+  - name: valid_from
+    description: Timestamp of the on-chain UpdateMetadataDigest event that introduced this digest.
+    data_type: DateTime64
+    tests:
+    - not_null
+  - name: valid_to
+    description: Timestamp of the next UpdateMetadataDigest event for this avatar. NULL on the most recent row.
+    data_type: Nullable(DateTime64)
+  - name: is_current
+    description: True when this row is the most recent metadata digest for the avatar.
+    data_type: Bool
+  - name: transaction_hash
+    description: Transaction hash of the on-chain event.
+    data_type: String
+  - name: log_index
+    description: Log index of the on-chain event.
+    data_type: UInt32
+  - name: metadata_name
+    description: '`name` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` field from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` field from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_body
+    description: Full raw response body for this historical metadata digest.
+    data_type: Nullable(String)
+  - name: metadata_fetched_at
+    description: Timestamp the IPFS payload for this digest was fetched.
+    data_type: Nullable(DateTime)
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - avatar
+      - metadata_digest
   meta: *id002

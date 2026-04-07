@@ -64,8 +64,21 @@ logging.basicConfig(
 logger = logging.getLogger("backfill_avatar_metadata")
 
 DEFAULT_GATEWAYS: Sequence[str] = (
+    # Protocol Labs (default). Good for popular pins, frequently 504s on
+    # obscure content because peer routing has to traverse the public DHT.
     "https://ipfs.io/ipfs/",
-    "https://cloudflare-ipfs.com/ipfs/",
+    # web3.storage / Storacha — independent infrastructure, broader peer
+    # reach. Often resolves what ipfs.io cannot.
+    "https://w3s.link/ipfs/",
+    # NFT.Storage / Storacha — same operator family as w3s.link but a
+    # different gateway frontend; sometimes catches different pins.
+    "https://nftstorage.link/ipfs/",
+    # 4everland — independent commercial gateway, additional fallback.
+    "https://4everland.io/ipfs/",
+    # Pinata public gateway — independent peer reach, last-resort fallback.
+    "https://gateway.pinata.cloud/ipfs/",
+    # Protocol Labs alt frontend (same backend as ipfs.io). Kept last so
+    # transient ipfs.io 504s still get one more chance.
     "https://dweb.link/ipfs/",
 )
 
@@ -267,6 +280,38 @@ def run(args: argparse.Namespace) -> int:
     fail = 0
     total = len(targets)
 
+    # Worst-case runtime estimate so the operator has a baseline
+    # before staring at silent output. Real time is usually much
+    # shorter because most fetches succeed on the first try.
+    worst_case_minutes = (
+        total
+        * len(DEFAULT_GATEWAYS)
+        * args.max_retries
+        * (args.request_timeout + 5)
+        / max(args.concurrency, 1)
+        / 60
+    )
+    logger.info(
+        "Worst-case runtime estimate at concurrency=%d: ~%.0f minutes "
+        "(real time will be much shorter if most fetches succeed on the first try)",
+        args.concurrency, worst_case_minutes,
+    )
+
+    # Heartbeat cadence: every N completions emit a progress line.
+    # Independent of batch_size so small runs (total < batch_size)
+    # still produce visible progress.
+    log_every = max(50, min(args.batch_size // 10, 500))
+
+    # Effective insert flush size: for small queues, lower it so
+    # partial results are durable mid-run instead of buffered until
+    # the very end.
+    effective_batch_size = min(args.batch_size, max(100, total // 4))
+    if effective_batch_size != args.batch_size:
+        logger.info(
+            "Small queue (%d targets): using effective insert batch size %d",
+            total, effective_batch_size,
+        )
+
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         futures = {
             pool.submit(
@@ -306,7 +351,14 @@ def run(args: argparse.Namespace) -> int:
             else:
                 fail += 1
 
-            if len(pending) >= args.batch_size:
+            # Heartbeat: visible progress regardless of insert cadence.
+            if i % log_every == 0:
+                logger.info(
+                    "Progress: %d/%d (%d ok / %d fail), pending insert buffer: %d",
+                    i, total, ok, fail, len(pending),
+                )
+
+            if len(pending) >= effective_batch_size:
                 logger.info(
                     "Inserting batch of %d (progress: %d/%d, %d ok / %d fail)",
                     len(pending), i, total, ok, fail,

@@ -1,6 +1,10 @@
 {{
     config(
-        materialized='view',
+        materialized='table',
+        engine='ReplacingMergeTree()',
+        order_by='avatar',
+        settings={'allow_nullable_key': 1},
+        pre_hook=["SET allow_experimental_json_type = 1"],
         tags=['production', 'execution', 'circles_v2', 'avatar_metadata']
     )
 }}
@@ -33,22 +37,19 @@ latest_raw AS (
       AND body != ''
 )
 SELECT
-    a.avatar,
-    a.avatar_type,
-    a.name AS onchain_name,
-    t.metadata_digest,
-    t.ipfs_cid_v0,
-    t.gateway_url,
-    JSONExtractString(r.body, 'name') AS metadata_name,
-    JSONExtractString(r.body, 'description') AS metadata_description,
-    coalesce(
-        nullIf(JSONExtractString(r.body, 'imageUrl'), ''),
-        JSONExtractString(r.body, 'image')
-    ) AS metadata_image_url,
-    JSONExtractString(r.body, 'previewImageUrl') AS metadata_preview_image_url,
-    JSONExtractRaw(r.body, 'attributes') AS metadata_attributes_json,
-    r.body AS metadata_body,
-    r.fetched_at AS metadata_fetched_at
+    a.avatar                                            AS avatar,
+    a.avatar_type                                       AS avatar_type,
+    a.name                                              AS onchain_name,
+    t.metadata_digest                                   AS metadata_digest,
+    t.ipfs_cid_v0                                       AS ipfs_cid_v0,
+    t.gateway_url                                       AS gateway_url,
+    JSONExtractString(r.body, 'name')                   AS metadata_name,
+    JSONExtractString(r.body, 'symbol')                 AS metadata_symbol,
+    JSONExtractString(r.body, 'description')            AS metadata_description,
+    JSONExtractString(r.body, 'imageUrl')               AS metadata_image_url,
+    JSONExtractString(r.body, 'previewImageUrl')        AS metadata_preview_image_url,
+    r.body                                              AS metadata_body,
+    r.fetched_at                                        AS metadata_fetched_at
 FROM {{ ref('int_execution_circles_v2_avatars') }} a
 LEFT JOIN current_target t
     ON a.avatar = t.avatar
