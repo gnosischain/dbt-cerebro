@@ -98,6 +98,22 @@ run_step "source-freshness" \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 
+# ── 1b. Circles avatar IPFS metadata fetch ───────────────────────────────
+# Refresh the deterministic queue view, then fetch any unresolved
+# (avatar, metadata_digest) pairs from the IPFS gateway. The historical
+# backfill is handled by scripts/circles/backfill_avatar_metadata.py;
+# this nightly step only handles the daily delta (typically hundreds).
+run_step "circles-metadata-targets" \
+  dbt run --select int_execution_circles_v2_avatar_metadata_targets \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
+run_step "circles-metadata-fetch" \
+  dbt run-operation fetch_and_insert_circles_metadata \
+  --args '{"batch_size": 500}' \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+
 # ── 2. Main pipeline ────────────────────────────────────────────────────
 # Batch the current production selection automatically from the dbt graph.
 # Batches are built from complete runnable chains, then grouped by chain count.

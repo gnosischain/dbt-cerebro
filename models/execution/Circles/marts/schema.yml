@@ -1,176 +1,647 @@
 version: 2
 models:
-
-- name: api_execution_circles_avatars
-  description: The api_execution_circles_avatars view aggregates daily counts of avatar types used in API executions within circles, providing insights into avatar usage trends over time.
+- name: api_execution_circles_v2_avatars
+  description: API view of daily avatar type counts and cumulative totals.
   columns:
-
   - name: date
     description: The specific date of the recorded avatar usage data.
     data_type: Date
     tests:
     - not_null:
         config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(date) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
   - name: avatar_type
-    description: The category or type of avatar used in API executions.
+    description: The category or type of avatar (Human, Group, Organization).
     data_type: String
-
   - name: cnt
-    description: The number of occurrences for a specific avatar type on the given date.
+    description: The number of new avatars registered on the given date.
     data_type: UInt64
-
   - name: total
-    description: The total number of avatar usage events recorded on the given date.
+    description: The cumulative total of avatars of this type up to the given date.
     data_type: UInt64
-  meta:
+  meta: &meta_api
     owner: analytics_team
     authoritative: false
-  tests:
+  tests: &elementary_error
   - elementary.schema_changes:
       severity: error
       tags:
       - elementary
-- name: api_execution_circles_backers_cnt_latest
-  description: This view provides the latest count of backers for API executions and the percentage change compared to the count from seven days prior, enabling trend analysis of backer engagement.
+- name: api_execution_circles_v2_groups_cnt_latest
+  description: Latest count of group avatars and 7-day percentage change.
   columns:
-
   - name: total
-    description: The total number of backers for API executions as of the most recent date or seven days prior, depending on the context.
+    description: The total number of group avatars at the latest date.
     data_type: UInt64
-
   - name: change_pct
-    description: Percentage change in backers count compared to 7 days ago, rounded to 1 decimal.
+    description: Percentage change in group count compared to 7 days ago, rounded to 1 decimal.
     data_type: Float64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: error
-      tags:
-      - elementary
-- name: api_execution_circles_groups_cnt_latest
-  description: This view provides the latest total count of group avatars and the percentage change compared to the count from seven days prior, enabling trend analysis of group activity.
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_humans_cnt_latest
+  description: Latest count of human avatars and 7-day percentage change.
   columns:
-
   - name: total
-    description: The total number of group avatars at the latest date and seven days prior, representing counts in the respective periods.
+    description: The total number of human avatars at the latest date.
     data_type: UInt64
-
   - name: change_pct
-    description: Percentage change in total circles compared to 7 days prior, rounded to 1 decimal.
+    description: Percentage change in human count compared to 7 days ago.
     data_type: Float64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: error
-      tags:
-      - elementary
-- name: api_execution_circles_humans_cnt_latest
-  description: This view provides the latest count of human avatars and the percentage change compared to the count from seven days prior, facilitating trend analysis of human avatar activity.
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_orgs_cnt_latest
+  description: Latest count of organization avatars and 7-day percentage change.
   columns:
-
   - name: total
-    description: The total number of human avatars recorded at the specified date.
+    description: The total number of organization avatars at the latest date.
     data_type: UInt64
-
   - name: change_pct
-    description: Percentage change in human count compared to data from 7 days ago.
+    description: Percentage change in organization count compared to 7 days ago.
     data_type: Float64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: error
-      tags:
-      - elementary
-- name: api_execution_circles_orgs_cnt_latest
-  description: This view provides the latest count of organization avatars and the percentage change compared to the count from seven days prior, supporting trend analysis of organizational activity.
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_metadata
+  description: Per-avatar identity for Circles v2 — on-chain registration metadata (type, name, inviter, registration time) joined to the most recently fetched IPFS profile (display name, preview/image URL, description). Backs the "Avatar Identity" panel on the Circles dashboard.
   columns:
-
-  - name: total
-    description: The total number of organization avatars at the specified date, representing the count of organizations in the system.
-    data_type: UInt64
-
-  - name: change_pct
-    description: Percentage change in organization count compared to 7 days prior, rounded to one decimal place.
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: invited_by
+    description: Address of the avatar that invited this avatar (NULL for Groups/Orgs).
+    data_type: String
+  - name: name
+    description: On-chain name set at registration (NULL for Humans).
+    data_type: String
+  - name: token_id
+    description: Personal token contract address (NULL for Orgs).
+    data_type: String
+  - name: registered_at
+    description: UTC timestamp of the registration event.
+    data_type: DateTime64
+  - name: current_metadata_digest
+    description: 0x-prefixed hex digest of the most recent metadata payload announced for this avatar by NameRegistry. NULL when the avatar has never published an IPFS profile.
+    data_type: Nullable(String)
+  - name: current_ipfs_cid_v0
+    description: CIDv0 derived from `current_metadata_digest`.
+    data_type: Nullable(String)
+  - name: current_gateway_url
+    description: Full IPFS gateway URL for the current digest using the configured `circles_ipfs_gateway` var.
+    data_type: Nullable(String)
+  - name: metadata_name
+    description: Display `name` field extracted from the current IPFS profile JSON. Populated for ~99.9% of resolved avatars.
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from the current profile JSON. Rarely populated (group/org tokens only).'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from the current profile JSON. Populated for ~20% of avatars.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` field from the current profile JSON. Rarely populated (~1.5%); prefer `metadata_preview_image_url` for thumbnails.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` field from the current profile JSON. Populated for ~53% of avatars.'
+    data_type: String
+  - name: metadata_fetched_at
+    description: Timestamp the current IPFS payload was fetched from the gateway.
+    data_type: Nullable(DateTime)
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_search
+  description: Lightweight (avatar, display_name) lookup mart used by the dashboard global filter to support searching avatars by display name OR address. One row per registered Circles v2 avatar. `display_name` prefers the IPFS profile name and falls back to the on-chain name; empty string when neither is set.
+  columns:
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+  - name: display_name
+    description: IPFS profile name with on-chain name fallback (empty when neither is set).
+    data_type: String
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_metadata_history
+  description: Historical timeline of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by NameRegistry, in event order, with valid_from / valid_to / is_current columns. Backs the "Metadata History" panel on the Circles dashboard.
+  columns:
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: onchain_name
+    description: On-chain name set at registration (Group/Org only).
+    data_type: Nullable(String)
+  - name: metadata_digest
+    description: 0x-prefixed hex digest emitted by this UpdateMetadataDigest event.
+    data_type: String
+  - name: ipfs_cid_v0
+    description: CIDv0 derived from `metadata_digest`.
+    data_type: String
+  - name: gateway_url
+    description: Full IPFS gateway URL for this digest version.
+    data_type: String
+  - name: valid_from
+    description: Timestamp of the on-chain UpdateMetadataDigest event that introduced this digest.
+    data_type: DateTime64
+  - name: valid_to
+    description: Timestamp of the next UpdateMetadataDigest event for this avatar. NULL on the most recent row.
+    data_type: Nullable(DateTime64)
+  - name: is_current
+    description: True when this row is the most recent metadata digest for the avatar.
+    data_type: Bool
+  - name: transaction_hash
+    description: Transaction hash of the on-chain event.
+    data_type: String
+  - name: log_index
+    description: Log index of the on-chain event.
+    data_type: UInt32
+  - name: metadata_name
+    description: Display `name` field extracted from this historical version's profile JSON.
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from this historical version''s profile JSON.'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from this historical version''s profile JSON.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` field from this historical version''s profile JSON.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` field from this historical version''s profile JSON.'
+    data_type: String
+  - name: metadata_fetched_at
+    description: Timestamp the IPFS payload for this digest was fetched from the gateway.
+    data_type: Nullable(DateTime)
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_balances_latest
+  description: Latest per-token CRC balance for each avatar (one row per avatar/token). Includes an `is_wrapped` flag indicating whether the token is an ERC-20 wrapper around a personal CRC token.
+  columns:
+  - name: avatar
+    description: Address of the avatar holding the balance.
+    data_type: String
+  - name: token_address
+    description: Address of the Circles token contract.
+    data_type: String
+  - name: is_wrapped
+    description: True when the token is an ERC-20 wrapper around a personal CRC token (registered in `int_execution_circles_v2_wrappers`); false when it is the underlying ERC-1155 personal CRC token.
+    data_type: Bool
+  - name: balance
+    description: Static balance in token units (raw / 1e18).
     data_type: Float64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: error
-      tags:
-      - elementary
-- name: fct_execution_circles_avatars
-  description: The fct_execution_circles_avatars model provides a daily time series of avatar type counts within execution circles, enabling trend analysis and data completeness checks over a specified
-    date range.
+  - name: balance_demurraged
+    description: Demurrage-adjusted balance in token units.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_balances_daily
+  description: Daily CRC balance per avatar broken down by token (one row per avatar/date/token).
   columns:
-
-  - name: min_date
-    description: The earliest date present in the source data, indicating the start of the data range.
-    data_type: Date
-
-  - name: max_date
-    description: The latest date present in the source data, indicating the end of the data range.
-    data_type: Date
-
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
   - name: date
-    description: Date in 'YYYY-MM-DD' format.
+    description: Calendar date of the balance snapshot.
     data_type: Date
-
-  - name: avatar_type
-    description: Type/category of avatar.
+  - name: token_address
+    description: Address of the Circles token contract held on that date.
     data_type: String
-
-  - name: cnt
-    description: Count of avatars for given date and type.
+  - name: balance
+    description: Static balance held in the token on that date.
+    data_type: Float64
+  - name: balance_demurraged
+    description: Demurrage-adjusted balance held in the token on that date.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_trusts_daily
+  description: Daily cumulative trusts given and received per avatar.
+  columns:
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: trusts_given_count
+    description: Cumulative count of outgoing trust relationships.
+    data_type: Int64
+  - name: trusts_received_count
+    description: Cumulative count of incoming trust relationships.
+    data_type: Int64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_trusts_summary
+  description: Latest snapshot of cumulative trusts given and received per avatar.
+  columns:
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
+  - name: trusts_given_count
+    description: Cumulative count of outgoing trust relationships at latest day.
+    data_type: Int64
+  - name: trusts_received_count
+    description: Cumulative count of incoming trust relationships at latest day.
+    data_type: Int64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_tokens_held_count
+  description: Per-avatar count of distinct CRC tokens currently held with a balance above the 0.001 CRC dust threshold (1e15 raw wei). Backs the "Tokens Held" KPI card on the Circles Avatar tab.
+  columns:
+  - name: avatar
+    description: Address of the avatar holding the tokens.
+    data_type: String
+  - name: tokens_held_count
+    description: Number of distinct token contracts the avatar holds with > 0.001 CRC.
     data_type: UInt64
-
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_trust_network
+  description: Trust-network edge list per Circles v2 avatar. One row per active trust relation, with source/target endpoints, display names, IPFS preview images for both endpoints, and a `direction` column ("Mutual", "Trust given", "Trust received") that drives the dashboard graph panel's edge colouring. Backs the "Trust Network" panel on the Circles Avatar tab.
+  columns:
+  - name: avatar
+    description: The focal avatar this row belongs to (used by the dashboard's avatar global filter).
+    data_type: String
+  - name: source_id
+    description: Address of the truster on this edge.
+    data_type: String
+  - name: target_id
+    description: Address of the trustee on this edge.
+    data_type: String
+  - name: source_name
+    description: Display name of the source endpoint (IPFS profile name → on-chain name → truncated address).
+    data_type: String
+  - name: target_name
+    description: Display name of the target endpoint (IPFS profile name → on-chain name → truncated address).
+    data_type: String
+  - name: source_image
+    description: IPFS preview image URL of the source endpoint, or empty when no profile image is published.
+    data_type: String
+  - name: target_image
+    description: IPFS preview image URL of the target endpoint, or empty when no profile image is published.
+    data_type: String
+  - name: direction
+    description: 'One of "Mutual" / "Trust given" / "Trust received" — drives the edgeStyleField on the dashboard graph panel so each direction renders in its own colour. Mutual relationships emit two rows (one per direction) so both arrows render.'
+    data_type: String
+  - name: source_layer
+    description: 'Concentric ring assignment for the source endpoint. "Focal avatar" when the source IS the focal avatar (centre), otherwise the direction label (Mutual / Trust given / Trust received) so the counterparty lands on the correct ring.'
+    data_type: String
+  - name: target_layer
+    description: 'Concentric ring assignment for the target endpoint. "Focal avatar" when the target IS the focal avatar (centre), otherwise the direction label.'
+    data_type: String
+  - name: value
+    description: Constant 1 (trust edges are unweighted; the column exists so the chart engine can size nodes by degree).
+    data_type: UInt8
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_mint_activity_daily
+  description: Daily personal-mint activity per Circles v2 avatar — number of mint events and total CRC minted that day. A mint is a Hub TransferSingle from the zero address. Backs the "Mint Activity" panel on the Circles Avatar tab.
+  columns:
+  - name: avatar
+    description: Address of the avatar receiving the mint.
+    data_type: String
+  - name: date
+    description: Calendar date of the mint events (UTC).
+    data_type: Date
+  - name: mint_events
+    description: Number of personalMint() calls that landed on this day for the avatar.
+    data_type: UInt64
+  - name: amount_minted
+    description: Total CRC minted to the avatar on this day (raw / 1e18).
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_token_distribution
+  description: For each Circles v2 avatar's personal CRC token (the ERC-1155 token whose token_address equals the avatar address), classifies all current holders into Self / Wrapped (ERC-20) / Other Circles avatars / Other contracts. One row per (avatar, holder_category) — the dashboard's avatar global filter selects which avatar's token distribution to inspect.
+  columns:
+  - name: avatar
+    description: The avatar whose personal CRC token is being inspected.
+    data_type: String
+  - name: holder_category
+    description: One of Self, Wrapped (ERC-20), Other Circles avatars, Other contracts.
+    data_type: String
+  - name: holder_count
+    description: Number of distinct accounts in this category that hold the avatar's CRC token (above the 0.001 CRC dust threshold).
+    data_type: UInt64
+  - name: balance
+    description: Sum of static CRC balances held by accounts in this category.
+    data_type: Float64
+  - name: balance_demurraged
+    description: Sum of demurrage-adjusted CRC balances held by accounts in this category.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatar_trust_relations
+  description: Current active trust relations pivoted to one row per (avatar, counterparty) pair with direction (outgoing, incoming, or mutual) and the timestamps of each direction.
+  columns:
+  - name: avatar
+    description: The avatar address.
+    data_type: String
+  - name: counterparty
+    description: The other side of the trust relation.
+    data_type: String
+  - name: direction
+    description: 'outgoing if avatar trusts counterparty only; incoming if counterparty trusts avatar only; mutual if both directions exist.'
+    data_type: String
+  - name: outgoing_from
+    description: Start timestamp of the outgoing trust (avatar -> counterparty); NULL if no outgoing trust exists.
+    data_type: DateTime64
+  - name: incoming_from
+    description: Start timestamp of the incoming trust (counterparty -> avatar); NULL if no incoming trust exists.
+    data_type: DateTime64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_avatars_current
+  description: API view of current Circles v2 avatar registrations.
+  columns:
+  - name: block_number
+    description: Block number of the latest registration event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Block timestamp of the latest registration event.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Transaction hash of the latest registration event.
+    data_type: String
+  - name: transaction_index
+    description: Transaction index within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Log index within the transaction.
+    data_type: UInt64
+  - name: avatar_type
+    description: Type of avatar (Human, Org, Group).
+    data_type: String
+  - name: invited_by
+    description: Address of the avatar that invited this avatar.
+    data_type: String
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+  - name: token_id
+    description: Token ID associated with the avatar.
+    data_type: String
+  - name: name
+    description: Display name of the avatar.
+    data_type: String
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_trust_relations_current
+  description: API view of current active Circles v2 trust relations.
+  columns:
+  - name: truster
+    description: Address of the avatar granting trust.
+    data_type: String
+  - name: trustee
+    description: Address of the avatar receiving trust.
+    data_type: String
+  - name: valid_from
+    description: Start timestamp of the trust relation validity period.
+    data_type: DateTime64
+  - name: valid_to
+    description: End timestamp of the trust relation validity period.
+    data_type: DateTime64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_active_trusts_daily
+  description: API view of daily active trust count time series.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: new_trusts
+    description: Trust relationships created on this date.
+    data_type: Int64
+  - name: revoked_trusts
+    description: Trust relationships revoked/expired on this date.
+    data_type: Int64
+  - name: active_trusts
+    description: Cumulative active trust count.
+    data_type: Int64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_total_supply_daily
+  description: API view of daily network-wide CRC supply.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: value
+    description: Total CRC supply (nominal).
+    data_type: Float64
+  - name: value_demurraged
+    description: Total CRC supply (demurrage-adjusted).
+    data_type: Float64
+  - name: token_count
+    description: Number of distinct tokens with non-zero supply.
+    data_type: UInt64
+  meta: *meta_api
+  tests: *elementary_error
+- name: api_execution_circles_v2_supply_by_holder_type_daily
+  description: API view of daily CRC supply breakdown by holder type (avatar type or Dune label sector).
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: label
+    description: Holder classification (Human, Group, Organization, DEX, Wallets and AA, etc.).
+    data_type: String
+  - name: value
+    description: Nominal supply held by this holder type in CRC.
+    data_type: Float64
+  - name: value_demurraged
+    description: Demurrage-adjusted supply held by this holder type in CRC.
+    data_type: Float64
+  - name: holder_count
+    description: Number of distinct addresses in this holder type.
+    data_type: UInt64
+  meta: *meta_api
+  tests: *elementary_error
+- name: fct_execution_circles_v2_avatars
+  description: Dense daily time series of avatar type counts with cumulative totals.
+  columns:
+  - name: min_date
+    description: The earliest date present in the source data.
+    data_type: Date
+  - name: max_date
+    description: The latest date present in the source data.
+    data_type: Date
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: avatar_type
+    description: Type/category of avatar (Human, Group, Organization).
+    data_type: String
+  - name: cnt
+    description: Count of new avatars for given date and type.
+    data_type: UInt64
   - name: total
     description: Cumulative sum of counts over time per avatar type.
     data_type: UInt64
-  meta:
+  meta: &meta_fct
     owner: analytics_team
     authoritative: false
-  tests:
+  tests: &elementary_warn
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
-- name: fct_execution_circles_backing
-  description: The fct_execution_circles_backing model provides a daily cumulative count of execution circle backing events, facilitating trend analysis over time.
+- name: fct_execution_circles_v2_avatar_trusts_daily
+  description: Daily cumulative trust statistics per avatar (trusts given and received).
   columns:
-
-  - name: min_date
-    description: The earliest date present in the backing events dataset.
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
+  - name: day
+    description: Calendar date.
     data_type: Date
-
-  - name: max_date
-    description: The latest date present in the backing events dataset.
-    data_type: Date
-
+  - name: trusts_given_count
+    description: Cumulative count of outgoing trust relationships.
+    data_type: Int64
+  - name: trusts_received_count
+    description: Cumulative count of incoming trust relationships.
+    data_type: Int64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_trust_relations_current
+  description: Current active trust relations for Circles v2, derived from trust_pair_ranges.
+  columns:
+  - name: truster
+    description: Address of the avatar granting trust.
+    data_type: String
+  - name: trustee
+    description: Address of the avatar receiving trust.
+    data_type: String
+  - name: valid_from
+    description: Start timestamp of the trust relation validity period.
+    data_type: DateTime64
+  - name: valid_to
+    description: End timestamp of the trust relation validity period.
+    data_type: DateTime64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_active_trusts_daily
+  description: Dense daily time series of network-wide active trust relationships.
+  columns:
   - name: date
-    description: Date in the series generated from min_date to max_date.
-    data_type: DateTime
-
-  - name: cnt
-    description: Count of execution circles for the specific date.
+    description: Calendar date.
+    data_type: Date
+  - name: new_trusts
+    description: Number of new trust relationships created on this date.
+    data_type: Int64
+  - name: revoked_trusts
+    description: Number of trust relationships revoked or expired on this date.
+    data_type: Int64
+  - name: active_trusts
+    description: Cumulative count of currently active trust relationships.
+    data_type: Int64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_trusts_distribution
+  description: Distribution histogram of trust degree (given/received) across avatars.
+  columns:
+  - name: direction
+    description: Trust direction ('given' or 'received').
+    data_type: String
+  - name: trust_bucket
+    description: Bucket label for number of trusts (e.g. '1-5', '6-10', '100+').
+    data_type: String
+  - name: avatar_count
+    description: Number of avatars falling into this bucket.
     data_type: UInt64
-
-  - name: total
-    description: Cumulative total of execution circles up to the current date.
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_stats_current
+  description: Current aggregate statistics for Circles v2 (avatar, trust, token, wrapper counts).
+  columns:
+  - name: measure
+    description: Name of the statistic (e.g. avatar_count_v2, human_count_v2, active_trust_count_v2).
+    data_type: String
+  - name: value
+    description: Numeric value of the statistic.
     data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_tokens_supply_daily
+  description: Daily per-token CRC supply derived from the zero-address balance in balances_daily.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: supply_raw
+    description: Raw supply in token base units (negated zero-address balance).
+    data_type: Int256
+  - name: supply
+    description: Supply in CRC (divided by 1e18).
+    data_type: Float64
+  - name: demurraged_supply
+    description: Demurrage-adjusted supply in CRC.
+    data_type: Float64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_total_supply_daily
+  description: Network-wide daily total CRC supply aggregated across all tokens.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: total_supply_raw
+    description: Total raw supply across all tokens in base units.
+    data_type: Int256
+  - name: total_supply
+    description: Total supply in CRC.
+    data_type: Float64
+  - name: total_demurraged_supply
+    description: Total demurrage-adjusted supply in CRC.
+    data_type: Float64
+  - name: token_count
+    description: Number of distinct tokens with non-zero supply.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_supply_by_holder_type_daily
+  description: Daily CRC supply breakdown by holder type (avatar type or Dune label sector).
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: holder_type
+    description: Holder classification (Human, Group, Organization, DEX, Wallets and AA, Other, etc.).
+    data_type: String
+  - name: supply
+    description: Total nominal balance held by this holder type in CRC.
+    data_type: Float64
+  - name: demurraged_supply
+    description: Total demurrage-adjusted balance held by this holder type in CRC.
+    data_type: Float64
+  - name: holder_count
+    description: Number of distinct accounts of this holder type with positive balance.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_inviters_ranking
+  description: Leaderboard of top inviters by number of human avatars invited.
+  columns:
+  - name: invited_by
+    description: Address of the inviting avatar.
+    data_type: String
+  - name: invite_count
+    description: Total number of humans invited by this avatar.
+    data_type: UInt64
+  - name: first_invite_ts
+    description: Timestamp of the first invitation.
+    data_type: DateTime64
+  - name: last_invite_ts
+    description: Timestamp of the most recent invitation.
+    data_type: DateTime64
+  - name: rank
+    description: Rank position by invite count (1 = most invites).
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn

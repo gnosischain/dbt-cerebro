@@ -1,143 +1,936 @@
 version: 2
 models:
-
-- name: int_execution_circles_backing
-  description: The `int_execution_circles_backing` model aggregates daily counts of completed circles backing events to monitor execution volume and trends over time.
-  columns:
-
-  - name: date
-    description: The start of the day (UTC) for which the backing event counts are aggregated.
-    data_type: DateTime64
-    tests:
-    - not_null:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: cnt
-    description: The total number of 'CirclesBackingCompleted' events recorded on the given date.
-    data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
-- name: int_execution_circles_transitive_transfers
-  description: The model calculates daily transitive transfer volumes between avatars involved in circle-based contracts, aggregating total amounts and transfer counts for each avatar pair.
-  columns:
-
-  - name: date
-    description: The date (at day granularity) when the transfer event occurred.
-    data_type: Date
-    tests:
-    - not_null:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: AS
-    description: ''
-    data_type: ''
-
-  - name: from_avatar
-    description: Originator address extracted from decoded parameters.
-    data_type: String
-
-  - name: to_avatar
-    description: Recipient address extracted from decoded parameters.
-    data_type: String
-
-  - name: total_amount
-    description: Sum of amounts (in wei) transferred within the circle.
-    data_type: UInt64
-
-  - name: cnt
-    description: Count of transfer events aggregated.
-    data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-  tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
 - name: int_execution_circles_v1_avatars
-  description: The model tracks user registration events related to avatars within the execution circles, capturing registration timestamps, user addresses, and inviter information for analytical purposes.
+  description: Circles v1 signup events normalized into avatar registrations.
   columns:
-
+  - name: block_number
+    description: Block number containing the signup event.
+    data_type: UInt64
   - name: block_timestamp
-    description: The timestamp when the registration event occurred, indicating the exact time of user registration.
+    description: UTC timestamp when the signup event occurred.
     data_type: DateTime64
     tests:
     - not_null:
         config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: user_address
-    description: The blockchain address of the user who registered an avatar, decoded from event parameters.
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: transaction_hash
+    description: Hash of the transaction.
     data_type: String
-
-  - name: inviter_address
-    description: The blockchain address of the inviter who referred the new user, decoded from event parameters.
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: avatar_type
+    description: Avatar category (Human or Org).
     data_type: String
-  meta:
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: token_id
+    description: Address of the personal token created at signup (NULL for Orgs).
+    data_type: Nullable(String)
+  meta: &id003
     owner: analytics_team
     authoritative: false
-  tests:
+    full_refresh:
+      start_date: '2020-10-01'
+      batch_months: 6
+  tests: &id001
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 - name: int_execution_circles_v2_avatars
-  description: This model aggregates daily counts of avatar registrations by type (Human, Group, Organization) to monitor user onboarding activities within the platform.
+  description: Circles v2 avatar registration events (Human, Group, Org) normalized for downstream analytics.
   columns:
-
-  - name: date
-    description: The date (at day granularity) when the registration events occurred.
+  - name: block_number
+    description: Block number containing the registration event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the registration event.
     data_type: DateTime64
     tests:
     - not_null:
         config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: avatar_type
-    description: The category of the registered avatar, classified as Human, Group, or Organization.
-    data_type: String
-
-  - name: cnt
-    description: The total number of registration events for the given avatar type on the specified date.
-    data_type: UInt64
-
-  - name: block_timestamp
-    description: UTC timestamp of the block containing the event.
-    data_type: DateTime
-
-  - name: event_name
-    description: Name of the registration event ('RegisterHuman', 'RegisterGroup', 'RegisterOrganization').
-    data_type: String
-
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
   - name: transaction_hash
-    description: Hash of the transaction that triggered the event.
+    description: Hash of the transaction.
     data_type: String
-
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: avatar_type
+    description: Avatar category (Human, Group, or Org).
+    data_type: String
+  - name: invited_by
+    description: Address that invited this human (NULL for Groups/Orgs).
+    data_type: Nullable(String)
+  - name: avatar
+    description: Address of the registered avatar.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: token_id
+    description: Token ID for the avatar (NULL for Orgs).
+    data_type: Nullable(String)
+  - name: name
+    description: Name registered for Groups and Orgs (NULL for Humans).
+    data_type: Nullable(String)
+  meta: &id002
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: '2024-10-01'
+      batch_months: 6
+  tests: *id001
+- name: int_execution_circles_v2_backing
+  description: Captures Circles backing lifecycle events with decoded participants and metadata for downstream analytics.
+  columns:
+  - name: block_number
+    description: Block number containing the backing event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the backing event.
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: transaction_hash
+    description: Hash of the transaction containing the backing event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: event_name
+    description: Name of the Circles backing event.
+    data_type: String
+  - name: lifecycle_stage
+    description: Normalized backing lifecycle stage derived from the event name.
+    data_type: String
+  - name: backer
+    description: Address of the entity initiating the backing.
+    data_type: Nullable(String)
+  - name: circles_backing_instance
+    description: Address of the deployed CirclesBacking contract instance.
+    data_type: Nullable(String)
+  - name: lbp
+    description: Address of the LBP contract deployed for the backing.
+    data_type: Nullable(String)
+  - name: backing_asset
+    description: Address of the asset used as backing collateral.
+    data_type: Nullable(String)
+  - name: personal_circles_address
+    description: Address of the personal Circles token being backed.
+    data_type: Nullable(String)
+  - name: event_params
+    description: Full decoded event parameters map.
+    data_type: Map(String, String)
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_wrapper_transfers
+  description: ERC20 Transfer events for Circles v2 wrapper tokens parsed from raw logs.
+  columns:
+  - name: block_number
+    description: Block number containing the transfer.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: token_address
+    description: Address of the ERC20 wrapper token contract.
+    data_type: String
   - name: from_address
-    description: Address that initiated the registration.
+    description: Sender address.
     data_type: String
-
   - name: to_address
-    description: Recipient address associated with the registration.
+    description: Recipient address.
     data_type: String
-
-  - name: registration_event_id
-    description: Unique identifier for the registration event.
+  - name: amount_raw
+    description: Raw transfer amount in token base units.
+    data_type: UInt256
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v1_transfers
+  description: Circles v1 ERC20 transfers normalized into the common transfer schema.
+  columns:
+  - name: block_number
+    description: Block number containing the transfer.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
     data_type: String
-
-  - name: source_table
-    description: Source table name for lineage tracking.
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: batch_index
+    description: Index within a TransferBatch (always 0 for v1).
+    data_type: UInt64
+  - name: operator
+    description: Address of the operator (always NULL for v1).
+    data_type: Nullable(String)
+  - name: from_address
+    description: Sender address.
     data_type: String
+  - name: to_address
+    description: Recipient address.
+    data_type: String
+  - name: token_id
+    description: Token ID (same as token_address for v1).
+    data_type: String
+  - name: amount_raw
+    description: Raw transfer amount in token base units.
+    data_type: UInt256
+  - name: token_address
+    description: Address of the ERC20 token contract.
+    data_type: String
+  - name: transfer_type
+    description: Transfer classification (CrcV1_Transfer).
+    data_type: String
+  meta: *id003
+  tests: *id001
+- name: int_execution_circles_v2_hub_transfers
+  description: Circles v2 ERC-1155 TransferSingle and TransferBatch events from the Hub, exploded into individual rows.
+  columns:
+  - name: block_number
+    description: Block number containing the transfer.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: batch_index
+    description: Index within a TransferBatch (0 for TransferSingle).
+    data_type: UInt64
+  - name: operator
+    description: Address of the operator that initiated the transfer.
+    data_type: String
+  - name: from_address
+    description: Sender address.
+    data_type: String
+  - name: to_address
+    description: Recipient address.
+    data_type: String
+  - name: token_id
+    description: ERC-1155 token ID (avatar address encoded as uint256).
+    data_type: String
+  - name: amount_raw
+    description: Raw transfer amount in token base units.
+    data_type: UInt256
+  - name: token_address
+    description: Avatar address derived from token_id.
+    data_type: String
+  - name: transfer_type
+    description: Transfer classification (CrcV2_TransferSingle or CrcV2_TransferBatch).
+    data_type: String
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_transfers
+  description: Unified Circles v2 transfers combining Hub ERC-1155 and ERC-20 wrapper transfers. Static wrapper amounts are converted to demurrage units.
+  columns:
+  - name: block_number
+    description: Block number containing the transfer.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: batch_index
+    description: Index within a TransferBatch (0 for single and wrapper transfers).
+    data_type: UInt64
+  - name: operator
+    description: Address of the operator that initiated the transfer (empty for wrapper transfers).
+    data_type: String
+  - name: from_address
+    description: Sender address.
+    data_type: String
+  - name: to_address
+    description: Recipient address.
+    data_type: String
+  - name: token_address
+    description: Avatar address for Hub transfers, wrapper contract address for ERC-20 wrapper transfers.
+    data_type: String
+  - name: amount_raw
+    description: Original on-chain transfer amount in token base units (18 decimals). In demurrage units for Hub transfers and demurrage wrappers, in static units for static wrappers.
+    data_type: UInt256
+  - name: amount_demurraged_raw
+    description: Transfer amount converted to demurrage units. For static wrappers (circlesType=1), this is amount_raw multiplied by the demurrage factor at transfer time. For demurrage transfers, equals amount_raw.
+    data_type: UInt256
+  - name: unit_type
+    description: Original unit type of the transfer amount ('demurrage' or 'static').
+    data_type: String
+  - name: transfer_type
+    description: Transfer classification (CrcV2_TransferSingle, CrcV2_TransferBatch, or CrcV2_ERC20WrapperTransfer).
+    data_type: String
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v1_balance_diffs
+  description: Per-account balance deltas derived from v1 transfers, with positive and negative entries for each side.
+  columns: &id005
+  - name: block_number
+    description: Block number containing the transfer.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: batch_index
+    description: Index within a TransferBatch (0 for single events).
+    data_type: UInt64
+  - name: account
+    description: Address of the account whose balance changed.
+    data_type: String
+  - name: counterparty
+    description: Address of the other party in the transfer.
+    data_type: String
+  - name: token_id
+    description: Token ID of the transferred token.
+    data_type: String
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: delta_raw
+    description: Signed balance change in token base units (negative for debits, positive for credits).
+    data_type: Int256
+  - name: transfer_type
+    description: Transfer classification (e.g. CrcV1_Transfer, CrcV2_TransferSingle).
+    data_type: String
+  meta: *id003
+  tests: *id001
+- name: int_execution_circles_v2_balance_diffs_daily
+  description: Daily aggregated per-account balance deltas derived from unified v2 transfers. One row per (date, account, token_address).
+  columns:
+  - name: date
+    description: Calendar date of the balance change.
+    data_type: Date
+  - name: account
+    description: Address of the account whose balance changed.
+    data_type: String
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: delta_raw
+    description: Net signed balance change for the day in token base units (sum of debits and credits).
+    data_type: Int256
+  - name: last_activity_ts
+    description: Unix timestamp of the latest transfer activity for this account/token on this day.
+    data_type: UInt64
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v1_balances_daily
+  description: Daily end-of-day token balances per account for Circles v1 tokens.
+  columns: &id006
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+  - name: account
+    description: Address of the token holder.
+    data_type: String
+  - name: token_id
+    description: Token ID of the held token.
+    data_type: String
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: balance_raw
+    description: Cumulative nominal balance in token base units.
+    data_type: Int256
+  - name: last_activity_ts
+    description: Unix timestamp of the most recent transfer activity for this position.
+    data_type: UInt64
+  - name: snapshot_ts
+    description: Unix timestamp used for the end-of-day snapshot (end of day or chain now for today).
+    data_type: UInt64
+  - name: demurraged_balance_raw
+    description: Balance after applying demurrage decay (identity for v1, time-decayed for v2).
+    data_type: UInt256
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: '2020-10-01'
+      batch_months: 6
+  tests: *id001
+- name: int_execution_circles_v2_balances_daily
+  description: Daily end-of-day token balances per account for Circles v2 tokens with demurrage adjustment.
+  columns:
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+  - name: account
+    description: Address of the token holder.
+    data_type: String
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: balance_raw
+    description: Cumulative nominal balance in demurrage units.
+    data_type: Int256
+  - name: last_activity_ts
+    description: Unix timestamp of the most recent transfer activity for this position.
+    data_type: UInt64
+  - name: snapshot_ts
+    description: Unix timestamp used for the end-of-day snapshot (end of day or chain now for today).
+    data_type: UInt64
+  - name: demurraged_balance_raw
+    description: Balance after applying demurrage decay.
+    data_type: Int256
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: '2024-10-01'
+      batch_months: 1
+  tests: *id001
+- name: int_execution_circles_v2_balance_cohorts_daily
+  description: Daily distribution of CRC holders across balance buckets, aggregated from daily balances.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: balance_bucket
+    description: Balance range bucket label (e.g. '0-1', '1-10', '100k+').
+    data_type: String
+  - name: holder_count
+    description: Number of distinct holders in this bucket.
+    data_type: UInt64
+  - name: total_balance
+    description: Sum of nominal balances in this bucket in CRC.
+    data_type: Float64
+  - name: total_demurraged_balance
+    description: Sum of demurrage-adjusted balances in this bucket in CRC.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: '2024-10-01'
+      batch_months: 1
+  tests: *id001
+- name: int_execution_circles_v1_trust_updates
+  description: Raw trust update events from Circles v1 Trust events, normalized into a common schema.
+  columns:
+  - name: block_number
+    description: Block number containing the trust event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: truster
+    description: Address of the entity granting trust.
+    data_type: String
+  - name: trustee
+    description: Address of the entity receiving trust.
+    data_type: String
+  - name: trust_limit
+    description: Trust limit value from the v1 Trust event.
+    data_type: UInt256
+  - name: trust_value
+    description: String representation of the trust limit.
+    data_type: String
+  - name: updated_at
+    description: Timestamp when the trust was last updated.
+    data_type: DateTime64
+  meta: *id003
+  tests: *id001
+- name: int_execution_circles_v2_trust_updates
+  description: Raw trust update events from Circles v2 Trust events, normalized into a common schema.
+  columns:
+  - name: block_number
+    description: Block number containing the trust event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: truster
+    description: Address of the entity granting trust.
+    data_type: String
+  - name: trustee
+    description: Address of the entity receiving trust.
+    data_type: String
+  - name: expiry_time
+    description: Unix timestamp when the trust expires (0 means no expiry).
+    data_type: UInt256
+  - name: trust_value
+    description: String representation of the trust expiry time.
+    data_type: String
+  - name: updated_at
+    description: Timestamp when the trust was last updated.
+    data_type: DateTime64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: '2024-10-01'
+      batch_months: 24
+  tests: *id001
+- name: int_execution_circles_v1_trust_relations
+  description: Intervalized trust relations for Circles v1 with valid_from/valid_to windows and active status.
+  columns:
+  - name: block_number
+    description: Block number of the trust event creating this relation.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the trust event.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: truster
+    description: Address of the entity granting trust.
+    data_type: String
+  - name: trustee
+    description: Address of the entity receiving trust.
+    data_type: String
+  - name: trust_value
+    description: String representation of the trust limit.
+    data_type: String
+  - name: trust_limit
+    description: Numeric trust limit value from the v1 Trust event.
+    data_type: UInt256
+  - name: valid_from
+    description: Start of the trust validity interval.
+    data_type: DateTime64
+  - name: valid_to
+    description: End of the trust validity interval (NULL if still active).
+    data_type: Nullable(DateTime)
+  - name: is_active
+    description: Whether the trust relation is currently active (1 if trust_limit > 0).
+    data_type: UInt8
+  - name: updated_at
+    description: Timestamp when the trust was last updated.
+    data_type: DateTime64
+  meta: *id003
+  tests: *id001
+- name: int_execution_circles_v2_wrappers
+  description: ERC20 wrapper deployments from the ERC20Lift contract, mapping avatars to their wrapper token addresses.
+  columns:
+  - name: block_number
+    description: Block number when the wrapper was deployed.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the deployment.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: avatar
+    description: Avatar address whose token is being wrapped.
+    data_type: String
+  - name: wrapper_address
+    description: Address of the deployed ERC20 wrapper contract.
+    data_type: String
+  - name: circles_type
+    description: Circles token type flag (1 = inflationary, 0 = demurraged).
+    data_type: UInt8
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_group_settings_updates
+  description: Group configuration changes from BaseGroupFactory, CMGroupDeployer, and BaseGroup runtime events.
+  columns:
+  - name: block_number
+    description: Block number containing the settings update.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the update.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: group_address
+    description: Address of the group being updated.
+    data_type: String
+  - name: owner
+    description: Updated owner address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: mint_handler
+    description: Updated mint handler address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: redemption_handler
+    description: Updated redemption handler address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: liquidity_provider
+    description: Updated liquidity provider address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: treasury_address
+    description: Updated treasury address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: service
+    description: Updated service address (NULL if not changed).
+    data_type: Nullable(String)
+  - name: fee_collection
+    description: Updated fee collection address (NULL if not changed).
+    data_type: Nullable(String)
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_group_collateral_diffs
+  description: Per-group collateral deltas from StandardTreasury lock, burn, and return events.
+  columns:
+  - name: block_number
+    description: Block number containing the collateral event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: batch_index
+    description: Index within a batch event (0 for single events).
+    data_type: UInt64
+  - name: event_name
+    description: Name of the collateral event.
+    data_type: String
+  - name: group_address
+    description: Address of the group whose collateral changed.
+    data_type: String
+  - name: token_id
+    description: Token ID of the collateral token.
+    data_type: String
+  - name: delta_raw
+    description: Signed collateral change (positive for locks, negative for burns/returns).
+    data_type: Int256
+  - name: recipient
+    description: Recipient address for collateral returns (NULL for locks and burns).
+    data_type: Nullable(String)
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_group_collateral_balances_daily
+  description: Daily end-of-day group collateral balances per token, derived from cumulative collateral diffs.
+  columns:
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+  - name: group_address
+    description: Address of the group.
+    data_type: String
+  - name: token_id
+    description: Token ID of the collateral token.
+    data_type: String
+  - name: balance_raw
+    description: Cumulative collateral balance in token base units.
+    data_type: Int256
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_payments
+  description: Payment events from the PaymentGatewayFactory with decoded payer, payee, and amount.
+  columns:
+  - name: block_number
+    description: Block number containing the payment event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: payer
+    description: Address of the entity making the payment.
+    data_type: String
+  - name: payee
+    description: Address of the entity receiving the payment.
+    data_type: String
+  - name: gateway
+    description: Address of the payment gateway contract.
+    data_type: String
+  - name: token_id
+    description: Token ID used for the payment.
+    data_type: String
+  - name: amount_raw
+    description: Raw payment amount in token base units.
+    data_type: UInt256
+  - name: payment_data
+    description: Additional payment data from the event.
+    data_type: String
+  - name: event_params
+    description: Full decoded event parameters map.
+    data_type: Map(String, String)
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_offer_cycles
+  description: ERC20TokenOfferCycle events capturing configuration, creation, deposits, claims, and withdrawals.
+  columns:
+  - name: block_number
+    description: Block number containing the offer cycle event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the block.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt64
+  - name: cycle_address
+    description: Address of the ERC20TokenOfferCycle contract.
+    data_type: String
+  - name: event_name
+    description: Name of the offer cycle event.
+    data_type: String
+  - name: decoded_params
+    description: Full decoded event parameters map.
+    data_type: Map(String, String)
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_avatar_metadata_targets
+  description: Deterministic queue of every (avatar, metadata_digest) pair announced by the Circles v2 NameRegistry. Drives both the one-time IPFS backfill script and the nightly fetch macro.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+  - name: metadata_digest
+    description: 0x-prefixed hex of the 32-byte sha2-256 metadata digest.
+    data_type: String
+    tests:
+    - not_null
+  - name: metadata_digest_hex
+    description: Lowercase hex digest with the 0x prefix stripped.
+    data_type: String
+  - name: ipfs_cid_v0
+    description: CIDv0 derived from `metadata_digest` (`base58Encode('1220' + digest)`).
+    data_type: String
+    tests:
+    - not_null
+  - name: gateway_url
+    description: Full IPFS gateway URL using the configured `circles_ipfs_gateway` var.
+    data_type: String
+  - name: block_timestamp
+    description: Timestamp of the latest UpdateMetadataDigest event for this pair.
+    data_type: DateTime64
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: UInt32
+  - name: is_current_avatar_metadata
+    description: True when this row is the most recent metadata digest for the avatar.
+    data_type: Bool
   tests:
-  - elementary.schema_changes:
-      severity: warn
-      tags:
-      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - avatar
+      - metadata_digest
+  meta: *id002
+- name: int_execution_circles_v2_avatar_metadata
+  description: Current parsed IPFS metadata per Circles v2 avatar. Joins each avatar's most recent metadata digest to the latest fetched payload in `circles_avatar_metadata_raw`.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: onchain_name
+    description: Name set on-chain at registration (Group/Org only).
+    data_type: Nullable(String)
+  - name: metadata_digest
+    description: 0x-prefixed hex digest of the current metadata payload.
+    data_type: Nullable(String)
+  - name: ipfs_cid_v0
+    description: CIDv0 of the current metadata payload.
+    data_type: Nullable(String)
+  - name: gateway_url
+    description: Gateway URL fetched at materialization time.
+    data_type: Nullable(String)
+  - name: metadata_name
+    description: '`name` field extracted from the metadata JSON. Populated for ~99.9% of fetched payloads.'
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from the metadata JSON. Rarely populated (group/org tokens only).'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from the metadata JSON. Populated for ~20% of payloads.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` field from the metadata JSON. Populated for ~1.5% of payloads.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` field from the metadata JSON. Populated for ~53% of payloads.'
+    data_type: String
+  - name: metadata_body
+    description: Full raw response body for the current metadata digest.
+    data_type: Nullable(String)
+  - name: metadata_fetched_at
+    description: Timestamp the current payload was fetched.
+    data_type: Nullable(DateTime)
+  meta: *id002
+- name: int_execution_circles_v2_avatar_metadata_history
+  description: SCD-style historical view of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by the NameRegistry, in event order, with valid_from / valid_to / is_current columns so the dashboard can render the full timeline of name + image updates per avatar. Materialized incrementally; nightly runs recompute the full history only for avatars that received a new event since the previous build.
+  columns:
+  - name: avatar
+    description: Lowercase Circles avatar address.
+    data_type: String
+    tests:
+    - not_null
+  - name: avatar_type
+    description: Avatar category (Human, Group, Org).
+    data_type: String
+  - name: onchain_name
+    description: Name set on-chain at registration (Group/Org only).
+    data_type: Nullable(String)
+  - name: metadata_digest
+    description: 0x-prefixed hex digest emitted by this UpdateMetadataDigest event.
+    data_type: String
+    tests:
+    - not_null
+  - name: ipfs_cid_v0
+    description: CIDv0 derived from `metadata_digest` (`base58Encode('1220' + digest)`).
+    data_type: String
+  - name: gateway_url
+    description: Full IPFS gateway URL using the configured `circles_ipfs_gateway` var.
+    data_type: String
+  - name: valid_from
+    description: Timestamp of the on-chain UpdateMetadataDigest event that introduced this digest.
+    data_type: DateTime64
+    tests:
+    - not_null
+  - name: valid_to
+    description: Timestamp of the next UpdateMetadataDigest event for this avatar. NULL on the most recent row.
+    data_type: Nullable(DateTime64)
+  - name: is_current
+    description: True when this row is the most recent metadata digest for the avatar.
+    data_type: Bool
+  - name: transaction_hash
+    description: Transaction hash of the on-chain event.
+    data_type: String
+  - name: log_index
+    description: Log index of the on-chain event.
+    data_type: UInt32
+  - name: metadata_name
+    description: '`name` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_symbol
+    description: '`symbol` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_description
+    description: '`description` field extracted from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_image_url
+    description: '`imageUrl` field from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_preview_image_url
+    description: '`previewImageUrl` field from the metadata JSON for this digest version.'
+    data_type: String
+  - name: metadata_body
+    description: Full raw response body for this historical metadata digest.
+    data_type: Nullable(String)
+  - name: metadata_fetched_at
+    description: Timestamp the IPFS payload for this digest was fetched.
+    data_type: Nullable(DateTime)
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - avatar
+      - metadata_digest
+  meta: *id002

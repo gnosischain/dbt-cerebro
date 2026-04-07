@@ -16,6 +16,7 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 - [Data Modeling Conventions](#data-modeling-conventions)
 - [Observability and Testing](#observability-and-testing)
 - [Contract Decoding System](#contract-decoding-system)
+- [Circles V2 Avatar IPFS Metadata](#circles-v2-avatar-ipfs-metadata)
 - [Production Pipeline](#production-pipeline)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
@@ -765,6 +766,183 @@ dbt seed
 
 # 5. Create model SQL and schema.yml entry, then run
 dbt run --select your_contract_events
+```
+
+## Circles V2 Avatar IPFS Metadata
+
+Circles v2 publishes avatar profiles (name, description, preview image, etc.) off-chain on IPFS. The on-chain `NameRegistry` contract only emits a 32-byte `metadataDigest` per `UpdateMetadataDigest` event. This workflow turns those digests into resolved CIDv0 IPFS pointers, fetches the JSON payloads, persists them in ClickHouse, and exposes them as a typed dbt model that joins back to `int_execution_circles_v2_avatars`.
+
+### How it works
+
+```mermaid
+flowchart LR
+  A["contracts_circles_v2_NameRegistry_events<br/>(UpdateMetadataDigest)"]
+    --> B["dbt view:<br/>int_execution_circles_v2_avatar_metadata_targets<br/>(avatar, digest, CIDv0, gateway URL)"]
+  B -- one-time backfill --> C["scripts/circles/<br/>backfill_avatar_metadata.py<br/>(threadpool, gateway fallback,<br/>retries, batched inserts)"]
+  B -- nightly delta --> D["dbt run-operation<br/>fetch_and_insert_circles_metadata<br/>(ClickHouse url() + INSERT)"]
+  C --> E["raw table:<br/>circles_avatar_metadata_raw<br/>(ReplacingMergeTree)"]
+  D --> E
+  E --> F["dbt view:<br/>int_execution_circles_v2_avatar_metadata<br/>(typed name/description/imageUrl/...)"]
+  F --> G["downstream Circles models / marts"]
+```
+
+Two write paths land in the same raw table; downstream dbt models do not care which produced the row. Both paths use a `LEFT ANTI JOIN` against `circles_avatar_metadata_raw` so re-runs only fetch what is missing.
+
+| Component | Type | Path |
+|---|---|---|
+| `circles_metadata_digest_to_cid_v0` / `_gateway_url` | Jinja macros | `macros/circles/circles_utils.sql` |
+| `create_circles_avatar_metadata_table` | DDL macro | `macros/circles/create_circles_avatar_metadata_table.sql` |
+| `fetch_and_insert_circles_metadata` | run-operation macro | `macros/circles/fetch_and_insert_circles_metadata.sql` |
+| `int_execution_circles_v2_avatar_metadata_targets` | dbt view | `models/execution/Circles/intermediate/` |
+| `int_execution_circles_v2_avatar_metadata` | dbt view (typed) | `models/execution/Circles/intermediate/` |
+| `circles_avatar_metadata_raw` | ClickHouse table (`auxiliary` source) | created by the DDL macro |
+| `backfill_avatar_metadata.py` | one-time Python script | `scripts/circles/` |
+
+### Initial setup (one-time)
+
+Run from inside the dbt container.
+
+```bash
+# 1. Create the raw landing table (ReplacingMergeTree, idempotent).
+dbt run-operation create_circles_avatar_metadata_table
+
+# 2. Materialize the deterministic targets view.
+#    Reads NameRegistry events and emits one row per (avatar, metadata_digest).
+dbt run --select int_execution_circles_v2_avatar_metadata_targets
+
+# 3. Optional: dry-run the backfill to preview what would be fetched.
+python scripts/circles/backfill_avatar_metadata.py --limit 100 --dry-run
+
+# 4. Run the full backfill.
+#    Fetches every unresolved digest from the IPFS gateway with concurrency,
+#    retries on 429/5xx, falls back across ipfs.io / cloudflare-ipfs.com / dweb.link,
+#    and inserts in batches. ~40k digests typically takes ~90 minutes.
+python scripts/circles/backfill_avatar_metadata.py
+
+# 5. Materialize the parsed view that joins raw payloads back to avatars.
+dbt run --select int_execution_circles_v2_avatar_metadata
+```
+
+Useful backfill flags:
+
+```bash
+python scripts/circles/backfill_avatar_metadata.py \
+  --concurrency 30 \         # worker threads (default 30)
+  --batch-size 5000 \        # rows per ClickHouse insert (default 5000)
+  --max-retries 3 \          # retries per gateway on transient errors
+  --request-timeout 20 \     # per-request HTTP timeout in seconds
+  --limit 100 \              # cap targets (debug only)
+  --dry-run                  # show what would be fetched, do not insert
+```
+
+### Daily updates (automatic)
+
+The nightly observability orchestrator (`scripts/run_dbt_observability.sh`) handles steady-state deltas between source freshness and the main `tag:production` batch run:
+
+```bash
+# Refresh the queue view so the macro sees yesterday's new digests.
+dbt run --select int_execution_circles_v2_avatar_metadata_targets
+
+# Fetch up to 500 unresolved digests via ClickHouse url() + INSERT.
+dbt run-operation fetch_and_insert_circles_metadata --args '{"batch_size": 500}'
+```
+
+Steady-state volume is in the low hundreds per day, well within the macro's per-row `url()` call budget. The parsed view `int_execution_circles_v2_avatar_metadata` is rebuilt as part of the normal `tag:production` run that follows.
+
+The macro records successful fetches only — a failed `url()` call surfaces as a run-operation error and the offending row is retried automatically on the next nightly invocation.
+
+### Configuring the IPFS gateway
+
+The default gateway is set in `dbt_project.yml`:
+
+```yaml
+vars:
+  circles_ipfs_gateway: "https://ipfs.io/ipfs/"
+```
+
+Override per-run with `--vars '{"circles_ipfs_gateway": "https://my-gateway.example/ipfs/"}'`. The CID itself is computed deterministically from the on-chain digest, so changing gateways does not invalidate already-fetched rows.
+
+The Python backfill script additionally falls through `cloudflare-ipfs.com` and `dweb.link` if the configured primary gateway returns a non-200 or times out. Adjust `DEFAULT_GATEWAYS` near the top of `scripts/circles/backfill_avatar_metadata.py` if you want a different fallback list.
+
+### Retrying failed rows
+
+The backfill records every result, including failures. After a backfill run, inspect the failure breakdown with:
+
+```sql
+SELECT http_status, error, count() AS n
+FROM circles_avatar_metadata_raw
+WHERE http_status != 200 OR body = ''
+GROUP BY http_status, error
+ORDER BY n DESC;
+```
+
+Typical failure modes:
+
+| status | meaning | usually recovers? |
+|---|---|---|
+| `504` | gateway timeout while routing to peers | yes, on retry |
+| `0` (`Timeout: ...`) | local read timeout | yes, on retry |
+| `429` | gateway rate limiting | yes, on retry (script already backs off) |
+| `404` | content genuinely not pinned anywhere reachable | no |
+| `410` | gateway has blacklisted the CID | no on that gateway, sometimes on others |
+
+To re-fetch transient failures **without** re-fetching the ~39k successful rows, delete only the failed rows so the `LEFT ANTI JOIN` picks them up again, then re-run the backfill:
+
+```sql
+ALTER TABLE circles_avatar_metadata_raw
+DELETE WHERE http_status != 200 OR body = '';
+```
+
+```bash
+python scripts/circles/backfill_avatar_metadata.py
+```
+
+`ALTER TABLE ... DELETE` is asynchronous in ClickHouse — wait for the mutation to finish before re-running:
+
+```sql
+SELECT * FROM system.mutations
+WHERE table = 'circles_avatar_metadata_raw' AND is_done = 0;
+```
+
+Most 504s and read timeouts succeed on the second pass once peer routing warms up. Persistent 404/410 rows can be left in the table as a permanent record of unresolvable content; they will never be re-fetched as long as their `(avatar, metadata_digest)` row exists in `circles_avatar_metadata_raw`.
+
+If you ever need to start completely from scratch (e.g. after a gateway change you want fully reflected in `gateway_url`), truncate and re-run:
+
+```sql
+TRUNCATE TABLE circles_avatar_metadata_raw;
+```
+
+```bash
+dbt run --select int_execution_circles_v2_avatar_metadata_targets
+python scripts/circles/backfill_avatar_metadata.py
+dbt run --select int_execution_circles_v2_avatar_metadata
+```
+
+### Verifying the deployment
+
+```bash
+# CID computation sanity check (should print QmQGuXdbNDNRUP798muCnKgKQm3qU2c61EWpm1FzsWLyHn).
+dbt show --inline "
+SELECT base58Encode(unhex(concat(
+  '1220',
+  lower(replaceRegexpOne('0x1cc1ce9522237635ede2fe9aaa2fb9ba68c16ef04d83f60443917b4236848bf5','^0x',''))
+))) AS cid
+"
+
+# Coverage check
+dbt show --inline "
+SELECT
+  count() AS total_rows,
+  countIf(http_status = 200 AND body != '') AS ok,
+  countIf(http_status != 200 OR body = '') AS fail,
+  uniqExact(avatar) AS unique_avatars,
+  uniqExact(metadata_digest) AS unique_digests
+FROM circles_avatar_metadata_raw
+"
+
+# Smoke-test the parsed view
+dbt run --select int_execution_circles_v2_avatar_metadata
+dbt test --select int_execution_circles_v2_avatar_metadata int_execution_circles_v2_avatar_metadata_targets
 ```
 
 ## Production Pipeline
