@@ -30,7 +30,8 @@
                 "pagination": {
                     "enabled": true,
                     "default_limit": 100,
-                    "max_limit": 5000
+                    "max_limit": 5000,
+                    "response": "envelope"
                 },
                 "sort": [
                     {"column": "validator_index", "direction": "ASC"}
@@ -43,4 +44,3 @@
 SELECT
     *
 FROM {{ ref('fct_consensus_validators_status_latest') }}
-
