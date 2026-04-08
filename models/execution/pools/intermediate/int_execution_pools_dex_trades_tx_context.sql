@@ -37,7 +37,7 @@ AND t.block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
 AND t.block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
 {% elif is_incremental() %}
 AND t.block_timestamp >= (
-    SELECT addDays(max(toDate(block_timestamp)), -1)
+    SELECT addDays(max(toDate(block_timestamp)), -3)
     FROM {{ this }}
 )
 {% endif %}

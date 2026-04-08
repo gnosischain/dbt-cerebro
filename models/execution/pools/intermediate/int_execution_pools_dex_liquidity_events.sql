@@ -65,6 +65,11 @@ tx_context AS (
       {% if start_month and end_month %}
       AND block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
       AND block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
+      {% elif is_incremental() %}
+      AND block_timestamp >= (
+          SELECT addDays(max(toDate(block_timestamp)), -3)
+          FROM {{ this }}
+      )
       {% endif %}
 ),
 
