@@ -2,6 +2,7 @@
     config(
         materialized='incremental',
         incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, token_address, account)',
         unique_key='(date, token_address, account)',
@@ -13,11 +14,20 @@
 
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
+{% set prev_balances = namespace(has_circles_type=false) %}
+{% if execute and is_incremental() %}
+    {% for column in adapter.get_columns_in_relation(this) %}
+        {% if column.name | lower == 'circles_type' %}
+            {% set prev_balances.has_circles_type = true %}
+        {% endif %}
+    {% endfor %}
+{% endif %}
 WITH deltas AS (
     SELECT
         date,
         account,
         token_address,
+        max(circles_type) AS circles_type,
         sum(delta_raw) AS net_delta_raw,
         max(last_activity_ts) AS last_activity_ts_for_day
     FROM {{ ref('int_execution_circles_v2_balance_diffs_daily') }}
@@ -50,6 +60,11 @@ prev_balances AS (
         account,
         token_address,
         balance_raw,
+        {% if prev_balances.has_circles_type %}
+        circles_type,
+        {% else %}
+        toUInt8(0) AS circles_type,
+        {% endif %}
         last_activity_ts
     FROM {{ this }}
     WHERE date = (SELECT max_date FROM current_partition)
@@ -104,6 +119,20 @@ balances AS (
         {% if is_incremental() %}
             + coalesce(p.balance_raw, toInt256(0))
         {% endif %} AS balance_raw,
+        toUInt8(
+            greatest(
+                max(coalesce(d.circles_type, toUInt8(0))) OVER (
+                    PARTITION BY c.account, c.token_address
+                    ORDER BY c.date
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ),
+                {% if is_incremental() %}
+                    coalesce(p.circles_type, toUInt8(0))
+                {% else %}
+                    toUInt8(0)
+                {% endif %}
+            )
+        ) AS circles_type,
         toUInt64(
             greatest(
                 max(coalesce(d.last_activity_ts_for_day, toUInt64(0))) OVER (
@@ -135,6 +164,7 @@ snapshots AS (
         account,
         token_address,
         balance_raw,
+        circles_type,
         last_activity_ts,
         toUInt64(
             if(
@@ -152,13 +182,24 @@ SELECT
     account,
     token_address,
     balance_raw,
+    circles_type,
     last_activity_ts,
     snapshot_ts,
-    toInt256(
-        multiplyDecimal(
-            toDecimal256(balance_raw, 0),
-            {{ circles_demurrage_factor('last_activity_ts', 'snapshot_ts') }},
-            0
+    if(
+        circles_type = toUInt8(1),
+        toInt256(
+            multiplyDecimal(
+                toDecimal256(balance_raw, 0),
+                {{ circles_demurrage_factor('1602720000', 'snapshot_ts') }},
+                0
+            )
+        ),
+        toInt256(
+            multiplyDecimal(
+                toDecimal256(balance_raw, 0),
+                {{ circles_demurrage_factor('last_activity_ts', 'snapshot_ts') }},
+                0
+            )
         )
     ) AS demurraged_balance_raw
 FROM snapshots
