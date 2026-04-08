@@ -35,6 +35,15 @@
                 },
                 "sort": [
                     {"column": "validator_index", "direction": "ASC"}
+                ],
+                "sortable_fields": [
+                    "validator_index",
+                    "balance",
+                    "effective_balance",
+                    "status",
+                    "activation_epoch",
+                    "exit_epoch",
+                    "withdrawable_epoch"
                 ]
             }
         }
