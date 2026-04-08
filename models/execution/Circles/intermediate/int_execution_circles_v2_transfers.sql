@@ -2,6 +2,7 @@
     config(
         materialized='incremental',
         incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index, batch_index)',
         unique_key='(transaction_hash, log_index, batch_index)',
@@ -28,6 +29,7 @@ SELECT
     amount_raw,
     amount_raw AS amount_demurraged_raw,
     'demurrage' AS unit_type,
+    toUInt8(0) AS circles_type,
     transfer_type
 FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
 WHERE 1 = 1
@@ -40,7 +42,8 @@ WHERE 1 = 1
 
 UNION ALL
 
--- Wrapper ERC-20 transfers (static amounts converted to demurrage)
+-- Wrapper ERC-20 transfers (native units preserved; static wrappers also
+-- expose a transfer-time demurraged equivalent for reference)
 SELECT
     wt.block_number,
     wt.block_timestamp,
@@ -64,6 +67,7 @@ SELECT
        wt.amount_raw
     ) AS amount_demurraged_raw,
     if(w.circles_type = 1, 'static', 'demurrage') AS unit_type,
+    w.circles_type AS circles_type,
     'CrcV2_ERC20WrapperTransfer' AS transfer_type
 FROM {{ ref('int_execution_circles_v2_wrapper_transfers') }} wt
 INNER JOIN {{ ref('int_execution_circles_v2_wrappers') }} w
