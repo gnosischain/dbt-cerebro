@@ -49,7 +49,16 @@ models:
       - elementary
 
 - name: fct_execution_pools_il_daily
-  description: Daily Loss Versus Rebalancing (LVR) estimate per LP pool, computed from 7-day trailing swap flows relative to TVL. LVR is annualised as a percentage and represents the arbitrage cost extracted from the pool.
+  description: >
+    Pool-level Loss Versus Rebalancing (LVR) from actual swap flows.
+    LVR measures the cost LPs pay to arbitrageurs — the value extracted via swap
+    rebalancing. Sign convention: negative = loss (arbitrage extracted value),
+    positive = gain. Swap events already embed the concentrated-liquidity math
+    executed by the pool contract, so this captures V3 amplification without
+    per-position tracking. Each day's swap flows are valued at that day's token
+    prices, then summed over the 7-day window.
+    lvr_apr_7d = (swap_flow_usd_7d − fees_usd_7d) / avg_tvl_7d × (365/7) × 100.
+    Fees are subtracted because swap event amounts include fees on the input side.
   columns:
   - name: date
     data_type: Date
@@ -220,7 +229,11 @@ models:
     data_type: UInt64
 
 - name: fct_execution_pools_lps_latest
-  description: Unique LP provider counts per token over rolling time windows with change percentage vs prior window. Uses bitmap merge to deduplicate across pools and days.
+  description: >
+    Unique LP provider counts per token over rolling time windows with change_pct vs
+    prior window. Mirrors the lending pattern in fct_execution_lending_latest. Uses
+    bitmap merge (groupBitmapMerge) to deduplicate LP addresses across pools and days
+    within each window.
   columns:
   - name: window
     description: "Time window label: 7D."
@@ -245,7 +258,10 @@ models:
     data_type: Float64
 
 - name: api_execution_pools_lp_activity_daily
-  description: API view for daily LP activity (Mint/Burn event counts) aggregated per token across all pools.
+  description: >
+    API view for daily LP activity (Mint/Burn event counts) per pool per token,
+    unpivoted into one row per event type for the BarChart seriesField. Reuses pool
+    labels and top-pool filtering from fct_execution_pools_daily.
   columns:
   - name: date
     data_type: Date
@@ -257,6 +273,47 @@ models:
   - name: burns
     description: Total Burn events across all pools containing this token on this day.
     data_type: UInt64
+
+- name: fct_execution_pools_tvl_token_daily
+  description: >
+    Per-token TVL composition within pools with server-side denomination. Three TVL
+    columns are pre-computed: tvl_usd (component TVL in USD), tvl_in_token0
+    (denominated in pool's token0 via cross-rate), and tvl_in_token1 (denominated in
+    pool's token1 via cross-rate).
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: series
+    description: Token symbol for this row (used as chart series key).
+    data_type: Nullable(String)
+  - name: token_amount
+    description: Reserve balance in token units.
+    data_type: Float64
+  - name: tvl_usd
+    description: Component TVL in USD.
+    data_type: Float64
+  - name: tvl_in_token0
+    description: Component TVL denominated in pool's token0 (cross-rate).
+    data_type: Nullable(Float64)
+  - name: tvl_in_token1
+    description: Component TVL denominated in pool's token1 (cross-rate).
+    data_type: Nullable(Float64)
+  - name: token0_symbol
+    data_type: Nullable(String)
+  - name: token1_symbol
+    data_type: Nullable(String)
+  - name: ref_token
+    description: Reference token from fct_execution_pools_daily (the token this pool is grouped under).
+    data_type: String
+  - name: pool
+    description: Pool label from fct_execution_pools_daily.
+    data_type: String
 
 - name: fct_execution_pools_snapshots
   description: Snapshot KPI table for pool yields. Each row is a (token, metric) pair with the latest value and 7-day percentage change. Metrics include TVL_Latest, Fees_7D, and Volume_7D.

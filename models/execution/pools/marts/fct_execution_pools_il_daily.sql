@@ -9,26 +9,7 @@
     )
 }}
 
-{#-
-  Pool-level Loss Versus Rebalancing (LVR) from actual swap flows.
-
-  LVR measures the cost LPs pay to arbitrageurs — the value extracted via
-  swap rebalancing. Sign convention: negative = loss (arbitrage extracted value),
-  positive = gain (swaps were favorable to the pool).
-
-  Swap events already embed the concentrated-liquidity math executed by the
-  pool contract, so this captures V3 amplification without per-position tracking.
-
-  Each day's swap flows are valued at that day's token prices (consistent with
-  how fees_usd is computed), then summed over the 7-day window.
-
-  swap_flow_usd_d  =  amount0_d / 10^dec0 × P0_d  +  amount1_d / 10^dec1 × P1_d
-  swap_flow_usd_7d =  Σ(swap_flow_usd_d)  over 7-day window
-  lvr_apr_7d       =  (swap_flow_usd_7d - fees_usd_7d) / avg_tvl_7d × (365 / 7) × 100
-
-  Swap event amounts include fees on the input side, so fees_usd_7d is
-  subtracted to isolate the pure rebalancing cost (LVR).
--#}
+{#- Model documentation in schema.yml -#}
 
 SELECT
     t.day AS date,

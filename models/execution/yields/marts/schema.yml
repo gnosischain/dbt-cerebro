@@ -119,6 +119,77 @@ models:
     description: Pool swap fee as a percentage (e.g. 0.3 = 0.3%). Static for Uniswap V3, latest dynamic fee for Swapr V3 and Balancer V3. NULL for lending markets.
     data_type: Nullable(Float64)
 
+- name: fct_execution_yields_user_lifetime_metrics
+  description: >
+    Per-wallet lifetime KPI metrics for the yields user portfolio. Aggregates
+    across LP positions (fees, active/in-range counts) and Aave V3 lending
+    balances. One row per wallet that has interacted with any yield source.
+  columns:
+  - name: wallet_address
+    data_type: String
+  - name: total_lp_fees_usd
+    description: Lifetime LP fees collected in USD across all pools.
+    data_type: Float64
+  - name: total_lending_balance_usd
+    description: Current total lending supply balance in USD.
+    data_type: Float64
+  - name: active_lp_positions
+    description: Count of currently active LP positions.
+    data_type: UInt64
+  - name: in_range_positions
+    description: Count of active V3 LP positions where current tick is within range.
+    data_type: UInt64
+  - name: out_of_range_positions
+    description: Count of active V3 LP positions where current tick is outside range.
+    data_type: UInt64
+  - name: active_lending_positions
+    description: Count of Aave V3 reserves with positive balance.
+    data_type: UInt64
+  - name: first_yield_date
+    description: Earliest interaction with any yield source.
+    data_type: DateTime
+  - name: tenure_days
+    description: Days since first yield interaction.
+    data_type: Int64
+
+- name: fct_execution_yields_user_lending_positions_latest
+  description: >
+    Current Aave V3 lending positions per user with supply APY from the
+    yields opportunities table. One row per (user, reserve) with positive balance.
+  columns:
+  - name: user_address
+    data_type: String
+  - name: reserve_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: balance
+    data_type: Float64
+  - name: balance_usd
+    data_type: Float64
+  - name: supply_apy
+    description: Current supply APY from fct_execution_yields_opportunities_latest.
+    data_type: Nullable(Float64)
+  - name: protocol
+    data_type: String
+
+- name: fct_execution_yields_user_fee_collections_daily
+  description: >
+    Daily fee collection amounts per user per pool from V3 Collect events.
+    Feeds the fee income chart in the user portfolio dashboard.
+  columns:
+  - name: date
+    data_type: Date
+  - name: provider
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: protocol
+    data_type: String
+  - name: fees_usd
+    description: Total fees collected in USD on this day for this position.
+    data_type: Float64
+
 - name: api_execution_yields_overview_lending_tvl
   description: Overview KPI card for total Aave V3 lending TVL with 7-day change percentage.
   columns:

@@ -5,11 +5,7 @@
     )
 }}
 
-{#-
-  Normalized daily token prices keyed by uppercase symbol.
-  Wraps int_execution_token_prices_daily with consistent types and naming.
-  Referenced by enriched, fees, and TVL models.
--#}
+{#- Model documentation in schema.yml -#}
 
 SELECT
     toDate(date) AS date,
