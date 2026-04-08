@@ -17,6 +17,7 @@ SELECT
     amount_raw,
     amount_raw AS amount_demurraged_raw,
     'demurrage' AS unit_type,
+    toUInt8(0) AS circles_type,
     transfer_type
 FROM `dbt`.`int_execution_circles_v2_hub_transfers`
 WHERE 1 = 1
@@ -47,7 +48,8 @@ WHERE 1 = 1
 
 UNION ALL
 
--- Wrapper ERC-20 transfers (static amounts converted to demurrage)
+-- Wrapper ERC-20 transfers (native units preserved; static wrappers also
+-- expose a transfer-time demurraged equivalent for reference)
 SELECT
     wt.block_number,
     wt.block_timestamp,
@@ -79,6 +81,7 @@ toDecimal256(
        wt.amount_raw
     ) AS amount_demurraged_raw,
     if(w.circles_type = 1, 'static', 'demurrage') AS unit_type,
+    w.circles_type AS circles_type,
     'CrcV2_ERC20WrapperTransfer' AS transfer_type
 FROM `dbt`.`int_execution_circles_v2_wrapper_transfers` wt
 INNER JOIN `dbt`.`int_execution_circles_v2_wrappers` w

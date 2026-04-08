@@ -6,6 +6,7 @@ SELECT
     toDate(block_timestamp) AS date,
     account,
     token_address,
+    max(circles_type) AS circles_type,
     sum(delta_raw) AS delta_raw,
     max(toUInt64(toUnixTimestamp(block_timestamp))) AS last_activity_ts
 FROM (
@@ -14,6 +15,7 @@ FROM (
         block_timestamp,
         from_address AS account,
         token_address,
+        circles_type,
         -toInt256(amount_raw) AS delta_raw
     FROM `dbt`.`int_execution_circles_v2_transfers`
     WHERE 1 = 1
@@ -49,6 +51,7 @@ FROM (
         block_timestamp,
         to_address AS account,
         token_address,
+        circles_type,
         toInt256(amount_raw) AS delta_raw
     FROM `dbt`.`int_execution_circles_v2_transfers`
     WHERE 1 = 1

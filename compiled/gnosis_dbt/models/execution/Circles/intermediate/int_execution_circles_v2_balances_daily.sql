@@ -2,11 +2,34 @@
 
 
 
+
+
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+            
+        
+    
+        
+    
+        
+    
+        
+    
+
 WITH deltas AS (
     SELECT
         date,
         account,
         token_address,
+        max(circles_type) AS circles_type,
         sum(delta_raw) AS net_delta_raw,
         max(last_activity_ts) AS last_activity_ts_for_day
     FROM `dbt`.`int_execution_circles_v2_balance_diffs_daily`
@@ -55,6 +78,9 @@ prev_balances AS (
         account,
         token_address,
         balance_raw,
+        
+        circles_type,
+        
         last_activity_ts
     FROM `dbt`.`int_execution_circles_v2_balances_daily`
     WHERE date = (SELECT max_date FROM current_partition)
@@ -91,6 +117,18 @@ balances AS (
         
             + coalesce(p.balance_raw, toInt256(0))
          AS balance_raw,
+        toUInt8(
+            greatest(
+                max(coalesce(d.circles_type, toUInt8(0))) OVER (
+                    PARTITION BY c.account, c.token_address
+                    ORDER BY c.date
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ),
+                
+                    coalesce(p.circles_type, toUInt8(0))
+                
+            )
+        ) AS circles_type,
         toUInt64(
             greatest(
                 max(coalesce(d.last_activity_ts_for_day, toUInt64(0))) OVER (
@@ -120,6 +158,7 @@ snapshots AS (
         account,
         token_address,
         balance_raw,
+        circles_type,
         last_activity_ts,
         toUInt64(
             if(
@@ -140,12 +179,30 @@ SELECT
     account,
     token_address,
     balance_raw,
+    circles_type,
     last_activity_ts,
     snapshot_ts,
-    toInt256(
-        multiplyDecimal(
-            toDecimal256(balance_raw, 0),
-            
+    if(
+        circles_type = toUInt8(1),
+        toInt256(
+            multiplyDecimal(
+                toDecimal256(balance_raw, 0),
+                
+toDecimal256(
+  pow(
+    toDecimal256('0.9998013320085989574306481700129226782902039065082930593676448873', 64),
+    intDiv(snapshot_ts - 1602720000, 86400)
+    - intDiv(1602720000 - 1602720000, 86400)
+  ),
+  18
+),
+                0
+            )
+        ),
+        toInt256(
+            multiplyDecimal(
+                toDecimal256(balance_raw, 0),
+                
 toDecimal256(
   pow(
     toDecimal256('0.9998013320085989574306481700129226782902039065082930593676448873', 64),
@@ -154,7 +211,8 @@ toDecimal256(
   ),
   18
 ),
-            0
+                0
+            )
         )
     ) AS demurraged_balance_raw
 FROM snapshots
