@@ -39,6 +39,8 @@ swaps AS (
         {% if start_month and end_month %}
         WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        {% elif is_incremental() %}
+        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
         {% endif %}
     ) tx ON tx.transaction_hash = s.transaction_hash
 ),
@@ -54,6 +56,8 @@ with_bought_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
+        {% elif is_incremental() %}
+        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
         ORDER BY token, date
     ) pb
@@ -72,6 +76,8 @@ with_sold_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
+        {% elif is_incremental() %}
+        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
         ORDER BY token, date
     ) ps

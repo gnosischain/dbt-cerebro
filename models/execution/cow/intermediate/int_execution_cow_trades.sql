@@ -76,6 +76,8 @@ with_bought_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
+        {% elif is_incremental() %}
+        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
         ORDER BY token, date
     ) pb
@@ -94,6 +96,8 @@ with_sold_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
+        {% elif is_incremental() %}
+        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
         ORDER BY token, date
     ) ps
