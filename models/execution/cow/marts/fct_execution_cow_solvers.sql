@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(solver)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'solvers', 'intermediate']
+        tags=['production', 'execution', 'cow', 'solvers']
     )
 }}
 

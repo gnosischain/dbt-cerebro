@@ -51,7 +51,7 @@ FROM solver_trades t
 LEFT JOIN solver_batches b
     ON  b.date   = t.date
     AND b.solver = t.solver
-LEFT JOIN {{ ref('int_execution_cow_solvers') }} s
+LEFT JOIN {{ ref('fct_execution_cow_solvers') }} s
     ON  s.solver = t.solver
 WHERE t.date < today()
 ORDER BY t.date, t.volume_usd DESC
