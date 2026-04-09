@@ -1,0 +1,107 @@
+version: 2
+
+models:
+- name: int_execution_cow_trades
+  description: >
+    CoW Protocol trades enriched with token metadata (symbol, decimals),
+    USD prices (ASOF daily), fees in USD, and the solver that executed the batch.
+  meta:
+    owner: analytics_team
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: token_bought_address
+    data_type: String
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    data_type: String
+  - name: token_sold_symbol
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    data_type: Nullable(Float64)
+  - name: fee_amount_raw
+    data_type: Nullable(UInt256)
+  - name: fee_amount
+    description: Fee in sell-token human units.
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Trade value in USD (prefers buy-side price, falls back to sell-side).
+    data_type: Nullable(Float64)
+  - name: fee_usd
+    description: Fee in USD.
+    data_type: Nullable(Float64)
+  - name: taker
+    description: Order owner address.
+    data_type: String
+  - name: order_uid
+    data_type: String
+  - name: solver
+    description: Solver that settled this trade's batch.
+    data_type: Nullable(String)
+
+- name: int_execution_cow_batches
+  description: >
+    Batch-level aggregates for CoW Protocol settlements. One row per settlement
+    transaction with trade counts, interaction counts, CoW detection, gas costs.
+  meta:
+    owner: analytics_team
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: solver
+    data_type: Nullable(String)
+  - name: num_trades
+    description: Number of individual trade fills in this batch.
+    data_type: UInt64
+  - name: num_interactions
+    description: Number of external contract calls (AMM swaps) in this batch.
+    data_type: UInt64
+  - name: is_cow
+    description: >
+      True if the batch has multiple trades but zero interactions, indicating
+      pure Coincidence of Wants (peer-to-peer matching without AMM routing).
+    data_type: Bool
+  - name: batch_value_usd
+    data_type: Nullable(Float64)
+  - name: batch_fee_usd
+    data_type: Nullable(Float64)
+  - name: gas_used
+    data_type: Nullable(UInt64)
+  - name: gas_price
+    data_type: Nullable(UInt64)
+  - name: tx_cost_native
+    description: Transaction cost in xDAI (gas_used * gas_price / 1e18).
+    data_type: Nullable(Float64)
+
+- name: int_execution_cow_solvers
+  description: >
+    Current solver registry built from SolverAdded/SolverRemoved events.
+    Shows the latest status (active/inactive) of each solver.
+  meta:
+    owner: analytics_team
+  columns:
+  - name: solver
+    data_type: String
+  - name: is_active
+    data_type: Bool
+  - name: last_changed_at
+    data_type: DateTime
