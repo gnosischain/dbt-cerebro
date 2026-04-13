@@ -282,14 +282,14 @@ fees_daily AS (
         f.token_address,
         f.token,
         sum(f.fee_amount) AS fee_amount,
-        sum(f.fee_amount * p.price_usd) AS fees_usd,
+        sum(f.fee_amount * p.price) AS fees_usd,
         sum(f.volume_amount) AS volume_amount,
-        sum(f.volume_amount * p.price_usd) AS volume_usd
+        sum(f.volume_amount * p.price) AS volume_usd
     FROM all_fees_with_token f
     ASOF LEFT JOIN (
-        SELECT * FROM {{ ref('stg_pools__token_prices_daily') }} ORDER BY token, date
+        SELECT * FROM {{ ref('int_execution_token_prices_daily') }} ORDER BY symbol, date
     ) p
-      ON p.token = f.token
+      ON p.symbol = f.token
      AND f.date >= p.date
     GROUP BY f.date, f.protocol, f.pool_address, f.token_address, f.token
 )

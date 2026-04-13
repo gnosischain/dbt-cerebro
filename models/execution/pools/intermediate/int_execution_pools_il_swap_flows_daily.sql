@@ -18,10 +18,10 @@ token_prices_by_address AS (
         tm.token_address,
         coalesce(tm.decimals, 18) AS decimals,
         p.date AS day,
-        p.price_usd
+        p.price AS price_usd
     FROM {{ ref('stg_pools__tokens_meta') }} tm
-    INNER JOIN {{ ref('stg_pools__token_prices_daily') }} p
-        ON p.token = tm.token
+    INNER JOIN {{ ref('int_execution_token_prices_daily') }} p
+        ON p.symbol = tm.token
     WHERE tm.token IS NOT NULL
 ),
 

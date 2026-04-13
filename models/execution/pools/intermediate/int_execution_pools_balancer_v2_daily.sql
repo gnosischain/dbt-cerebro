@@ -150,16 +150,16 @@ enriched AS (
         b.reserve_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18)) AS reserve_amount,
         b.fee_raw AS fee_amount_raw,
         b.fee_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18)) AS fee_amount,
-        pr.price_usd AS price_usd,
-        (b.reserve_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18))) * pr.price_usd AS tvl_component_usd
+        pr.price AS price_usd,
+        (b.reserve_raw / POWER(10, if(tm.decimals > 0, tm.decimals, 18))) * pr.price AS tvl_component_usd
     FROM balances b
     LEFT JOIN {{ ref('stg_pools__tokens_meta') }} tm
         ON tm.token_address = lower(b.token_address)
        AND b.date >= toDate(tm.date_start)
     ASOF LEFT JOIN (
-        SELECT * FROM {{ ref('stg_pools__token_prices_daily') }} ORDER BY token, date
+        SELECT symbol, date, price FROM {{ ref('int_execution_token_prices_daily') }} ORDER BY symbol, date
     ) pr
-        ON pr.token = tm.token
+        ON pr.symbol = tm.token
        AND b.date >= pr.date
     WHERE b.balance_raw != 0
 )

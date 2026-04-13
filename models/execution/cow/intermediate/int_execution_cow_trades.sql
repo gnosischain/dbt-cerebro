@@ -68,40 +68,40 @@ swaps AS (
 with_bought_price AS (
     SELECT
         s.*,
-        pb.price_usd AS token_bought_price_usd
+        pb.price AS token_bought_price_usd
     FROM swaps s
     ASOF LEFT JOIN (
-        SELECT token, date, price_usd
-        FROM {{ ref('stg_pools__token_prices_daily') }}
+        SELECT symbol, date, price
+        FROM {{ ref('int_execution_token_prices_daily') }}
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
         {% elif is_incremental() %}
         WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
-        ORDER BY token, date
+        ORDER BY symbol, date
     ) pb
-        ON  pb.token                  = s.token_bought_symbol
+        ON  pb.symbol                 = s.token_bought_symbol
         AND toDate(s.block_timestamp) >= pb.date
 ),
 
 with_sold_price AS (
     SELECT
         s.*,
-        ps.price_usd AS token_sold_price_usd
+        ps.price AS token_sold_price_usd
     FROM with_bought_price s
     ASOF LEFT JOIN (
-        SELECT token, date, price_usd
-        FROM {{ ref('stg_pools__token_prices_daily') }}
+        SELECT symbol, date, price
+        FROM {{ ref('int_execution_token_prices_daily') }}
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
         {% elif is_incremental() %}
         WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
         {% endif %}
-        ORDER BY token, date
+        ORDER BY symbol, date
     ) ps
-        ON  ps.token                  = s.token_sold_symbol
+        ON  ps.symbol                 = s.token_sold_symbol
         AND toDate(s.block_timestamp) >= ps.date
 )
 

@@ -85,14 +85,14 @@ with_meta AS (
 with_price AS (
     SELECT
         s.*,
-        pr.price_usd AS token_price_usd
+        pr.price AS token_price_usd
     FROM with_meta s
     ASOF LEFT JOIN (
-        SELECT token, date, price_usd
-        FROM {{ ref('stg_pools__token_prices_daily') }}
-        ORDER BY token, date
+        SELECT symbol, date, price
+        FROM {{ ref('int_execution_token_prices_daily') }}
+        ORDER BY symbol, date
     ) pr
-        ON  pr.token                  = s.token_symbol
+        ON  pr.symbol                 = s.token_symbol
         AND toDate(s.block_timestamp) >= pr.date
 )
 

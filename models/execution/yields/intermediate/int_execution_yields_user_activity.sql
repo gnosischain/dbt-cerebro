@@ -75,14 +75,14 @@ lending_events AS (
             / power(10, rm.decimals)                       AS amount,
         toFloat64(toUInt256OrNull(decoded_params['amount']))
             / power(10, rm.decimals)
-            * coalesce(pr.price_usd, 0)                    AS amount_usd,
+            * coalesce(pr.price, 0)                        AS amount_usd,
         'lending'                                          AS source
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }} e
     INNER JOIN {{ ref('atoken_reserve_mapping') }} rm
         ON lower(rm.reserve_address) = lower(decoded_params['reserve'])
-    LEFT JOIN {{ ref('stg_pools__token_prices_daily') }} pr
-        ON pr.token = rm.reserve_symbol
-       AND pr.date  = toDate(e.block_timestamp)
+    LEFT JOIN {{ ref('int_execution_token_prices_daily') }} pr
+        ON pr.symbol = rm.reserve_symbol
+       AND pr.date   = toDate(e.block_timestamp)
     WHERE event_name IN ('Supply', 'Withdraw', 'Borrow', 'Repay')
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
