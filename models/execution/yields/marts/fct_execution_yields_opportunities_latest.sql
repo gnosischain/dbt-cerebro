@@ -169,9 +169,11 @@ FROM (
             a.apy_daily AS yield_apy,
             a.borrow_apy_variable_daily AS borrow_apy,
             NULL AS tvl,
-            (lc.cumulative_scaled_supply * a.liquidity_index / 1e27)
+            -- cumulative_scaled_* are Int256 after Fix 4; a.liquidity_index is Float64 in
+            -- int_execution_lending_aave_daily. Display-only USD values, so Float64 is fine.
+            (toFloat64(lc.cumulative_scaled_supply) * a.liquidity_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_supplied,
-            (lc.cumulative_scaled_borrow * a.variable_borrow_index / 1e27)
+            (toFloat64(lc.cumulative_scaled_borrow) * a.variable_borrow_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_borrowed,
             NULL AS fees_7d,
             NULL AS volume_usd_7d,
