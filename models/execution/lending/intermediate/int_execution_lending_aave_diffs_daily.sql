@@ -120,6 +120,10 @@ pool_events AS (
         toFloat64(toUInt256OrNull(decoded_params['liquidatedCollateralAmount'])) AS amount
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
     WHERE event_name = 'LiquidationCall'
+      -- Only count the burn case; when receiveAToken=true the collateral movement
+      -- is already captured by aToken BalanceTransfer(borrower -> liquidator) below,
+      -- so including those rows here would double-debit the borrower.
+      AND decoded_params['receiveAToken'] = '0'
       AND decoded_params['collateralAsset'] IS NOT NULL
       AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
       AND block_timestamp < today()
