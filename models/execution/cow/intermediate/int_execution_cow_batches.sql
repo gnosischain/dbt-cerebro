@@ -21,7 +21,6 @@ trades AS (
         block_timestamp,
         transaction_hash,
         amount_usd,
-        fee_usd,
         solver
     FROM {{ ref('int_execution_cow_trades') }}
     {% if start_month and end_month %}
@@ -51,8 +50,7 @@ batch_trades AS (
         any(solver)                                                                  AS solver,
         count(*)                                                                     AS num_trades,
         countDistinct(amount_usd)                                                    AS num_priced_trades,
-        sum(amount_usd)                                                              AS batch_value_usd,
-        sum(fee_usd)                                                                 AS batch_fee_usd
+        sum(amount_usd)                                                              AS batch_value_usd
     FROM trades
     GROUP BY transaction_hash
 ),
@@ -83,7 +81,6 @@ SELECT
     coalesce(i.num_interactions, 0)                                                  AS num_interactions,
     coalesce(i.num_interactions, 0) = 0 AND bt.num_trades > 1                        AS is_cow,
     bt.batch_value_usd                                                               AS batch_value_usd,
-    bt.batch_fee_usd                                                                 AS batch_fee_usd,
     tx.gas_used                                                                      AS gas_used,
     tx.gas_price                                                                     AS gas_price,
     toFloat64(tx.gas_used) * toFloat64(tx.gas_price) / 1e18                          AS tx_cost_native

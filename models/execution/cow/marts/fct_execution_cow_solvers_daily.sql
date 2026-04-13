@@ -19,7 +19,7 @@ solver_trades AS (
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
         sum(fee_usd)                                                                 AS fees_usd
-    FROM {{ ref('int_execution_cow_trades') }}
+    FROM {{ ref('fct_execution_cow_trades') }}
     WHERE solver IS NOT NULL
     GROUP BY date, solver
 ),

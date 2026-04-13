@@ -126,10 +126,6 @@ SELECT
         amount_bought * token_bought_price_usd,
         amount_sold   * token_sold_price_usd
     )                                                                                AS amount_usd,
-    COALESCE(
-        amount_bought * token_bought_price_usd,
-        amount_sold   * token_sold_price_usd
-    ) * toFloat64(fee_amount_raw) / nullIf(toFloat64(amount_sold_raw), 0)            AS fee_usd,
     taker,
     order_uid,
     solver

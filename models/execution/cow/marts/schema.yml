@@ -1,6 +1,80 @@
 version: 2
 
 models:
+- name: fct_execution_cow_trades
+  description: >
+    Canonical CoW Protocol trades table. Joins on-chain trade data from
+    int_execution_cow_trades with off-chain protocol fee data from
+    stg_crawlers_data__cow_api_trade_fees (ingested from the CoW API).
+    fee_usd logic: pre-2024 CoW used an explicit fee model (fee_amount_raw > 0
+    in the Trade event); 2024+ CoW switched to surplus-based fees (not visible
+    in events) sourced from executedProtocolFees via /api/v2/trades; the
+    transition period (mid-2023 through early 2024) is mixed — COALESCE picks
+    whichever source is available per trade. fee_source identifies where the fee
+    came from ('onchain', 'api', or NULL). NOTE — ClickHouse LEFT JOIN with
+    join_use_nulls=0 (default) fills unmatched String columns with '' instead
+    of NULL, so we check fee_token != '' rather than IS NOT NULL to correctly
+    detect a real API match.
+  meta:
+    owner: analytics_team
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: token_bought_address
+    data_type: String
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    data_type: String
+  - name: token_sold_symbol
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    data_type: Nullable(Float64)
+  - name: fee_amount_raw
+    description: On-chain fee atoms from Trade event (0 for 2024+).
+    data_type: Nullable(UInt256)
+  - name: fee_amount
+    description: On-chain fee in sell-token human units.
+    data_type: Nullable(Float64)
+  - name: api_fee_token
+    description: Token address the API fee is denominated in.
+    data_type: Nullable(String)
+  - name: api_fee_amount_raw
+    description: API fee in token atoms (sum across fee policies).
+    data_type: Nullable(String)
+  - name: fee_usd
+    description: >
+      Fee in USD. Derived from on-chain feeAmount when > 0 (pre-2024 trades),
+      otherwise from the API fee scaled to USD via the trade's USD value.
+    data_type: Nullable(Float64)
+  - name: fee_source
+    description: "'onchain' | 'api' | NULL — which source produced fee_usd."
+    data_type: Nullable(String)
+  - name: taker
+    data_type: String
+  - name: order_uid
+    data_type: String
+  - name: solver
+    data_type: Nullable(String)
+
 - name: fct_execution_cow_daily
   description: >
     Daily CoW Protocol metrics: volume, trades, unique traders, fees,
