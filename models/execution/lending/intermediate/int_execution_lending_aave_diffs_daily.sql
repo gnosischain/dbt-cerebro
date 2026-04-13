@@ -95,7 +95,10 @@ pool_events AS (
         toFloat64(toUInt256OrNull(decoded_params['amount'])) AS amount
     FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
     WHERE event_name = 'Repay'
-      AND decoded_params['useATokens'] = 'true'
+      -- decode_logs now emits bool as '0'/'1' (matching uint* convention);
+      -- was silently matching 0 rows before the macro fix because decode_logs
+      -- used to fall through to NULL for static bool params.
+      AND decoded_params['useATokens'] = '1'
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
       AND block_timestamp < today()

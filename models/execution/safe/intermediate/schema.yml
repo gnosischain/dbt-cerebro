@@ -1,0 +1,337 @@
+version: 2
+
+models:
+- name: int_execution_safes
+  description: |
+    Gnosis Safe deployments on Gnosis Chain.
+
+    A Safe is deployed by the SafeProxyFactory as a minimal proxy that
+    delegatecalls into a singleton/mastercopy. The constructor immediately
+    delegatecalls setup(...) on the singleton — that's how we identify a
+    Safe trace: a delegatecall to a known singleton whose calldata starts
+    with one of the historical setup() selectors. The singleton-to-version
+    map lives in seeds/safe_singletons.csv.
+
+    Covers every Safe version (0.1.0 through 1.4.1, including the Circles
+    1.1.1 fork and the L2 variants), including pre-v1.1.0 Safes that never
+    emitted SafeSetup.
+
+    Source: execution.traces. We use dedup_source(..., pre_filter=...) so
+    the time-range and selector filters land BEFORE the ROW_NUMBER window
+    function and ClickHouse can prune monthly partitions. Critical: this is
+    the largest scan in the family (8B traces, 5+ years) — every monthly
+    batch must fit under the CH Cloud memory budget.
+  columns:
+
+  - name: safe_address
+    description: The Safe proxy address (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: creation_version
+    description: >
+      Safe contract version this proxy was set up against. One of
+      0.1.0, 1.0.0, 1.1.0, 1.1.1, 1.1.1Circles, 1.2.0, 1.3.0, 1.3.0L2,
+      1.4.1, 1.4.1L2.
+    data_type: String
+
+  - name: is_l2
+    description: 1 if the Safe was deployed against a SafeL2 singleton (emits L2-specific transaction events).
+    data_type: UInt8
+
+  - name: creation_singleton
+    description: The singleton/mastercopy address the proxy delegatecalls into (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: block_date
+    description: Calendar date of the Safe's creation transaction.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the setup() delegatecall.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_number
+    description: Block number of the creation trace.
+    data_type: UInt32
+
+  - name: tx_hash
+    description: Transaction hash that contained the setup() delegatecall.
+    data_type: String
+
+  - name: gas_used
+    description: Gas consumed by the setup() delegatecall (used as a sanity gate, > 10000 to filter fallback misfires).
+    data_type: UInt32
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-05-21"
+      batch_months: 3
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: contracts_safe_registry
+  description: |
+    Registry consumed by decode_logs(contract_address_ref=ref('contracts_safe_registry')).
+    Maps each Safe proxy → the singleton whose ABI should be used to decode
+    its events.
+
+    Columns required by decode_logs:
+      address              — the emitting contract (proxy)
+      contract_type        — 'SafeProxy', so callers can pass contract_type_filter
+      abi_source_address   — the singleton; decode_logs joins event_signatures
+                             on (topic0, abi_source_address) to find the ABI
+      is_dynamic           — 1 = discovered on-chain (all Safe proxies are)
+      start_blocktime      — earliest block at which this proxy can emit events
+      discovery_source     — provenance tag
+
+    Tiny model — one row per Safe (thousands to low millions). Materialized
+    as a table so decode_logs's compile-time get_columns_in_relation() works
+    the moment dbt runs the downstream events model.
+  columns:
+
+  - name: address
+    description: The Safe proxy address (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: contract_type
+    description: Always 'SafeProxy'. Pass to decode_logs as contract_type_filter.
+    data_type: String
+
+  - name: abi_source_address
+    description: >
+      Singleton/mastercopy address. decode_logs joins event_signatures on
+      (topic0, abi_source_address) so all Safe proxies share the singleton's
+      decoded ABI from seeds/contracts_abi.csv.
+    data_type: String
+
+  - name: is_dynamic
+    description: Always 1 (every Safe proxy was discovered on-chain).
+    data_type: UInt8
+
+  - name: start_blocktime
+    description: Earliest block at which this proxy can emit events (= int_execution_safes.block_timestamp).
+    data_type: DateTime64(0, 'UTC')
+
+  - name: discovery_source
+    description: Provenance tag, always 'traces:safe_setup_delegatecall'.
+    data_type: String
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_safes_owner_events
+  description: |
+    Long-form ownership-event log for every Safe in contracts_safe_registry.
+
+    All ABI decoding is delegated to decode_logs(...) so no byte-offset
+    arithmetic lives in this repo. The wrapping model only:
+      • unrolls SafeSetup.owners[] into one row per initial owner
+      • normalizes AddedOwner / RemovedOwner / ChangedThreshold into the
+        same (event_kind, owner, threshold) shape
+
+    IMPORTANT — incremental filtering:
+      decode_logs handles its own var('start_month') / var('end_month')
+      window AND its own `{{ this }}` max-timestamp incremental predicate.
+      This model must NOT add another WHERE on block_timestamp — doing so
+      would shadow decode_logs's filter and break incremental runs. The
+      only thing the outer model mirrors from the batch pattern is the
+      config-level incremental_strategy switch.
+
+    Decoded array shape:
+      decode_logs emits arrays as toJSONString([...]) under the param name,
+      so decoded_params['owners'] is a JSON array string like
+      '["0xabc","0xdef"]'. ClickHouse JSONExtract* functions are 1-indexed.
+  columns:
+
+  - name: safe_address
+    description: The Safe that emitted the event (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: event_kind
+    description: >
+      Enum: safe_setup, added_owner, removed_owner, changed_threshold.
+      • safe_setup        — initial owner from SafeSetup (one row per owner)
+      • added_owner       — AddedOwner(address) emitted post-setup
+      • removed_owner     — RemovedOwner(address) emitted post-setup
+      • changed_threshold — ChangedThreshold(uint256); owner is NULL
+    data_type: String
+
+  - name: owner
+    description: >
+      The owner address (lowercase, 0x-prefixed). NULL on
+      `changed_threshold` events.
+    data_type: Nullable(String)
+
+  - name: threshold
+    description: >
+      Confirmations required after this event. Populated for `safe_setup`
+      and `changed_threshold`; NULL for owner-only events.
+    data_type: Nullable(UInt32)
+
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_number
+    description: Block number of the event.
+    data_type: UInt32
+
+  - name: transaction_hash
+    description: Transaction that emitted the event.
+    data_type: String
+
+  - name: log_index
+    description: Index of the log within its transaction.
+    data_type: UInt32
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-05-21"
+      batch_months: 3
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_safes_current_owners
+  description: |
+    Current owner set per Safe.
+
+    For each (safe_address, owner) pair, take the latest event by
+    (block_number, log_index). If the latest event is safe_setup or
+    added_owner, the owner is current; if removed_owner, the row is
+    dropped. Threshold is the latest safe_setup / changed_threshold per
+    Safe, denormalized onto every owner row.
+
+    `became_owner_at` is the timestamp of the most recent event that
+    added (or set up) this owner — for an owner who was removed and then
+    re-added, it is the re-add time, not the original setup time.
+
+    Cheap to fully rebuild every run; no incremental strategy needed.
+  columns:
+
+  - name: safe_address
+    description: The Safe address (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: owner
+    description: A current owner of the Safe (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: became_owner_at
+    description: >
+      Timestamp of the event that added (or set up) this owner. For an owner
+      who was removed and re-added, this is the re-add time, not the original
+      setup time.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: current_threshold
+    description: Confirmations currently required by this Safe.
+    data_type: Nullable(UInt32)
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_safes_module_events
+  description: |
+    Long-form log of module-state and guard-state mutations on every Safe
+    in contracts_safe_registry.
+
+    event_kind ∈ (enabled_module, disabled_module, changed_guard,
+    changed_module_guard).
+
+    target_address is whichever address the event carried:
+      • enabled_module / disabled_module → decoded_params['module']
+      • changed_guard                    → decoded_params['guard']
+      • changed_module_guard             → decoded_params['moduleGuard']
+
+    decode_logs owns the time-window filter (start_month/end_month + the
+    this-table incremental high-water mark). The outer model only mirrors
+    the strategy switch.
+  columns:
+
+  - name: safe_address
+    description: The Safe that emitted the event (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: event_kind
+    description: >
+      Enum: enabled_module, disabled_module, changed_guard,
+      changed_module_guard.
+    data_type: String
+
+  - name: target_address
+    description: >
+      The address the event references — module address for enabled/disabled,
+      guard address for changed_guard, moduleGuard address for
+      changed_module_guard. Lowercase, 0x-prefixed.
+    data_type: Nullable(String)
+
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_number
+    description: Block number of the event.
+    data_type: UInt32
+
+  - name: transaction_hash
+    description: Transaction that emitted the event.
+    data_type: String
+
+  - name: log_index
+    description: Index of the log within its transaction.
+    data_type: UInt32
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-05-21"
+      batch_months: 3
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

@@ -1,0 +1,62 @@
+version: 2
+
+models:
+- name: int_execution_zodiac_module_proxies
+  description: |
+    Catalogue of every Zodiac module proxy ever deployed on Gnosis Chain.
+
+    Decoded directly from the canonical Zodiac ModuleProxyFactory's
+    ModuleProxyCreation(address indexed proxy, address indexed masterCopy)
+    event. The factory address is hardcoded — there has only ever been one
+    on Gnosis Chain at the canonical address.
+
+    decode_logs handles its own start_month/end_month + incremental filter,
+    so this model just sets the matching incremental_strategy switch and
+    reshapes the decoded output. Do NOT add an outer block_timestamp filter.
+
+    Foundation for downstream module-aware models — joined to
+    int_execution_safes_module_events to identify which Zodiac module
+    proxies are attached to which Safes (and to filter to a specific module
+    type via the master_copy column).
+  columns:
+
+  - name: proxy_address
+    description: The deployed module proxy address (lowercase, 0x-prefixed). Inherited from decode_logs's `decoded_params['proxy']`, which adds the 0x prefix automatically.
+    data_type: String
+
+  - name: master_copy
+    description: The Zodiac mastercopy this proxy delegates to (lowercase, 0x-prefixed). Use this to filter by module type.
+    data_type: String
+
+  - name: block_timestamp
+    description: UTC timestamp of the block in which the ModuleProxyCreation event was emitted.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_number
+    description: Block number of the deployment.
+    data_type: UInt32
+
+  - name: tx_hash
+    description: Transaction that emitted the ModuleProxyCreation event.
+    data_type: String
+
+  - name: log_index
+    description: Index of the log within its transaction.
+    data_type: UInt32
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-01-01"
+      batch_months: 3
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

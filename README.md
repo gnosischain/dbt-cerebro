@@ -27,7 +27,7 @@ Cerebro dbt transforms Gnosis Chain data across eight modules:
 
 | Module | Description | Models |
 |--------|-------------|--------|
-| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics | ~211 |
+| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics, **Safe wallet catalog, Gnosis Pay on-chain modules, Gnosis App heuristic sector** | ~225 |
 | **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~54 |
 | **contracts** | Decoded smart contract events and calls (BalancerV2/V3, UniswapV3, Aave, Swapr, etc.) | ~44 |
 | **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~27 |
@@ -619,6 +619,38 @@ sources:
 | `probelab` | warn 36h / error 72h | External rollups |
 | `crawlers_data` (Dune) | Mixed table-level SLA | `dune_bridge_flows`/`dune_labels`: warn 18h / error 30h; `dune_prices`/`dune_gno_supply`: warn 36h / error 48h so a 06:00 run still errors when the latest business date falls back from yesterday to D-2 |
 
+## Cross-Domain Identity & Privacy
+
+Some Cerebro models join Mixpanel product analytics to on-chain data. Both sides contain identifiers that can re-identify a real person — wallet addresses on-chain, `distinct_id` (often a wallet) in Mixpanel — so cross-domain joins are implemented through a single keyed-hash pseudonym pattern that never materializes a raw address downstream.
+
+The macro lives at [`macros/pseudonymize_address.sql`](macros/pseudonymize_address.sql):
+
+```jinja
+{% macro pseudonymize_address(addr_expr) %}
+    sipHash64(concat(unhex('{{ env_var("CEREBRO_PII_SALT") }}'), lower({{ addr_expr }})))
+{% endmacro %}
+```
+
+Three rules govern its use:
+
+1. **`CEREBRO_PII_SALT` is required.** A hex-encoded string (generate with `openssl rand -hex 32`), set in the dbt orchestrator's environment, never committed. `env_var(...)` is called without a default — `dbt parse` fails loudly if it's missing.
+2. **Apply on both sides of every cross-domain join.** Mixpanel staging (`stg_mixpanel_ga__events.user_id_hash` / `device_id_hash`) and the on-chain side (e.g. `int_execution_gpay_safe_identities`) both run their inputs through the same macro, so the pseudonym is identical for the same address regardless of which side originated it. Joins are then `mp.user_id_hash = onchain.user_pseudonym`.
+3. **Never write `sipHash64(...)` directly anywhere a wallet is involved.** Always use the macro. Repo-level grep guard:
+   ```bash
+   rg "sipHash64\(" models/ | rg -v "pseudonymize_address\|user_id_hash\|device_id_hash"
+   ```
+
+The salt is permanent. Rotating it invalidates every pseudonym already in the warehouse and breaks every cross-domain join that assumes continuity. Treat it like a database password that you cannot reset.
+
+The first production users of this pattern are:
+
+- [`stg_mixpanel_ga__events`](models/mixpanel_ga/staging/stg_mixpanel_ga__events.sql) — pseudonymizes `distinct_id` and `$device_id` at ingest
+- [`fct_mixpanel_ga_gpay_crossdomain_daily`](models/mixpanel_ga/marts/fct_mixpanel_ga_gpay_crossdomain_daily.sql) — Gnosis Pay cardholder ↔ Mixpanel daily rollup
+- *(planned)* `int_execution_gpay_safe_identities`, `fct_mixpanel_ga_gpay_users` — per-user GP bridge with union-match on initial owner / delegate / Safe self
+- *(planned)* `int_execution_gnosis_app_user_identities`, `fct_mixpanel_ga_gnosis_app_users` — heuristic Gnosis App sector with Mixpanel as a *check*, not a source of truth
+
+Deep dive: <https://docs.analytics.gnosis.io/data-pipeline/transformation/privacy-pseudonyms/>
+
 ## Observability and Testing
 
 ### Elementary OSS
@@ -745,9 +777,13 @@ The same two macros (`decode_logs`, `decode_calls`) handle all four patterns. Wh
 
 ```mermaid
 graph TD
-    A[Contract address] --> B[fetch_and_insert_abi macro<br/>Blockscout HTTP]
-    B --> C[contracts_abi table]
-    C --> D[signature_generator.py<br/>Python: keccak + canonicalize]
+    A[Contract address] --> B1["fetch_abi_to_csv.py<br/>(preferred: direct HTTP to Blockscout,<br/>writes straight to CSV)"]
+    A --> B2["fetch_and_insert_abi macro<br/>(legacy: via ClickHouse url(),<br/>writes to CH table)"]
+    B1 --> CSV[contracts_abi.csv seed]
+    B2 --> CH[contracts_abi table in CH]
+    CH -- "export_contracts_abi.py<br/>(required or the row is lost)" --> CSV
+    CSV -- "dbt seed contracts_abi" --> CH
+    CH --> D[signature_generator.py<br/>Python: keccak + canonicalize]
     D --> E1[event_signatures.csv seed]
     D --> E2[function_signatures.csv seed]
     E1 -- dbt seed --> F1[event_signatures table]
@@ -903,6 +939,24 @@ When the flag is `true`, the macro emits the proxy-aware `coalesce(nullIf(cw.abi
 
 If you ever see a `Code: 47. DB::Exception: Identifier 'cw.abi_source_address' cannot be resolved` error, it means either the macro was compiled before this introspection was added, or your registry seed is missing the column it claims to have.
 
+### Proxy/Mastercopy Registries (model-backed)
+
+`contracts_whitelist` and `contracts_circles_registry_static` are static seeds — fine when the address set is known ahead of time. When the address set comes from chain discovery (every Safe ever deployed, every Zodiac module proxy ever attached to a GP Safe), the registry has to be a **dbt model**, not a seed.
+
+Two production examples:
+
+| Registry | Type | What it discovers | `abi_source_address` resolves to |
+|---|---|---|---|
+| [`contracts_safe_registry`](models/execution/safe/intermediate/contracts_safe_registry.sql) | Table model | Every Safe proxy ever deployed on Gnosis Chain — sourced from `int_execution_safes`, which scans `execution.traces` for the `delegate_call` + setup-selector pattern across all 12 known singletons. | The Safe singleton/mastercopy this proxy was set up against (v1.3.0L2, v1.4.1, the Circles fork, etc.). Lets every Safe proxy share the singleton's `event_signatures` rows. |
+| [`contracts_gpay_modules_registry`](models/execution/gpay/intermediate/contracts_gpay_modules_registry.sql) *(planned)* | Table model | Every Zodiac module proxy enabled on a Gnosis Pay Safe — cross-references `int_execution_safes_module_events` (which Safes enabled which modules) against `int_execution_zodiac_module_proxies` (which factory-deployed proxy points at which mastercopy), filtered to the three GP mastercopies. | The Zodiac mastercopy (DelayModule / RolesModule / SpenderModule) — see [Gnosis Pay protocol docs](https://docs.analytics.gnosis.io/protocols/gnosis-pay/). |
+
+Two operational caveats specific to model-backed registries:
+
+1. **DAG ordering matters.** `decode_logs` introspects the registry at compile time via `adapter.get_columns_in_relation`. This call only fires when the model is actually executed (it's wrapped in `{% if execute %}`), so dbt parse works fine, but `dbt run --select <consumer_model>` in isolation against a fresh warehouse will fail because the registry hasn't been built yet. Always chain `--select int_execution_safes contracts_safe_registry int_execution_safes_owner_events` so the DAG order builds the registry first.
+2. **`allow_nullable_key: 1` is required if any column in the order key is inherited from a Nullable source column.** `execution.traces.action_from` is `Nullable(String)`, and so is every Safe address derived from it. Set the flag in the registry's config or the table creation will fail with `Sorting key contains nullable columns`.
+
+Deep dive: <https://docs.analytics.gnosis.io/data-pipeline/transformation/safe-module-registry-pattern/>
+
 ### Factory discovery
 
 Some protocols deploy contracts dynamically via factory contracts. Circles V2 is a heavy user — every Group, every PaymentGateway, every ERC20 wrapper is created on demand. We can't list all of them in a static seed because new ones land every day.
@@ -1003,7 +1057,7 @@ The `-- depends_on:` comments in `contracts_circles_registry.sql` enforce this o
 
 | Seed | What it stores | Who writes it | Consumed by |
 |---|---|---|---|
-| `contracts_abi` | Raw ABI JSON per contract address (and per implementation for proxies). One row per contract or proxy/impl pair. | `dbt run-operation fetch_and_insert_abi` (which calls Blockscout) → manually re-exported via `scripts/abi/export_contracts_abi.py` to keep the seed CSV in sync | `signature_generator.py` (only) |
+| `contracts_abi` | Raw ABI JSON per contract address (and per implementation for proxies). One row per contract or proxy/impl pair. | **Preferred:** `scripts/signatures/fetch_abi_to_csv.py 0xADDRESS [--regen]` — fetches from Blockscout and writes directly to the CSV. **Legacy:** `dbt run-operation fetch_and_insert_abi` (writes directly to CH) + `scripts/abi/export_contracts_abi.py` (dumps CH back to CSV); skipping the export step is a common footgun because `dbt seed contracts_abi` then silently wipes the new row on next run. | `signature_generator.py` (only) |
 | `event_signatures` | Pre-computed `(contract_address, topic0_hash, event_name, params, indexed/non_indexed split)` rows. One row per event per ABI. | `scripts/signatures/signature_generator.py` (parses contracts_abi.csv, computes keccak hashes, canonicalizes types) | `decode_logs` macro (JOIN target) |
 | `function_signatures` | Same idea but for function selectors. One row per function per ABI. | Same script | `decode_calls` macro (JOIN target) |
 | `contracts_whitelist` | Flat list of `(address, contract_type)`. No proxy support. | Manual edits to the CSV | `decode_logs` / `decode_calls` via `contract_address_ref` |
@@ -1027,7 +1081,82 @@ Run it whenever you add a new ABI:
 python scripts/signatures/signature_generator.py
 ```
 
+### The ABI-fetch shortcut (`fetch_abi_to_csv.py`)
+
+`scripts/signatures/fetch_abi_to_csv.py` exists to make the "add a new contract" flow a single command and to avoid a class of silent-data-loss bugs.
+
+**What it does:**
+1. HTTP GET to `https://gnosis.blockscout.com/api/v2/smart-contracts/<address>` with a browser-like User-Agent (Blockscout 403s the default `Python-urllib/3.x` UA).
+2. Parses the JSON response, extracts `abi`, `name`, `implementations`.
+3. Appends a new row to `seeds/contracts_abi.csv` with proper `QUOTE_ALL` escaping matching the existing dialect. If the row already exists, skips (or replaces with `--force`).
+4. If the contract is a proxy (Blockscout returns a non-empty `implementations` array), also fetches the first implementation's ABI and appends a second row with `(contract_address=proxy, implementation_address=impl)` — matching the behaviour of the legacy `fetch_and_insert_abi` macro.
+5. With `--regen`, chains through `dbt seed contracts_abi` → `signature_generator.py` → `dbt seed event_signatures function_signatures` so the warehouse is fully in sync on exit.
+
+**Why the CSV-first flow matters.** The legacy `dbt run-operation fetch_and_insert_abi` writes directly to the ClickHouse `contracts_abi` table without touching the CSV. The next time anyone runs `dbt seed --select contracts_abi`, dbt replaces the table with the CSV's contents — silently wiping any row the macro inserted. The only way to preserve those rows under the legacy flow is to immediately run `scripts/abi/export_contracts_abi.py` to dump the CH state back to the CSV. It's easy to forget, and when you do you won't notice until a downstream decoder returns zero rows.
+
+`fetch_abi_to_csv.py` is immune to this because the CSV is the only place it writes. A subsequent `dbt seed` pushes it TO ClickHouse (rather than the other direction), and `signature_generator.py` then picks it up for the event/function signature seeds.
+
+**Flags:**
+
+| Flag | Purpose |
+|---|---|
+| `--regen` | Chain `dbt seed contracts_abi`, `signature_generator.py`, and `dbt seed event_signatures function_signatures` after the CSV write. |
+| `--force` | Overwrite the existing row for `(contract_address, implementation_address)` instead of skipping. Use when a contract is reverified with a new name or a corrected ABI. |
+| `--name <NAME>` | Override the `contract_name` field when Blockscout returns something ugly or ambiguous. |
+| `--from-ch` | **Egress-less fallback**: read the ABI from the ClickHouse `contracts_abi` table via `dbt show` instead of hitting Blockscout. Requires that `dbt run-operation fetch_and_insert_abi` has already run for the same address so the row exists in CH. Useful in containers with no outbound HTTP or when Blockscout is rate-limiting. |
+
+**Typical usage:**
+
+```bash
+# One-shot: fetch Blockscout, append to CSV, re-seed, regen signatures, re-seed
+python scripts/signatures/fetch_abi_to_csv.py 0x70db53617d170A4E407E00DFF718099539134F9A --regen
+
+# Egress-less fallback: first let the dbt macro pull the ABI through CH,
+# then sync the CH row to the CSV via --from-ch
+dbt run-operation fetch_and_insert_abi --args '{"address": "0xADDRESS"}'
+python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --from-ch --regen
+
+# Refresh an existing row (e.g. upstream contract reverified with a new name)
+python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --force --regen
+```
+
 ### Adding a new contract — full workflow
+
+Two paths are supported. Both end in the same state (CSV is the source of truth, ClickHouse and `event_signatures.csv` are in sync); pick whichever is more convenient for your environment.
+
+#### Recommended: CSV-first one-shot (`fetch_abi_to_csv.py`)
+
+`scripts/signatures/fetch_abi_to_csv.py` fetches the ABI directly from Blockscout over HTTP (no ClickHouse round-trip), writes it straight into `seeds/contracts_abi.csv`, and — with `--regen` — chains through the `dbt seed` + `signature_generator.py` + second `dbt seed` steps in a single command:
+
+```bash
+docker exec -it dbt /bin/bash
+
+# One-shot: fetch Blockscout ABI, append to CSV, seed CH, regenerate sigs,
+# re-seed sigs. Leaves the warehouse fully in sync.
+python scripts/signatures/fetch_abi_to_csv.py 0xContractAddress --regen
+
+# Create the decode model file under models/contracts/<Protocol>/, e.g.
+# contracts_<protocol>_<contract>_events.sql with a decode_logs(...) call.
+# Add a matching schema.yml entry.
+
+# Run the new model.
+dbt run --select contracts_<protocol>_<contract>_events
+```
+
+Flags:
+
+| Flag | Purpose |
+|---|---|
+| `--regen` | Chain `dbt seed contracts_abi` → `signature_generator.py` → `dbt seed event_signatures function_signatures` after the CSV write. Without this, you do those three steps manually. |
+| `--force` | Replace the row if `(contract_address, implementation_address)` already exists in the CSV (useful when a contract is reverified with a new name or a bug-fixed ABI). |
+| `--name <NAME>` | Override the `contract_name` field (default: whatever Blockscout returns). |
+| `--from-ch` | **Fallback mode**: read the ABI from the ClickHouse `contracts_abi` table instead of Blockscout. Useful when the container has no outbound HTTP or Blockscout returns 403/429. Requires that `dbt run-operation fetch_and_insert_abi` has already been run for the address. |
+
+The script uses a browser-like User-Agent header because Blockscout's public API 403s the default `Python-urllib/3.x` UA. Egress-less containers can use `--from-ch` to bypass the HTTP call entirely.
+
+#### Alternative: legacy two-step (dbt macro + export script)
+
+Uses the older `fetch_and_insert_abi` macro which writes directly to ClickHouse, then a separate `export_contracts_abi.py` to dump the table back to the CSV. Still supported and equivalent in outcome:
 
 ```bash
 docker exec -it dbt /bin/bash
@@ -1053,16 +1182,25 @@ dbt seed --select contracts_abi event_signatures function_signatures
 dbt run --select contracts_<protocol>_<contract>_events
 ```
 
+**Critical footgun in this path**: if you skip step 2 (`export_contracts_abi.py`), the next time anyone runs `dbt seed --select contracts_abi` the new row gets silently wiped — the seed replaces the CH table with the CSV's contents, and the CSV doesn't have the row because the dbt macro only wrote to CH. The `fetch_abi_to_csv.py` path avoids this class of bug by making the CSV the only write target.
+
 ### Adding a new factory — extra steps
 
 When the contract you want to decode is a factory whose children should also be decoded automatically:
 
 ```bash
-# 1-4 above (fetch the factory's own ABI). Then also fetch the child ABI:
-dbt run-operation fetch_and_insert_abi --args '{"address": "0xChildImplementationAddress"}'
-python scripts/abi/export_contracts_abi.py
-python scripts/signatures/signature_generator.py
-dbt seed --select contracts_abi event_signatures function_signatures
+# 1. Fetch BOTH the factory ABI AND the child-implementation ABI.
+#    Using the CSV-first shortcut (recommended) — one --regen is enough
+#    at the end because both writes land in the same CSV before seeding.
+python scripts/signatures/fetch_abi_to_csv.py 0xFactoryAddress
+python scripts/signatures/fetch_abi_to_csv.py 0xChildImplementationAddress --regen
+
+# Or with the legacy two-step path:
+#   dbt run-operation fetch_and_insert_abi --args '{"address": "0xFactoryAddress"}'
+#   dbt run-operation fetch_and_insert_abi --args '{"address": "0xChildImplementationAddress"}'
+#   python scripts/abi/export_contracts_abi.py
+#   python scripts/signatures/signature_generator.py
+#   dbt seed --select contracts_abi event_signatures function_signatures
 
 # 5. Create the factory's own events model so its creation events get decoded:
 #    models/contracts/<Protocol>/contracts_<protocol>_<Factory>_events.sql
@@ -1333,11 +1471,14 @@ dbt-cerebro/
 │   │   ├── staging/               # stg_consensus__*
 │   │   ├── intermediate/          # int_consensus_*
 │   │   └── marts/                 # fct_consensus_*, api_consensus_*
-│   ├── execution/                 # Execution layer (211 models)
+│   ├── execution/                 # Execution layer (~225 models)
 │   │   ├── blocks/
 │   │   ├── transactions/
 │   │   ├── tokens/
-│   │   ├── gpay/
+│   │   ├── gpay/                  # Gnosis Pay: wallet owners, activity, (planned: modules, allowances, delegates, mixpanel bridge)
+│   │   ├── safe/                  # Generic Safe wallet catalog (creation, owner events, current owners; planned: module events)
+│   │   ├── zodiac/                # (planned) Zodiac ModuleProxyFactory discovery
+│   │   ├── gnosis_app/            # (planned) Gnosis App heuristic sector (Cometh + Circles V2 chokepoint)
 │   │   ├── state/
 │   │   ├── transfers/
 │   │   ├── prices/
@@ -1353,16 +1494,24 @@ dbt-cerebro/
 │   ├── crawlers_data/             # External data (9 models)
 │   └── probelab/                  # ProbeLab (9 models)
 ├── macros/
-│   ├── db/                        # Database utilities (incremental filters)
-│   └── decoding/                  # Contract decoding macros
+│   ├── db/                        # Database utilities (incremental filters, dedup_source)
+│   ├── decoding/                  # Contract decoding macros (decode_logs, decode_calls)
+│   └── pseudonymize_address.sql   # Keyed-hash pseudonym for cross-domain joins (Mixpanel ↔ on-chain)
 ├── seeds/                         # Static reference data
 │   ├── contracts_abi.csv
 │   ├── contracts_whitelist.csv
 │   ├── tokens_whitelist.csv
 │   ├── event_signatures.csv
-│   └── function_signatures.csv
+│   ├── function_signatures.csv
+│   ├── safe_singletons.csv        # 12 Safe singleton addresses + version + setup selector
+│   └── gnosis_app_relayers.csv    # (planned) Cometh v4 ERC-4337 bundlers (Gnosis App chokepoint)
 ├── scripts/
-│   ├── full_refresh/              # Batched backfill orchestrator
+│   ├── full_refresh/              # Batched backfill orchestrator (refresh.py)
+│   ├── signatures/                # ABI → keccak signatures pipeline
+│   │   ├── signature_generator.py     # contracts_abi.csv → event/function_signatures.csv
+│   │   └── fetch_abi_to_csv.py        # Blockscout ABI → contracts_abi.csv (+ --regen chain)
+│   ├── abi/
+│   │   └── export_contracts_abi.py    # Dumps CH contracts_abi table back to CSV (legacy flow)
 │   ├── analysis/                  # Model classification CSV
 │   ├── cleanup_schema_meta.py     # Meta cleanup migration
 │   └── run_dbt_observability.sh   # Shared cron orchestrator
@@ -1427,6 +1576,15 @@ docker exec dbt env | grep CLICKHOUSE
 # Test connection
 docker exec dbt dbt debug
 ```
+
+### ClickHouse & decoding gotchas
+
+These are hard-won lessons from the Safe / Gnosis Pay pipeline buildout. Full details in the [cerebro-docs ABI decoding page](https://docs.gnosischain.com/cerebro/data-pipeline/transformation/abi-decoding/).
+
+- **ClickHouse alias-shadowing:** `SELECT 'X' AS col ... WHERE col = 'X'` evaluates the alias (not the source column). Use a subquery pre-filter: `FROM (SELECT * FROM t WHERE col = 'X') d`.
+- **Bool decoding:** `decode_logs` and `decode_calls` emit `'0'`/`'1'` for `bool` types. Don't compare to `'true'`/`'false'`.
+- **ABI indexed-flag audit:** If a decoded param is unexpectedly NULL, check whether the `indexed` flag in `contracts_abi.csv` matches the on-chain Solidity source. Use the [topic-nullness verification query](https://docs.gnosischain.com/cerebro/data-pipeline/transformation/abi-decoding/#indexed-flag-mismatch-decoded-param-is-null-but-raw-data-exists).
+- **Safe v1.4.1 ABI drift:** EnabledModule, DisabledModule, ChangedGuard, ChangedModuleGuard, AddedOwner, RemovedOwner all have different `indexed` flags in v1.4.1 vs pre-v1.4.1. See the [Safe ABI drift table](https://docs.gnosischain.com/cerebro/protocols/safe/#abi-indexed-flag-drift-across-versions).
 
 ## License
 
