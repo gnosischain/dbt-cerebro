@@ -5,11 +5,7 @@
     )
 }}
 
-{#-
-  Daily LP activity (Mint/Burn event counts) per pool per token,
-  unpivoted into one row per event type for the BarChart seriesField.
-  Reuses pool labels and top-pool filtering from fct_execution_pools_daily.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 

@@ -5,14 +5,7 @@
     )
 }}
 
-{#-
-  Balancer V3 ERC4626 wrapper → underlying token mapping.
-  Used to resolve wrapped Aave tokens (waGno*) to their underlying
-  for price lookups and token symbol resolution.
-
-  Hardcoded for now (only 5 Aave wrappers on Gnosis).
-  Wrapper tokens are ~1:1 with underlying (plus accrued yield).
--#}
+{#- Model documentation in schema.yml -#}
 
 SELECT '0x773cda0cade2a3d86e6d4e30699d40bb95174ff2' AS wrapper_address, 'waGnowstETH' AS wrapper_symbol, toUInt8(18) AS wrapper_decimals, '0x6c76971f98945ae98dd7d4dfca8711ebea946ea6' AS underlying_address
 UNION ALL

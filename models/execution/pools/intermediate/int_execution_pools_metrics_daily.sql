@@ -9,14 +9,7 @@
     )
 }}
 
-{#-
-  Pool-level daily metrics: TVL, fees, volume, swap count, and 7D trailing
-  fee APR. Aggregates token-level TVL from the enriched model, joins fees
-  and swap counts, then applies rolling window functions.
-
-  Materialized as a table to avoid ClickHouse 25.10 query analyzer issues
-  with window-function CTEs in downstream joins.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 
@@ -26,7 +19,7 @@ pool_tvl_daily AS (
         protocol,
         pool_address,
         sum(tvl_component_usd) AS tvl_usd
-    FROM {{ ref('int_execution_pools_enriched_daily') }}
+    FROM {{ ref('int_execution_pools_balances_daily') }}
     GROUP BY date, protocol, pool_address
 ),
 
@@ -45,37 +38,11 @@ fees_volume_daily AS (
 swap_counts_daily AS (
     SELECT
         toDate(toStartOfDay(block_timestamp)) AS date,
-        'Uniswap V3' AS protocol,
-        concat('0x', replaceAll(lower(contract_address), '0x', '')) AS pool_address,
+        protocol,
+        pool_address,
         count(*) AS swap_count
-    FROM {{ ref('contracts_UniswapV3_Pool_events') }}
-    WHERE event_name = 'Swap'
-      AND block_timestamp < today()
-    GROUP BY date, protocol, pool_address
-
-    UNION ALL
-
-    SELECT
-        toDate(toStartOfDay(block_timestamp)) AS date,
-        'Swapr V3' AS protocol,
-        concat('0x', replaceAll(lower(contract_address), '0x', '')) AS pool_address,
-        count(*) AS swap_count
-    FROM {{ ref('contracts_Swapr_v3_AlgebraPool_events') }}
-    WHERE event_name = 'Swap'
-      AND block_timestamp < today()
-    GROUP BY date, protocol, pool_address
-
-    UNION ALL
-
-    SELECT
-        toDate(toStartOfDay(block_timestamp)) AS date,
-        'Balancer V3' AS protocol,
-        concat('0x', replaceAll(lower(decoded_params['pool']), '0x', '')) AS pool_address,
-        count(*) AS swap_count
-    FROM {{ ref('contracts_BalancerV3_Vault_events') }}
-    WHERE event_name = 'Swap'
-      AND decoded_params['pool'] IS NOT NULL
-      AND block_timestamp < today()
+    FROM {{ ref('int_execution_pools_dex_trades') }}
+    WHERE block_timestamp < today()
     GROUP BY date, protocol, pool_address
 ),
 

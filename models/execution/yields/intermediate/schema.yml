@@ -1,6 +1,95 @@
 version: 2
 models:
 
+- name: int_execution_yields_user_lp_positions
+  description: >
+    Per-user LP position summary across all DEX protocols. One row per
+    (provider, pool_address, tick_lower, tick_upper). Aggregates capital
+    in/out from Mint/Burn events, fees from Collect events, computes net
+    V3 liquidity for activity status, and checks in-range against latest
+    pool tick from Swap events.
+  columns:
+  - name: provider
+    description: LP wallet address.
+    data_type: String
+  - name: pool_address
+    data_type: String
+  - name: protocol
+    data_type: String
+  - name: tick_lower
+    description: Lower tick bound (NULL for Balancer full-range positions).
+    data_type: Nullable(Int32)
+  - name: tick_upper
+    description: Upper tick bound (NULL for Balancer full-range positions).
+    data_type: Nullable(Int32)
+  - name: tick_lower_key
+    description: Coalesced tick_lower for order key (0 when NULL).
+    data_type: Int32
+  - name: tick_upper_key
+    description: Coalesced tick_upper for order key (0 when NULL).
+    data_type: Int32
+  - name: capital_in_usd
+    description: Total USD value deposited via Mint events.
+    data_type: Float64
+  - name: capital_out_usd
+    description: Total USD value withdrawn via Burn events.
+    data_type: Float64
+  - name: fees_collected_usd
+    description: Total USD value of fees claimed via Collect events (V3 only, 0 for Balancer).
+    data_type: Float64
+  - name: net_liquidity
+    description: Sum of signed V3 liquidity deltas (positive = open). NULL-safe, defaults to 0.
+    data_type: Int256
+  - name: is_active
+    description: "True if position still has open liquidity. V3: net_liquidity > 0. Balancer: capital_in_usd > capital_out_usd (heuristic)."
+    data_type: Bool
+  - name: is_in_range
+    description: "V3 only: true if tick_lower <= current_tick < tick_upper. NULL for Balancer or if no recent Swap data."
+    data_type: Nullable(Bool)
+  - name: pool_current_tick
+    description: Latest tick from Swap events on this pool. NULL if no swaps recorded.
+    data_type: Nullable(Int32)
+  - name: entry_date
+    description: Timestamp of the first event for this position.
+    data_type: DateTime
+  - name: last_action_date
+    description: Timestamp of the most recent event for this position.
+    data_type: DateTime
+
+- name: int_execution_yields_user_activity
+  description: >
+    Unified yield activity feed combining LP events (Add/Remove Liquidity,
+    Collect Fees) from the pools pipeline and lending events (Supply, Withdraw,
+    Borrow, Repay) from Aave V3. Common schema for the dashboard activity table.
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    data_type: String
+  - name: position_address
+    description: Pool address (LP) or reserve address (lending).
+    data_type: String
+  - name: wallet_address
+    data_type: String
+  - name: action
+    description: "Human-readable action: Add Liquidity, Remove Liquidity, Collect Fees, Supply, Withdraw, Borrow, Repay."
+    data_type: String
+  - name: token_symbol
+    data_type: Nullable(String)
+  - name: token_address
+    data_type: String
+  - name: amount
+    data_type: Float64
+  - name: amount_usd
+    data_type: Float64
+  - name: source
+    description: "Event source: lp or lending."
+    data_type: String
+
 - name: int_yields_sdai_rate_daily
   description: The model calculates daily SDai exchange rates based on deposit events, providing a time series for yield analysis and rate tracking.
   columns:

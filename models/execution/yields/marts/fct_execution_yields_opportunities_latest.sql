@@ -13,8 +13,8 @@ SELECT
     token,
     name,
     address,
-    yield_pct,
-    yield_label,
+    yield_apr,
+    yield_apy,
     borrow_apy,
     tvl,
     total_supplied,
@@ -80,8 +80,8 @@ FROM (
             f.token AS token,
             replaceOne(f.pool, concat(' • ', f.protocol), '') AS name,
             f.pool_address AS address,
-            f.fee_apr_7d AS yield_pct,
-            'APR' AS yield_label,
+            f.fee_apr_7d AS yield_apr,
+            NULL AS yield_apy,
             NULL AS borrow_apy,
             f.tvl_usd AS tvl,
             NULL AS total_supplied,
@@ -107,8 +107,8 @@ FROM (
             token,
             name,
             address,
-            yield_pct,
-            yield_label,
+            yield_apr,
+            yield_apy,
             borrow_apy,
             tvl,
             total_supplied,
@@ -152,8 +152,8 @@ FROM (
             a.symbol AS token,
             a.symbol AS name,
             rm.atoken_address AS address,
-            a.apy_daily AS yield_pct,
-            'APY' AS yield_label,
+            NULL AS yield_apr,
+            a.apy_daily AS yield_apy,
             a.borrow_apy_variable_daily AS borrow_apy,
             NULL AS tvl,
             (lc.cumulative_scaled_supply * a.liquidity_index / 1e27)
@@ -181,12 +181,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
+    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
+    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lending_markets
 )
-ORDER BY yield_pct DESC
+ORDER BY COALESCE(yield_apr, yield_apy) DESC

@@ -2,7 +2,12 @@ version: 2
 models:
 
 - name: int_execution_pools_lps_daily
-  description: Daily LP provider activity from Mint and Burn events on Uniswap V3 and Swapr V3 pools. Tracks event counts, daily unique LP addresses, and a bitmap state for rolling-window deduplication via groupBitmapMerge(). The `owner` field from Mint/Burn events is the actual LP position owner, not a router.
+  description: >
+    Daily LP provider activity from Mint and Burn events on Uniswap V3 and Swapr V3 pools.
+    Tracks event counts, daily unique LP addresses, and a bitmap state (cityHash64 hashing)
+    for rolling-window deduplication via groupBitmapMerge(). The `owner` field from Mint/Burn
+    events is the actual LP position owner, not a router. Contract event models already
+    filter to whitelisted pool addresses.
   columns:
   - name: date
     data_type: Date
@@ -26,9 +31,15 @@ models:
     description: ClickHouse AggregateFunction bitmap state for unique LP addresses (cityHash64). Use groupBitmapMerge() to combine across dates/pools.
     data_type: AggregateFunction(groupBitmap, UInt64)
 
-- name: int_execution_pools_enriched_daily
-  description: Central token-level balance enrichment for all LP pools. Joins raw balances with token metadata and prices (ASOF join for gap safety) to produce TVL components. Single source of truth for TVL across all downstream pool models.
-  columns:
+- name: int_execution_pools_uniswap_v3_daily
+  description: >
+    Daily Uniswap V3 pool token balances with oracle price enrichment.
+    Built from event deltas (Mint, Burn, Swap, Collect, Flash) with static fee rates
+    from PoolCreated (fee_tier_ppm). Separates reserves from unclaimed fees:
+    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    fee_amount = swap fee income − collected fees + flash loan fees.
+    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+  columns: &protocol_model_columns
   - name: date
     data_type: Date
   - name: protocol
@@ -44,18 +55,79 @@ models:
   - name: token
     description: Uppercase token symbol from tokens_whitelist (e.g. WETH, USDC.E). Nullable for unknown tokens.
     data_type: Nullable(String)
+  - name: token_amount_raw
+    description: Total token balance in raw units (Int256).
+    data_type: Int256
   - name: token_amount
-    description: Raw token balance in token units.
+    description: Total token balance in token units.
+    data_type: Float64
+  - name: reserve_amount_raw
+    description: TVL-contributing reserve balance in raw units (Int256).
+    data_type: Int256
+  - name: reserve_amount
+    description: TVL-contributing reserve balance in token units.
+    data_type: Float64
+  - name: fee_amount_raw
+    description: Unclaimed fee balance in raw units (Int256).
+    data_type: Int256
+  - name: fee_amount
+    description: Unclaimed fee balance in token units.
     data_type: Float64
   - name: price_usd
-    description: Token price in USD from ASOF join (latest known price <= date).
+    description: Oracle token price in USD (from Dune, ASOF join).
     data_type: Float64
   - name: tvl_component_usd
-    description: TVL component in USD (token_amount * price_usd).
+    description: TVL component in USD (reserve_amount * price_usd).
     data_type: Float64
+  - name: pool_implied_price_usd
+    description: Token price implied by pool reserves (other side TVL / this reserve). Informational only, not used for TVL calculation.
+    data_type: Nullable(Float64)
+
+- name: int_execution_pools_swapr_v3_daily
+  description: >
+    Daily Swapr V3 pool token balances with oracle price enrichment.
+    Built from event deltas (Mint, Burn, Swap, Collect, Flash) with dynamic fee rates
+    via Fee events (ASOF join), falling back to first observed fee for swaps before
+    the first Fee event. Separates reserves from unclaimed fees:
+    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    fee_amount = swap fee income − collected fees + flash loan fees.
+    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balancer_v2_daily
+  description: >
+    Daily Balancer V2 pool token balances with oracle price enrichment.
+    Built from delta events (PoolBalanceChanged, Swap, PoolBalanceManaged).
+    Fee separation not yet implemented (reserve_amount = token_amount, fee_amount = 0).
+    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
+    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balancer_v3_daily
+  description: >
+    Daily Balancer V3 pool token balances with oracle price enrichment.
+    Built from delta events (LiquidityAdded, LiquidityRemoved, Swap).
+    Token resolution uses PoolRegistered tokenConfig with sentinel-address inference
+    from Swap events. ERC4626 wrappers (waGno*) are resolved to underlying tokens
+    for symbol and price lookups. Fee separation uses event-level swapFeeAmountsRaw.
+    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
+    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+  columns: *protocol_model_columns
+
+- name: int_execution_pools_balances_daily
+  description: >
+    Combined daily pool token balances across all DEX protocols. Thin UNION ALL of the
+    four protocol-level models (Uniswap V3, Swapr V3, Balancer V2, Balancer V3), each
+    of which handles its own event processing, fee separation, incremental logic, and
+    price enrichment.
+  columns: *protocol_model_columns
 
 - name: int_execution_pools_metrics_daily
-  description: Pool-level daily metrics for LP pools. Aggregates TVL from the enriched model, joins fees and swap counts, applies 7D rolling window functions, and computes fee APR. Materialized as a table to avoid ClickHouse 25.10 query analyzer issues with window-function CTEs.
+  description: >
+    Pool-level daily metrics: TVL, fees, volume, swap count, and 7D trailing fee APR.
+    Aggregates token-level TVL from the enriched model, joins fees and swap counts,
+    then applies rolling window functions. Materialized as a table to avoid ClickHouse
+    25.10 query analyzer issues with window-function CTEs in downstream joins.
   columns:
   - name: date
     data_type: Date
@@ -79,8 +151,242 @@ models:
     description: 7-day trailing fee APR annualized ((fees_7d / tvl_7d_avg) * 365/7 * 100). Null when data is insufficient (< 3 days) or TVL is zero.
     data_type: Nullable(Float64)
 
+- name: int_execution_pools_dex_trades_raw
+  description: >
+    Raw DEX swap events across all protocols on Gnosis Chain.
+    One row per swap with token metadata (symbol, decimals, human amounts) but no USD
+    prices — price enrichment lives in int_execution_pools_dex_trades.
+    Each protocol's event decoding lives in its own staging model for easy addition of
+    new protocols. Protocols: Uniswap V3 (stg_pools__dex_trades_uniswap_v3), Swapr V3
+    (stg_pools__dex_trades_swapr_v3), Balancer V2 (stg_pools__dex_trades_balancer_v2),
+    Balancer V3 (stg_pools__dex_trades_balancer_v3).
+    Taker: for Uniswap V3 and Swapr V3, `taker` is the Swap event recipient (correct
+    even when routed through a contract). For Balancer V2/V3, `taker` is NULL because
+    the Swap event does not include a recipient field. When called with
+    start_month/end_month vars each protocol model filters to that month window;
+    otherwise falls back to the incremental filter.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 6
+  columns:
+  - name: block_number
+    description: Block height containing the swap event.
+    data_type: UInt32
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_address
+    description: Address of the token received by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_symbol
+    description: Symbol of the bought token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    description: Amount of token bought in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    description: Amount of token bought in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    description: Address of the token spent by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_sold_symbol
+    description: Symbol of the sold token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    description: Amount of token sold in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    description: Amount of token sold in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: taker
+    description: Address receiving the bought tokens. From Swap event recipient field for Uniswap V3 and Swapr V3; NULL for Balancer (event does not include recipient).
+    data_type: Nullable(String)
+
+- name: int_execution_pools_dex_trades_tx_context
+  description: >
+    Thin lookup mapping swap transaction hashes to sender (tx_from) and recipient (tx_to).
+    Only contains transactions that appear in int_execution_pools_dex_trades_raw, keeping
+    the table small (~300–400K distinct hashes per month, ~80 MB). Used by
+    int_execution_pools_dex_trades as a lightweight right-side join instead of hitting the
+    full execution.transactions table inside the same query that also runs ASOF price joins.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 3
+  columns:
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: tx_from
+    description: EOA address that signed the transaction (lowercase, with 0x prefix).
+    data_type: String
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract (lowercase, with 0x prefix).
+    data_type: String
+
+- name: int_execution_pools_dex_trades
+  description: >
+    DEX swap events enriched with USD prices and transaction context. Source of truth for
+    trade-level analytics with USD values. Reads from int_execution_pools_dex_trades_raw
+    (materialized, month-partitioned) and adds daily USD prices via ASOF joins plus
+    tx_from/tx_to from int_execution_pools_dex_trades_tx_context. The tx context lookup
+    is a separate materialized table (~80 MB per month) instead of multi-GB from the full
+    execution.transactions table, keeping total memory well within limits alongside the
+    ASOF price joins.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 1
+  columns:
+  - name: block_number
+    description: Block height containing the swap event.
+    data_type: UInt32
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_address
+    description: Address of the token received by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_symbol
+    description: Symbol of the bought token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    description: Amount of token bought in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    description: Amount of token bought in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    description: Address of the token spent by the taker (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_sold_symbol
+    description: Symbol of the sold token. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    description: Amount of token sold in raw units (UInt256). Always non-negative.
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    description: Amount of token sold in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Trade value in USD. Uses bought-side price where available, falls back to sold-side.
+    data_type: Nullable(Float64)
+  - name: taker
+    description: Address receiving the bought tokens. Uses Swap event recipient for Uniswap V3 and Swapr V3; falls back to tx_from for Balancer where the event has no recipient.
+    data_type: Nullable(String)
+  - name: tx_from
+    description: EOA address that signed the transaction (from execution.transactions).
+    data_type: Nullable(String)
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract.
+    data_type: Nullable(String)
+
+- name: int_execution_pools_dex_liquidity_events
+  description: >
+    Individual LP add/remove/collect events across all protocols on Gnosis Chain.
+    One row per (event, token) — not pivoted to wide format because Balancer pools can
+    hold 2–8 tokens, making a fixed-width schema incorrect.
+    Each protocol's event decoding lives in its own staging model
+    (stg_pools__dex_liquidity_*). This model unions them, enriches with token metadata,
+    adds USD prices (ASOF join), and joins execution.transactions for tx_from/tx_to.
+    The tx join uses an IN subquery so ClickHouse builds a small hash set of event tx
+    hashes and probes the large transactions table, rather than loading the full right
+    side into memory.
+    Protocols: Uniswap V3, Swapr V3, Balancer V2, Balancer V3.
+    event_type values: 'mint' (add), 'burn' (remove), or 'collect' (claim fees; V3
+    only). amount_raw is always positive; event_type conveys direction.
+    Includes V3 tick range (tick_lower/tick_upper) and signed liquidity delta for
+    position-level tracking and in-range analysis.
+    When called with start_month/end_month vars each protocol model filters to that
+    month window; otherwise falls back to the incremental filter.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 12
+  columns:
+  - name: block_number
+    description: Block height containing the liquidity event.
+    data_type: UInt32
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: protocol
+    description: Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).
+    data_type: String
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: provider
+    description: LP wallet address that added or removed liquidity (or claimed fees).
+    data_type: String
+  - name: event_type
+    description: "Type of event: mint (add liquidity), burn (remove liquidity), or collect (claim fees; V3 only)."
+    data_type: String
+  - name: token_address
+    description: Token address for this row (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_symbol
+    description: Token symbol. Nullable for unknown tokens.
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Token amount in raw units (always positive; direction given by event_type).
+    data_type: Nullable(UInt256)
+  - name: amount
+    description: Token amount in token units (decimal-adjusted).
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Token amount in USD.
+    data_type: Nullable(Float64)
+  - name: tick_lower
+    description: Lower tick bound of the LP position. Set for V3 events (Uniswap V3, Swapr V3), NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: tick_upper
+    description: Upper tick bound of the LP position. Set for V3 events (Uniswap V3, Swapr V3), NULL for Balancer.
+    data_type: Nullable(Int32)
+  - name: liquidity_delta
+    description: Signed change in V3 liquidity units. Positive for Mint, negative for Burn, NULL for Collect and Balancer events. Same value on both token rows of the same event — deduplicate by (transaction_hash, log_index) when summing.
+    data_type: Nullable(Int256)
+  - name: tx_from
+    description: EOA address that signed the transaction (from execution.transactions).
+    data_type: Nullable(String)
+  - name: tx_to
+    description: Transaction recipient address — typically a router or pool contract.
+    data_type: Nullable(String)
+
 - name: int_execution_pools_fees_daily
-  description: Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). Swap amounts are treated as signed int256 (two's complement) and pool fee tiers are applied in ppm (1e6 denominator). Volume represents the gross incoming token amount per swap; flash loans contribute 0 volume.
+  description: >
+    Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and
+    Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of
+    Collect/claims). V3 swap/flash deltas are sourced from staging models
+    (stg_pools__uniswap_v3_events, stg_pools__swapr_v3_events) which handle int256
+    two's-complement decoding. Fees are applied in ppm (1e6 denominator). Volume = gross
+    incoming token amount per swap; flash loans contribute 0 volume. Swapr V3 (Algebra)
+    fees are dynamic via Fee events — the latest fee is applied as-of each swap, with
+    swaps before the first Fee event backfilled using the pool's first observed fee.
   meta:
     full_refresh:
       start_date: "2023-10-01"
@@ -121,7 +427,11 @@ models:
     data_type: Float64
 
 - name: int_execution_pools_il_swap_flows_daily
-  description: Daily pool-level base data for LVR computation. Combines swap flows (signed int256 token amounts), fees, TVL, and per-token prices/decimals for Uniswap V3 and Swapr V3 pools. Materialized to avoid deep CTE chains.
+  description: >
+    Daily pool-level base data for LVR computation. Combines swap flows (signed int256
+    token amounts), fees, TVL, and per-token prices/decimals for Uniswap V3 and Swapr V3
+    pools. Materialized to avoid deep CTE chains that trigger ClickHouse 25.10 query
+    analyzer issues with window functions.
   columns:
   - name: day
     data_type: Date
