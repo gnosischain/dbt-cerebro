@@ -20,7 +20,7 @@ SELECT
     total_supplied,
     total_borrowed,
     fees_7d,
-    lvr_apr_7d,
+    volume_usd_7d,
     net_apr_7d,
     utilization_rate,
     protocol,
@@ -73,6 +73,18 @@ FROM (
           AND f.pool IS NOT NULL
         GROUP BY f.pool
     ),
+
+    lp_pool_volume_7d AS (
+        SELECT
+            f.pool,
+            sum(f.volume_usd_daily) AS volume_usd_7d
+        FROM {{ ref('fct_execution_pools_daily') }} f
+        CROSS JOIN pools_latest_date d
+        WHERE f.date > d.max_date - INTERVAL 7 DAY
+          AND f.date <= d.max_date
+          AND f.pool IS NOT NULL
+        GROUP BY f.pool
+    ),
     
     lp_pools AS (
         SELECT
@@ -87,7 +99,7 @@ FROM (
             NULL AS total_supplied,
             NULL AS total_borrowed,
             pf.fees_7d AS fees_7d,
-            f.lvr_apr_7d AS lvr_apr_7d,
+            pv.volume_usd_7d AS volume_usd_7d,
             f.net_apr_7d AS net_apr_7d,
             NULL AS utilization_rate,
             f.protocol AS protocol,
@@ -95,6 +107,7 @@ FROM (
         FROM {{ ref('fct_execution_pools_daily') }} f
         CROSS JOIN pools_latest_date d
         LEFT JOIN lp_pool_fees_7d pf ON pf.pool = f.pool
+        LEFT JOIN lp_pool_volume_7d pv ON pv.pool = f.pool
         LEFT JOIN pool_fee_tiers ft ON ft.pool_address = f.pool_address
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
@@ -114,7 +127,7 @@ FROM (
             total_supplied,
             total_borrowed,
             fees_7d,
-            lvr_apr_7d,
+            volume_usd_7d,
             net_apr_7d,
             utilization_rate,
             protocol,
@@ -161,7 +174,7 @@ FROM (
             (lc.cumulative_scaled_borrow * a.variable_borrow_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_borrowed,
             NULL AS fees_7d,
-            NULL AS lvr_apr_7d,
+            NULL AS volume_usd_7d,
             NULL AS net_apr_7d,
             lc.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol,
@@ -181,12 +194,12 @@ FROM (
     )
     
     
-    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
+    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, volume_usd_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lp_pools_dedup
     
     UNION ALL
     
-    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
+    SELECT type, token, name, address, yield_apr, yield_apy, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, volume_usd_7d, net_apr_7d, utilization_rate, protocol, fee_pct
     FROM lending_markets
 )
 ORDER BY COALESCE(yield_apr, yield_apy) DESC
