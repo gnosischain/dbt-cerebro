@@ -217,7 +217,11 @@ WHERE replaceAll(lower(contract_address),'0x','') = '5f99a795dd2743c36d63511f0d4
                         ))))
                       )
                     ),
-                    startsWith(base_types[i+1], 'uint'),
+                    /* bool[] shares the uint decode path: each element is a
+                       0/1 uint256 word. Output '0'/'1' strings inside the
+                       JSON array. */
+                    startsWith(base_types[i+1], 'uint')
+                    OR base_types[i+1] = 'bool',
                     arrayMap(k ->
                       toString(reinterpretAsUInt256(reverse(unhex(
                         substring(
@@ -269,9 +273,10 @@ WHERE replaceAll(lower(contract_address),'0x','') = '5f99a795dd2743c36d63511f0d4
                   multiIf(
                     param_types[i+1] = 'address',
                       concat('0x', substring(arrayElement(head_words,i+1), 25, 40)),
-                    param_types[i+1] = 'bool',
-                      if(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1)))) = 0, 'false', 'true'),
-                    startsWith(param_types[i+1], 'uint'),
+                    /* bool is stored as a 0/1 uint256 word. Output '0'/'1'
+                       for consistency with decode_logs and with uint*. */
+                    startsWith(param_types[i+1], 'uint')
+                    OR param_types[i+1] = 'bool',
                       toString(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))),
                     startsWith(param_types[i+1], 'int'),
                       toString(reinterpretAsInt256(reverse(unhex(arrayElement(head_words,i+1))))),

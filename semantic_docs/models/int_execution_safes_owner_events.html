@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_safes_owner_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_safes_owner_events</h1>
+    <p>Long-form ownership-event log for every Safe in contracts_safe_registry.
+
+All ABI decoding is delegated to decode_logs(...) so no byte-offset
+arithmetic lives in this repo. The wrapping model only:
+  • unrolls SafeSetup.owners[] into one row per initial owner
+  • normalizes AddedOwner / RemovedOwner / ChangedThreshold into the
+    same (event_kind, owner, threshold) shape
+
+IMPORTANT — incremental filtering:
+  decode_logs handles its own var(&#x27;start_month&#x27;) / var(&#x27;end_month&#x27;)
+  window AND its own `` max-timestamp incremental predicate.
+  This model must NOT add another WHERE on block_timestamp — doing so
+  would shadow decode_logs&#x27;s filter and break incremental runs. The
+  only thing the outer model mirrors from the batch pattern is the
+  config-level incremental_strategy switch.
+
+Decoded array shape:
+  decode_logs emits arrays as toJSONString([...]) under the param name,
+  so decoded_params[&#x27;owners&#x27;] is a JSON array string like
+  &#x27;[&quot;0xabc&quot;,&quot;0xdef&quot;]&#x27;. ClickHouse JSONExtract* functions are 1-indexed.</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/safe/intermediate/int_execution_safes_owner_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>safe</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_number</code></td><td>UInt32</td><td>Block number of the event.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the block containing the event.</td></tr><tr><td><code>event_kind</code></td><td>String</td><td>Enum: safe_setup, added_owner, removed_owner, changed_threshold. • safe_setup        — initial owner from SafeSetup (one row per owner) • added_owner       — AddedOwner(address) emitted post-setup • removed_owner     — RemovedOwner(address) emitted post-setup • changed_threshold — ChangedThreshold(uint256); owner is NULL
+</td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td>Index of the log within its transaction.</td></tr><tr><td><code>owner</code></td><td>Nullable(String)</td><td>The owner address (lowercase, 0x-prefixed). NULL on `changed_threshold` events.
+</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The Safe that emitted the event (lowercase, 0x-prefixed).</td></tr><tr><td><code>threshold</code></td><td>Nullable(UInt32)</td><td>Confirmations required after this event. Populated for `safe_setup` and `changed_threshold`; NULL for owner-only events.
+</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Transaction that emitted the event.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_safe_registry</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gpay_safe_identities</code></li><li><code>int_execution_gpay_wallets</code></li><li><code>int_execution_safes_current_owners</code></li></ul>
+    
+  </body>
+</html>

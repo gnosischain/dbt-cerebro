@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gpay_safe_identities</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gpay_safe_identities</h1>
+    <p>PURPOSE
+-------
+This model is the privacy boundary for the Gnosis Pay ↔ Mixpanel
+bridge. It produces a lookup table from `user_pseudonym` (a salted
+keyed hash of an on-chain address) to `gp_safe` + `identity_role`,
+so the downstream Mixpanel fact model can join on
+`mp.user_id_hash = id.user_pseudonym` without ever touching a raw
+address.
+
+Everything upstream (int_execution_safes_owner_events,
+int_execution_gpay_spender_delegates_current, int_execution_gpay_wallets)
+still holds raw addresses because the on-chain pipeline needs them
+for joins. Everything downstream (fct_mixpanel_ga_gpay_users,
+fct_mixpanel_ga_gpay_crossdomain_daily) only sees `user_pseudonym`
+and `gp_safe`. This model is the one place where the
+`pseudonymize_address` macro is applied; the macro is the same one
+stg_mixpanel_ga__events uses at ingest, and the salt is the same
+env var (CEREBRO_PII_SALT), so the join keys are identical on both
+sides.
+
+WHY THREE IDENTITY ROLES
+------------------------
+The same person shows up in Mixpanel as one of THREE different
+identifiers depending on which GP frontend flow created their
+session. Picking only one of them collapses the match rate to near
+zero. The three roles, in order of likely match volume:
+
+  initial_owner — the EOA the user signed in with via passkey or
+                  wallet during onboarding. After the GP setup
+                  ceremony, ownership of the Safe is transferred to
+                  the inaccessible sentinel 0x...0002 and this EOA
+                  only retains access through the Delay module. But
+                  it is still whatever wallet the user authenticated
+                  with, so it is the most likely value the GP
+                  frontend passes to mixpanel.identify(...). Pulled
+                  from int_execution_safes_owner_events where
+                  event_kind=&#x27;safe_setup&#x27;.
+
+  delegate      — a spender delegate EOA assigned via Roles v2
+                  AssignRoles events. These are usually backend-
+                  managed card-flow keys, but a few flows may
+                  identify with them. Pulled from
+                  int_execution_gpay_spender_delegates_current.
+
+  safe_self     — the Safe smart-account address itself. Some GP
+                  frontend flows call mixpanel.identify(safeAddress)
+                  instead of identify(eoaAddress). Pulled directly
+                  from int_execution_gpay_wallets.
+
+Row grain: one row per (gp_safe, identity_role, user_pseudonym). A
+Safe with two initial owners and three delegates produces 6 rows
+(2 + 3 + 1 self). A single user_pseudonym can appear under multiple
+gp_safe values if the same person owns multiple GP cards.
+
+PRIVACY INVARIANT
+-----------------
+Every column derived from a wallet address is hashed via
+pseudonymize_address. The output schema contains user_pseudonym
+(irreversible without the salt) and gp_safe (treated as a smart-
+account identifier rather than PII — flip if that classification
+ever changes). Raw EOA addresses never reach this model&#x27;s output.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_safe_identities.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span> <span class='pill'>mixpanel</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>gp_safe</code></td><td>String</td><td>The Gnosis Pay Safe address (lowercase, 0x-prefixed). Treated as a smart-account identifier rather than PII.</td></tr><tr><td><code>identity_role</code></td><td>String</td><td>One of initial_owner, delegate, safe_self.</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym (UInt64) of the underlying address. Joinable to stg_mixpanel_ga__events.user_id_hash on equality.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_spender_delegates_current</code></li><li><code>int_execution_gpay_wallets</code></li><li><code>int_execution_safes_owner_events</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

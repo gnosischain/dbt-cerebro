@@ -15,18 +15,19 @@
   <body>
     
     <h1>int_execution_pools_balances_daily</h1>
-    <p></p>
+    <p>Combined daily pool token balances across all DEX protocols. Thin UNION ALL of the four protocol-level models (Uniswap V3, Swapr V3, Balancer V2, Balancer V3), each of which handles its own event processing, fee separation, incremental logic, and price enrichment.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> </p>
     <p><strong>Path:</strong> <code>models/execution/pools/intermediate/int_execution_pools_balances_daily.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>balances</span> <span class='pill'>intermediate</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
-    <h2>Dimensions</h2><ul><li>None</li></ul>
-    <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>contracts_BalancerV2_Vault_events</code></li><li><code>contracts_BalancerV3_Vault_events</code></li><li><code>contracts_Swapr_v3_AlgebraPool_events</code></li><li><code>stg_pools__balancer_v2_events</code></li><li><code>stg_pools__balancer_v3_events</code></li><li><code>stg_pools__balancer_v3_token_map</code></li><li><code>stg_pools__swapr_v3_events</code></li><li><code>stg_pools__uniswap_v3_events</code></li><li><code>stg_pools__v3_pool_registry</code></li></ul>
-    <h2>Downstream</h2><ul><li><code>int_execution_pools_enriched_daily</code></li></ul>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td></td></tr><tr><td><code>fee_amount</code></td><td>Float64</td><td>Unclaimed fee balance in token units.</td></tr><tr><td><code>fee_amount_raw</code></td><td>Int256</td><td>Unclaimed fee balance in raw units (Int256).</td></tr><tr><td><code>pool_address</code></td><td>String</td><td>Pool contract address (lowercase, with 0x prefix).</td></tr><tr><td><code>pool_address_no0x</code></td><td>String</td><td>Pool contract address without 0x prefix.</td></tr><tr><td><code>pool_implied_price_usd</code></td><td>Nullable(Float64)</td><td>Token price implied by pool reserves (other side TVL / this reserve). Informational only, not used for TVL calculation.</td></tr><tr><td><code>price_usd</code></td><td>Float64</td><td>Oracle token price in USD (from Dune, ASOF join).</td></tr><tr><td><code>protocol</code></td><td>String</td><td></td></tr><tr><td><code>reserve_amount</code></td><td>Float64</td><td>TVL-contributing reserve balance in token units.</td></tr><tr><td><code>reserve_amount_raw</code></td><td>Int256</td><td>TVL-contributing reserve balance in raw units (Int256).</td></tr><tr><td><code>token</code></td><td>Nullable(String)</td><td>Uppercase token symbol from tokens_whitelist (e.g. WETH, USDC.E). Nullable for unknown tokens.</td></tr><tr><td><code>token_address</code></td><td>String</td><td></td></tr><tr><td><code>token_amount</code></td><td>Float64</td><td>Total token balance in token units.</td></tr><tr><td><code>token_amount_raw</code></td><td>Int256</td><td>Total token balance in raw units (Int256).</td></tr><tr><td><code>tvl_component_usd</code></td><td>Float64</td><td>TVL component in USD (reserve_amount * price_usd).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>protocol</code> (categorical)</li><li><code>pool_address</code> (categorical)</li><li><code>pool_address_no0x</code> (categorical)</li><li><code>token_address</code> (categorical)</li><li><code>token</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>token_amount_value</code> (sum)</li><li><code>reserve_amount_value</code> (sum)</li><li><code>fee_amount_value</code> (sum)</li><li><code>price_usd_value</code> (average)</li><li><code>tvl_component_usd_value</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_pools_balancer_v2_daily</code></li><li><code>int_execution_pools_balancer_v3_daily</code></li><li><code>int_execution_pools_swapr_v3_daily</code></li><li><code>int_execution_pools_uniswap_v3_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_pools_daily</code></li><li><code>fct_execution_pools_tvl_token_daily</code></li><li><code>int_execution_pools_il_swap_flows_daily</code></li><li><code>int_execution_pools_metrics_daily</code></li></ul>
     
   </body>
 </html>

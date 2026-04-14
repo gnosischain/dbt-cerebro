@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_cow_trades</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_cow_trades</h1>
+    <p>Canonical CoW Protocol trades table. Joins on-chain trade data from int_execution_cow_trades with off-chain protocol fee data from stg_crawlers_data__cow_api_trade_fees (ingested from the CoW API). fee_usd logic: pre-2024 CoW used an explicit fee model (fee_amount_raw &gt; 0 in the Trade event); 2024+ CoW switched to surplus-based fees (not visible in events) sourced from executedProtocolFees via /api/v2/trades; the transition period (mid-2023 through early 2024) is mixed — COALESCE picks whichever source is available per trade. fee_source identifies where the fee came from (&#x27;onchain&#x27;, &#x27;api&#x27;, or NULL). NOTE — ClickHouse LEFT JOIN with join_use_nulls=0 (default) fills unmatched String columns with &#x27;&#x27; instead of NULL, so we check fee_token != &#x27;&#x27; rather than IS NOT NULL to correctly detect a real API match.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/cow/marts/fct_execution_cow_trades.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>cow</span> <span class='pill'>trades</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_bought_raw</code></td><td>Nullable(UInt256)</td><td></td></tr><tr><td><code>amount_sold</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_sold_raw</code></td><td>Nullable(UInt256)</td><td></td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>api_fee_amount_raw</code></td><td>Nullable(String)</td><td>API fee in token atoms (sum across fee policies).</td></tr><tr><td><code>api_fee_token</code></td><td>Nullable(String)</td><td>Token address the API fee is denominated in.</td></tr><tr><td><code>block_number</code></td><td>UInt64</td><td></td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>fee_amount</code></td><td>Nullable(Float64)</td><td>On-chain fee in sell-token human units.</td></tr><tr><td><code>fee_amount_raw</code></td><td>Nullable(UInt256)</td><td>On-chain fee atoms from Trade event (0 for 2024+).</td></tr><tr><td><code>fee_source</code></td><td>Nullable(String)</td><td>&#x27;onchain&#x27; | &#x27;api&#x27; | NULL — which source produced fee_usd.</td></tr><tr><td><code>fee_usd</code></td><td>Nullable(Float64)</td><td>Fee in USD. Derived from on-chain feeAmount when &gt; 0 (pre-2024 trades), otherwise from the API fee scaled to USD via the trade&#x27;s USD value.
+</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td></td></tr><tr><td><code>order_uid</code></td><td>String</td><td></td></tr><tr><td><code>pool_address</code></td><td>String</td><td></td></tr><tr><td><code>protocol</code></td><td>String</td><td></td></tr><tr><td><code>solver</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>taker</code></td><td>String</td><td></td></tr><tr><td><code>token_bought_address</code></td><td>String</td><td></td></tr><tr><td><code>token_bought_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_sold_address</code></td><td>String</td><td></td></tr><tr><td><code>token_sold_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_cow_trades</code></li><li><code>stg_crawlers_data__cow_api_trade_fees</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_cow_daily</code></li><li><code>fct_execution_cow_solvers_daily</code></li></ul>
+    
+  </body>
+</html>

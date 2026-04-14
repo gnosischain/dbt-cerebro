@@ -5,21 +5,23 @@ SELECT
     token,
     name,
     address,
-    yield_pct,
-    yield_label,
+    pool_key,
+    rate_trend_14d,
+    yield_apr,
+    yield_apy,
     borrow_apy,
     tvl,
     total_supplied,
     total_borrowed,
     fees_7d,
-    lvr_apr_7d,
+    volume_usd_7d,
     net_apr_7d,
     utilization_rate,
     protocol,
     fee_pct
 FROM (
     WITH
-    
+
     pool_fee_tiers AS (
         SELECT pool_address, fee_tier_ppm / 10000.0 AS fee_pct
         FROM `dbt`.`stg_pools__v3_pool_registry`
@@ -53,7 +55,7 @@ FROM (
         FROM `dbt`.`fct_execution_pools_daily`
         WHERE date < today()
     ),
-    
+
     lp_pool_fees_7d AS (
         SELECT
             f.pool,
@@ -65,21 +67,69 @@ FROM (
           AND f.pool IS NOT NULL
         GROUP BY f.pool
     ),
-    
+
+    lp_pool_volume_7d AS (
+        SELECT
+            f.pool,
+            sum(f.volume_usd_daily) AS volume_usd_7d
+        FROM `dbt`.`fct_execution_pools_daily` f
+        CROSS JOIN pools_latest_date d
+        WHERE f.date > d.max_date - INTERVAL 7 DAY
+          AND f.date <= d.max_date
+          AND f.pool IS NOT NULL
+        GROUP BY f.pool
+    ),
+
+    lp_trend_source AS (
+        SELECT
+            f.date AS date,
+            f.pool_address AS pool_address,
+            any(f.pool) AS pool_key,
+            max(toFloat64(f.fee_apr_7d)) AS fee_apr_7d
+        FROM `dbt`.`fct_execution_pools_daily` f
+        CROSS JOIN pools_latest_date d
+        WHERE f.date <= d.max_date
+          AND f.fee_apr_7d IS NOT NULL
+          AND f.pool_address IS NOT NULL
+          AND f.pool IS NOT NULL
+        GROUP BY f.date, f.pool_address
+    ),
+
+    lp_trends AS (
+        SELECT
+            pool_address,
+            argMax(pool_key, date) AS pool_key,
+            arrayMap(
+                point -> point.2,
+                arraySort(point -> point.1, groupArray((date, fee_apr_7d)))
+            ) AS rate_trend_14d
+        FROM (
+            SELECT
+                pool_address,
+                pool_key,
+                date,
+                fee_apr_7d,
+                row_number() OVER (PARTITION BY pool_address ORDER BY date DESC) AS rn
+            FROM lp_trend_source
+        )
+        WHERE rn <= 14
+        GROUP BY pool_address
+    ),
+
     lp_pools AS (
         SELECT
             'LP' AS type,
             f.token AS token,
             replaceOne(f.pool, concat(' • ', f.protocol), '') AS name,
             f.pool_address AS address,
-            f.fee_apr_7d AS yield_pct,
-            'APR' AS yield_label,
+            f.fee_apr_7d AS yield_apr,
+            NULL AS yield_apy,
             NULL AS borrow_apy,
             f.tvl_usd AS tvl,
             NULL AS total_supplied,
             NULL AS total_borrowed,
             pf.fees_7d AS fees_7d,
-            f.lvr_apr_7d AS lvr_apr_7d,
+            pv.volume_usd_7d AS volume_usd_7d,
             f.net_apr_7d AS net_apr_7d,
             NULL AS utilization_rate,
             f.protocol AS protocol,
@@ -87,26 +137,27 @@ FROM (
         FROM `dbt`.`fct_execution_pools_daily` f
         CROSS JOIN pools_latest_date d
         LEFT JOIN lp_pool_fees_7d pf ON pf.pool = f.pool
+        LEFT JOIN lp_pool_volume_7d pv ON pv.pool = f.pool
         LEFT JOIN pool_fee_tiers ft ON ft.pool_address = f.pool_address
         WHERE f.date = d.max_date
           AND f.fee_apr_7d IS NOT NULL
           AND f.pool IS NOT NULL
     ),
-    
+
     lp_pools_dedup AS (
         SELECT
             type,
             token,
             name,
             address,
-            yield_pct,
-            yield_label,
+            yield_apr,
+            yield_apy,
             borrow_apy,
             tvl,
             total_supplied,
             total_borrowed,
             fees_7d,
-            lvr_apr_7d,
+            volume_usd_7d,
             net_apr_7d,
             utilization_rate,
             protocol,
@@ -114,13 +165,12 @@ FROM (
         FROM (
             SELECT
                 *,
-                row_number() OVER (PARTITION BY name ORDER BY tvl DESC) AS rn
+                row_number() OVER (PARTITION BY address ORDER BY tvl DESC, token ASC) AS rn
             FROM lp_pools
         )
         WHERE rn = 1
     ),
-    
-    
+
     lending_latest_date AS (
         SELECT max(date) AS max_date
         FROM `dbt`.`int_execution_lending_aave_daily`
@@ -138,22 +188,52 @@ FROM (
         GROUP BY token_address
     ),
 
+    lending_trend_source AS (
+        SELECT
+            a.date AS date,
+            a.symbol AS symbol,
+            toFloat64(a.apy_daily) AS apy_daily
+        FROM `dbt`.`int_execution_lending_aave_daily` a
+        CROSS JOIN lending_latest_date d
+        WHERE a.date <= d.max_date
+          AND a.apy_daily IS NOT NULL
+    ),
+
+    lending_trends AS (
+        SELECT
+            symbol,
+            arrayMap(
+                point -> point.2,
+                arraySort(point -> point.1, groupArray((date, apy_daily)))
+            ) AS rate_trend_14d
+        FROM (
+            SELECT
+                symbol,
+                date,
+                apy_daily,
+                row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+            FROM lending_trend_source
+        )
+        WHERE rn <= 14
+        GROUP BY symbol
+    ),
+
     lending_markets AS (
         SELECT
             'Lending' AS type,
             a.symbol AS token,
             a.symbol AS name,
             rm.atoken_address AS address,
-            a.apy_daily AS yield_pct,
-            'APY' AS yield_label,
+            NULL AS yield_apr,
+            a.apy_daily AS yield_apy,
             a.borrow_apy_variable_daily AS borrow_apy,
             NULL AS tvl,
-            (lc.cumulative_scaled_supply * a.liquidity_index / 1e27)
+            (toFloat64(lc.cumulative_scaled_supply) * a.liquidity_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_supplied,
-            (lc.cumulative_scaled_borrow * a.variable_borrow_index / 1e27)
+            (toFloat64(lc.cumulative_scaled_borrow) * a.variable_borrow_index / 1e27)
                 / power(10, rm.decimals) * coalesce(pr.price, 0) AS total_borrowed,
             NULL AS fees_7d,
-            NULL AS lvr_apr_7d,
+            NULL AS volume_usd_7d,
             NULL AS net_apr_7d,
             lc.latest_utilization_rate AS utilization_rate,
             a.protocol AS protocol,
@@ -171,14 +251,53 @@ FROM (
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
     )
-    
-    
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
-    FROM lp_pools_dedup
-    
+
+    SELECT
+        lp.type,
+        lp.token,
+        lp.name,
+        lp.address,
+        lt.pool_key AS pool_key,
+        ifNull(lt.rate_trend_14d, CAST([], 'Array(Float64)')) AS rate_trend_14d,
+        lp.yield_apr,
+        lp.yield_apy,
+        lp.borrow_apy,
+        lp.tvl,
+        lp.total_supplied,
+        lp.total_borrowed,
+        lp.fees_7d,
+        lp.volume_usd_7d,
+        lp.net_apr_7d,
+        lp.utilization_rate,
+        lp.protocol,
+        lp.fee_pct
+    FROM lp_pools_dedup lp
+    LEFT JOIN lp_trends lt
+        ON lt.pool_address = lp.address
+
     UNION ALL
-    
-    SELECT type, token, name, address, yield_pct, yield_label, borrow_apy, tvl, total_supplied, total_borrowed, fees_7d, lvr_apr_7d, net_apr_7d, utilization_rate, protocol, fee_pct
-    FROM lending_markets
+
+    SELECT
+        lm.type,
+        lm.token,
+        lm.name,
+        lm.address,
+        CAST(NULL, 'Nullable(String)') AS pool_key,
+        ifNull(ltr.rate_trend_14d, CAST([], 'Array(Float64)')) AS rate_trend_14d,
+        lm.yield_apr,
+        lm.yield_apy,
+        lm.borrow_apy,
+        lm.tvl,
+        lm.total_supplied,
+        lm.total_borrowed,
+        lm.fees_7d,
+        lm.volume_usd_7d,
+        lm.net_apr_7d,
+        lm.utilization_rate,
+        lm.protocol,
+        lm.fee_pct
+    FROM lending_markets lm
+    LEFT JOIN lending_trends ltr
+        ON ltr.symbol = lm.token
 )
-ORDER BY yield_pct DESC
+ORDER BY COALESCE(yield_apr, yield_apy) DESC

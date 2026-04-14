@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gpay_spender_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gpay_spender_events</h1>
+    <p>Decoded events from the Gnosis Pay Spender module proxies attached to
+GP Safes. The Spender is GP&#x27;s custom final gatekeeper for card-spend
+authorization (deployed and controlled by GP&#x27;s settlement infra).
+
+Events of interest:
+
+  Spend(asset, account, receiver, amount)
+      — THE event. Fired on every successful card transaction. The
+        headline analytics signal for GP card activity.
+            asset    — token being spent (ERC-20 contract address)
+            account  — the GP Safe being debited
+            receiver — settlement / merchant-acquirer destination
+            amount   — token base units (string; could be large)
+
+  AvatarSet(previousAvatar, newAvatar)
+      — Spender bound to a Safe (or rebound). The newAvatar is the
+        GP Safe this Spender module belongs to. Setup signal.
+
+  TargetSet(previousTarget, newTarget)
+      — The Spender&#x27;s target contract changed.
+
+  EnabledModule / DisabledModule
+      — Sub-modules of the Spender enabled or disabled (the Spender
+        itself acts as a module manager for its own sub-stack).
+
+  ExecutionFromModuleSuccess / ExecutionFromModuleFailure
+      — A sub-module forwarded a call through the Spender.
+
+  OwnershipTransferred / Initialized
+      — Standard ownable / proxy lifecycle.
+
+  HashExecuted / HashInvalidated
+      — Signed-message tracking. The parameter is an unnamed bytes32
+        so we cannot pluck it by key — we just record the event fired
+        and leave the bytes32 in the raw decoded_params for downstream
+        consumers that need it.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_spender_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_number</code></td><td>UInt32</td><td>Block number.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the event.</td></tr><tr><td><code>event_name</code></td><td>String</td><td>One of Spend, AvatarSet, TargetSet, EnabledModule, DisabledModule, ExecutionFromModuleSuccess, ExecutionFromModuleFailure, OwnershipTransferred, Initialized, HashExecuted, HashInvalidated.</td></tr><tr><td><code>init_version</code></td><td>Nullable(String)</td><td>Initialized.version.</td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td>Log index within the transaction.</td></tr><tr><td><code>module_address</code></td><td>Nullable(String)</td><td>Module address from EnabledModule / DisabledModule / ExecutionFromModule* events.</td></tr><tr><td><code>new_avatar</code></td><td>Nullable(String)</td><td>AvatarSet.newAvatar — the GP Safe this Spender is bound to after the event.</td></tr><tr><td><code>new_owner</code></td><td>Nullable(String)</td><td>OwnershipTransferred.newOwner.</td></tr><tr><td><code>new_target</code></td><td>Nullable(String)</td><td>TargetSet.newTarget.</td></tr><tr><td><code>previous_avatar</code></td><td>Nullable(String)</td><td>AvatarSet.previousAvatar.</td></tr><tr><td><code>previous_owner</code></td><td>Nullable(String)</td><td>OwnershipTransferred.previousOwner.</td></tr><tr><td><code>previous_target</code></td><td>Nullable(String)</td><td>TargetSet.previousTarget.</td></tr><tr><td><code>spend_account</code></td><td>Nullable(String)</td><td>Spend.account — the GP Safe being debited. NULL on non-Spend events.</td></tr><tr><td><code>spend_amount</code></td><td>Nullable(String)</td><td>Spend.amount in token base units (string-encoded uint256 to preserve precision).</td></tr><tr><td><code>spend_asset</code></td><td>Nullable(String)</td><td>Spend.asset — token contract being spent (lowercase, 0x-prefixed). NULL on non-Spend events.</td></tr><tr><td><code>spend_receiver</code></td><td>Nullable(String)</td><td>Spend.receiver — settlement / merchant-acquirer destination.</td></tr><tr><td><code>spender_module_address</code></td><td>String</td><td>The Spender module proxy address (lowercase, 0x-prefixed).</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Transaction that emitted the event.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_gpay_modules_registry</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gpay_spend_activity_daily</code></li></ul>
+    
+  </body>
+</html>

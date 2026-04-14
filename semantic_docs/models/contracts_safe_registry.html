@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>contracts_safe_registry</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>contracts_safe_registry</h1>
+    <p>Registry consumed by decode_logs(contract_address_ref=ref(&#x27;contracts_safe_registry&#x27;)).
+Maps each Safe proxy → the singleton whose ABI should be used to decode
+its events.
+
+Columns required by decode_logs:
+  address              — the emitting contract (proxy)
+  contract_type        — &#x27;SafeProxy&#x27;, so callers can pass contract_type_filter
+  abi_source_address   — the singleton; decode_logs joins event_signatures
+                         on (topic0, abi_source_address) to find the ABI
+  is_dynamic           — 1 = discovered on-chain (all Safe proxies are)
+  start_blocktime      — earliest block at which this proxy can emit events
+  discovery_source     — provenance tag
+
+Tiny model — one row per Safe (thousands to low millions). Materialized
+as a table so decode_logs&#x27;s compile-time get_columns_in_relation() works
+the moment dbt runs the downstream events model.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/safe/intermediate/contracts_safe_registry.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>safe</span> <span class='pill'>registry</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>abi_source_address</code></td><td>String</td><td>Singleton/mastercopy address. decode_logs joins event_signatures on (topic0, abi_source_address) so all Safe proxies share the singleton&#x27;s decoded ABI from seeds/contracts_abi.csv.
+</td></tr><tr><td><code>address</code></td><td>String</td><td>The Safe proxy address (lowercase, 0x-prefixed).</td></tr><tr><td><code>contract_type</code></td><td>String</td><td>Always &#x27;SafeProxy&#x27;. Pass to decode_logs as contract_type_filter.</td></tr><tr><td><code>discovery_source</code></td><td>String</td><td>Provenance tag, always &#x27;traces:safe_setup_delegatecall&#x27;.</td></tr><tr><td><code>is_dynamic</code></td><td>UInt8</td><td>Always 1 (every Safe proxy was discovered on-chain).</td></tr><tr><td><code>start_blocktime</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>Earliest block at which this proxy can emit events (= int_execution_safes.block_timestamp).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_safes</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_safes_module_events</code></li><li><code>int_execution_safes_owner_events</code></li></ul>
+    
+  </body>
+</html>

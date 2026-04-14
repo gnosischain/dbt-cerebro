@@ -1,6 +1,9 @@
 
 
 -- depends_on: `dbt`.`int_execution_lending_aave_diffs_daily`
+-- NOTE: scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
+-- (mirrors Aave's on-chain WadRayMath). Run with --full-refresh when migrating from
+-- the previous Float64 schema so the column types are recreated.
 
 
 
@@ -60,8 +63,8 @@ daily_index AS (
         toDate(block_timestamp) AS date,
         lower(decoded_params['reserve']) AS reserve_address,
         argMax(
-            toFloat64(toUInt256OrNull(decoded_params['liquidityIndex'])),
-            block_timestamp
+            toUInt256OrZero(decoded_params['liquidityIndex']),
+            (block_timestamp, log_index)
         ) AS liquidity_index_eod
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name = 'ReserveDataUpdated'
@@ -177,9 +180,13 @@ balances_with_index AS (
     ASOF LEFT JOIN daily_index i
         ON i.reserve_address = b.reserve_address
         AND b.date >= i.date
-    WHERE b.scaled_balance != 0
+    WHERE b.scaled_balance != toInt256(0)
 ),
 
+-- Exact underlying-amount conversion: balance_raw = floor(scaled_balance * index / RAY).
+-- The guard on scaled_balance > 0 makes the UInt256 cast safe (a negative scaled_balance
+-- can only appear in edge cases where incremental seeding starts mid-history before any
+-- Supply event for a user; clamp those to zero rather than letting the math blow up).
 balances_with_underlying AS (
     SELECT
         bi.date AS date,
@@ -189,8 +196,11 @@ balances_with_underlying AS (
         rm.decimals AS decimals,
         bi.scaled_balance AS scaled_balance,
         CASE
-            WHEN bi.scaled_balance <= 0 THEN 0
-            ELSE (bi.scaled_balance * bi.liquidity_index_eod) / 1e27
+            WHEN bi.scaled_balance <= toInt256(0) THEN toUInt256OrZero('0')
+            ELSE intDiv(
+                toUInt256(bi.scaled_balance) * bi.liquidity_index_eod,
+                toUInt256OrZero('1000000000000000000000000000')
+            )
         END AS balance_raw
     FROM balances_with_index bi
     INNER JOIN reserve_map rm
@@ -204,8 +214,8 @@ SELECT
     b.user_address AS user_address,
     b.scaled_balance AS scaled_balance,
     b.balance_raw AS balance_raw,
-    b.balance_raw / power(10, b.decimals) AS balance,
-    (b.balance_raw / power(10, b.decimals)) * coalesce(p.price, 0) AS balance_usd
+    toFloat64(b.balance_raw) / power(10, b.decimals) AS balance,
+    (toFloat64(b.balance_raw) / power(10, b.decimals)) * coalesce(p.price, 0) AS balance_usd
 FROM balances_with_underlying b
 LEFT JOIN `dbt`.`int_execution_token_prices_daily` p
     ON p.date = b.date

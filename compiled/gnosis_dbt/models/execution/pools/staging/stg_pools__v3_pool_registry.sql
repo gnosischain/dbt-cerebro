@@ -75,16 +75,16 @@ all_inits AS (
 )
 
 SELECT
-    p.protocol,
-    p.pool_address,
-    p.pool_address_no0x,
-    p.token0_address,
-    p.token1_address,
-    p.fee_tier_ppm,
+    p.protocol                                AS protocol,
+    p.pool_address                            AS pool_address,
+    p.pool_address_no0x                       AS pool_address_no0x,
+    p.token0_address                          AS token0_address,
+    p.token1_address                          AS token1_address,
+    p.fee_tier_ppm                            AS fee_tier_ppm,
     coalesce(ts.tick_spacing, p.tick_spacing) AS tick_spacing,
-    i.init_tick,
-    i.init_sqrt_price_x96,
-    p.created_at
+    i.init_tick                               AS init_tick,
+    i.init_sqrt_price_x96                     AS init_sqrt_price_x96,
+    p.created_at                              AS created_at
 FROM all_pools p
 LEFT JOIN all_inits i
     ON i.pool_address_no0x = p.pool_address_no0x

@@ -164,7 +164,11 @@ process AS (
                     )
                   ),
 
-                startsWith(ni_base_types[j+1], 'uint'),
+                startsWith(ni_base_types[j+1], 'uint')
+                OR ni_base_types[j+1] = 'bool',
+                  /* bool is stored as a 0/1 uint256 word, so we can use
+                     the same reinterpret path as uint*. Output is '0' or
+                     '1' (decimal string). */
                   toString(
                     reinterpretAsUInt256(
                       reverse(
@@ -258,7 +262,10 @@ process AS (
               ni_types[j+1] = 'address',
                 concat('0x', substring(data_words[j+1], 25, 40)),
 
-              startsWith(ni_types[j+1],'uint'),
+              startsWith(ni_types[j+1],'uint')
+              OR ni_types[j+1] = 'bool',
+                /* bool is stored as a 0/1 uint256 word — same decode path
+                   as uint*. Output is '0' or '1' (decimal string). */
                 toString(reinterpretAsUInt256(reverse(unhex(data_words[j+1])))),
 
               startsWith(ni_types[j+1],'int'),
@@ -316,7 +323,9 @@ process AS (
                 25, 40
               )
             ),
-          startsWith(param_types[i+1],'uint'),
+          startsWith(param_types[i+1],'uint')
+          OR param_types[i+1] = 'bool',
+            /* Indexed bool: same reinterpret path as uint*. Output '0'/'1'. */
             toString(
               reinterpretAsUInt256(
                 reverse(

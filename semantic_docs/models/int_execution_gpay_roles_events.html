@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gpay_roles_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gpay_roles_events</h1>
+    <p>Decoded events from the Zodiac Roles v2 module proxies attached to GP
+Safes. Includes the events Gnosis Pay actually mutates:
+
+  RolesModSetup    — module enabled and bound to a Safe
+  AssignRoles      — spender delegate assignment.
+                     roleKeys (bytes32[]) and memberOf (bool[]) are
+                     parallel arrays — we ARRAY JOIN them so each row
+                     is one (member, role_key, is_member) triple.
+  SetDefaultRole   — default role assignment for a delegate
+  SetAllowance     — allowance / daily-limit creation or update
+  ConsumeAllowance — allowance burn-down on a successful card spend
+
+decode_logs returns decoded_params as a Map(String, String). Array
+params are stored as JSON array strings (toJSONString of the decoded
+array). ClickHouse JSONExtract* functions are 1-indexed.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_roles_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>allowance_key</code></td><td>Nullable(String)</td><td>SetAllowance / ConsumeAllowance allowance key (bytes32).</td></tr><tr><td><code>balance</code></td><td>Nullable(String)</td><td>SetAllowance current balance (uint128, string-encoded).</td></tr><tr><td><code>block_number</code></td><td>UInt32</td><td>Block number.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the event.</td></tr><tr><td><code>consumed</code></td><td>Nullable(String)</td><td>ConsumeAllowance amount consumed by a card spend.</td></tr><tr><td><code>default_role_key</code></td><td>Nullable(String)</td><td>SetDefaultRole default role key.</td></tr><tr><td><code>event_name</code></td><td>String</td><td>One of RolesModSetup, AssignRoles, SetDefaultRole, SetAllowance, ConsumeAllowance.</td></tr><tr><td><code>is_member</code></td><td>Nullable(UInt8)</td><td>AssignRoles per-element memberOf flag (1 if granting, 0 if revoking).</td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td>Log index within the transaction.</td></tr><tr><td><code>max_refill</code></td><td>Nullable(String)</td><td>SetAllowance maximum refill cap.</td></tr><tr><td><code>member_address</code></td><td>Nullable(String)</td><td>AssignRoles `module` parameter — the address being granted/revoked the role (typically a spender delegate EOA).</td></tr><tr><td><code>new_balance</code></td><td>Nullable(String)</td><td>ConsumeAllowance remaining balance after the spend.</td></tr><tr><td><code>period</code></td><td>Nullable(String)</td><td>SetAllowance refill period in seconds (typically 86400 = 24h).</td></tr><tr><td><code>refill</code></td><td>Nullable(String)</td><td>SetAllowance per-period refill (the canonical &quot;daily limit&quot; value).</td></tr><tr><td><code>role_key</code></td><td>Nullable(String)</td><td>AssignRoles per-element role key (one row per element from the unrolled bytes32[] array).</td></tr><tr><td><code>roles_module_address</code></td><td>String</td><td>The Roles module proxy address (lowercase, 0x-prefixed).</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Transaction that emitted the event.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_gpay_modules_registry</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gpay_allowances_current</code></li><li><code>int_execution_gpay_spender_delegates_current</code></li></ul>
+    
+  </body>
+</html>

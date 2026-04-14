@@ -10,7 +10,7 @@ balancer_v3_complete_pools AS (
             pool_address,
             count(DISTINCT token_address) AS total_tokens,
             count(DISTINCT CASE WHEN token IS NOT NULL AND token != '' THEN token_address END) AS known_tokens
-        FROM `dbt`.`int_execution_pools_enriched_daily`
+        FROM `dbt`.`int_execution_pools_balances_daily`
         WHERE protocol = 'Balancer V3'
         GROUP BY pool_address
     )
@@ -52,7 +52,7 @@ registry_pool_tokens AS (
         pool_address,
         token_address,
         token
-    FROM `dbt`.`int_execution_pools_enriched_daily`
+    FROM `dbt`.`int_execution_pools_balances_daily`
     WHERE protocol = 'Balancer V3'
       AND token IS NOT NULL AND token != ''
       AND pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools)
@@ -65,7 +65,7 @@ pool_tvl_daily AS (
         protocol,
         pool_address,
         sum(tvl_component_usd) AS pool_tvl_usd
-    FROM `dbt`.`int_execution_pools_enriched_daily`
+    FROM `dbt`.`int_execution_pools_balances_daily`
     WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
       AND (protocol != 'Balancer V3' OR pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools))
     GROUP BY date, protocol, pool_address
@@ -169,7 +169,7 @@ pool_labels AS (
         ) AS pool
     FROM (
         SELECT DISTINCT protocol, pool_address
-        FROM `dbt`.`int_execution_pools_enriched_daily`
+        FROM `dbt`.`int_execution_pools_balances_daily`
     ) p
     LEFT JOIN `dbt`.`stg_pools__v3_pool_registry` m
       ON m.protocol = p.protocol
@@ -193,7 +193,7 @@ distinct_token_pool_dates AS (
         r.token AS token
     FROM (
         SELECT DISTINCT date, protocol, pool_address
-        FROM `dbt`.`int_execution_pools_enriched_daily`
+        FROM `dbt`.`int_execution_pools_balances_daily`
         WHERE protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
     ) d
     INNER JOIN registry_pool_tokens r

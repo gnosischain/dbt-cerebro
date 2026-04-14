@@ -1,13 +1,24 @@
 
 
+-- NOTE: cumulative_scaled_supply and cumulative_scaled_borrow are Int256 for exact
+-- WadRayMath. Run with --full-refresh when migrating from the previous Float64 schema.
+
 WITH
 
+-- ReserveDataUpdated snapshots ordered within (tx, reserve) so each pool action can be
+-- paired with the RDU that fired at the same position — matches Aave's on-chain behaviour
+-- when a single tx produces multiple state updates on the same reserve.
 reserve_index_by_tx AS (
     SELECT
         transaction_hash,
         lower(decoded_params['reserve']) AS token_address,
-        any(toFloat64(toUInt256OrNull(decoded_params['liquidityIndex']))) AS liquidity_index,
-        any(toFloat64(toUInt256OrNull(decoded_params['variableBorrowIndex']))) AS variable_borrow_index
+        log_index,
+        toUInt256OrZero(decoded_params['liquidityIndex'])       AS liquidity_index,
+        toUInt256OrZero(decoded_params['variableBorrowIndex'])  AS variable_borrow_index,
+        row_number() OVER (
+            PARTITION BY transaction_hash, lower(decoded_params['reserve'])
+            ORDER BY log_index
+        ) AS event_order
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name = 'ReserveDataUpdated'
       AND block_timestamp < today()
@@ -33,16 +44,16 @@ reserve_index_by_tx AS (
     )
   
 
-    GROUP BY transaction_hash, lower(decoded_params['reserve'])
 ),
 
 supply_events AS (
     SELECT
         toStartOfDay(block_timestamp) AS date,
         transaction_hash,
+        log_index,
         lower(decoded_params['reserve']) AS token_address,
         event_name AS event_type,
-        toUInt256OrNull(decoded_params['amount']) AS amount_raw
+        toUInt256OrZero(decoded_params['amount']) AS amount_raw
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name IN ('Supply', 'Withdraw')
       AND decoded_params['reserve'] IS NOT NULL
@@ -73,12 +84,15 @@ supply_events AS (
 
     UNION ALL
 
+    -- All LiquidationCall rows count here (no receiveAToken filter): utilization tracks
+    -- only Pool events, so there is no BalanceTransfer path that could double-count.
     SELECT
         toStartOfDay(block_timestamp) AS date,
         transaction_hash,
+        log_index,
         lower(decoded_params['collateralAsset']) AS token_address,
         'LiquidationWithdraw' AS event_type,
-        toUInt256OrNull(decoded_params['liquidatedCollateralAmount']) AS amount_raw
+        toUInt256OrZero(decoded_params['liquidatedCollateralAmount']) AS amount_raw
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name = 'LiquidationCall'
       AND decoded_params['collateralAsset'] IS NOT NULL
@@ -112,9 +126,10 @@ borrow_events AS (
     SELECT
         toStartOfDay(block_timestamp) AS date,
         transaction_hash,
+        log_index,
         lower(decoded_params['reserve']) AS token_address,
         event_name AS event_type,
-        toUInt256OrNull(decoded_params['amount']) AS amount_raw
+        toUInt256OrZero(decoded_params['amount']) AS amount_raw
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name IN ('Borrow', 'Repay')
       AND decoded_params['reserve'] IS NOT NULL
@@ -148,9 +163,10 @@ borrow_events AS (
     SELECT
         toStartOfDay(block_timestamp) AS date,
         transaction_hash,
+        log_index,
         lower(decoded_params['debtAsset']) AS token_address,
         'LiquidationRepay' AS event_type,
-        toUInt256OrNull(decoded_params['debtToCover']) AS amount_raw
+        toUInt256OrZero(decoded_params['debtToCover']) AS amount_raw
     FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
     WHERE event_name = 'LiquidationCall'
       AND decoded_params['debtAsset'] IS NOT NULL
@@ -180,21 +196,55 @@ borrow_events AS (
 
 ),
 
+supply_events_ordered AS (
+    SELECT
+        s.*,
+        row_number() OVER (
+            PARTITION BY s.transaction_hash, s.token_address
+            ORDER BY s.log_index
+        ) AS event_order
+    FROM supply_events s
+),
+
+borrow_events_ordered AS (
+    SELECT
+        b.*,
+        row_number() OVER (
+            PARTITION BY b.transaction_hash, b.token_address
+            ORDER BY b.log_index
+        ) AS event_order
+    FROM borrow_events b
+),
+
+-- Exact scaled-delta math: rayDivFloor on inflows, rayDivCeil on outflows, matching Aave.
 supply_scaled AS (
     SELECT
         s.date,
         s.token_address,
         CASE
-            WHEN s.event_type = 'Supply' THEN toFloat64(s.amount_raw) * 1e27 / r.liquidity_index
-            WHEN s.event_type IN ('Withdraw', 'LiquidationWithdraw') THEN -toFloat64(s.amount_raw) * 1e27 / r.liquidity_index
-            ELSE 0
+            WHEN s.event_type = 'Supply' THEN
+                toInt256(
+                    intDiv(
+                        s.amount_raw * toUInt256OrZero('1000000000000000000000000000'),
+                        r.liquidity_index
+                    )
+                )
+            WHEN s.event_type IN ('Withdraw', 'LiquidationWithdraw') THEN
+                -toInt256(
+                    intDiv(
+                        s.amount_raw * toUInt256OrZero('1000000000000000000000000000')
+                            + r.liquidity_index - toUInt256OrZero('1'),
+                        r.liquidity_index
+                    )
+                )
+            ELSE toInt256(0)
         END AS scaled_delta
-    FROM supply_events s
+    FROM supply_events_ordered s
     INNER JOIN reserve_index_by_tx r
         ON r.transaction_hash = s.transaction_hash
-       AND r.token_address = s.token_address
-    WHERE r.liquidity_index IS NOT NULL
-      AND r.liquidity_index > 0
+       AND r.token_address    = s.token_address
+       AND r.event_order      = s.event_order
+    WHERE r.liquidity_index > toUInt256OrZero('0')
 ),
 
 borrow_scaled AS (
@@ -202,16 +252,29 @@ borrow_scaled AS (
         b.date,
         b.token_address,
         CASE
-            WHEN b.event_type = 'Borrow' THEN toFloat64(b.amount_raw) * 1e27 / r.variable_borrow_index
-            WHEN b.event_type IN ('Repay', 'LiquidationRepay') THEN -toFloat64(b.amount_raw) * 1e27 / r.variable_borrow_index
-            ELSE 0
+            WHEN b.event_type = 'Borrow' THEN
+                toInt256(
+                    intDiv(
+                        b.amount_raw * toUInt256OrZero('1000000000000000000000000000'),
+                        r.variable_borrow_index
+                    )
+                )
+            WHEN b.event_type IN ('Repay', 'LiquidationRepay') THEN
+                -toInt256(
+                    intDiv(
+                        b.amount_raw * toUInt256OrZero('1000000000000000000000000000')
+                            + r.variable_borrow_index - toUInt256OrZero('1'),
+                        r.variable_borrow_index
+                    )
+                )
+            ELSE toInt256(0)
         END AS scaled_delta
-    FROM borrow_events b
+    FROM borrow_events_ordered b
     INNER JOIN reserve_index_by_tx r
         ON r.transaction_hash = b.transaction_hash
-       AND r.token_address = b.token_address
-    WHERE r.variable_borrow_index IS NOT NULL
-      AND r.variable_borrow_index > 0
+       AND r.token_address    = b.token_address
+       AND r.event_order      = b.event_order
+    WHERE r.variable_borrow_index > toUInt256OrZero('0')
 ),
 
 supply_daily AS (
@@ -230,8 +293,8 @@ deltas AS (
     SELECT
         coalesce(s.date, b.date) AS date,
         coalesce(s.token_address, b.token_address) AS token_address,
-        coalesce(s.delta_supply, 0) AS delta_supply,
-        coalesce(b.delta_borrow, 0) AS delta_borrow
+        coalesce(s.delta_supply, toInt256(0)) AS delta_supply,
+        coalesce(b.delta_borrow, toInt256(0)) AS delta_borrow
     FROM supply_daily s
     FULL OUTER JOIN borrow_daily b
         ON b.date = s.date
@@ -258,7 +321,7 @@ with_cumulative AS (
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
-            + coalesce(p.prev_supply, 0)
+            + coalesce(p.prev_supply, toInt256(0))
         
         AS cumulative_scaled_supply,
         sum(d.delta_borrow) OVER (
@@ -266,7 +329,7 @@ with_cumulative AS (
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
-            + coalesce(p.prev_borrow, 0)
+            + coalesce(p.prev_borrow, toInt256(0))
         
         AS cumulative_scaled_borrow
     FROM deltas d
@@ -276,15 +339,49 @@ with_cumulative AS (
     
 ),
 
+-- End-of-day indices sourced directly from raw events in UInt256 so the final utilization
+-- ratio stays in exact arithmetic end-to-end (bypasses the Float64 storage in
+-- int_execution_lending_aave_daily).
 daily_index AS (
     SELECT
-        date,
-        token_address,
-        liquidity_index,
-        variable_borrow_index
-    FROM `dbt`.`int_execution_lending_aave_daily`
-    WHERE liquidity_index IS NOT NULL
-      AND variable_borrow_index IS NOT NULL
+        toDate(block_timestamp) AS date,
+        lower(decoded_params['reserve']) AS token_address,
+        argMax(
+            toUInt256OrZero(decoded_params['liquidityIndex']),
+            (block_timestamp, log_index)
+        ) AS liquidity_index_eod,
+        argMax(
+            toUInt256OrZero(decoded_params['variableBorrowIndex']),
+            (block_timestamp, log_index)
+        ) AS variable_borrow_index_eod
+    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    WHERE event_name = 'ReserveDataUpdated'
+      AND decoded_params['liquidityIndex']      IS NOT NULL
+      AND decoded_params['variableBorrowIndex'] IS NOT NULL
+      AND block_timestamp < today()
+      
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.date)), -0)
+        
+
+      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+      WHERE 1=1 
+    )
+  
+
+    GROUP BY date, token_address
 )
 
 SELECT
@@ -293,11 +390,18 @@ SELECT
     c.cumulative_scaled_supply,
     c.cumulative_scaled_borrow,
     CASE
-        WHEN c.cumulative_scaled_supply > 0
-             AND i.liquidity_index IS NOT NULL
-             AND i.variable_borrow_index IS NOT NULL
-        THEN (c.cumulative_scaled_borrow * i.variable_borrow_index)
-             / (c.cumulative_scaled_supply * i.liquidity_index) * 100
+        WHEN c.cumulative_scaled_supply > toInt256(0)
+             AND i.liquidity_index_eod        > toUInt256OrZero('0')
+             AND i.variable_borrow_index_eod  > toUInt256OrZero('0')
+        THEN
+            -- utilization = (borrow_scaled * borrow_index) / (supply_scaled * liquidity_index) * 100
+            -- Both numerator and denominator fit comfortably in UInt256 (max ~1e56 vs 1e77).
+            toFloat64(
+                toUInt256(c.cumulative_scaled_borrow) * i.variable_borrow_index_eod
+            )
+            / toFloat64(
+                toUInt256(c.cumulative_scaled_supply) * i.liquidity_index_eod
+            ) * 100
         ELSE NULL
     END AS utilization_rate
 FROM with_cumulative c

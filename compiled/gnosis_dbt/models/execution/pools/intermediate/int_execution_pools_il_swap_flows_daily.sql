@@ -5,10 +5,10 @@ token_prices_by_address AS (
         tm.token_address,
         coalesce(tm.decimals, 18) AS decimals,
         p.date AS day,
-        p.price_usd
+        p.price AS price_usd
     FROM `dbt`.`stg_pools__tokens_meta` tm
-    INNER JOIN `dbt`.`stg_pools__token_prices_daily` p
-        ON p.token = tm.token
+    INNER JOIN `dbt`.`int_execution_token_prices_daily` p
+        ON p.symbol = tm.token
     WHERE tm.token IS NOT NULL
 ),
 
@@ -19,7 +19,7 @@ pool_tvl_daily AS (
         pool_address,
         pool_address_no0x,
         sum(tvl_component_usd) AS tvl_usd
-    FROM `dbt`.`int_execution_pools_enriched_daily`
+    FROM `dbt`.`int_execution_pools_balances_daily`
     WHERE protocol IN ('Uniswap V3', 'Swapr V3')
     GROUP BY date, protocol, pool_address, pool_address_no0x
 ),

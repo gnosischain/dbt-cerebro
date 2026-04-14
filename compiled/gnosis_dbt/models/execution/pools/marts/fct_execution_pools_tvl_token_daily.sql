@@ -22,7 +22,7 @@ pool_token_symbols AS (
             protocol,
             pool_address,
             arraySort(groupUniqArray(token)) AS tokens_sorted
-        FROM `dbt`.`int_execution_pools_enriched_daily`
+        FROM `dbt`.`int_execution_pools_balances_daily`
         WHERE token IS NOT NULL AND token != ''
         GROUP BY protocol, pool_address
     )
@@ -34,15 +34,15 @@ SELECT
     be.pool_address AS pool_address,
     be.token_address AS token_address,
     be.token AS series,
-    be.token_amount AS token_amount,
+    be.reserve_amount AS token_amount,
     be.tvl_component_usd AS tvl_usd,
-    be.tvl_component_usd / nullIf(p0.price_usd, 0) AS tvl_in_token0,
-    be.tvl_component_usd / nullIf(p1.price_usd, 0) AS tvl_in_token1,
+    be.tvl_component_usd / nullIf(p0.price, 0) AS tvl_in_token0,
+    be.tvl_component_usd / nullIf(p1.price, 0) AS tvl_in_token1,
     pts.token0_symbol AS token0_symbol,
     pts.token1_symbol AS token1_symbol,
     po.ref_token AS ref_token,
     po.pool AS pool
-FROM `dbt`.`int_execution_pools_enriched_daily` be
+FROM `dbt`.`int_execution_pools_balances_daily` be
 INNER JOIN pools po
     ON po.date = be.date
    AND po.protocol = be.protocol
@@ -50,11 +50,11 @@ INNER JOIN pools po
 INNER JOIN pool_token_symbols pts
     ON pts.protocol = be.protocol
    AND pts.pool_address = be.pool_address
-LEFT JOIN `dbt`.`stg_pools__token_prices_daily` p0
-    ON p0.token = pts.token0_symbol
+LEFT JOIN `dbt`.`int_execution_token_prices_daily` p0
+    ON p0.symbol = pts.token0_symbol
    AND p0.date = be.date
-LEFT JOIN `dbt`.`stg_pools__token_prices_daily` p1
-    ON p1.token = pts.token1_symbol
+LEFT JOIN `dbt`.`int_execution_token_prices_daily` p1
+    ON p1.symbol = pts.token1_symbol
    AND p1.date = be.date
 WHERE be.token IS NOT NULL
   AND be.token != ''

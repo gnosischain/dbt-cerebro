@@ -4,7 +4,7 @@
 
 WITH gpay_wallets AS (
     SELECT address
-    FROM `dbt`.`stg_gpay__wallets`
+    FROM `dbt`.`int_execution_gpay_wallets`
 ),
 
 tokens AS (

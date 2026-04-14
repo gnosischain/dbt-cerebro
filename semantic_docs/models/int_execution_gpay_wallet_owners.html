@@ -15,17 +15,19 @@
   <body>
     
     <h1>int_execution_gpay_wallet_owners</h1>
-    <p>Incremental model that maps Gnosis Pay wallet addresses to their owner addresses and safe thresholds.</p>
+    <p>Current owner snapshot for Gnosis Pay Safes. Thin filter over int_execution_safes_current_owners (the generic Safe ownership model) so post-setup owner mutations (AddedOwner / RemovedOwner / ChangedThreshold) are reflected, not just the creation-time SafeSetup snapshot. One row per (pay_wallet, owner) pair.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_wallet_owners.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>The UTC timestamp of the block when the ownership was recorded.</td></tr><tr><td><code>owner</code></td><td>String</td><td>The owner address that controls the pay wallet.</td></tr><tr><td><code>pay_wallet</code></td><td>String</td><td>The Gnosis Pay wallet (safe) address.</td></tr><tr><td><code>threshold</code></td><td>UInt64</td><td>The number of required confirmations for the safe wallet.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>Timestamp of the event that added (or set up) this owner — i.e. the most recent SafeSetup or AddedOwner event for this (pay_wallet, owner) pair. Different semantics from earlier versions of this model, which stored the Safe&#x27;s creation time here.
+</td></tr><tr><td><code>owner</code></td><td>String</td><td>A current owner of the pay wallet (lowercase, 0x-prefixed).</td></tr><tr><td><code>pay_wallet</code></td><td>String</td><td>The Gnosis Pay wallet (safe) address.</td></tr><tr><td><code>threshold</code></td><td>UInt64</td><td>The number of required confirmations currently in effect for the safe.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>pay_wallet</code> (categorical)</li><li><code>owner</code> (categorical)</li><li><code>block_timestamp</code> (time)</li></ul>
     <h2>Measures</h2><ul><li><code>threshold_value</code> (sum)</li></ul>
-    <h2>Upstream</h2><ul><li><code>stg_gpay__wallets</code></li><li><code>logs</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_wallets</code></li><li><code>int_execution_safes_current_owners</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_execution_gpay_owner_balances_by_token_daily</code></li></ul>
     
   </body>

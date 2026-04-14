@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_safes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_safes</h1>
+    <p>Gnosis Safe deployments on Gnosis Chain.
+
+A Safe is deployed by the SafeProxyFactory as a minimal proxy that
+delegatecalls into a singleton/mastercopy. The constructor immediately
+delegatecalls setup(...) on the singleton — that&#x27;s how we identify a
+Safe trace: a delegatecall to a known singleton whose calldata starts
+with one of the historical setup() selectors. The singleton-to-version
+map lives in seeds/safe_singletons.csv.
+
+Covers every Safe version (0.1.0 through 1.4.1, including the Circles
+1.1.1 fork and the L2 variants), including pre-v1.1.0 Safes that never
+emitted SafeSetup.
+
+Source: execution.traces. We use dedup_source(..., pre_filter=...) so
+the time-range and selector filters land BEFORE the ROW_NUMBER window
+function and ClickHouse can prune monthly partitions. Critical: this is
+the largest scan in the family (8B traces, 5+ years) — every monthly
+batch must fit under the CH Cloud memory budget.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/safe/intermediate/int_execution_safes.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>safe</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_date</code></td><td>Date</td><td>Calendar date of the Safe&#x27;s creation transaction.</td></tr><tr><td><code>block_number</code></td><td>UInt32</td><td>Block number of the creation trace.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the block containing the setup() delegatecall.</td></tr><tr><td><code>creation_singleton</code></td><td>String</td><td>The singleton/mastercopy address the proxy delegatecalls into (lowercase, 0x-prefixed).</td></tr><tr><td><code>creation_version</code></td><td>String</td><td>Safe contract version this proxy was set up against. One of 0.1.0, 1.0.0, 1.1.0, 1.1.1, 1.1.1Circles, 1.2.0, 1.3.0, 1.3.0L2, 1.4.1, 1.4.1L2.
+</td></tr><tr><td><code>gas_used</code></td><td>UInt32</td><td>Gas consumed by the setup() delegatecall (used as a sanity gate, &gt; 10000 to filter fallback misfires).</td></tr><tr><td><code>is_l2</code></td><td>UInt8</td><td>1 if the Safe was deployed against a SafeL2 singleton (emits L2-specific transaction events).</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The Safe proxy address (lowercase, 0x-prefixed).</td></tr><tr><td><code>tx_hash</code></td><td>String</td><td>Transaction hash that contained the setup() delegatecall.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>traces</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>contracts_safe_registry</code></li></ul>
+    
+  </body>
+</html>

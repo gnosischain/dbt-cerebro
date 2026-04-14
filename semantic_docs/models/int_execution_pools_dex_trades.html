@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_pools_dex_trades</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_pools_dex_trades</h1>
+    <p>DEX swap events enriched with USD prices and transaction context. Source of truth for trade-level analytics with USD values. Reads from int_execution_pools_dex_trades_raw (materialized, month-partitioned) and adds daily USD prices via ASOF joins plus tx_from/tx_to from int_execution_pools_dex_trades_tx_context. The tx context lookup is a separate materialized table (~80 MB per month) instead of multi-GB from the full execution.transactions table, keeping total memory well within limits alongside the ASOF price joins.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/execution/pools/intermediate/int_execution_pools_dex_trades.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>trades</span> <span class='pill'>intermediate</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td>Nullable(Float64)</td><td>Amount of token bought in token units (decimal-adjusted).</td></tr><tr><td><code>amount_bought_raw</code></td><td>Nullable(UInt256)</td><td>Amount of token bought in raw units (UInt256). Always non-negative.</td></tr><tr><td><code>amount_sold</code></td><td>Nullable(Float64)</td><td>Amount of token sold in token units (decimal-adjusted).</td></tr><tr><td><code>amount_sold_raw</code></td><td>Nullable(UInt256)</td><td>Amount of token sold in raw units (UInt256). Always non-negative.</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>Trade value in USD. Uses bought-side price where available, falls back to sold-side.</td></tr><tr><td><code>block_number</code></td><td>UInt32</td><td>Block height containing the swap event.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td></td></tr><tr><td><code>pool_address</code></td><td>String</td><td>Pool contract address (lowercase, with 0x prefix).</td></tr><tr><td><code>protocol</code></td><td>String</td><td>Protocol name (Uniswap V3, Swapr V3, Balancer V2, Balancer V3).</td></tr><tr><td><code>taker</code></td><td>Nullable(String)</td><td>Address receiving the bought tokens. Uses Swap event recipient for Uniswap V3 and Swapr V3; falls back to tx_from for Balancer where the event has no recipient.</td></tr><tr><td><code>token_bought_address</code></td><td>String</td><td>Address of the token received by the taker (lowercase, with 0x prefix).</td></tr><tr><td><code>token_bought_symbol</code></td><td>Nullable(String)</td><td>Symbol of the bought token. Nullable for unknown tokens.</td></tr><tr><td><code>token_sold_address</code></td><td>String</td><td>Address of the token spent by the taker (lowercase, with 0x prefix).</td></tr><tr><td><code>token_sold_symbol</code></td><td>Nullable(String)</td><td>Symbol of the sold token. Nullable for unknown tokens.</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td></td></tr><tr><td><code>tx_from</code></td><td>Nullable(String)</td><td>EOA address that signed the transaction (from execution.transactions).</td></tr><tr><td><code>tx_to</code></td><td>Nullable(String)</td><td>Transaction recipient address — typically a router or pool contract.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_pools_dex_trades_raw</code></li><li><code>int_execution_pools_dex_trades_tx_context</code></li><li><code>int_execution_token_prices_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_pools_metrics_daily</code></li></ul>
+    
+  </body>
+</html>
