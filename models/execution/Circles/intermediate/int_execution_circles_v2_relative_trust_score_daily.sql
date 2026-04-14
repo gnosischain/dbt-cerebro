@@ -11,6 +11,9 @@
     )
 }}
 
+-- depends_on: {{ ref('int_execution_circles_v2_avatars') }}
+-- depends_on: {{ ref('int_execution_circles_v2_trust_pair_ranges') }}
+
 {# ── Parameters ──────────────────────────────────────────── #}
 {% set start_month      = var('start_month', none) %}
 {% set end_month        = var('end_month',   none) %}
