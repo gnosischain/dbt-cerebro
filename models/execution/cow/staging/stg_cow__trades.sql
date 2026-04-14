@@ -1,4 +1,8 @@
-{{ config(materialized='view') }}
+{{ config(
+    materialized='view',
+    tags=['production', 'execution', 'cow', 'trades', 'staging']
+    ) 
+}}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
