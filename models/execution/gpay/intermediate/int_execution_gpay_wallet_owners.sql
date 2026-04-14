@@ -3,52 +3,53 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     engine='ReplacingMergeTree()',
-    order_by='(pay_wallet)',
+    order_by='(pay_wallet, owner)',
     partition_by='toStartOfMonth(block_timestamp)',
-    unique_key='(pay_wallet)',
+    unique_key='(pay_wallet, owner)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','gpay']
   )
 }}
 
 {#
-  Decode SafeSetup events from execution.logs for GPay wallets.
-  SafeSetup(address indexed initiator, address[] owners, uint256 threshold, address initializer, address fallbackHandler)
-  topic0 = keccak256("SafeSetup(address,address[],uint256,address,address)")
+  Current owner snapshot for Gnosis Pay Safes.
 
-  ABI data layout (non-indexed params):
-    Word 0: offset to owners[] → always 0x80 (128 bytes = 4 head slots)
-    Word 1: threshold (uint256)
-    Word 2: initializer (address)
-    Word 3: fallbackHandler (address)
-    Word 4: owners array length (N)
-    Word 5+: owner addresses
+  Thin filter over int_execution_safes_current_owners (the generic Safe
+  ownership model) so the GPay fact tables automatically pick up post-setup
+  owner changes (AddedOwner / RemovedOwner / ChangedThreshold) — not just
+  the creation-time SafeSetup snapshot the previous version of this model
+  was limited to.
+
+  Output schema is preserved (pay_wallet, owner, threshold, block_timestamp)
+  so downstream fact models do not need changes, but two semantic things
+  shifted with this refactor:
+
+    1. order_by / unique_key are now (pay_wallet, owner). The previous
+       (pay_wallet) ordering caused ReplacingMergeTree to silently keep
+       only one owner per multi-sig Safe on merge. Multi-owner Safes are
+       now preserved correctly — row count for those Safes will increase.
+
+    2. block_timestamp now means "last became-owner event time", not
+       "Safe creation time". For an owner added post-setup, this is the
+       AddedOwner event timestamp. For an owner who was removed and then
+       re-added, this is the re-add timestamp.
 #}
 
-WITH gpay_wallets AS (
-    SELECT address
-    FROM {{ ref('stg_gpay__wallets') }}
-),
-
-safe_setup_logs AS (
-    SELECT
-        lower(replaceAll(address, '0x', ''))  AS addr_raw,
-        block_timestamp,
-        replaceAll(data, '0x', '')            AS data_hex
-    FROM {{ source('execution', 'logs') }}
-    WHERE lower(replaceAll(topic0, '0x', ''))
-          = '141df868a6331af528e38c83b7aa03edc19be66e37ae67f9285bf4f8e3c6a1a8'
-      AND lower(replaceAll(address, '0x', ''))
-          IN (SELECT lower(replaceAll(address, '0x', '')) FROM gpay_wallets)
-      AND block_timestamp >= toDateTime('2023-06-01')
-      {% if is_incremental() %}
-        AND block_timestamp > (SELECT coalesce(max(block_timestamp), toDateTime('1970-01-01')) FROM {{ this }})
-      {% endif %}
+WITH gpay_safes AS (
+    SELECT lower(address) AS pay_wallet
+    FROM {{ ref('int_execution_gpay_wallets') }}
 )
 
 SELECT
-    concat('0x', addr_raw)                                                  AS pay_wallet,
-    lower(concat('0x', substring(data_hex, 1 + 5*64 + 24, 40)))            AS owner,
-    toUInt32(reinterpretAsUInt256(reverse(unhex(substring(data_hex, 1 + 1*64, 64))))) AS threshold,
-    block_timestamp
-FROM safe_setup_logs
+    co.safe_address       AS pay_wallet,
+    co.owner              AS owner,
+    co.current_threshold  AS threshold,
+    co.became_owner_at    AS block_timestamp
+FROM {{ ref('int_execution_safes_current_owners') }} co
+INNER JOIN gpay_safes gs
+    ON co.safe_address = gs.pay_wallet
+{% if is_incremental() %}
+WHERE co.became_owner_at > (
+    SELECT coalesce(max(block_timestamp), toDateTime('1970-01-01')) FROM {{ this }}
+)
+{% endif %}

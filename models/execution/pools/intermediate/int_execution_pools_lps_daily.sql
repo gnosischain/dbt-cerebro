@@ -11,18 +11,7 @@
     )
 }}
 
-{#-
-  Daily LP provider activity from Mint + Burn events on Uniswap V3 and Swapr V3.
-  Output: (date, protocol, pool_address, mint_count, burn_count,
-           lps_minting_daily, lps_burning_daily, lps_bitmap_state)
-
-  Notes:
-  - `owner` in Mint/Burn events is the actual LP position owner address,
-    even when the call goes through a router.
-  - Bitmap tracks unique LP addresses via cityHash64 for rolling-window
-    deduplication using groupBitmapMerge() downstream.
-  - Contract event models already filter to whitelisted pool addresses.
--#}
+{#- Model documentation in schema.yml -#}
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

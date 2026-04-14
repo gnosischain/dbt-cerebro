@@ -7,7 +7,7 @@
         unique_key='(transaction_hash, log_index)',
         partition_by='toStartOfMonth(valid_from)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'circles_v1', 'trusts']
+        tags=['dev', 'execution', 'circles_v1', 'trusts']
     )
 }}
 

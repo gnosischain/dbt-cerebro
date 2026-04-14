@@ -9,11 +9,7 @@
     )
 }}
 
-{#-
-  Daily pool-level base data for IL computation: swap flows, fees, TVL, and
-  token prices/decimals. Materialized to avoid deep CTE chains that trigger
-  ClickHouse 25.10 query analyzer issues with window functions.
--#}
+{#- Model documentation in schema.yml -#}
 
 WITH
 
@@ -22,10 +18,10 @@ token_prices_by_address AS (
         tm.token_address,
         coalesce(tm.decimals, 18) AS decimals,
         p.date AS day,
-        p.price_usd
+        p.price AS price_usd
     FROM {{ ref('stg_pools__tokens_meta') }} tm
-    INNER JOIN {{ ref('stg_pools__token_prices_daily') }} p
-        ON p.token = tm.token
+    INNER JOIN {{ ref('int_execution_token_prices_daily') }} p
+        ON p.symbol = tm.token
     WHERE tm.token IS NOT NULL
 ),
 
@@ -36,7 +32,7 @@ pool_tvl_daily AS (
         pool_address,
         pool_address_no0x,
         sum(tvl_component_usd) AS tvl_usd
-    FROM {{ ref('int_execution_pools_enriched_daily') }}
+    FROM {{ ref('int_execution_pools_balances_daily') }}
     WHERE protocol IN ('Uniswap V3', 'Swapr V3')
     GROUP BY date, protocol, pool_address, pool_address_no0x
 ),

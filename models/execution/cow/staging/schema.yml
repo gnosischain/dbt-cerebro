@@ -1,0 +1,100 @@
+version: 2
+
+models:
+- name: stg_cow__trades
+  description: >
+    Staging view decoding CoW Protocol Trade events from the GPv2Settlement contract.
+    Each row is one trade fill: token pair, amounts, fee, trader (owner), and order UID.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: protocol
+    data_type: String
+  - name: pool_address
+    description: GPv2Settlement contract address (0x9008...).
+    data_type: String
+  - name: token_bought_address
+    data_type: String
+  - name: amount_bought_raw
+    description: Raw buyAmount in token atoms (before decimal scaling).
+    data_type: Nullable(UInt256)
+  - name: token_sold_address
+    data_type: String
+  - name: amount_sold_raw
+    description: Raw sellAmount in token atoms (before decimal scaling).
+    data_type: Nullable(UInt256)
+  - name: fee_amount_raw
+    description: Protocol fee in sell-token atoms.
+    data_type: Nullable(UInt256)
+  - name: taker
+    description: Order owner address.
+    data_type: String
+  - name: order_uid
+    description: Unique order identifier (bytes).
+    data_type: String
+
+- name: stg_cow__settlements
+  description: >
+    Staging view of Settlement events from GPv2Settlement. One row per batch
+    settlement, linking transaction_hash to the winning solver address.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: solver
+    description: Address of the solver that executed this batch settlement.
+    data_type: String
+
+- name: stg_cow__interactions
+  description: >
+    Staging view of Interaction events from GPv2Settlement. Each row is one
+    external contract call (AMM swap, approval, etc.) within a batch settlement.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: target
+    description: Address of the contract called during the interaction.
+    data_type: String
+  - name: value
+    description: Native value sent with the interaction.
+    data_type: String
+  - name: selector
+    description: 4-byte function selector of the interaction call.
+    data_type: String
+
+- name: stg_cow__solvers
+  description: >
+    Staging view of SolverAdded and SolverRemoved events from the
+    GPv2AllowListAuthentication contract. Used to build the solver registry.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: event_name
+    description: Either 'SolverAdded' or 'SolverRemoved'.
+    data_type: String
+  - name: solver
+    description: Solver address that was added or removed.
+    data_type: String

@@ -11,8 +11,8 @@
 }}
 
 WITH gpay_wallets AS (
-    SELECT address, introduced_at
-    FROM {{ ref('stg_gpay__wallets') }}
+    SELECT address, activation_date
+    FROM {{ ref('int_execution_gpay_wallets') }}
 )
 
 SELECT
@@ -26,5 +26,5 @@ INNER JOIN gpay_wallets w
   ON b.address = w.address
 WHERE 
   b.date >= '2023-06-01'
-  AND b.date >= w.introduced_at
+  AND b.date >= w.activation_date
   AND b.date < today()

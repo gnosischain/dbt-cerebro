@@ -1,6 +1,31 @@
 version: 2
 
 models:
+- name: int_execution_gpay_wallets
+  description: |
+    Gnosis Pay Safes derived from on-chain events. A Safe qualifies if it
+    has emitted SafeSetup (so it exists on-chain) AND has ever sent a
+    whitelisted ERC-20 transfer to the Gnosis Pay spender
+    0x4822521E6135CD2599199c83Ea35179229A172EE, excluding addresses in the
+    gpay_operational_wallets seed. Replaces the crawler-sourced
+    stg_gpay__wallets model.
+  columns:
+  - name: address
+    description: Gnosis Pay Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: activation_date
+    description: Earliest date this Safe sent a whitelisted ERC-20 transfer to the GPay spender (daily grain from int_execution_transfers_whitelisted_daily).
+    data_type: Date
+  - name: creation_time
+    description: Timestamp of the SafeSetup event for this Safe.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-12-01"
+      batch_months: 6
+
 - name: int_execution_gpay_activity
   description: Incremental model that captures individual Gnosis Pay wallet transactions including payments, deposits, withdrawals, and cashback events with USD valuations.
   columns:
@@ -243,7 +268,12 @@ models:
       tags:
       - elementary
 - name: int_execution_gpay_wallet_owners
-  description: Incremental model that maps Gnosis Pay wallet addresses to their owner addresses and safe thresholds.
+  description: >
+    Current owner snapshot for Gnosis Pay Safes. Thin filter over
+    int_execution_safes_current_owners (the generic Safe ownership model)
+    so post-setup owner mutations (AddedOwner / RemovedOwner /
+    ChangedThreshold) are reflected, not just the creation-time SafeSetup
+    snapshot. One row per (pay_wallet, owner) pair.
   columns:
 
   - name: pay_wallet
@@ -251,20 +281,622 @@ models:
     data_type: String
 
   - name: owner
-    description: The owner address that controls the pay wallet.
+    description: A current owner of the pay wallet (lowercase, 0x-prefixed).
     data_type: String
 
   - name: threshold
-    description: The number of required confirmations for the safe wallet.
+    description: The number of required confirmations currently in effect for the safe.
     data_type: UInt64
 
   - name: block_timestamp
-    description: The UTC timestamp of the block when the ownership was recorded.
+    description: >
+      Timestamp of the event that added (or set up) this owner — i.e. the
+      most recent SafeSetup or AddedOwner event for this (pay_wallet, owner)
+      pair. Different semantics from earlier versions of this model, which
+      stored the Safe's creation time here.
     data_type: DateTime64(0, 'UTC')
     tests:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: contracts_gpay_modules_registry
+  description: |
+    Cross-referenced registry of every Zodiac module proxy that is currently
+    or was ever enabled on a Gnosis Pay Safe.
+
+    Two evidence sources, joined on the proxy address:
+      1. int_execution_safes_module_events — the Safe enabled this address
+         as a module (filtered to GP Safes via int_execution_gpay_wallets).
+      2. int_execution_zodiac_module_proxies — the address was deployed by
+         the canonical Zodiac ModuleProxyFactory and points at one of the
+         three known GP mastercopies.
+
+    The INNER JOIN means we drop any "enabled module" event that points to
+    an address we don't recognise as a Zodiac proxy of a GP-relevant type.
+    This is the high-quality registry that decode_logs consumes via
+    contract_address_ref to decode per-module events downstream.
+
+    Output schema matches the standard contracts_*_registry shape so
+    decode_logs picks up abi_source_address automatically.
+  columns:
+  - name: address
+    description: Module proxy address (lowercase, 0x-prefixed). Used as the address filter against execution.logs.
+    data_type: String
+  - name: contract_type
+    description: One of DelayModule, RolesModule, SpenderModule.
+    data_type: String
+  - name: abi_source_address
+    description: The Zodiac mastercopy address — where the ABI lives in event_signatures.csv. Lowercase, 0x-prefixed.
+    data_type: String
+  - name: is_dynamic
+    description: Always 1 (chain-discovered).
+    data_type: UInt8
+  - name: start_blocktime
+    description: Earliest block at which this proxy was enabled on a GP Safe.
+    data_type: DateTime64(0, 'UTC')
+  - name: discovery_source
+    description: Provenance tag, always 'gpay_module_enabled_x_proxy_factory'.
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_delay_events
+  description: |
+    Decoded events emitted by the Zodiac Delay Module proxies attached to
+    GP Safes. Includes:
+
+      DelaySetup       — module enabled and bound to a Safe
+      TransactionAdded — admin action queued by the original setup owner
+                         (the privacy-respecting "user did something admin-y"
+                         signal — single most useful Delay event for analytics)
+      TxCooldownSet    — cooldown configuration mutation
+      TxExpirationSet  — expiration configuration mutation
+      TxNonceSet       — nonce reset
+
+    decode_logs filters logs.address to (SELECT address FROM
+    contracts_gpay_modules_registry WHERE contract_type='DelayModule') and
+    joins event_signatures on the delayModMastercopy address — that's the
+    abi_source_address column the registry exposes.
+  columns:
+  - name: delay_module_address
+    description: The Delay module proxy address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: event_name
+    description: One of DelaySetup, TransactionAdded, TxCooldownSet, TxExpirationSet, TxNonceSet.
+    data_type: String
+  - name: queue_nonce
+    description: TransactionAdded queue nonce (string-encoded uint256).
+    data_type: Nullable(String)
+  - name: queued_tx_hash
+    description: TransactionAdded queued tx hash (bytes32).
+    data_type: Nullable(String)
+  - name: inner_to
+    description: TransactionAdded `to` address of the queued action.
+    data_type: Nullable(String)
+  - name: inner_value
+    description: TransactionAdded `value` of the queued action (wei, string-encoded).
+    data_type: Nullable(String)
+  - name: inner_operation
+    description: TransactionAdded `operation` (0=CALL, 1=DELEGATECALL).
+    data_type: Nullable(UInt8)
+  - name: cooldown
+    description: TxCooldownSet cooldown in seconds.
+    data_type: Nullable(String)
+  - name: expiration
+    description: TxExpirationSet expiration in seconds.
+    data_type: Nullable(String)
+  - name: nonce
+    description: TxNonceSet new nonce value.
+    data_type: Nullable(String)
+  - name: block_timestamp
+    description: UTC timestamp of the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: block_number
+    description: Block number.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Transaction that emitted the event.
+    data_type: String
+  - name: log_index
+    description: Log index within the transaction.
+    data_type: UInt32
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_roles_events
+  description: |
+    Decoded events from the Zodiac Roles v2 module proxies attached to GP
+    Safes. Includes the events Gnosis Pay actually mutates:
+
+      RolesModSetup    — module enabled and bound to a Safe
+      AssignRoles      — spender delegate assignment.
+                         roleKeys (bytes32[]) and memberOf (bool[]) are
+                         parallel arrays — we ARRAY JOIN them so each row
+                         is one (member, role_key, is_member) triple.
+      SetDefaultRole   — default role assignment for a delegate
+      SetAllowance     — allowance / daily-limit creation or update
+      ConsumeAllowance — allowance burn-down on a successful card spend
+
+    decode_logs returns decoded_params as a Map(String, String). Array
+    params are stored as JSON array strings (toJSONString of the decoded
+    array). ClickHouse JSONExtract* functions are 1-indexed.
+  columns:
+  - name: roles_module_address
+    description: The Roles module proxy address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: event_name
+    description: One of RolesModSetup, AssignRoles, SetDefaultRole, SetAllowance, ConsumeAllowance.
+    data_type: String
+  - name: member_address
+    description: AssignRoles `module` parameter — the address being granted/revoked the role (typically a spender delegate EOA).
+    data_type: Nullable(String)
+  - name: role_key
+    description: AssignRoles per-element role key (one row per element from the unrolled bytes32[] array).
+    data_type: Nullable(String)
+  - name: is_member
+    description: AssignRoles per-element memberOf flag (1 if granting, 0 if revoking).
+    data_type: Nullable(UInt8)
+  - name: allowance_key
+    description: SetAllowance / ConsumeAllowance allowance key (bytes32).
+    data_type: Nullable(String)
+  - name: balance
+    description: SetAllowance current balance (uint128, string-encoded).
+    data_type: Nullable(String)
+  - name: max_refill
+    description: SetAllowance maximum refill cap.
+    data_type: Nullable(String)
+  - name: refill
+    description: SetAllowance per-period refill (the canonical "daily limit" value).
+    data_type: Nullable(String)
+  - name: period
+    description: SetAllowance refill period in seconds (typically 86400 = 24h).
+    data_type: Nullable(String)
+  - name: consumed
+    description: ConsumeAllowance amount consumed by a card spend.
+    data_type: Nullable(String)
+  - name: new_balance
+    description: ConsumeAllowance remaining balance after the spend.
+    data_type: Nullable(String)
+  - name: default_role_key
+    description: SetDefaultRole default role key.
+    data_type: Nullable(String)
+  - name: block_timestamp
+    description: UTC timestamp of the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: block_number
+    description: Block number.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Transaction that emitted the event.
+    data_type: String
+  - name: log_index
+    description: Log index within the transaction.
+    data_type: UInt32
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_spender_events
+  description: |
+    Decoded events from the Gnosis Pay Spender module proxies attached to
+    GP Safes. The Spender is GP's custom final gatekeeper for card-spend
+    authorization (deployed and controlled by GP's settlement infra).
+
+    Events of interest:
+
+      Spend(asset, account, receiver, amount)
+          — THE event. Fired on every successful card transaction. The
+            headline analytics signal for GP card activity.
+                asset    — token being spent (ERC-20 contract address)
+                account  — the GP Safe being debited
+                receiver — settlement / merchant-acquirer destination
+                amount   — token base units (string; could be large)
+
+      AvatarSet(previousAvatar, newAvatar)
+          — Spender bound to a Safe (or rebound). The newAvatar is the
+            GP Safe this Spender module belongs to. Setup signal.
+
+      TargetSet(previousTarget, newTarget)
+          — The Spender's target contract changed.
+
+      EnabledModule / DisabledModule
+          — Sub-modules of the Spender enabled or disabled (the Spender
+            itself acts as a module manager for its own sub-stack).
+
+      ExecutionFromModuleSuccess / ExecutionFromModuleFailure
+          — A sub-module forwarded a call through the Spender.
+
+      OwnershipTransferred / Initialized
+          — Standard ownable / proxy lifecycle.
+
+      HashExecuted / HashInvalidated
+          — Signed-message tracking. The parameter is an unnamed bytes32
+            so we cannot pluck it by key — we just record the event fired
+            and leave the bytes32 in the raw decoded_params for downstream
+            consumers that need it.
+  columns:
+  - name: spender_module_address
+    description: The Spender module proxy address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: event_name
+    description: One of Spend, AvatarSet, TargetSet, EnabledModule, DisabledModule, ExecutionFromModuleSuccess, ExecutionFromModuleFailure, OwnershipTransferred, Initialized, HashExecuted, HashInvalidated.
+    data_type: String
+  - name: spend_asset
+    description: Spend.asset — token contract being spent (lowercase, 0x-prefixed). NULL on non-Spend events.
+    data_type: Nullable(String)
+  - name: spend_account
+    description: Spend.account — the GP Safe being debited. NULL on non-Spend events.
+    data_type: Nullable(String)
+  - name: spend_receiver
+    description: Spend.receiver — settlement / merchant-acquirer destination.
+    data_type: Nullable(String)
+  - name: spend_amount
+    description: Spend.amount in token base units (string-encoded uint256 to preserve precision).
+    data_type: Nullable(String)
+  - name: previous_avatar
+    description: AvatarSet.previousAvatar.
+    data_type: Nullable(String)
+  - name: new_avatar
+    description: AvatarSet.newAvatar — the GP Safe this Spender is bound to after the event.
+    data_type: Nullable(String)
+  - name: previous_target
+    description: TargetSet.previousTarget.
+    data_type: Nullable(String)
+  - name: new_target
+    description: TargetSet.newTarget.
+    data_type: Nullable(String)
+  - name: module_address
+    description: Module address from EnabledModule / DisabledModule / ExecutionFromModule* events.
+    data_type: Nullable(String)
+  - name: previous_owner
+    description: OwnershipTransferred.previousOwner.
+    data_type: Nullable(String)
+  - name: new_owner
+    description: OwnershipTransferred.newOwner.
+    data_type: Nullable(String)
+  - name: init_version
+    description: Initialized.version.
+    data_type: Nullable(String)
+  - name: block_timestamp
+    description: UTC timestamp of the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: block_number
+    description: Block number.
+    data_type: UInt32
+  - name: transaction_hash
+    description: Transaction that emitted the event.
+    data_type: String
+  - name: log_index
+    description: Log index within the transaction.
+    data_type: UInt32
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_spend_activity_daily
+  description: |
+    Daily card-spend activity per GP Safe.
+
+    Source: int_execution_gpay_spender_events filtered to event_name='Spend'.
+    The Spend event already carries `account` (the debited Safe), so we
+    don't need to join through int_execution_gpay_safe_modules — the
+    account address IS the gp_safe. We INNER JOIN to int_execution_gpay_wallets to
+    guard against any cross-Safe Spend events that wouldn't be GP-related.
+
+    Aggregates count of spends and number of distinct assets/receivers.
+    Amounts are not summed because they're per-asset and per-decimals; a
+    follow-up model can do the USD valuation join.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: gp_safe
+    description: The Gnosis Pay Safe (the debited account from the Spend event).
+    data_type: String
+  - name: spend_count
+    description: Number of Spend events emitted on behalf of this Safe on this date.
+    data_type: UInt64
+  - name: distinct_assets
+    description: Number of distinct token contracts spent on this date.
+    data_type: UInt64
+  - name: distinct_receivers
+    description: Number of distinct receiver addresses on this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_safe_modules
+  description: |
+    Current module topology per Gnosis Pay Safe.
+
+    Replays int_execution_safes_module_events filtered to GP Safes, keeps
+    the latest event per (safe, module_proxy) via argMax, and drops rows
+    whose latest event is `disabled_module`. The remaining rows are joined
+    to contracts_gpay_modules_registry to get the module type
+    (DelayModule / RolesModule / SpenderModule).
+
+    Expected row count: ≈3 × |int_execution_gpay_wallets|. Anything other than 3
+    per Safe indicates a partially-onboarded GP Safe (worth investigating).
+  columns:
+  - name: gp_safe
+    description: The Gnosis Pay Safe address.
+    data_type: String
+  - name: contract_type
+    description: One of DelayModule, RolesModule, SpenderModule.
+    data_type: String
+  - name: module_proxy_address
+    description: The module proxy address attached to this Safe.
+    data_type: String
+  - name: enabled_at
+    description: Timestamp of the most recent EnabledModule event for this (Safe, module_proxy) pair.
+    data_type: DateTime64(0, 'UTC')
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_spender_delegates_current
+  description: |
+    Current spender-delegate set per Gnosis Pay Safe.
+
+    Replays AssignRoles events from int_execution_gpay_roles_events with
+    argMax per (roles_module, member, role_key) and keeps only the
+    combinations whose latest `is_member` is 1. Joins back to the GP Safe
+    via int_execution_gpay_safe_modules (RolesModule proxy → owning Safe).
+
+    A Safe with a Roles module that has authorized 2 spender keys produces
+    2 rows here. A Safe with no delegates produces 0 rows. The delegate
+    address is the EOA the GP card-flow infrastructure uses to trigger
+    spends within the user's allowance.
+  columns:
+  - name: gp_safe
+    description: The Gnosis Pay Safe.
+    data_type: String
+  - name: delegate_address
+    description: The address authorized as a spender delegate (typically a card-flow EOA).
+    data_type: Nullable(String)
+  - name: role_key
+    description: The Roles v2 role key under which the delegate is authorized.
+    data_type: Nullable(String)
+  - name: assigned_at
+    description: Timestamp of the most recent AssignRoles event for this (Safe, delegate, role_key).
+    data_type: DateTime64(0, 'UTC')
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_allowances_current
+  description: |
+    Current allowance state per Gnosis Pay Safe.
+
+    Replays SetAllowance events from int_execution_gpay_roles_events and
+    keeps the latest row per (roles_module, allowance_key). Joins back to
+    the GP Safe via int_execution_gpay_safe_modules.
+
+    Columns are projected as Strings because the underlying decoded_params
+    values are Strings (decode_logs returns Map(String, String)). Cast to
+    numeric types in downstream marts when needed — keeping them as
+    Strings here avoids precision loss for uint128 balance values that
+    exceed UInt64.
+
+    `refill` is the canonical "daily limit" number — the amount the
+    allowance refills by once every `period` seconds.
+  columns:
+  - name: gp_safe
+    description: The Gnosis Pay Safe.
+    data_type: String
+  - name: allowance_key
+    description: Roles v2 allowance key (bytes32).
+    data_type: Nullable(String)
+  - name: balance
+    description: Current balance at the time of the latest SetAllowance.
+    data_type: Nullable(String)
+  - name: max_refill
+    description: Maximum allowance accumulation cap.
+    data_type: Nullable(String)
+  - name: refill
+    description: Per-period refill amount (the daily limit number).
+    data_type: Nullable(String)
+  - name: period
+    description: Refill period in seconds (typically 86400).
+    data_type: Nullable(String)
+  - name: last_set_at
+    description: Timestamp of the most recent SetAllowance event for this allowance key.
+    data_type: DateTime64(0, 'UTC')
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_delay_activity_daily
+  description: |
+    Daily count of TransactionAdded events per GP Safe — the
+    privacy-respecting "user did something admin-y today" signal.
+
+    TransactionAdded fires whenever the original setup owner queues a
+    delayed transaction (withdraw, key rotation, owner swap, …) via the
+    Delay module. We don't decode WHAT they queued — just the count and
+    timing. Useful for the Mixpanel bridge as a per-user activity dimension.
+
+    Joined to int_execution_gpay_safe_modules to map the Delay module
+    proxy back to its owning GP Safe.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: gp_safe
+    description: The Gnosis Pay Safe.
+    data_type: String
+  - name: tx_added_count
+    description: Number of TransactionAdded events emitted by this Safe's Delay module on this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gpay_safe_identities
+  description: |
+    PURPOSE
+    -------
+    This model is the privacy boundary for the Gnosis Pay ↔ Mixpanel
+    bridge. It produces a lookup table from `user_pseudonym` (a salted
+    keyed hash of an on-chain address) to `gp_safe` + `identity_role`,
+    so the downstream Mixpanel fact model can join on
+    `mp.user_id_hash = id.user_pseudonym` without ever touching a raw
+    address.
+
+    Everything upstream (int_execution_safes_owner_events,
+    int_execution_gpay_spender_delegates_current, int_execution_gpay_wallets)
+    still holds raw addresses because the on-chain pipeline needs them
+    for joins. Everything downstream (fct_mixpanel_ga_gpay_users,
+    fct_mixpanel_ga_gpay_crossdomain_daily) only sees `user_pseudonym`
+    and `gp_safe`. This model is the one place where the
+    `pseudonymize_address` macro is applied; the macro is the same one
+    stg_mixpanel_ga__events uses at ingest, and the salt is the same
+    env var (CEREBRO_PII_SALT), so the join keys are identical on both
+    sides.
+
+    WHY THREE IDENTITY ROLES
+    ------------------------
+    The same person shows up in Mixpanel as one of THREE different
+    identifiers depending on which GP frontend flow created their
+    session. Picking only one of them collapses the match rate to near
+    zero. The three roles, in order of likely match volume:
+
+      initial_owner — the EOA the user signed in with via passkey or
+                      wallet during onboarding. After the GP setup
+                      ceremony, ownership of the Safe is transferred to
+                      the inaccessible sentinel 0x...0002 and this EOA
+                      only retains access through the Delay module. But
+                      it is still whatever wallet the user authenticated
+                      with, so it is the most likely value the GP
+                      frontend passes to mixpanel.identify(...). Pulled
+                      from int_execution_safes_owner_events where
+                      event_kind='safe_setup'.
+
+      delegate      — a spender delegate EOA assigned via Roles v2
+                      AssignRoles events. These are usually backend-
+                      managed card-flow keys, but a few flows may
+                      identify with them. Pulled from
+                      int_execution_gpay_spender_delegates_current.
+
+      safe_self     — the Safe smart-account address itself. Some GP
+                      frontend flows call mixpanel.identify(safeAddress)
+                      instead of identify(eoaAddress). Pulled directly
+                      from int_execution_gpay_wallets.
+
+    Row grain: one row per (gp_safe, identity_role, user_pseudonym). A
+    Safe with two initial owners and three delegates produces 6 rows
+    (2 + 3 + 1 self). A single user_pseudonym can appear under multiple
+    gp_safe values if the same person owns multiple GP cards.
+
+    PRIVACY INVARIANT
+    -----------------
+    Every column derived from a wallet address is hashed via
+    pseudonymize_address. The output schema contains user_pseudonym
+    (irreversible without the salt) and gp_safe (treated as a smart-
+    account identifier rather than PII — flip if that classification
+    ever changes). Raw EOA addresses never reach this model's output.
+  columns:
+  - name: gp_safe
+    description: The Gnosis Pay Safe address (lowercase, 0x-prefixed). Treated as a smart-account identifier rather than PII.
+    data_type: String
+  - name: identity_role
+    description: One of initial_owner, delegate, safe_self.
+    data_type: String
+  - name: user_pseudonym
+    description: Keyed pseudonym (UInt64) of the underlying address. Joinable to stg_mixpanel_ga__events.user_id_hash on equality.
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false

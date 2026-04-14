@@ -5,15 +5,11 @@
     )
 }}
 
-{#-
-  Normalized token metadata from the whitelist seed.
-  Single source of truth for token_address → symbol mapping, decimals,
-  and validity window. Referenced by all yields models that need token info.
--#}
+{#- Model documentation in schema.yml -#}
 
 SELECT
     lower(address) AS token_address,
-    nullIf(upper(trimBoth(symbol)), '') AS token,
+    nullIf(trimBoth(symbol), '') AS token,
     decimals,
     date_start,
     date_end

@@ -52,9 +52,8 @@ models:
       severity: warn
       tags:
       - elementary
-- name: int_execution_tokens_balances_daily
-  description: The int_execution_tokens_balances_daily model tracks the daily balances of tokens for various addresses, incorporating net delta changes to maintain an up-to-date view of token holdings over
-    time.
+- name: int_execution_tokens_balances_native_daily
+  description: Daily cumulative native-token balances per address. Holds the heavy running-sum compute; does not include USD pricing so price backfills do not trigger recomputation here.
   columns:
 
   - name: date
@@ -64,6 +63,7 @@ models:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
   - name: token_address
     description: The blockchain address of the token contract associated with the balance.
     data_type: String
@@ -80,45 +80,13 @@ models:
     description: The blockchain address holding the token balance.
     data_type: String
 
-  - name: net_delta_raw
-    description: The raw net change in token quantity for the address on the given date, measured in token units.
+  - name: balance_raw
+    description: Cumulative balance in raw atomic units (Int256), not decimal-normalized.
+    data_type: Int256
+
+  - name: balance
+    description: Cumulative balance normalized by the token's decimals.
     data_type: Float64
-
-  - name: from_value_binary
-    description: Balance before change as 32-byte binary.
-    data_type: String
-
-  - name: from_value_string
-    description: Balance before change as decimal string.
-    data_type: String
-
-  - name: from_value_f64
-    description: Balance before change as floating-point ether.
-    data_type: Float64
-
-  - name: to_value_binary
-    description: Balance after change as 32-byte binary.
-    data_type: String
-
-  - name: to_value_string
-    description: Balance after change as decimal string.
-    data_type: String
-
-  - name: to_value_f64
-    description: Balance after change as floating-point ether.
-    data_type: Float64
-
-  - name: chain_id
-    description: EVM chain identifier.
-    data_type: UInt64
-
-  - name: block_timestamp
-    description: UTC timestamp of the enclosing block.
-    data_type: DateTime64(0, 'UTC')
-
-  - name: insert_version
-    description: Monotonic ingestion version (nanoseconds).
-    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
@@ -175,6 +143,61 @@ models:
         batch_months: 12
         vars:
           symbol: "ZCHF,svZCHF"
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_tokens_balances_daily
+  description: Daily token balances per address with USD valuation. Reads native balances from int_execution_tokens_balances_native_daily and left-joins int_execution_token_prices_daily so price backfills only rewrite this thin layer.
+  columns:
+
+  - name: date
+    description: The specific date for which the token balances are recorded, representing a daily snapshot.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: token_address
+    description: The blockchain address of the token contract associated with the balance.
+    data_type: String
+
+  - name: symbol
+    description: The token's symbol, serving as a human-readable identifier.
+    data_type: String
+
+  - name: token_class
+    description: The classification or category of the token, such as ERC20 or other types.
+    data_type: String
+
+  - name: address
+    description: The blockchain address holding the token balance.
+    data_type: String
+
+  - name: balance_raw
+    description: Cumulative balance in raw atomic units (Int256), not decimal-normalized.
+    data_type: Int256
+
+  - name: balance
+    description: Cumulative balance normalized by the token's decimals.
+    data_type: Float64
+
+  - name: balance_usd
+    description: Balance multiplied by the daily token price in USD. Null when no price is available for that (date, symbol).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 6
+      stages:
+      - name: all
+        vars:
+          symbol_exclude: "{{ var('symbol_exclude') }}"
   tests:
   - elementary.schema_changes:
       severity: warn
