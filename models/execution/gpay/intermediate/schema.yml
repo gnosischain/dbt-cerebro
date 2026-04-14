@@ -1,6 +1,31 @@
 version: 2
 
 models:
+- name: int_execution_gpay_wallets
+  description: |
+    Gnosis Pay Safes derived from on-chain events. A Safe qualifies if it
+    has emitted SafeSetup (so it exists on-chain) AND has ever sent a
+    whitelisted ERC-20 transfer to the Gnosis Pay spender
+    0x4822521E6135CD2599199c83Ea35179229A172EE, excluding addresses in the
+    gpay_operational_wallets seed. Replaces the crawler-sourced
+    stg_gpay__wallets model.
+  columns:
+  - name: address
+    description: Gnosis Pay Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: activation_date
+    description: Earliest date this Safe sent a whitelisted ERC-20 transfer to the GPay spender (daily grain from int_execution_transfers_whitelisted_daily).
+    data_type: Date
+  - name: creation_time
+    description: Timestamp of the SafeSetup event for this Safe.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-12-01"
+      batch_months: 6
+
 - name: int_execution_gpay_activity
   description: Incremental model that captures individual Gnosis Pay wallet transactions including payments, deposits, withdrawals, and cashback events with USD valuations.
   columns:
@@ -290,7 +315,7 @@ models:
 
     Two evidence sources, joined on the proxy address:
       1. int_execution_safes_module_events — the Safe enabled this address
-         as a module (filtered to GP Safes via stg_gpay__wallets).
+         as a module (filtered to GP Safes via int_execution_gpay_wallets).
       2. int_execution_zodiac_module_proxies — the address was deployed by
          the canonical Zodiac ModuleProxyFactory and points at one of the
          three known GP mastercopies.
@@ -607,7 +632,7 @@ models:
     Source: int_execution_gpay_spender_events filtered to event_name='Spend'.
     The Spend event already carries `account` (the debited Safe), so we
     don't need to join through int_execution_gpay_safe_modules — the
-    account address IS the gp_safe. We INNER JOIN to stg_gpay__wallets to
+    account address IS the gp_safe. We INNER JOIN to int_execution_gpay_wallets to
     guard against any cross-Safe Spend events that wouldn't be GP-related.
 
     Aggregates count of spends and number of distinct assets/receivers.
@@ -655,7 +680,7 @@ models:
     to contracts_gpay_modules_registry to get the module type
     (DelayModule / RolesModule / SpenderModule).
 
-    Expected row count: ≈3 × |stg_gpay__wallets|. Anything other than 3
+    Expected row count: ≈3 × |int_execution_gpay_wallets|. Anything other than 3
     per Safe indicates a partially-onboarded GP Safe (worth investigating).
   columns:
   - name: gp_safe
@@ -811,7 +836,7 @@ models:
     address.
 
     Everything upstream (int_execution_safes_owner_events,
-    int_execution_gpay_spender_delegates_current, stg_gpay__wallets)
+    int_execution_gpay_spender_delegates_current, int_execution_gpay_wallets)
     still holds raw addresses because the on-chain pipeline needs them
     for joins. Everything downstream (fct_mixpanel_ga_gpay_users,
     fct_mixpanel_ga_gpay_crossdomain_daily) only sees `user_pseudonym`
@@ -848,7 +873,7 @@ models:
       safe_self     — the Safe smart-account address itself. Some GP
                       frontend flows call mixpanel.identify(safeAddress)
                       instead of identify(eoaAddress). Pulled directly
-                      from stg_gpay__wallets.
+                      from int_execution_gpay_wallets.
 
     Row grain: one row per (gp_safe, identity_role, user_pseudonym). A
     Safe with two initial owners and three delegates produces 6 rows

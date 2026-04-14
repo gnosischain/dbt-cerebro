@@ -11,7 +11,7 @@
 {# Description in schema.yml — see int_execution_gpay_safe_identities #}
 
 WITH gp_safes AS (
-    SELECT lower(address) AS gp_safe FROM {{ ref('stg_gpay__wallets') }}
+    SELECT lower(address) AS gp_safe FROM {{ ref('int_execution_gpay_wallets') }}
 ),
 
 initial_owners AS (
@@ -34,7 +34,7 @@ delegates AS (
 ),
 
 safe_self AS (
-    -- gp_safes.gp_safe already comes from `lower(stg_gpay__wallets.address)`,
+    -- gp_safes.gp_safe already comes from `lower(int_execution_gpay_wallets.address)`,
     -- which is lowercase 0x-prefixed. No re-prefixing.
     SELECT
         gp_safe                                AS gp_safe,

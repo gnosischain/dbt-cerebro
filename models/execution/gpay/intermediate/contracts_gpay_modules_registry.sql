@@ -12,7 +12,7 @@
 
 WITH gpay_safes AS (
     SELECT lower(address) AS pay_wallet
-    FROM {{ ref('stg_gpay__wallets') }}
+    FROM {{ ref('int_execution_gpay_wallets') }}
 ),
 
 -- Every (module_proxy, first_enabled_at) pair that was enabled on a GP Safe.

@@ -25,7 +25,7 @@ WITH owner_latest AS (
 current_threshold AS (
     SELECT
         safe_address,
-        argMax(threshold, (block_number, log_index)) AS threshold
+        argMax(threshold, (block_number, log_index)) AS latest_threshold
     FROM {{ ref('int_execution_safes_owner_events') }}
     WHERE event_kind IN ('safe_setup','changed_threshold')
       AND threshold IS NOT NULL
@@ -36,7 +36,7 @@ SELECT
     ol.safe_address,
     ol.owner,
     ol.last_event_time           AS became_owner_at,
-    ct.threshold                 AS current_threshold
+    ct.latest_threshold          AS current_threshold
 FROM owner_latest ol
 LEFT JOIN current_threshold ct USING (safe_address)
 WHERE ol.last_event_kind IN ('safe_setup','added_owner')
