@@ -10,6 +10,8 @@ SELECT
     token,
     name,
     address,
+    pool_key,
+    rate_trend_14d,
     yield_apr,
     yield_apy,
     borrow_apy,
