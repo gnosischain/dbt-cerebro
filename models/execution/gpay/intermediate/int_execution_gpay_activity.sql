@@ -22,7 +22,7 @@
       AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
     {% else %}
-      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True,lookback_days=20) }}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True) }}
     {% endif %}
 {% endset %}
 
