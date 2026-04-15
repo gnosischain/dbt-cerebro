@@ -25,6 +25,7 @@ PROJECT_DIR="${PROJECT_DIR:-/app}"
 REPORT_PATH="${PROJECT_DIR}/reports/elementary_report.html"
 EDR_TARGET="${PROJECT_DIR}/edr_target"
 RUNTIME_DATA_DIR="${RUNTIME_DATA_DIR:-/data}"
+DBT_LOG_PATH="${DBT_LOG_PATH:-${RUNTIME_DATA_DIR}/logs}"
 SEMANTIC_METRICS_DIR="${SEMANTIC_METRICS_DIR:-${RUNTIME_DATA_DIR}/metrics}"
 SEMANTIC_BUILD_SUMMARY_PATH="${PROJECT_DIR}/target/semantic_build_summary.json"
 SEMANTIC_BUILD_METRICS_PATH="${PROJECT_DIR}/target/semantic_build_metrics.prom"
@@ -32,6 +33,11 @@ SEMANTIC_BUILD_METRICS_PATH="${PROJECT_DIR}/target/semantic_build_metrics.prom"
 # Default mandatory steps (preview). Prod wrapper overrides this.
 MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run,edr-report}"
 
+# Force orchestrator-driven dbt runs to use the writable runtime dir rather than
+# bind-mounted /app/logs, which can be owned by a different host UID/GID.
+export DBT_LOG_PATH
+
+mkdir -p "$DBT_LOG_PATH"
 mkdir -p "$SEMANTIC_METRICS_DIR"
 mkdir -p "$(dirname "$REPORT_PATH")"
 

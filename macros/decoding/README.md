@@ -14,7 +14,7 @@ The system consists of three main components:
 
 ### Database Tables
 
-- `contract_abis` - Stores raw contract ABIs
+- `contracts_abi` - Stores raw contract ABIs
 - `function_signatures` - Stores processed function signatures for transaction decoding 
 - `event_signatures` - Stores processed event signatures for log decoding
 
@@ -26,44 +26,40 @@ The system consists of three main components:
 
 ### Scripts
 
-- `signature_generator.py` - Processes ABIs to generate signature tables
+- `scripts/signatures/signature_generator.py` - Processes ABIs to generate signature tables
 
 ## Setup Process
 
-### 1. Set Up Contract ABIs Table
+### 1. Keep `contracts_abi.csv` up to date
 
-First, create the storage table for the ABIs:
+The preferred flow is CSV-first: keep `seeds/contracts_abi.csv` as the source of truth, then seed it into ClickHouse.
 
 ```bash
-dbt run --select execution.abi.contract_abis
+python scripts/signatures/fetch_abi_to_csv.py 0xe91d153e0b41518a2ce8dd3d7944fa863463a97d --regen
 ```
 
-### 2. Fetch ABIs for Contracts
+If `seeds/contracts_abi.csv` is already updated manually or from another source, you can skip the fetch step and go straight to signature generation.
 
-For each contract you need to decode, fetch its ABI:
+### 2. Generate Signature Tables
 
-```bash
-dbt run-operation fetch_and_insert_abi --args '{"address": "0xe91d153e0b41518a2ce8dd3d7944fa863463a97d"}'
-```
-
-Repeat this for all contracts you want to decode. The system will store these ABIs in the `contract_abis` table.
-
-### 3. Generate Signature Tables
-
-Run the signature generator script to process the ABIs:
+If `seeds/contracts_abi.csv` is the freshest ABI source, force the generator to read from that CSV and then seed all three CSV-backed tables:
 
 ```bash
-python scripts/signature_generator.py
+SIGNATURE_GEN_SOURCE=csv python scripts/signatures/signature_generator.py
+dbt seed --select contracts_abi event_signatures function_signatures
 ```
 
 This script:
-- Reads the ABIs from the `contract_abis` table
+- By default, tries the ClickHouse `contracts_abi` table first and falls back to `seeds/contracts_abi.csv`
+- Reads directly from `seeds/contracts_abi.csv` when `SIGNATURE_GEN_SOURCE=csv` is set
 - Calculates function and event signatures using Web3's `keccak256` function
-- Creates/updates the `function_signatures` and `event_signatures` tables
+- Regenerates `seeds/function_signatures.csv` and `seeds/event_signatures.csv`, ready for `dbt seed`
+
+When you use forced CSV mode, do not seed `contracts_abi` before running the generator. Generate first, then seed `contracts_abi`, `event_signatures`, and `function_signatures` together afterward. If you used `fetch_abi_to_csv.py --regen`, these steps already ran for you.
 
 > **Important Note**: The keccak256 hash function required for topic0 hash calculation is not currently available natively in ClickHouse Cloud. This is why we use a Python script with Web3.py to perform this calculation externally. In the future, when ClickHouse adds native support for keccak256, this process could be integrated directly into the dbt pipeline.
 
-### 4. Create Models for Contracts
+### 3. Create Models for Contracts
 
 Now you can create models that use the decoding macros:
 
@@ -121,7 +117,7 @@ Now you can create models that use the decoding macros:
 }}
 ```
 
-### 5. Run Your Models
+### 4. Run Your Models
 
 Execute your models to decode the data:
 
@@ -133,14 +129,15 @@ dbt run --select my_contract_calls my_contract_events
 
 To add a new contract for decoding:
 
-1. **Fetch the ABI**:
+1. **Preferred one-shot: fetch the ABI straight into `seeds/contracts_abi.csv`, regenerate signatures, and re-seed**:
    ```bash
-   dbt run-operation fetch_and_insert_abi --args '{"address": "0xNEW_CONTRACT_ADDRESS"}'
+   python scripts/signatures/fetch_abi_to_csv.py 0xNEW_CONTRACT_ADDRESS --regen
    ```
 
-2. **Regenerate Signature Tables**:
+2. **If `seeds/contracts_abi.csv` is already updated, use the manual CSV-first flow**:
    ```bash
-   python scripts/signature_generator.py
+   SIGNATURE_GEN_SOURCE=csv python scripts/signatures/signature_generator.py
+   dbt seed --select contracts_abi event_signatures function_signatures
    ```
 
 3. **Create Model Files** for the new contract using the template above
@@ -150,25 +147,33 @@ To add a new contract for decoding:
    dbt run --select your_new_models
    ```
 
+Legacy note: `dbt run-operation fetch_and_insert_abi` is still supported, but it writes to ClickHouse first. If you use that path, export the result back to `seeds/contracts_abi.csv` before regenerating signatures so the next `dbt seed` does not wipe the new ABI row.
+
 ## How It Works
 
 ### ABI Retrieval
 
-The `fetch_abi_from_blockscout.sql` macro:
+The preferred ABI retrieval flow keeps `seeds/contracts_abi.csv` as the source of truth:
+- `scripts/signatures/fetch_abi_to_csv.py` fetches the ABI from Blockscout and writes it directly to the CSV
+- `dbt seed --select contracts_abi` pushes that CSV into ClickHouse
+
+The legacy `fetch_abi_from_blockscout.sql` / `fetch_and_insert_abi` flow:
 - Makes an HTTP request to Blockscout API
 - Extracts the ABI from the response
-- Stores it in the `contract_abis` table
+- Stores it in the `contracts_abi` table in ClickHouse first
+- Requires exporting that table back to `seeds/contracts_abi.csv` if you want the CSV seed to stay authoritative
 
 ### Signature Generation
 
-The `signature_generator.py` script:
-1. Reads ABIs from the `contract_abis` table
-2. For each function/event:
+The `scripts/signatures/signature_generator.py` script:
+1. By default, tries to read ABIs from the ClickHouse `contracts_abi` table and falls back to `seeds/contracts_abi.csv`
+2. Reads directly from `seeds/contracts_abi.csv` when `SIGNATURE_GEN_SOURCE=csv` is set
+3. For each function/event:
    - Constructs the canonical signature format (name and parameter types)
    - Calculates keccak256 hash using Web3.py
    - For functions: Takes first 4 bytes of the hash (function selector)
    - For events: Uses the full 32-byte hash (topic0)
-3. Populates the signature tables with name, types, and hash information
+4. Writes `seeds/function_signatures.csv` and `seeds/event_signatures.csv`, which are then loaded with `dbt seed`
 
 ### Decoding Process
 
@@ -198,8 +203,9 @@ The `signature_generator.py` script:
 1. **Missing ABI**:
    - Check if the ABI was fetched correctly:
    ```sql
-   SELECT * FROM contract_abis WHERE contract_address = '0xYOUR_CONTRACT_ADDRESS'
+   SELECT * FROM contracts_abi WHERE contract_address = '0xYOUR_CONTRACT_ADDRESS'
    ```
+   - If you are using the CSV-first flow, also verify that `seeds/contracts_abi.csv` contains the row you expect
    - Try fetching the ABI again or verify the contract address
 
 2. **Signature Generation Failed**:

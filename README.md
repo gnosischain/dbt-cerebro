@@ -137,6 +137,8 @@ USER_ID=1000
 GROUP_ID=1000
 ```
 
+For local Docker, set `USER_ID` and `GROUP_ID` to your host values from `id -u` and `id -g` before rebuilding the image.
+
 ### ClickHouse Requirements
 
 - ClickHouse version 24.1 or later
@@ -150,6 +152,10 @@ GROUP_ID=1000
 Docker gives you the full environment with all dependencies pre-installed:
 
 ```bash
+# Match the container user to your host user before rebuilding
+export USER_ID=$(id -u)
+export GROUP_ID=$(id -g)
+
 # Build and start
 docker-compose up -d --build
 
@@ -166,6 +172,7 @@ edr report --file-path /app/reports/elementary_report.html --target-path /app/ed
 ```
 
 The docker-compose setup bind-mounts the repo into `/app`, so code changes are reflected immediately without rebuilding.
+Matching `USER_ID` and `GROUP_ID` avoids bind-mounted file ownership issues for local Docker runs.
 
 ### Running Locally (without Docker)
 
@@ -257,6 +264,9 @@ docker exec -it dbt /bin/bash
 # Or run the orchestrator directly with custom env
 EDR_REPORT_ENV=dev DBT_TEST_SCOPE=preview_subset /app/scripts/run_dbt_observability.sh
 ```
+
+Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they do not depend on bind-mounted `./logs`.
+If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
 
 The orchestrator runs these steps in order:
 1. `dbt source freshness` — check source data staleness
@@ -1074,7 +1084,7 @@ The `-- depends_on:` comments in `contracts_circles_registry.sql` enforce this o
 
 `scripts/signatures/signature_generator.py` is the bridge between raw ABI JSON and the decoder-friendly seeds. It:
 
-1. Reads `seeds/contracts_abi.csv` (the source of truth for ABIs).
+1. Loads ABI rows from the `contracts_abi` seed/table pair — by default it tries ClickHouse first and falls back to `seeds/contracts_abi.csv`, while `SIGNATURE_GEN_SOURCE=csv` forces the CSV path.
 2. For each ABI, walks every event and function definition.
 3. **Canonicalizes types** — `uint` becomes `uint256`, `tuple` becomes `(type1,type2,...)` recursively, `tuple[]` becomes `(type1,type2,...)[]`, etc. This matches the canonical Solidity type signature exactly so the keccak hash agrees with what gets emitted on-chain.
 4. **Computes the topic0 / selector** — `keccak256("EventName(canonical_types)")` for events (full 32-byte hash, no `0x`), or its first 4 bytes for function selectors.
@@ -1086,6 +1096,15 @@ Run it whenever you add a new ABI:
 ```bash
 python scripts/signatures/signature_generator.py
 ```
+
+If `seeds/contracts_abi.csv` is already the most up-to-date ABI source, you can force the generator to skip the ClickHouse read and use the CSV directly:
+
+```bash
+SIGNATURE_GEN_SOURCE=csv python scripts/signatures/signature_generator.py
+dbt seed --select contracts_abi event_signatures function_signatures
+```
+
+By default, `signature_generator.py` tries ClickHouse first and falls back to `seeds/contracts_abi.csv` if the ClickHouse read is unavailable or fails. Setting `SIGNATURE_GEN_SOURCE=csv` forces it to read from `seeds/contracts_abi.csv` even when ClickHouse is available. When you use forced CSV mode, do not seed `contracts_abi` before generating; generate first, then seed `contracts_abi`, `event_signatures`, and `function_signatures` together afterward.
 
 ### The ABI-fetch shortcut (`fetch_abi_to_csv.py`)
 
@@ -1128,7 +1147,22 @@ python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --force --regen
 
 ### Adding a new contract — full workflow
 
-Two paths are supported. Both end in the same state (CSV is the source of truth, ClickHouse and `event_signatures.csv` are in sync); pick whichever is more convenient for your environment.
+Three paths are supported. All end in the same state (CSV is the source of truth, ClickHouse and `event_signatures.csv` are in sync); pick whichever is more convenient for your environment.
+
+#### Manual CSV-first refresh (when `contracts_abi.csv` is already updated)
+
+If you already edited `seeds/contracts_abi.csv` manually or synced it from another source, regenerate the signature seeds directly from that CSV and then seed all three files into ClickHouse:
+
+```bash
+docker exec -it dbt /bin/bash
+
+# contracts_abi.csv is already the freshest source of truth.
+# Force the generator to read it directly, then seed all three CSVs.
+SIGNATURE_GEN_SOURCE=csv python scripts/signatures/signature_generator.py
+dbt seed --select contracts_abi event_signatures function_signatures
+```
+
+Do not run `dbt seed --select contracts_abi` before the generator in this flow. The point of `SIGNATURE_GEN_SOURCE=csv` is to read directly from the already-updated CSV, then push the refreshed `contracts_abi`, `event_signatures`, and `function_signatures` tables to ClickHouse in one seed step.
 
 #### Recommended: CSV-first one-shot (`fetch_abi_to_csv.py`)
 
