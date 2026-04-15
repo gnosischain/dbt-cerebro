@@ -1,0 +1,76 @@
+version: 2
+
+models:
+
+- name: api_execution_live_trades
+  description: >
+    Dashboard-facing feed of recent DEX trades on Gnosis Chain. Reads from
+    the cached `int_live__dex_trades_raw` table, so user queries never hit
+    source logs or trigger decode-log scans. Last 30 minutes of CACHED data
+    (anchored on `max(block_timestamp)` in that table, which trails the live
+    source by the incremental refresh cadence) with a 60-second reorg
+    buffer. Multi-hop router swaps are collapsed to one row per transaction.
+    Dust is filtered via `live_trades_min_usd` var (default 1 USD); rows
+    with unknown USD are kept. No LIMIT is applied — dashboards should add
+    their own. For ingestion-level staleness, query
+    `api_execution_live_trades_freshness` separately.
+  columns:
+  - name: block_timestamp
+    tests: [not_null]
+  - name: block_number
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: token_sold
+    description: Symbol of the token paid in on the first hop of the transaction.
+  - name: amount_sold
+    description: Decimal-normalized sold amount (first hop).
+  - name: token_bought
+    description: Symbol of the token received on the last hop of the transaction.
+  - name: amount_bought
+    description: Decimal-normalized bought amount (last hop).
+  - name: trade_usd
+    description: Conservative USD notional for the trade (max across hops of the per-hop conservative notional).
+  - name: via
+    description: Comma-separated list of DEX protocols touched by the transaction.
+  - name: hops
+    description: Number of swap events in the transaction. 1 for direct pool swaps, >1 for router/aggregator paths.
+  - name: trader
+    description: Transaction origin address (`tx.from_address`) — the EOA that initiated the swap.
+  - name: aggregator
+    description: Project label for `tx.to_address` when it matches a known aggregator/router in `int_crawlers_data_labels`.
+
+- name: api_execution_live_trades_stats
+  description: >
+    One-row summary for the live-trades tab header tiles. Counts trades, sums
+    USD volume, counts unique traders, and computes aggregator/multi-hop
+    shares. Reads from `api_execution_live_trades` so the tiles exactly match
+    the population users see in the table (same window, same dust filter,
+    same multi-hop collapse).
+  columns:
+  - name: trade_count
+    description: Number of transactions in the feed window.
+  - name: volume_usd
+    description: Sum of `trade_usd` across the feed window. Rows with unknown USD contribute nothing.
+  - name: unique_traders
+    description: Distinct `tx.from_address` across the feed window.
+  - name: aggregator_share_pct
+    description: Percentage of trades where `tx.to_address` was labeled as a known aggregator/router.
+  - name: multihop_share_pct
+    description: Percentage of trades with more than one swap event (router/aggregator paths).
+
+- name: api_execution_live_trades_freshness
+  description: >
+    One-row freshness indicator for the live-trades tab. Shows the newest
+    ingested block timestamp in `execution_live.logs`, the server clock, and
+    the lag in seconds. Intended for a "Data as of X, lag Y min" UI element —
+    important because the tab is anchored on ingested-data time, not wall
+    clock. Reads directly from the source so it keeps working when the feed
+    itself is empty.
+  columns:
+  - name: newest_block_timestamp
+    description: Block timestamp of the most recent log in `execution_live.logs`.
+  - name: server_now
+    description: ClickHouse server clock at query time.
+  - name: lag_seconds
+    description: Seconds between `newest_block_timestamp` and `server_now`. Higher = staler data.

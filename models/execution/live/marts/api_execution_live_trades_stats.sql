@@ -1,0 +1,21 @@
+{{
+    config(
+        materialized='view',
+        tags=['live', 'execution', 'pools', 'trades', 'api']
+    )
+}}
+
+{#
+    One-row summary stats for the live-trades tab header tiles.
+    Reads from `api_execution_live_trades` so every tile matches the
+    population users see in the table exactly (same 30-min window,
+    same dust filter, same multi-hop collapse).
+#}
+
+SELECT
+    count()                                                                         AS trade_count,
+    round(sum(trade_usd), 0)                                                        AS volume_usd,
+    uniqExact(trader)                                                               AS unique_traders,
+    round(100.0 * countIf(aggregator IS NOT NULL) / nullIf(count(), 0), 1)          AS aggregator_share_pct,
+    round(100.0 * countIf(hops > 1)               / nullIf(count(), 0), 1)          AS multihop_share_pct
+FROM {{ ref('api_execution_live_trades') }}

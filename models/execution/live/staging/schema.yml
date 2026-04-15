@@ -1,0 +1,117 @@
+version: 2
+
+models:
+
+- name: stg_live__dex_trades_uniswap_v3
+  description: >
+    Normalized Uniswap V3 Swap events from execution_live logs.
+    Derives bought/sold token & amounts from the signed `amount0` / `amount1`
+    deltas and the pool's token0/token1 registry.
+  columns:
+  - name: block_number
+    data_type: UInt64
+    tests: [not_null]
+  - name: block_timestamp
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    data_type: String
+    tests: [not_null]
+  - name: log_index
+    data_type: UInt32
+    tests: [not_null]
+  - name: protocol
+    description: Static label ('Uniswap V3').
+    data_type: String
+    tests: [not_null]
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+  - name: token_bought_address
+    description: Address of the token the swapper received. Derived from the negative `amount` side.
+    data_type: String
+  - name: amount_bought_raw
+    description: Raw (un-decimaled) amount of bought token.
+    data_type: UInt256
+  - name: token_sold_address
+    description: Address of the token the swapper paid in.
+    data_type: String
+  - name: amount_sold_raw
+    description: Raw (un-decimaled) amount of sold token.
+    data_type: UInt256
+
+- name: stg_live__dex_trades_swapr_v3
+  description: >
+    Normalized Swapr V3 (Algebra) Swap events from execution_live logs.
+    Same schema/logic as Uniswap V3 — Algebra uses the same signed `amount0` / `amount1` convention.
+  columns:
+  - name: block_number
+    tests: [not_null]
+  - name: block_timestamp
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: log_index
+    tests: [not_null]
+  - name: protocol
+    description: Static label ('Swapr V3').
+    tests: [not_null]
+  - name: pool_address
+  - name: token_bought_address
+  - name: amount_bought_raw
+  - name: token_sold_address
+  - name: amount_sold_raw
+
+- name: stg_live__dex_trades_balancer_v2
+  description: >
+    Normalized Balancer V2 Swap events from the Vault contract (execution_live).
+    PoolId → pool_address is resolved via the materialized
+    `stg_pools__balancer_v2_pool_registry` table (built from historical
+    PoolRegistered events). Using a pre-materialized registry keeps this view
+    cheap to query from the dashboard; re-scanning the full historical Vault
+    events on every poll would be prohibitive.
+  columns:
+  - name: block_number
+    tests: [not_null]
+  - name: block_timestamp
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: log_index
+    tests: [not_null]
+  - name: protocol
+    description: Static label ('Balancer V2').
+    tests: [not_null]
+  - name: pool_address
+    description: Pool contract address resolved from poolId via the historical PoolRegistered registry. May be NULL for pools not yet registered or with decode gaps.
+  - name: token_bought_address
+    description: Address of tokenOut.
+  - name: amount_bought_raw
+  - name: token_sold_address
+    description: Address of tokenIn.
+  - name: amount_sold_raw
+
+- name: stg_live__dex_trades_balancer_v3
+  description: >
+    Normalized Balancer V3 Swap events from the Vault contract (execution_live).
+    Applies the wrapped-token map (`stg_pools__balancer_v3_token_map`) to resolve
+    e.g. waGnowstETH → stETH so trades settle against their underlying asset.
+  columns:
+  - name: block_number
+    tests: [not_null]
+  - name: block_timestamp
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: log_index
+    tests: [not_null]
+  - name: protocol
+    description: Static label ('Balancer V3').
+    tests: [not_null]
+  - name: pool_address
+  - name: token_bought_address
+    description: Underlying address of tokenOut (after wrapper resolution).
+  - name: amount_bought_raw
+  - name: token_sold_address
+    description: Underlying address of tokenIn (after wrapper resolution).
+  - name: amount_sold_raw
