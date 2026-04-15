@@ -23,18 +23,19 @@ reserve_map AS (
 -- we can pair the N-th RDU with the N-th pool action (handles multi-action txs correctly).
 reserve_index_by_tx AS (
     SELECT
-        transaction_hash,
-        lower(decoded_params['reserve']) AS reserve_address,
-        log_index,
-        toUInt256OrZero(decoded_params['liquidityIndex']) AS liquidity_index,
+        e.transaction_hash,
+        lower(e.decoded_params['reserve']) AS reserve_address,
+        e.log_index,
+        toUInt256OrZero(e.decoded_params['liquidityIndex']) AS liquidity_index,
         row_number() OVER (
-            PARTITION BY transaction_hash, lower(decoded_params['reserve'])
-            ORDER BY log_index
+            PARTITION BY e.transaction_hash, lower(e.decoded_params['reserve'])
+            ORDER BY e.log_index
         ) AS event_order
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
-    WHERE event_name = 'ReserveDataUpdated'
-      AND lower(decoded_params['reserve']) IN (SELECT reserve_address FROM reserve_map)
-      AND block_timestamp < today()
+    FROM `dbt`.`contracts_aaveV3_PoolInstance_events` e
+    INNER JOIN reserve_map rm
+        ON rm.reserve_address = lower(e.decoded_params['reserve'])
+    WHERE e.event_name = 'ReserveDataUpdated'
+      AND e.block_timestamp < today()
       
         
   
@@ -42,12 +43,12 @@ reserve_index_by_tx AS (
     
 
    AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
+    toStartOfMonth(toDate(e.block_timestamp)) >= (
       SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
       WHERE 1=1 
     )
-    AND toDate(block_timestamp) >= (
+    AND toDate(e.block_timestamp) >= (
       SELECT 
         
           addDays(max(toDate(x2.date)), -0)

@@ -18,7 +18,7 @@ fork_digests AS (
       ('0x21a6f836','Capella'),
       ('0x3ebfd484','Deneb'),
       ('0x7d5aab40','Electra'),
-      ('0xf9ab5f85','Fulu')
+      ('0x3237dab6','Fulu')
     ]) AS tup
   )
 ),
@@ -79,14 +79,14 @@ peers AS (
 
    AND 
     toStartOfMonth(toDate(visit_ended_at)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.visit_ended_at)), -0))
+      SELECT toStartOfMonth(addDays(max(toDate(x1.visit_ended_at)), -2))
       FROM `dbt`.`int_p2p_discv5_peers` AS x1
       WHERE 1=1 
     )
     AND toDate(visit_ended_at) >= (
       SELECT 
         
-          addDays(max(toDate(x2.visit_ended_at)), -0)
+          addDays(max(toDate(x2.visit_ended_at)), -2)
         
 
       FROM `dbt`.`int_p2p_discv5_peers` AS x2
