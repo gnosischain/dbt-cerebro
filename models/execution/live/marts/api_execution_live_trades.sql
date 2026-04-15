@@ -73,17 +73,25 @@ tx_summary AS (
     GROUP BY transaction_hash
 )
 
+{#
+    Explicit AS on EVERY column. The ClickHouse new analyzer otherwise keeps
+    the CTE alias (e.g. "s.transaction_hash") in the output column name when
+    there's a collision with another CTE — which breaks downstream callers
+    that expect bare `transaction_hash`. This also used to trip up explicit
+    column lists in SELECTs from this view with "Unknown expression identifier"
+    errors; aliasing here fixes both.
+#}
 SELECT
-    s.block_timestamp,
-    s.block_number,
-    s.transaction_hash,
-    s.token_sold,
+    s.block_timestamp            AS block_timestamp,
+    s.block_number               AS block_number,
+    s.transaction_hash           AS transaction_hash,
+    s.token_sold                 AS token_sold,
     round(s.amount_sold, 6)      AS amount_sold,
-    s.token_bought,
+    s.token_bought               AS token_bought,
     round(s.amount_bought, 6)    AS amount_bought,
     round(s.trade_usd, 2)        AS trade_usd,
-    s.via,
-    s.hops,
+    s.via                        AS via,
+    s.hops                       AS hops,
     tx.from_address              AS trader,
     lbl.project                  AS aggregator
 FROM tx_summary s
