@@ -61,7 +61,7 @@ batch_trades AS (
 
 tx_context AS (
     SELECT
-        transaction_hash,
+        concat('0x', transaction_hash) AS transaction_hash,
         gas_used,
         gas_price
     FROM `execution`.`transactions`

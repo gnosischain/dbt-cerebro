@@ -101,55 +101,30 @@ with_sold_price AS (
     ) ps
         ON  ps.symbol                 = s.token_sold_symbol
         AND toDate(s.block_timestamp) >= ps.date
-),
-
--- Outer-tx routing context: for each Trade event, capture the submitting
--- EOA (tx_from) and the tx recipient (tx_to). Trade events are emitted
--- inside the solver's settlement tx, so tx_to is always the GPv2Settlement
--- contract; tx_from is the solver EOA. Filtered statically by
--- to_address = settlement so partition pruning + the secondary index on
--- to_address both apply — same pattern as int_execution_cow_batches.
-tx_context AS (
-    SELECT
-        transaction_hash,
-        lower(from_address) AS tx_from,
-        lower(to_address)   AS tx_to
-    FROM `execution`.`transactions`
-    WHERE replaceAll(lower(to_address), '0x', '') = '9008d19f58aabd9ed0d60971565aa8510560ab41'
-    
-      AND block_timestamp >= (
-          SELECT addDays(max(toDate(block_timestamp)), -3)
-          FROM `dbt`.`int_execution_cow_trades`
-      )
-    
 )
 
 SELECT
-    s.block_number,
-    s.block_timestamp,
-    s.transaction_hash,
-    s.log_index,
-    s.protocol,
-    s.pool_address,
-    s.token_bought_address,
-    s.token_bought_symbol,
-    s.amount_bought_raw,
-    s.amount_bought,
-    s.token_sold_address,
-    s.token_sold_symbol,
-    s.amount_sold_raw,
-    s.amount_sold,
-    s.fee_amount_raw,
-    s.fee_amount,
+    block_number,
+    block_timestamp,
+    concat('0x', transaction_hash)                                                   AS transaction_hash,
+    log_index,
+    protocol,
+    pool_address,
+    token_bought_address,
+    token_bought_symbol,
+    amount_bought_raw,
+    amount_bought,
+    token_sold_address,
+    token_sold_symbol,
+    amount_sold_raw,
+    amount_sold,
+    fee_amount_raw,
+    fee_amount,
     COALESCE(
-        s.amount_bought * s.token_bought_price_usd,
-        s.amount_sold   * s.token_sold_price_usd
+        amount_bought * token_bought_price_usd,
+        amount_sold   * token_sold_price_usd
     )                                                                                AS amount_usd,
-    s.taker,
-    s.order_uid,
-    s.solver,
-    tx.tx_from                                                                       AS tx_from,
-    tx.tx_to                                                                         AS tx_to
-FROM with_sold_price s
-LEFT JOIN tx_context tx
-    ON tx.transaction_hash = s.transaction_hash
+    taker,
+    order_uid,
+    solver
+FROM with_sold_price
