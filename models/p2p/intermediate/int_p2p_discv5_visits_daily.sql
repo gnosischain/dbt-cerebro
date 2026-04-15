@@ -24,7 +24,7 @@ fork_digests AS (
       ('0x21a6f836','Capella'),
       ('0x3ebfd484','Deneb'),
       ('0x7d5aab40','Electra'),
-      ('0xf9ab5f85','Fulu')
+      ('0x3237dab6','Fulu')
     ]) AS tup
   )
 ),
@@ -43,7 +43,7 @@ visits_info AS (
         toString(peer_properties.fork_digest) IN (SELECT fork_digest FROM fork_digests)
         OR toString(peer_properties.next_fork_version) LIKE '%064'
       )
-      {{ apply_monthly_incremental_filter(source_field='visit_ended_at',destination_field='date',add_and='true') }}
+      {{ apply_monthly_incremental_filter(source_field='visit_ended_at',destination_field='date',add_and='true', lookback_days=3) }}
     GROUP BY 1
 )
 
