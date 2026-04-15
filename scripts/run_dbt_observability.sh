@@ -13,6 +13,7 @@
 #   OBSERVABILITY_ARTIFACT_MODE - "none" (default) or "s3"
 #   MANDATORY_STEPS       - comma-separated list of step names that must pass
 #                           for exit 0 (default: "dbt-run,edr-report")
+#   DBT_TEST_SCOPE        - "full" (default) or "preview_subset"
 #   DBT_RUN_BATCH_SLEEP_SECONDS - pause between generated dbt-run batches
 #                                 (default: 0)
 #
@@ -72,6 +73,57 @@ check_batched_step_prefix() {
     echo "[$(date -u)] WARNING: no ${prefix} batches were executed"
     overall_exit=1
   fi
+}
+
+build_test_batches() {
+  test_batches=()
+
+  case "$DBT_TEST_SCOPE" in
+    full)
+      test_batches=(
+        "tag:production,resource_type:source"
+        "tag:production,path:models/consensus/staging"
+        "tag:production,path:models/execution/staging"
+        "tag:production,path:models/p2p/staging"
+        "tag:production,path:models/consensus/intermediate"
+        "tag:production,path:models/execution/intermediate"
+        "tag:production,path:models/bridges"
+        "tag:production,path:models/contracts"
+        "tag:production,path:models/consensus/marts"
+        "tag:production,path:models/execution/marts"
+        "tag:production,path:models/p2p/marts"
+        "tag:production,path:models/probelab"
+        "tag:production,path:models/crawlers_data"
+        "tag:production,path:models/ESG"
+      )
+      ;;
+    preview_subset)
+      local api_model_path
+      local rel_dir
+      declare -A seen_api_dirs=()
+
+      test_batches=(
+        "tag:production,resource_type:source"
+        "tag:production,path:models/crawlers_data"
+        "tag:production,path:models/contracts"
+      )
+
+      while IFS= read -r api_model_path; do
+        [ -n "$api_model_path" ] || continue
+        rel_dir="${api_model_path#"$PROJECT_DIR/"}"
+        rel_dir="${rel_dir%/*}"
+
+        if [ -z "${seen_api_dirs[$rel_dir]:-}" ]; then
+          test_batches+=("tag:production,path:${rel_dir},api_*")
+          seen_api_dirs["$rel_dir"]=1
+        fi
+      done < <(find "$PROJECT_DIR/models" -type f -path '*/marts/api_*.sql' -print | LC_ALL=C sort)
+      ;;
+    *)
+      echo "[$(date -u)] Unknown DBT_TEST_SCOPE: $DBT_TEST_SCOPE"
+      return 64
+      ;;
+  esac
 }
 
 # ── 0. Clean orphaned tmp tables from previous crashed runs ──────────────
@@ -171,35 +223,28 @@ rm -f "$RUN_BATCH_PLAN"
 #   "full"            — all tests scan the full table (weekly runs)
 
 TEST_MODE="${TEST_MODE:-daily}"
+DBT_TEST_SCOPE="${DBT_TEST_SCOPE:-full}"
 if [ "$TEST_MODE" = "full" ]; then
   DBT_TEST_VARS='--vars {test_full_refresh: true}'
 else
   DBT_TEST_VARS=""
 fi
 
-for test_batch in \
-  "tag:production,resource_type:source" \
-  "tag:production,path:models/consensus/staging" \
-  "tag:production,path:models/execution/staging" \
-  "tag:production,path:models/p2p/staging" \
-  "tag:production,path:models/consensus/intermediate" \
-  "tag:production,path:models/execution/intermediate" \
-  "tag:production,path:models/bridges" \
-  "tag:production,path:models/contracts" \
-  "tag:production,path:models/consensus/marts" \
-  "tag:production,path:models/execution/marts" \
-  "tag:production,path:models/p2p/marts" \
-  "tag:production,path:models/probelab" \
-  "tag:production,path:models/crawlers_data" \
-  "tag:production,path:models/ESG" \
-; do
-  batch_name="dbt-test:$(echo "$test_batch" | sed 's/tag:production,//')"
-  run_step "$batch_name" \
-    dbt test --select "$test_batch" \
-    $DBT_TEST_VARS \
-    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-    || true
-done
+if build_test_batches; then
+  for test_batch in "${test_batches[@]}"; do
+    batch_name="dbt-test:${test_batch#tag:production,}"
+    run_step "$batch_name" \
+      dbt test --select "$test_batch" \
+      $DBT_TEST_VARS \
+      --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+      || true
+  done
+else
+  plan_rc=$?
+  step_exit_codes["dbt-test:plan"]=$plan_rc
+  step_results+=("dbt-test:plan=FAIL(rc=$plan_rc)")
+  echo "[$(date -u)] Failed: dbt-test:plan (exit $plan_rc)"
+fi
 
 # ── 4. Semantic docs and registry artifacts ──────────────────────────────
 run_step "dbt-docs" \

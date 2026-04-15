@@ -248,14 +248,14 @@ The production pipeline uses a shared orchestrator script. To test it locally:
 ```bash
 docker exec -it dbt /bin/bash
 
-# Preview mode (minimal mandatory steps)
+# Preview mode (minimal mandatory steps, reduced test scope)
 /app/cron_preview.sh
 
 # Production mode (all steps mandatory)
 /app/cron.sh
 
 # Or run the orchestrator directly with custom env
-EDR_REPORT_ENV=dev /app/scripts/run_dbt_observability.sh
+EDR_REPORT_ENV=dev DBT_TEST_SCOPE=preview_subset /app/scripts/run_dbt_observability.sh
 ```
 
 The orchestrator runs these steps in order:
@@ -269,6 +269,12 @@ The orchestrator runs these steps in order:
 8. `edr report` — generate the HTML observability report
 
 Each step's exit code is captured independently. The script never exits early — it always completes all steps, then prints a summary and exits non-zero if any mandatory step failed.
+
+`DBT_TEST_SCOPE` controls which dbt test batches are run:
+- `full` (default) keeps the current full batch list used by production.
+- `preview_subset` runs only source tests, crawler-data tests, contract tests, and `api_*` marts tests discovered at runtime.
+
+This scopes preview runs at runtime only. Existing schema, source, and Elementary test definitions stay in the repo unchanged.
 
 ## Semantic Layer Workflow
 
@@ -1444,7 +1450,7 @@ dbt source freshness → upload freshness → dbt run → dbt test → edr monit
 | `cron_preview.sh` | Preview (dev) | dbt run, edr report |
 | `cron.sh` | Production | dbt run, dbt test, source freshness, upload, edr report, edr monitor |
 
-Both are thin wrappers around `scripts/run_dbt_observability.sh`, which captures per-step exit codes and never exits early.
+Both are thin wrappers around `scripts/run_dbt_observability.sh`, which captures per-step exit codes and never exits early. `cron_preview.sh` sets `DBT_TEST_SCOPE=preview_subset`, while production keeps the default `DBT_TEST_SCOPE=full`.
 
 ### Full Refresh Orchestrator
 
