@@ -33,7 +33,7 @@ fork_digests AS (
       ('0x21a6f836','Capella'),
       ('0x3ebfd484','Deneb'),
       ('0x7d5aab40','Electra'),
-      ('0xf9ab5f85','Fulu')
+      ('0x3237dab6','Fulu')
     ]) AS tup
   )
 ),
@@ -90,7 +90,7 @@ peers AS (
       AND toStartOfMonth(visit_ended_at) >= toDate('{{ start_month }}')
       AND toStartOfMonth(visit_ended_at) < toDate('{{ end_month }}')
     {% else %}
-      {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true') }}
+      {{ apply_monthly_incremental_filter('visit_ended_at', add_and='true', lookback_days=3) }}
     {% endif %}
 ),
 

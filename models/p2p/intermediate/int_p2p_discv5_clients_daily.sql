@@ -28,7 +28,7 @@ peers AS (
         toStartOfDay(visit_ended_at) < today()
         AND
         empty(dial_errors) = 1 AND crawl_error IS NULL
-        {{ apply_monthly_incremental_filter('visit_ended_at','date','true') }}
+        {{ apply_monthly_incremental_filter('visit_ended_at','date','true', lookback_days=3) }}
     GROUP BY 1, 2
 )
 
