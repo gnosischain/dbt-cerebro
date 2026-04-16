@@ -199,7 +199,10 @@ prev_balances AS (
         reserve_amount_raw AS reserve_raw,
         fee_amount_raw AS fee_raw
     FROM {{ this }} FINAL
-    WHERE date = (SELECT max(date) FROM {{ this }} FINAL)
+    WHERE date = (
+        SELECT max(date) FROM {{ this }} FINAL
+        WHERE date < (SELECT max(date) FROM {{ this }} FINAL)
+    )
 ),
 {% endif %}
 
