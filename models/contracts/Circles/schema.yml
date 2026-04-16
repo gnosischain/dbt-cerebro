@@ -393,8 +393,48 @@ models:
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
 
   - name: contracts_circles_v2_PaymentGatewayFactory_calls
-    description: Decoded function calls for the Circles v2 PaymentGatewayFactory contract.
-    columns: *call_columns
+    description: |
+      Decoded function calls for the Circles v2 PaymentGatewayFactory
+      contract. This model is decoded from `execution.traces` (not
+      `execution.transactions`) because createGateway is invoked through
+      a Safe in the ERC-4337 bundler path, so the Factory selector is
+      only visible one hop down in internal calls. decode_calls auto-
+      detects the traces source and emits an extra `trace_address`
+      column used in the unique_key.
+    columns:
+      - name: block_number
+        description: Block number containing the transaction
+        data_type: UInt64
+      - name: block_timestamp
+        description: Timestamp of the block in UTC
+        data_type: DateTime
+      - name: transaction_hash
+        description: Hash of the transaction
+        data_type: String
+      - name: contract_address
+        description: Target contract of the call (always the Factory here)
+        data_type: String
+      - name: nonce
+        description: NULL — traces don't carry tx nonce
+        data_type: Nullable(UInt64)
+      - name: gas_price
+        description: NULL — traces don't carry tx gas_price
+        data_type: Nullable(UInt64)
+      - name: value
+        description: Value transferred with the internal call
+        data_type: String
+      - name: trace_address
+        description: >
+          Parity trace-path of the internal call (e.g. '0_0', '0_1_3').
+          Used in unique_key so multiple internal createGateway calls in
+          the same tx don't collapse.
+        data_type: String
+      - name: function_name
+        description: Name of the called function
+        data_type: String
+      - name: decoded_input
+        description: Map of decoded function input parameters (name to value)
+        data_type: Map(String, String)
     meta: *meta_events_2025_12
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
 

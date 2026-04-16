@@ -1,0 +1,600 @@
+version: 2
+
+models:
+- name: int_execution_gnosis_app_user_events
+  description: |
+    Long-form heuristic event log for Gnosis App user identification.
+
+    Six rules, all keyed off the same chokepoint: a Cometh ERC-4337
+    bundler (one of three relayer addresses in
+    seeds/gnosis_app_relayers.csv) sent the outer transaction to the
+    canonical EntryPoint v0.7. Any account that appears as a parameter
+    inside such a transaction is, by construction, acting through Gnosis
+    App for that action.
+
+    Rules:
+      safe_invitation_module  — Safe created in the same Cometh tx that
+                                enabled the Circles InvitationModule
+                                (0x00738aca…). The Safe address is the
+                                user.
+      circles_metri_fee       — CRC ERC-1155 transfer to the Metri fee
+                                receiver (0x97FD8f78…) inside a Cometh tx.
+      circles_register_human  — Hub.RegisterHuman event inside a Cometh
+                                tx. decoded_params['avatar'] is the user.
+      circles_invite_human    — Same RegisterHuman event with a non-zero
+                                decoded_params['inviter'] — the inviter
+                                is the user.
+      circles_trust           — Hub.Trust event inside a Cometh tx.
+                                decoded_params['truster'] is the user.
+      circles_profile_update  — NameRegistry.UpdateMetadataDigest event
+                                inside a Cometh tx.
+                                decoded_params['avatar'] is the user.
+
+    Address columns are stored lowercase WITH the 0x prefix to match the
+    rest of the dbt outputs and the format that decode_logs produces for
+    decoded_params address values. Rule 1 reads from int_execution_safes
+    (which is already 0x-prefixed) and rules 2-6 read from
+    contracts_circles_v2_*_events.decoded_params (also 0x-prefixed).
+
+    Privacy: this is the source-of-truth intermediate for sector
+    membership. Raw addresses are kept here because they are required
+    for the snapshot argMax and for the cross-reference with
+    int_execution_safes. The pseudonymization boundary is in
+    int_execution_gnosis_app_user_identities, one model downstream.
+  columns:
+
+  - name: address
+    description: >
+      The Gnosis App user address (avatar / inviter / truster / Safe,
+      depending on the rule). Lowercase, 0x-prefixed — the same form
+      that decode_logs writes for decoded_params address values and
+      that stg_mixpanel_ga__events sees for wallet-identified users.
+      Storing in this form means the cross-domain pseudonym join lines
+      up exactly without any per-side normalization.
+    data_type: String
+
+  - name: heuristic_kind
+    description: >
+      Enum: safe_invitation_module, circles_metri_fee,
+      circles_register_human, circles_invite_human, circles_trust,
+      circles_profile_update.
+    data_type: String
+
+  - name: block_timestamp
+    description: UTC timestamp of the block in which the action happened.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: transaction_hash
+    description: The Cometh-relayed transaction hash (lowercase, no 0x prefix).
+    data_type: String
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_users_current
+  description: |
+    Snapshot of the Gnosis App sector. One row per address that triggered
+    any heuristic, with derived confidence proxy `n_distinct_heuristics`.
+    An address that triggered 3+ independent rules is a high-confidence
+    Gnosis App user.
+
+    Cheap to fully rebuild every run; no incremental needed.
+  columns:
+
+  - name: address
+    description: The Gnosis App user address (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: first_seen_at
+    description: Earliest heuristic hit for this address.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: last_seen_at
+    description: Most recent heuristic hit for this address.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: heuristic_hits
+    description: Total number of heuristic events triggered by this address.
+    data_type: UInt64
+
+  - name: heuristic_kinds
+    description: Distinct rule names triggered by this address.
+    data_type: Array(String)
+
+  - name: n_distinct_heuristics
+    description: >
+      Confidence proxy — number of distinct rules that fired. An address
+      with n_distinct_heuristics >= 3 is a high-confidence Gnosis App user.
+    data_type: UInt8
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_swaps
+  description: |
+    Gnosis App swaps — one row per CoW order pre-signed by a GA user through
+    the Cometh ERC-4337 bundler. Matches the Dune semantic: the anchor is
+    the PreSignature event, NOT the Trade fill. Orders that are pre-signed
+    but never filled (cancelled, expired, solver mismatch) are still counted
+    as app activity.
+
+    Strict heuristic (all must hold for a row to appear):
+      1. GPv2Settlement.PreSignature event with signed=true
+      2. PreSignature tx.to  = ERC-4337 EntryPoint v0.7 (0x…7727de22…)
+      3. PreSignature tx.from ∈ Cometh Relayers V4 (seed gnosis_app_relayers)
+      4. PreSignature owner   ∈ GA users
+                                (int_execution_gnosis_app_users_current)
+
+    Trade enrichment (tokens, amounts, USD, solver) is a LEFT JOIN — NULL
+    for unfilled orders. `was_filled` surfaces this as a boolean. Partial
+    fills produce multiple Trade rows for one PreSignature; for the LEFT
+    JOIN we pick the first fill (argMin on block_timestamp) and aggregate
+    amounts via sum so one PreSignature = one output row.
+
+    Grain: (transaction_hash, log_index) of the PreSignature event. Row
+    count on this model = count of GA-app signed orders.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    description: UTC timestamp of the PreSignature event (= when the user signed in-app).
+    data_type: DateTime
+  - name: transaction_hash
+    description: Bundler-relayed UserOp tx hash carrying the PreSignature (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    description: Log index of the PreSignature event within its tx.
+    data_type: UInt64
+  - name: taker
+    description: Order owner — the GA user address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: order_uid
+    data_type: String
+  - name: relayer_address
+    description: Cometh bundler EOA that submitted the PreSignature tx (0x-prefixed, lowercase).
+    data_type: String
+  - name: was_filled
+    description: True iff at least one Trade event matched this order_uid.
+    data_type: Bool
+  - name: first_fill_at
+    description: Timestamp of the first Trade fill (NULL if unfilled).
+    data_type: Nullable(DateTime)
+  - name: first_fill_tx
+    description: Settlement tx hash of the first Trade fill, 0x-prefixed (NULL if unfilled).
+    data_type: Nullable(String)
+  - name: n_fills
+    description: Count of Trade events for this order (partial fills > 1; NULL/0 if unfilled).
+    data_type: Nullable(UInt64)
+  - name: token_bought_address
+    data_type: Nullable(String)
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: amount_bought_raw
+    description: Sum of buyAmount across partial fills.
+    data_type: Nullable(UInt256)
+  - name: amount_bought
+    data_type: Nullable(Float64)
+  - name: token_sold_address
+    data_type: Nullable(String)
+  - name: token_sold_symbol
+    data_type: Nullable(String)
+  - name: amount_sold_raw
+    description: Sum of sellAmount across partial fills.
+    data_type: Nullable(UInt256)
+  - name: amount_sold
+    data_type: Nullable(Float64)
+  - name: fee_amount_raw
+    data_type: Nullable(UInt256)
+  - name: fee_amount
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Sum of trade-level amount_usd across partial fills.
+    data_type: Nullable(Float64)
+  - name: solver
+    description: Solver that filled the first partial fill (NULL if unfilled).
+    data_type: Nullable(String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_gpay_topups
+  description: |
+    Gnosis App → Gnosis Pay TopUps.
+
+    A TopUp = a CoW Protocol trade initiated by a GA user whose bought token
+    ends up in a GP wallet in the same settlement tx.
+
+    Detection:
+      1. Filter int_execution_cow_trades to taker ∈ GA users.
+      2. In the same transaction_hash, find an ERC-20 Transfer of the
+         trade's token_bought_address whose recipient is a known GP wallet.
+
+    Per design decision (April 2026), we do NOT filter by token_sold = CRC —
+    the original Slack heuristic suggested CRC-only but the Dune dashboard
+    already shows TopUps in many tokens. We expose token_sold_symbol so the
+    dashboard can filter client-side.
+
+    Scope note: uses int_execution_transfers_whitelisted_raw for the payout
+    side, which only covers whitelisted tokens. The vast majority of GP
+    top-ups are into EURe / USDC (whitelisted), so this covers the
+    practical use-case. TopUps into non-whitelisted tokens would be
+    missed — rare and acceptable for V1.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    description: Solver settlement tx hash (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    description: Log index of the Trade event.
+    data_type: UInt64
+  - name: ga_user
+    description: GA user who initiated the trade (lowercase, 0x-prefixed).
+    data_type: String
+  - name: gp_wallet
+    description: GP wallet address that received the bought token (lowercase, 0x-prefixed).
+    data_type: String
+  - name: order_uid
+    data_type: String
+  - name: token_sold_address
+    data_type: String
+  - name: token_sold_symbol
+    data_type: Nullable(String)
+  - name: amount_sold
+    data_type: Nullable(Float64)
+  - name: token_bought_address
+    data_type: String
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: amount_bought
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    data_type: Nullable(Float64)
+  - name: solver
+    data_type: Nullable(String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_user_activity_daily
+  description: |
+    Foundation table for all Gnosis App user-activity analytics — one row
+    per (date, address, activity_kind). Every downstream cohort, retention,
+    churn, DAU/WAU/MAU, and activity-by-action mart derives from this table.
+
+    activity_kind enum:
+      onboard                 — first-ever heuristic hit for this address
+                                 (from int_execution_gnosis_app_users_current.
+                                 first_seen_at). Exactly one row per user.
+                                 Anchors the cohort_month for retention.
+      circles_register_human,
+      circles_invite_human,
+      circles_trust,
+      circles_profile_update,
+      circles_metri_fee,
+      safe_invitation_module  — raw heuristic rows from
+                                 int_execution_gnosis_app_user_events.
+      swap_signed             — PreSignature events (all rows in
+                                 int_execution_gnosis_app_swaps).
+      swap_filled             — subset with was_filled = true.
+      topup                   — GA→GP TopUps
+                                 (int_execution_gnosis_app_gpay_topups).
+      marketplace_buy         — GA marketplace purchases
+                                 (int_execution_gnosis_app_marketplace_payments).
+
+    amount_usd populated only for swap_filled and topup for now. marketplace
+    buys will carry USD once the Circles token price feed is wired.
+  columns:
+  - name: date
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}date >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: address
+    description: GA user address (0x-prefixed, lowercase).
+    data_type: String
+  - name: activity_kind
+    description: See enum above.
+    data_type: String
+  - name: n_events
+    data_type: UInt64
+  - name: amount_usd
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket: { period: day, count: 1 }
+      training_period: { period: day, count: 56 }
+      seasonality: day_of_week
+      detection_period: { period: day, count: 2 }
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags: [elementary]
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket: { period: day, count: 1 }
+      severity: warn
+      tags: [elementary]
+
+- name: int_execution_gnosis_app_gpay_wallets
+  description: |
+    Gnosis Pay wallets (Safes) that have been or currently are controlled
+    by a Gnosis App user, via the Safe's Zodiac **Delay Module**.
+
+    Heuristic (Hugo's Dune query 6675111, Bernardo review April 2026):
+
+      The Delay Module bound to each GP Safe has its OWN access control —
+      Zodiac's enableModule(address)/disableModule(address) functions,
+      which emit EnabledModule/DisabledModule events. Any address enabled
+      as a module on the Delay can queue transactions on the GP Safe.
+
+      A GP wallet is "on Gnosis App" iff a GA user address has been
+      enabled (net +1) as a module on its Delay.
+
+    Events scanned (from execution.logs):
+
+      EnabledModule  topic0 = 0xecdf3a3e…f8440 (module addr in DATA field)
+      DisabledModule topic0 = 0xaab4fa2b…54276 (module addr in DATA field)
+
+    Mapping Delay Module → GP Safe comes from
+    int_execution_gpay_safe_modules.contract_type = 'DelayModule'.
+
+    Incremental: on each run, scans only delay modules that had an
+    EnabledModule/DisabledModule event in the last 30 days (or since
+    previous-run watermark), then recomputes the FULL event history for
+    just those modules. delete+insert on unique_key=pay_wallet keeps
+    unchanged rows from previous runs. Full-refresh scans everything back
+    to 2023-06-01.
+
+    Onboarding classes (per Daniel's dashboard request):
+
+      onboarded_via_ga : the very first module ever enabled on this Delay
+                         is a GA user — user went from zero → Gnosis Pay
+                         via Gnosis App.
+      imported         : a GA user was added as a module later — user
+                         already had Gnosis Pay, then linked their GA Safe.
+
+    One row per GP Safe. A Safe with multiple GA modules enabled is still
+    counted once.
+  columns:
+  - name: pay_wallet
+    description: GP Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: first_ga_owner_at
+    description: Earliest became-owner timestamp among GA-user modules.
+    data_type: DateTime
+  - name: first_ga_owner_address
+    description: GA user address that first became a module on this Safe's Delay (0x-prefixed).
+    data_type: String
+  - name: initial_event_at
+    description: Timestamp of the earliest EnabledModule event on this Safe's Delay.
+    data_type: DateTime
+  - name: initial_owner_address
+    description: Address of the very first module enabled on this Safe's Delay.
+    data_type: String
+  - name: is_currently_ga_owned
+    description: True iff at least one GA user is currently enabled as a module on the Delay.
+    data_type: Bool
+  - name: n_ga_owners_current
+    description: Number of distinct GA-user addresses currently enabled as modules.
+    data_type: UInt64
+  - name: n_total_owners_current
+    description: Number of distinct modules (GA or otherwise) currently enabled on the Delay.
+    data_type: UInt64
+  - name: onboarding_class
+    description: "'onboarded_via_ga' or 'imported' — see model description."
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-06-01"
+      batch_months: 12
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: int_execution_gnosis_app_marketplace_offers
+  description: |
+    Gnosis App marketplace offers — one row per non-excluded PaymentGateway
+    created via Circles v2 PaymentGatewayFactory.
+
+    Sources & join:
+      1. createGateway calls from contracts_circles_v2_PaymentGatewayFactory_calls
+         (carries the `name` string input as offer_name).
+      2. GatewayCreated events from contracts_circles_v2_PaymentGatewayFactory_events
+         (carries the resulting `gateway` address and `owner`).
+      3. Joined on transaction_hash — createGateway emits GatewayCreated in
+         the same tx — to pair (offer_name ↔ gateway_address).
+
+    Exclusion: seeds/gnosis_app_marketplace_offers_excluded.csv. Rows match
+    on offer_name OR gateway_address (empty string = "ignore this column for
+    this row"). Dynamic-inclusion semantic: every new offer automatically
+    appears in this model unless explicitly blocklisted — ops team curates
+    the seed when a test gateway needs to be hidden.
+  columns:
+  - name: gateway_address
+    description: Address of the PaymentGateway proxy (0x-prefixed, lowercase).
+    data_type: String
+  - name: offer_name
+    description: Offer name as declared in createGateway's `name` input.
+    data_type: String
+  - name: created_at
+    description: Block timestamp of the createGateway call.
+    data_type: DateTime
+  - name: creator
+    description: Owner address emitted in GatewayCreated (0x-prefixed).
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: int_execution_gnosis_app_marketplace_payments
+  description: |
+    Gnosis App marketplace payments — one row per PaymentReceived event
+    from Circles v2 PaymentGatewayFactory that satisfies ALL of:
+
+      1. Event owner (`payer`) ∈ GA users (int_execution_gnosis_app_users_current)
+      2. Outer tx.from ∈ Cometh Relayers V4 (seed gnosis_app_relayers)
+      3. Outer tx.to = ERC-4337 EntryPoint v0.7 (0x…7727de22…)
+      4. Event `gateway` ∈ curated offer set (int_execution_gnosis_app_marketplace_offers)
+
+    Mirrors Dune query_6679414. `amount` is the CRC-scaled (1e18) float
+    form of `decoded_params['amount']` — no USD pricing yet (TBD once the
+    Circles token price feed is wired).
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    description: Outer tx hash (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: payer
+    description: GA user paying for the offer (0x-prefixed).
+    data_type: String
+  - name: payee
+    description: PaymentGateway's configured payee (0x-prefixed).
+    data_type: String
+  - name: gateway_address
+    data_type: String
+  - name: offer_name
+    data_type: String
+  - name: token_id
+    description: CRC v2 token_id paid with (raw uint256).
+    data_type: Nullable(UInt256)
+  - name: amount_raw
+    description: Raw uint256 amount in CRC v2 base units.
+    data_type: Nullable(UInt256)
+  - name: amount
+    description: amount_raw / 1e18 (CRC human units).
+    data_type: Nullable(Float64)
+  - name: relayer_address
+    description: Cometh bundler EOA (0x-prefixed).
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: int_execution_gnosis_app_user_identities
+  description: |
+    Pseudonymization boundary for the Gnosis App sector.
+
+    Every address from the snapshot is hashed via pseudonymize_address
+    before flowing into any marts model. Upstream addresses are already
+    0x-prefixed (the convention used everywhere in the dbt outputs and
+    the same form stg_mixpanel_ga__events ingests for wallet-identified
+    Mixpanel distinct_ids), so the hash on both sides of the cross-domain
+    join is computed over identical inputs.
+
+    Output: one row per Gnosis App user pseudonym, joinable to
+    stg_mixpanel_ga__events.user_id_hash on equality.
+
+    No raw_address column is exposed — for v1 we drop it entirely. If a
+    later cross-product join (e.g. GP × Gnosis App) needs raw addresses
+    for an internal-only intermediate, that join lives upstream of this
+    model, not downstream.
+  columns:
+
+  - name: user_pseudonym
+    description: >
+      Keyed pseudonym (UInt64) of the Gnosis App user address. Joinable to
+      stg_mixpanel_ga__events.user_id_hash on equality, since both sides
+      use the same pseudonymize_address macro and the same salt.
+    data_type: UInt64
+
+  - name: first_seen_at
+    description: Earliest heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: last_seen_at
+    description: Most recent heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: heuristic_kinds
+    description: Distinct rule names triggered by this user.
+    data_type: Array(String)
+
+  - name: heuristic_hits
+    description: Total number of heuristic events triggered by this user.
+    data_type: UInt64
+
+  - name: n_distinct_heuristics
+    description: Confidence proxy — number of distinct rules fired.
+    data_type: UInt8
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

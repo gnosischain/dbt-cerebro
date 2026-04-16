@@ -1,0 +1,654 @@
+version: 2
+
+models:
+# ---------- Fact tables (full-rebuild, backing data for api_ views) ----------
+
+- name: fct_execution_gnosis_app_gpay_wallets_daily
+  description: |
+    Daily cumulative count of Gnosis Pay wallets controlled by a Gnosis App
+    user, split by onboarding class. Backing fact table for
+    api_execution_gnosis_app_gpay_wallets_daily.
+
+      onboarded_via_ga : the very first owner of the GP Safe was a GA user.
+                         User went from zero → Gnosis Pay via the Gnosis App.
+      imported         : GA user appears in the owner set after creation.
+                         User already had Gnosis Pay and later linked their GA.
+
+    V1 tracks the date a GP wallet first gained a GA owner (first_ga_owner_at)
+    and its cumulative count over time. Removals (GA user subsequently removed
+    from the owner set) are NOT subtracted here — dashboards can read
+    is_currently_ga_owned from int_execution_gpay_ga_wallets for a
+    point-in-time currently-owned snapshot.
+  columns:
+  - name: date
+    data_type: Date
+  - name: onboarding_class
+    description: "'onboarded_via_ga' or 'imported'."
+    data_type: String
+  - name: n_ga_wallets_new
+    description: GP wallets that became GA-owned for the first time on this date.
+    data_type: UInt64
+  - name: n_ga_wallets_cumulative
+    description: Running total of ever-GA-owned GP wallets up to and including this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: fct_execution_gnosis_app_swaps_daily
+  description: |
+    Daily Gnosis App swap activity, derived from int_execution_gnosis_app_swaps.
+    Backing fact for api_execution_gnosis_app_swaps_daily.
+
+    Dune-parity semantic: one swap = one PreSignature event (= one signed
+    order intent) via the Cometh bundler. Orders pre-signed but never filled
+    are still counted as n_swaps; volume_usd reflects only filled orders.
+  columns:
+  - name: date
+    description: Date of the PreSignature event (= when the user signed in-app).
+    data_type: Date
+  - name: n_swaps
+    description: Count of PreSignature-signed orders (= Dune count).
+    data_type: UInt64
+  - name: n_swaps_filled
+    description: Signed orders that subsequently had at least one Trade fill.
+    data_type: UInt64
+  - name: n_swaps_unfilled
+    description: Signed orders with no matching Trade fill.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct GA user (taker) addresses with ≥1 signed order that day.
+    data_type: UInt64
+  - name: n_orders
+    description: Distinct order_uid values (≈ n_swaps; lower if an order was re-signed).
+    data_type: UInt64
+  - name: volume_usd_filled
+    description: Sum of amount_usd across filled orders.
+    data_type: Nullable(Float64)
+  - name: volume_usd_priced
+    description: Sum of amount_usd restricted to orders with a non-null USD price.
+    data_type: Nullable(Float64)
+  - name: n_filled_unpriced
+    description: Filled orders lacking a USD price (debug signal).
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: fct_execution_gnosis_app_gpay_topups_by_token_daily
+  description: |
+    Daily Gnosis App → Gnosis Pay TopUp activity, derived from
+    int_execution_gnosis_app_gpay_topups. Backing fact for
+    api_execution_gnosis_app_gpay_topups_by_token_daily.
+
+    Grain: (date, token_bought_symbol). The dashboard can aggregate across
+    tokens or filter client-side (e.g. only EURe, only USDC). n_ga_users and
+    n_gp_wallets are distinct counts within the slice.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: n_topups
+    data_type: UInt64
+  - name: n_ga_users
+    data_type: UInt64
+  - name: n_gp_wallets
+    data_type: UInt64
+  - name: volume_token_bought
+    description: Sum of bought-token amount (human units).
+    data_type: Nullable(Float64)
+  - name: volume_usd
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+# ---------- API views (thin, exposed to FastAPI via meta.api) ----------
+
+- name: api_execution_gnosis_app_gpay_wallets_daily
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_gpay_wallets_daily.
+    Supports query params: onboarding_class, start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: onboarding_class
+    data_type: String
+  - name: n_ga_wallets_new
+    data_type: UInt64
+  - name: n_ga_wallets_cumulative
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: api_execution_gnosis_app_swaps_daily
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_swaps_daily. Supports
+    query params: start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: n_swaps
+    data_type: UInt64
+  - name: n_swaps_filled
+    data_type: UInt64
+  - name: n_swaps_unfilled
+    data_type: UInt64
+  - name: n_swappers
+    data_type: UInt64
+  - name: n_orders
+    data_type: UInt64
+  - name: volume_usd_filled
+    data_type: Nullable(Float64)
+  - name: volume_usd_priced
+    data_type: Nullable(Float64)
+  - name: n_filled_unpriced
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: api_execution_gnosis_app_gpay_topups_by_token_daily
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_gpay_topups_by_token_daily.
+    Supports query params: token_bought_symbol, start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_bought_symbol
+    data_type: Nullable(String)
+  - name: n_topups
+    data_type: UInt64
+  - name: n_ga_users
+    data_type: UInt64
+  - name: n_gp_wallets
+    data_type: UInt64
+  - name: volume_token_bought
+    data_type: Nullable(Float64)
+  - name: volume_usd
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+# ---------- Marketplace fact tables ----------
+
+- name: fct_execution_gnosis_app_marketplace_buys_daily
+  description: |
+    Daily marketplace buys per offer, derived from
+    int_execution_gnosis_app_marketplace_payments. Grain (date, offer_name).
+  columns:
+  - name: date
+    data_type: Date
+  - name: offer_name
+    data_type: String
+  - name: n_buys
+    description: PaymentReceived events for this (date, offer_name).
+    data_type: UInt64
+  - name: n_payers
+    description: Distinct GA payer addresses on this (date, offer_name).
+    data_type: UInt64
+  - name: volume_token
+    description: Sum of amount (CRC human units) across buys on this day.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: fct_execution_gnosis_app_marketplace_buys_cumulative_daily
+  description: |
+    Cumulative marketplace buys and distinct payers per offer, computed as
+    running window sums over a dense (offer × date) spine so series are
+    continuous. Mirrors Dune query_6679414's Cumulative Buys / Cumulative
+    Users window aggregates.
+
+    n_buys / n_new_payers on each row is the per-day delta; cumulative_buys
+    / cumulative_payers is the running total for that offer.
+  columns:
+  - name: date
+    data_type: Date
+  - name: offer_name
+    data_type: String
+  - name: n_buys
+    data_type: UInt64
+  - name: n_new_payers
+    description: Distinct payers whose FIRST buy on this offer was this day.
+    data_type: UInt64
+  - name: cumulative_buys
+    data_type: UInt64
+  - name: cumulative_payers
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: fct_execution_gnosis_app_marketplace_offers_latest
+  description: |
+    Latest per-offer totals — one row per curated offer with lifetime
+    n_buys, distinct payers, and first/last buy timestamps. Includes
+    offers with zero buys (LEFT JOIN) so the dashboard leaderboard shows
+    new listings too.
+  columns:
+  - name: offer_name
+    data_type: String
+  - name: gateway_address
+    data_type: String
+  - name: created_at
+    data_type: DateTime
+  - name: total_buys
+    data_type: UInt64
+  - name: total_payers
+    data_type: UInt64
+  - name: first_buy_at
+    data_type: Nullable(DateTime)
+  - name: last_buy_at
+    data_type: Nullable(DateTime)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+# ---------- Marketplace API views ----------
+
+- name: api_execution_gnosis_app_marketplace_buys_daily
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_marketplace_buys_daily.
+    Supports query params: offer_name, start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: offer_name
+    data_type: String
+  - name: n_buys
+    data_type: UInt64
+  - name: n_payers
+    data_type: UInt64
+  - name: volume_token
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: api_execution_gnosis_app_marketplace_buys_cumulative_daily
+  description: |
+    FastAPI endpoint view of
+    fct_execution_gnosis_app_marketplace_buys_cumulative_daily. Supports
+    query params: offer_name, start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: offer_name
+    data_type: String
+  - name: n_buys
+    data_type: UInt64
+  - name: n_new_payers
+    data_type: UInt64
+  - name: cumulative_buys
+    data_type: UInt64
+  - name: cumulative_payers
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: api_execution_gnosis_app_marketplace_offers_latest
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_marketplace_offers_latest.
+    Supports query param: offer_name.
+  columns:
+  - name: offer_name
+    data_type: String
+  - name: gateway_address
+    data_type: String
+  - name: created_at
+    data_type: DateTime
+  - name: total_buys
+    data_type: UInt64
+  - name: total_payers
+    data_type: UInt64
+  - name: first_buy_at
+    data_type: Nullable(DateTime)
+  - name: last_buy_at
+    data_type: Nullable(DateTime)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+# ---------- Users fact tables ----------
+
+- name: fct_execution_gnosis_app_users_daily
+  description: |
+    Daily user counts. new_users = distinct addresses whose first-ever
+    activity hit was on this date; active_users = distinct addresses with
+    any non-onboard activity; returning_users = active today AND had any
+    activity in the prior 7 days; reactivated_users = active today,
+    inactive for prior 30 days, but active before that. Dense calendar
+    spine so cumulative_users is always continuous.
+  columns:
+  - name: date
+    data_type: Date
+  - name: new_users
+    data_type: UInt64
+  - name: cumulative_users
+    data_type: UInt64
+  - name: active_users
+    data_type: UInt64
+  - name: returning_users
+    data_type: UInt64
+  - name: reactivated_users
+    data_type: UInt64
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: fct_execution_gnosis_app_users_weekly
+  description: Weekly cohort of users (ISO Mon-start). Returning = active this week AND previous week. Reactivated = active this week, inactive for prior 4 weeks.
+  columns:
+  - {name: week, data_type: Date}
+  - {name: new_users, data_type: UInt64}
+  - {name: cumulative_users, data_type: UInt64}
+  - {name: active_users, data_type: UInt64}
+  - {name: returning_users, data_type: UInt64}
+  - {name: reactivated_users, data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: fct_execution_gnosis_app_users_monthly
+  description: Monthly cohort of users. Returning = active this month AND previous month. Reactivated = active this month, inactive for prior 2 months, active before that.
+  columns:
+  - {name: month, data_type: Date}
+  - {name: new_users, data_type: UInt64}
+  - {name: cumulative_users, data_type: UInt64}
+  - {name: active_users, data_type: UInt64}
+  - {name: returning_users, data_type: UInt64}
+  - {name: reactivated_users, data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+# ---------- Retention + churn ----------
+
+- name: fct_execution_gnosis_app_retention_monthly
+  description: |
+    Cohort retention grid. cohort_month = month of user's 'onboard' row
+    (first-ever heuristic hit). activity_month = month of any subsequent
+    non-onboard activity. retention_pct = users_in_activity_month /
+    cohort_initial_size × 100. Matches the fct_execution_gpay_retention_monthly
+    shape; port for GA.
+  columns:
+  - {name: cohort_month, data_type: Date}
+  - {name: activity_month, data_type: Date}
+  - {name: months_since, data_type: Int32}
+  - {name: users, data_type: UInt64}
+  - {name: initial_users, data_type: UInt64}
+  - {name: retention_pct, data_type: Float64}
+  - {name: amount_retention_pct, data_type: Nullable(Float64)}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: fct_execution_gnosis_app_retention_by_action_monthly
+  description: |
+    Retention split by activity_kind (swap_filled / topup / marketplace_buy /
+    circles_trust / etc.). Uses the GLOBAL onboard cohort_month as the
+    anchor so the denominator is consistent across action types — the
+    numerator counts users who did that specific action in activity_month.
+  columns:
+  - {name: activity_kind, data_type: String}
+  - {name: cohort_month, data_type: Date}
+  - {name: activity_month, data_type: Date}
+  - {name: months_since, data_type: Int32}
+  - {name: users, data_type: UInt64}
+  - {name: initial_users, data_type: UInt64}
+  - {name: retention_pct, data_type: Float64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: fct_execution_gnosis_app_churn_monthly
+  description: |
+    Monthly churn & retention segments. Two scopes — 'Any' (any non-onboard
+    activity) and 'Swap' (swap_signed/swap_filled only). Segments: new,
+    retained (active M-1 and M), returning (active M and earlier-not-M-1),
+    churned (active M, not M+1). Port of fct_execution_gpay_churn_monthly.
+  columns:
+  - {name: scope, data_type: String}
+  - {name: month, data_type: Date}
+  - {name: new_users, data_type: UInt64}
+  - {name: retained_users, data_type: UInt64}
+  - {name: returning_users, data_type: UInt64}
+  - {name: churned_users, data_type: UInt64}
+  - {name: total_active, data_type: UInt64}
+  - {name: churn_rate, data_type: Float64}
+  - {name: retention_rate, data_type: Float64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.expression_is_true:
+      name: churn_retention_complementary
+      expression: "churn_rate + retention_rate BETWEEN 80 AND 120"
+      config:
+        severity: warn
+        where: "month > '2025-12-01' AND month < toStartOfMonth(today())"
+
+# ---------- Swaps extra grains ----------
+
+- name: fct_execution_gnosis_app_swaps_weekly
+  description: Weekly swap counts and filled USD volume (bucket = ISO Mon-start).
+  columns:
+  - {name: week, data_type: Date}
+  - {name: n_swaps, data_type: UInt64}
+  - {name: n_swaps_filled, data_type: UInt64}
+  - {name: n_swaps_unfilled, data_type: UInt64}
+  - {name: n_swappers, data_type: UInt64}
+  - {name: n_orders, data_type: UInt64}
+  - {name: volume_usd_filled, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_swaps_monthly
+  description: Monthly swap counts and filled USD volume.
+  columns:
+  - {name: month, data_type: Date}
+  - {name: n_swaps, data_type: UInt64}
+  - {name: n_swaps_filled, data_type: UInt64}
+  - {name: n_swaps_unfilled, data_type: UInt64}
+  - {name: n_swappers, data_type: UInt64}
+  - {name: n_orders, data_type: UInt64}
+  - {name: volume_usd_filled, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_swaps_by_pair_daily
+  description: |
+    Daily swap activity sliced by token pair (sold_symbol → bought_symbol).
+    pair is a pre-joined label for dashboard use; raw symbols are exposed
+    separately for downstream joins.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: pair, data_type: String}
+  - {name: token_sold_symbol, data_type: Nullable(String)}
+  - {name: token_bought_symbol, data_type: Nullable(String)}
+  - {name: n_swaps, data_type: UInt64}
+  - {name: n_swaps_filled, data_type: UInt64}
+  - {name: n_swappers, data_type: UInt64}
+  - {name: volume_usd_filled, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_swaps_by_solver_daily
+  description: Daily swap activity sliced by solver (filled trades only).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: solver, data_type: String}
+  - {name: n_swaps_filled, data_type: UInt64}
+  - {name: n_swappers, data_type: UInt64}
+  - {name: volume_usd_filled, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+# ---------- TopUps extra grains ----------
+
+- name: fct_execution_gnosis_app_gpay_topups_weekly
+  description: Weekly topup counts and USD volume (aggregated across tokens).
+  columns:
+  - {name: week, data_type: Date}
+  - {name: n_topups, data_type: UInt64}
+  - {name: n_ga_users, data_type: UInt64}
+  - {name: n_gp_wallets, data_type: UInt64}
+  - {name: volume_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_gpay_topups_monthly
+  description: Monthly topup counts and USD volume (aggregated across tokens).
+  columns:
+  - {name: month, data_type: Date}
+  - {name: n_topups, data_type: UInt64}
+  - {name: n_ga_users, data_type: UInt64}
+  - {name: n_gp_wallets, data_type: UInt64}
+  - {name: volume_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_gpay_topups_cohort_monthly
+  description: |
+    First-TopUp cohort × subsequent-TopUp activity retention. cohort_month
+    = month of user's first TopUp. retention_pct = users_still_topping_up /
+    cohort_initial × 100. Same shape as fct_execution_gpay_cashback_cohort_retention_monthly.
+  columns:
+  - {name: cohort_month, data_type: Date}
+  - {name: activity_month, data_type: Date}
+  - {name: months_since, data_type: Int32}
+  - {name: users, data_type: UInt64}
+  - {name: initial_users, data_type: UInt64}
+  - {name: retention_pct, data_type: Float64}
+  - {name: amount_retention_pct, data_type: Nullable(Float64)}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+# ---------- Activity-by-action ----------
+
+- name: fct_execution_gnosis_app_activity_by_action_daily
+  description: Daily activity counts, unique users, and USD by activity_kind. Feeds the Activity tab's stacked bar.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: activity_kind, data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_users, data_type: UInt64}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_activity_by_action_weekly
+  description: Weekly activity-by-action.
+  columns:
+  - {name: week, data_type: Date}
+  - {name: activity_kind, data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_users, data_type: UInt64}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_activity_by_action_monthly
+  description: Monthly activity-by-action.
+  columns:
+  - {name: month, data_type: Date}
+  - {name: activity_kind, data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_users, data_type: UInt64}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+# ---------- API views (bulk — views over facts above) ----------
+
+- {name: api_execution_gnosis_app_users_daily,                       description: "FastAPI view over fct_execution_gnosis_app_users_daily. Params: start_date, end_date.",                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_users_weekly,                      description: "FastAPI view over fct_execution_gnosis_app_users_weekly. Params: start_date, end_date.",                          meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_users_monthly,                     description: "FastAPI view over fct_execution_gnosis_app_users_monthly. Params: start_month, end_month.",                       meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_retention_monthly,                 description: "FastAPI view over fct_execution_gnosis_app_retention_monthly. Params: start_month, end_month.",                   meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_retention_by_action_monthly,       description: "FastAPI view over fct_execution_gnosis_app_retention_by_action_monthly. Params: activity_kind, start_month, end_month.", meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_churn_monthly,                     description: "FastAPI view over fct_execution_gnosis_app_churn_monthly. Params: scope, start_month, end_month.",               meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_swaps_weekly,                      description: "FastAPI view over fct_execution_gnosis_app_swaps_weekly.",                                                       meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_swaps_monthly,                     description: "FastAPI view over fct_execution_gnosis_app_swaps_monthly.",                                                      meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_swaps_by_pair_daily,               description: "FastAPI view over fct_execution_gnosis_app_swaps_by_pair_daily. Params: pair, start_date, end_date.",            meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_swaps_by_solver_daily,             description: "FastAPI view over fct_execution_gnosis_app_swaps_by_solver_daily. Params: solver, start_date, end_date.",        meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_gpay_topups_weekly,                description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_weekly.",                                                  meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_gpay_topups_monthly,               description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_monthly.",                                                 meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_gpay_topups_cohort_monthly,        description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_cohort_monthly. Params: start_month, end_month.",         meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_activity_by_action_daily,          description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_daily. Params: activity_kind, start_date, end_date.", meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_activity_by_action_weekly,         description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_weekly.",                                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_activity_by_action_monthly,        description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_monthly.",                                          meta: {owner: analytics_team, authoritative: false}}
+
+# ---------- KPI singletons (single-row numberDisplay tiles) ----------
+
+- {name: api_execution_gnosis_app_kpi_total_users,                    description: "KPI: total distinct GA users to date. Returns (value, change_pct).",                                 meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_new_users_7d,                   description: "KPI: new users in the last 7 full days with pct change vs prior 7d.",                                meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_mau_latest,                     description: "KPI: MAU for the latest complete month with pct change vs prior.",                                   meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_dau_latest,                     description: "KPI: DAU yesterday with pct change vs the day before.",                                              meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_swaps_7d,                       description: "KPI: signed swap count in the last 7 full days.",                                                     meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_swap_volume_7d,                 description: "KPI: filled-swap USD volume in the last 7 full days.",                                                meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_topups_7d,                      description: "KPI: topup count in the last 7 full days.",                                                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_topup_volume_7d,                description: "KPI: topup USD volume in the last 7 full days.",                                                      meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_gp_wallets_latest,              description: "KPI: count of GP wallets currently GA-owned.",                                                        meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_gp_wallets_onboarded,           description: "KPI: cumulative GP wallets onboarded via Gnosis App.",                                                   meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_gp_wallets_imported,            description: "KPI: cumulative GP wallets imported (pre-existing GP users who added GA).",                               meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_marketplace_buys_7d,            description: "KPI: marketplace buys in the last 7 full days.",                                                      meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_marketplace_payers_7d,          description: "KPI: distinct marketplace payers in the last 7 full days.",                                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_marketplace_buys_total,         description: "KPI: lifetime marketplace buys across all curated offers.",                                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_repeat_purchase_rate_latest,    description: "KPI: share of last-30d active users with ≥2 swap_filled or marketplace_buy events.",                  meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_retention_pct_latest,           description: "KPI: latest-cohort M1 retention %.",                                                                  meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_churn_rate_latest,              description: "KPI: latest-month 'Any'-scope churn rate.",                                                           meta: {owner: analytics_team, authoritative: false}}

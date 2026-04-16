@@ -443,7 +443,17 @@ models:
     full_refresh:
       start_date: '2024-10-01'
       batch_months: 1
-  tests: *id001
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: no_negative_balances_non_zero_address
+      expression: "balance_raw >= 0"
+      config:
+        severity: warn
+        where: "account != '0x0000000000000000000000000000000000000000' AND date >= today() - 7"
 - name: int_execution_circles_v2_balance_cohorts_daily
   description: Daily distribution of CRC holders across balance buckets, aggregated from daily balances.
   columns:
@@ -615,6 +625,26 @@ models:
   - name: circles_type
     description: Circles representation enum emitted by ERC20Lift (0 = Demurrage, 1 = Inflation).
     data_type: UInt8
+  meta: *id002
+  tests: *id001
+- name: int_execution_circles_v2_wrapper_tokens
+  description: >
+    Reference table mapping Circles V2 ERC-20 wrapper addresses to their
+    on-chain token symbol. Rebuilt daily. Symbol is parsed from dune_labels
+    (92% coverage) with fallback to CRC-{short_addr}.
+  columns:
+  - name: wrapper_address
+    description: ERC-20 wrapper contract address.
+    data_type: String
+  - name: avatar
+    description: Underlying Circles avatar address.
+    data_type: String
+  - name: circles_type
+    description: 0 = demurrage wrapper, 1 = static/inflation wrapper.
+    data_type: UInt8
+  - name: symbol
+    description: On-chain token symbol (e.g., s-gCRC, s-CBG). Fallback CRC-{addr} if not yet in dune_labels.
+    data_type: String
   meta: *id002
   tests: *id001
 - name: int_execution_circles_v2_group_settings_updates

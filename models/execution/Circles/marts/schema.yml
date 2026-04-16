@@ -60,6 +60,17 @@ models:
     data_type: Float64
   meta: *meta_api
   tests: *elementary_error
+- name: api_execution_circles_v2_active_trusts_cnt_latest
+  description: Latest active trust count with 7-day change percentage.
+  columns:
+  - name: total
+    description: Current active trust count.
+    data_type: UInt64
+  - name: change_pct
+    description: 7-day percentage change.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
 - name: api_execution_circles_v2_avatar_metadata
   description: Per-avatar identity for Circles v2 — on-chain registration metadata (type, name, inviter, registration time) joined to the most recently fetched IPFS profile (display name, preview/image URL, description). Backs the "Avatar Identity" panel on the Circles dashboard.
   columns:
@@ -565,6 +576,29 @@ models:
     data_type: UInt64
   meta: *meta_fct
   tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_balances_daily
+  description: >
+    Materialized daily avatar token balances with dust filtering (> 0.001 CRC).
+    Derived from int_execution_circles_v2_balances_daily with unit conversion
+    from raw (18 decimals) to human-readable CRC. Excludes zero-address rows.
+  columns:
+  - name: avatar
+    description: Address of the token holder.
+    data_type: String
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: balance
+    description: End-of-day balance in CRC (human units).
+    data_type: Float64
+  - name: balance_demurraged
+    description: Demurrage-adjusted balance in CRC (human units).
+    data_type: Float64
+  meta: *meta_fct
+  tests: *elementary_warn
 - name: fct_execution_circles_v2_tokens_supply_daily
   description: Daily per-token CRC supply derived from the zero-address balance in balances_daily.
   columns:
@@ -584,7 +618,17 @@ models:
     description: Demurrage-adjusted supply in CRC.
     data_type: Float64
   meta: *meta_fct
-  tests: *elementary_warn
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: no_negative_supply
+      expression: "supply >= 0"
+      config:
+        severity: warn
+        where: "date >= today() - 7"
 - name: fct_execution_circles_v2_total_supply_daily
   description: Network-wide daily total CRC supply aggregated across all tokens.
   columns:
