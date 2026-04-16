@@ -8,19 +8,6 @@
     )
 }}
 
-{#
-  Reference table mapping Circles V2 ERC-20 wrapper addresses to their
-  on-chain token symbol.  Rebuilt daily so newly crawled dune_labels
-  are picked up automatically.
-
-  Symbol source: crawlers_data.dune_labels stores the on-chain symbol()
-  in the label column as "{symbol}_0x{address}".  We extract everything
-  before the first "_0x" occurrence.
-
-  Coverage: ~92 % of wrappers have a dune_label.  For the remainder we
-  fall back to CRC-{first 5 hex chars of wrapper address}.
-#}
-
 SELECT
     w.wrapper_address,
     w.avatar,

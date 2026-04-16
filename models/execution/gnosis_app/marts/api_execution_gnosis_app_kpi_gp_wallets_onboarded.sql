@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: cumulative GP wallets onboarded via Gnosis App. #}
-
 SELECT
     max(n_ga_wallets_cumulative)                      AS value,
     CAST(NULL AS Nullable(Float64))                   AS change_pct

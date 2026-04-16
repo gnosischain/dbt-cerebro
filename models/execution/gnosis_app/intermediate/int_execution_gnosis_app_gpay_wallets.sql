@@ -14,37 +14,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gnosis_app_gpay_wallets #}
-
-{#
-  Heuristic:
-
-    Each Gnosis Pay Safe has a Zodiac Delay Module bound to it
-    (int_execution_gpay_safe_modules.contract_type='DelayModule'). The
-    Delay Module uses Zodiac EnabledModule/DisabledModule events for its
-    own access control:
-
-      EnabledModule  — topic0 0xecdf3a3e…f8440
-      DisabledModule — topic0 0xaab4fa2b…54276
-
-    Both carry the module address in the `data` field (param is NOT
-    indexed → topic1..topic3 are NULL). A GP Safe is "on Gnosis App" iff
-    a GA-user address (int_execution_gnosis_app_users_current) has been
-    enabled net +1 as a module on its Delay.
-
-  Incremental strategy:
-    Scanning execution.logs from 2023-06-01 across all delay modules is
-    slow. Instead:
-      1. Find delay modules with ANY EnabledModule / DisabledModule event
-         since the incremental watermark (or since 2023-06-01 on first
-         run / full-refresh).
-      2. For ONLY those delay modules, scan their full event history.
-      3. delete+insert on unique_key=pay_wallet so unchanged rows are kept
-         across runs.
-
-    A fixed 30-day overlap on every run absorbs any late-arriving log data.
-#}
-
 WITH
 
 -- Watermark: start of the current incremental batch. Used to scope the

@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: MAU for the latest complete month + pct change vs prior. #}
-
 WITH months AS (
     SELECT month, active_users
     FROM {{ ref('fct_execution_gnosis_app_users_monthly') }}

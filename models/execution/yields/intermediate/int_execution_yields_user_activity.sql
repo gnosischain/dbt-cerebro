@@ -11,11 +11,6 @@
     )
 }}
 
-{#-
-  Unified yield activity feed: LP events (Mint/Burn/Collect) from the pools
-  pipeline and lending events (Supply/Withdraw) from Aave V3, in a common schema.
--#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

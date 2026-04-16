@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_marketplace_offers_latest #}
-
 WITH payments AS (
     SELECT
         offer_name,

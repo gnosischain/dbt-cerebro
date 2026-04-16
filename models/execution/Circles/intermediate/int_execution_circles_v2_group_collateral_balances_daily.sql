@@ -11,12 +11,6 @@
     )
 }}
 
-{#
-    Sparse daily collateral balance table for Circles v2 groups.
-    Only stores rows on days when collateral events occurred.
-    Running balance computed as cumulative sum of deltas per group/token.
-#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
 WITH deltas AS (

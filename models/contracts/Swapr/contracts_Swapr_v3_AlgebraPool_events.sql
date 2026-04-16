@@ -16,12 +16,6 @@
     )
 }}
 
-{# 
-    Pool addresses are dynamically selected from contracts_whitelist seed
-    based on whitelisted tokens (both token0 and token1 must be whitelisted)
-    Filtered to SwaprPool contract type only
-#}
-
 {{ 
     decode_logs(
         source_table      = source('execution','logs'),

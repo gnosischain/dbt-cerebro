@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_swaps_by_pair_daily #}
-
 SELECT
     toDate(s.block_timestamp)                                                     AS date,
     concat(

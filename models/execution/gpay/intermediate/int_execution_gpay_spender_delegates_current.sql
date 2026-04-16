@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_spender_delegates_current #}
-
 WITH gp_roles_modules AS (
     SELECT gp_safe, module_proxy_address AS roles_module_address
     FROM {{ ref('int_execution_gpay_safe_modules') }}

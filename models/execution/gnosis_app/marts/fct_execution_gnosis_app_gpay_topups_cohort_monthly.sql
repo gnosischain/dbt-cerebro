@@ -7,15 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_gpay_topups_cohort_monthly #}
-
-{#
-  First-TopUp cohort × subsequent TopUp activity retention. Same shape as
-  fct_execution_gpay_cashback_cohort_retention_monthly, but for GA topups.
-  Grain (cohort_month, activity_month). retention_pct = users_in_activity_month
-  / initial_cohort_size.
-#}
-
 WITH first_topup AS (
     SELECT
         ga_user                            AS address,

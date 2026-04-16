@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: lifetime total marketplace buys across all curated offers. #}
-
 SELECT
     sum(total_buys)                                    AS value,
     CAST(NULL AS Nullable(Float64))                   AS change_pct

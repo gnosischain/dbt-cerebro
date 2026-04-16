@@ -21,8 +21,6 @@
   )
 }}
 
-{# Description in schema.yml — see api_execution_gnosis_app_gpay_wallets_daily #}
-
 SELECT
     date,
     onboarding_class,

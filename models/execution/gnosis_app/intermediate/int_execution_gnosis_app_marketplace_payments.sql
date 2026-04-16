@@ -1,6 +1,3 @@
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
-
 {{
   config(
     materialized='incremental',
@@ -15,7 +12,9 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gnosis_app_marketplace_payments #}
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month',   none) %}
+
 
 {% set entrypoint = '0000000071727de22e5e9d8baf0edac6f37da032' %}
 

@@ -15,25 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gnosis_app_gpay_topups #}
-
-{#
-  A TopUp = a CoW Protocol trade initiated by a GA user whose bought token
-  is deposited into a GP wallet in the same tx.
-
-  Implementation:
-    1. Filter int_execution_cow_trades to taker ∈ GA users.
-    2. INNER JOIN int_execution_gpay_activity where action = 'Crypto Deposit'
-       on (transaction_hash, token_address = token_bought_address).
-
-  Why gpay_activity (not int_execution_transfers_whitelisted_raw):
-    The _raw model is dev-tagged and empty in production. gpay_activity is
-    production-tagged, captures per-tx GP deposits (action='Crypto Deposit',
-    ≈655k rows back to 2023), and exposes wallet_address + counterparty +
-    amount_usd. Same semantic as the receiver-based heuristic, via a
-    different source that's already materialised.
-#}
-
 WITH ga_users AS (
     SELECT address FROM {{ ref('int_execution_gnosis_app_users_current') }}
 ),

@@ -21,8 +21,6 @@
   )
 }}
 
-{# Description in schema.yml — see api_execution_gnosis_app_gpay_topups_by_token_daily #}
-
 SELECT
     date,
     token_bought_symbol,

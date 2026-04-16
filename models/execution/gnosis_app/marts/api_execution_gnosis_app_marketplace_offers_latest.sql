@@ -17,8 +17,6 @@
   )
 }}
 
-{# Description in schema.yml — see api_execution_gnosis_app_marketplace_offers_latest #}
-
 SELECT
     offer_name,
     gateway_address,

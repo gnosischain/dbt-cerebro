@@ -5,8 +5,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 SELECT
     lower(address) AS token_address,
     nullIf(trimBoth(symbol), '') AS token,

@@ -15,8 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_safes_module_events #}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

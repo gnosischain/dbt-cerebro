@@ -6,12 +6,6 @@
   )
 }}
 
-{#
-  Repeat-purchase rate over the last 30 full days: share of active users
-  with ≥ 2 swap_filled or marketplace_buy events. Mirrors the "repeat
-  purchase rate" KPI in the GPay dashboard, re-scoped to GA purchases.
-#}
-
 WITH base AS (
     SELECT
         address,

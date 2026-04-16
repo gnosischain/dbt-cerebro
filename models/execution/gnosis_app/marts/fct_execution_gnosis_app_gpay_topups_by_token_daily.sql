@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_gpay_topups_by_token_daily #}
-
 SELECT
     toDate(t.block_timestamp)                        AS date,
     coalesce(t.token_bought_symbol, wb.symbol)       AS token_bought_symbol,

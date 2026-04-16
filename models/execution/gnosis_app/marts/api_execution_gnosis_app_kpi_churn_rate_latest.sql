@@ -6,10 +6,6 @@
   )
 }}
 
-{#
-  KPI: churn rate (Any scope) in the latest complete month with data.
-#}
-
 SELECT
     anyIf(churn_rate, month = (
         SELECT max(month)

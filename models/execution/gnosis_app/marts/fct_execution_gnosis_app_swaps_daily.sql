@@ -7,8 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_swaps_daily #}
-
 SELECT
     toDate(block_timestamp)                      AS date,
     count(*)                                     AS n_swaps,

@@ -562,6 +562,86 @@ models:
   meta: {owner: analytics_team, authoritative: false}
   tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
 
+- name: fct_execution_gnosis_app_token_offer_claims_daily
+  description: |
+    Daily Gnosis App token-offer claim activity, derived from
+    int_execution_gnosis_app_token_offer_claims. One row per date.
+    A claim = a GA user paying CRC to receive an offer_token (GNO today)
+    via a Cometh-relayed tx to the ERC-4337 EntryPoint.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_claims, data_type: UInt64}
+  - {name: n_claimers, data_type: UInt64}
+  - {name: n_offers, data_type: UInt64}
+  - {name: volume_received_token, data_type: Float64}
+  - {name: volume_received_usd, data_type: Float64}
+  - {name: volume_spent_crc, data_type: Float64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_token_offer_claims_weekly
+  description: Weekly token-offer claim activity.
+  columns:
+  - {name: week, data_type: Date}
+  - {name: n_claims, data_type: UInt64}
+  - {name: n_claimers, data_type: UInt64}
+  - {name: n_offers, data_type: UInt64}
+  - {name: volume_received_token, data_type: Float64}
+  - {name: volume_received_usd, data_type: Float64}
+  - {name: volume_spent_crc, data_type: Float64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_token_offer_claims_monthly
+  description: Monthly token-offer claim activity.
+  columns:
+  - {name: month, data_type: Date}
+  - {name: n_claims, data_type: UInt64}
+  - {name: n_claimers, data_type: UInt64}
+  - {name: n_offers, data_type: UInt64}
+  - {name: volume_received_token, data_type: Float64}
+  - {name: volume_received_usd, data_type: Float64}
+  - {name: volume_spent_crc, data_type: Float64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_token_offer_claims_by_offer_daily
+  description: |
+    Daily token-offer claims sliced by specific offer (nextOffer address).
+    offer_token_symbol surfaces which token was sold; offer_price_in_crc is
+    the sticker price set when the offer was created (any() — stable per offer).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: offer_address, data_type: String}
+  - {name: cycle_address, data_type: Nullable(String)}
+  - {name: offer_token_symbol, data_type: Nullable(String)}
+  - {name: n_claims, data_type: UInt64}
+  - {name: n_claimers, data_type: UInt64}
+  - {name: volume_received_token, data_type: Float64}
+  - {name: volume_received_usd, data_type: Float64}
+  - {name: volume_spent_crc, data_type: Float64}
+  - {name: offer_price_in_crc, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
+- name: fct_execution_gnosis_app_token_offer_claims_cohort_monthly
+  description: |
+    First-claim cohort × subsequent-claim activity retention. cohort_month
+    = month of user's first token-offer claim. retention_pct = users still
+    claiming in the given activity_month / cohort_initial × 100. Same shape
+    as fct_execution_gnosis_app_gpay_topups_cohort_monthly.
+  columns:
+  - {name: cohort_month, data_type: Date}
+  - {name: activity_month, data_type: Date}
+  - {name: months_since, data_type: Int32}
+  - {name: users, data_type: UInt64}
+  - {name: initial_users, data_type: UInt64}
+  - {name: retention_pct, data_type: Float64}
+  - {name: amount_retention_pct, data_type: Nullable(Float64)}
+  - {name: amount_usd, data_type: Nullable(Float64)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
 - name: fct_execution_gnosis_app_gpay_topups_cohort_monthly
   description: |
     First-TopUp cohort × subsequent-TopUp activity retention. cohort_month
@@ -629,6 +709,11 @@ models:
 - {name: api_execution_gnosis_app_gpay_topups_weekly,                description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_weekly.",                                                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_gpay_topups_monthly,               description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_monthly.",                                                 meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_gpay_topups_cohort_monthly,        description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_cohort_monthly. Params: start_month, end_month.",         meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_token_offer_claims_daily,          description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_daily. Params: start_date, end_date.",             meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_token_offer_claims_weekly,         description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_weekly. Params: start_date, end_date.",            meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_token_offer_claims_monthly,        description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_monthly. Params: start_date, end_date.",           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_token_offer_claims_by_offer_daily, description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_by_offer_daily. Params: offer_address, cycle_address, offer_token_symbol, start_date, end_date.", meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_token_offer_claims_cohort_monthly, description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_cohort_monthly. Params: start_month, end_month.",  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_activity_by_action_daily,          description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_daily. Params: activity_kind, start_date, end_date.", meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_activity_by_action_weekly,         description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_weekly.",                                           meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_activity_by_action_monthly,        description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_monthly.",                                          meta: {owner: analytics_team, authoritative: false}}
@@ -649,6 +734,9 @@ models:
 - {name: api_execution_gnosis_app_kpi_marketplace_buys_7d,            description: "KPI: marketplace buys in the last 7 full days.",                                                      meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_marketplace_payers_7d,          description: "KPI: distinct marketplace payers in the last 7 full days.",                                           meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_marketplace_buys_total,         description: "KPI: lifetime marketplace buys across all curated offers.",                                           meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_token_offer_claims_7d,          description: "KPI: token-offer claim count in the last 7 full days with pct change vs prior 7d.",                  meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_token_offer_claimers_7d,        description: "KPI: distinct token-offer claimers in the last 7 full days.",                                         meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_token_offer_volume_7d,          description: "KPI: token-offer received-side USD volume in the last 7 full days.",                                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_repeat_purchase_rate_latest,    description: "KPI: share of last-30d active users with ≥2 swap_filled or marketplace_buy events.",                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_retention_pct_latest,           description: "KPI: latest-cohort M1 retention %.",                                                                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_churn_rate_latest,              description: "KPI: latest-month 'Any'-scope churn rate.",                                                           meta: {owner: analytics_team, authoritative: false}}

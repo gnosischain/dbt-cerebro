@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_safe_modules #}
-
 WITH gpay_safes AS (
     SELECT lower(address) AS pay_wallet FROM {{ ref('int_execution_gpay_wallets') }}
 ),

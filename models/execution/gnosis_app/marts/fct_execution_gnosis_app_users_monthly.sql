@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_users_monthly #}
-
 WITH non_onboard AS (
     SELECT
         toStartOfMonth(date) AS month,

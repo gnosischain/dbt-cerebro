@@ -9,8 +9,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 WITH
 
 token_prices_by_address AS (

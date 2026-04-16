@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_retention_by_action_monthly #}
-
 WITH cohort_user AS (
     -- Cohort month defined as the month of the user's GLOBAL first-seen
     -- ('onboard' row), same as fct_execution_gnosis_app_retention_monthly.

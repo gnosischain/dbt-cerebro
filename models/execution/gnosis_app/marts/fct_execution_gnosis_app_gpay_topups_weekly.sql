@@ -7,8 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_gpay_topups_weekly #}
-
 SELECT
     toStartOfWeek(block_timestamp, 1)            AS week,
     count(*)                                     AS n_topups,

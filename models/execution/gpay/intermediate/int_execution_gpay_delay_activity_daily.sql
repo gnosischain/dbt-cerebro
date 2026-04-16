@@ -11,8 +11,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_delay_activity_daily #}
-
 WITH gp_delay_modules AS (
     SELECT gp_safe, module_proxy_address AS delay_module_address
     FROM {{ ref('int_execution_gpay_safe_modules') }}

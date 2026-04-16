@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: currently GA-owned GP wallets (snapshot, no change_pct). #}
-
 SELECT
     countIf(is_currently_ga_owned)                    AS value,
     CAST(NULL AS Nullable(Float64))                   AS change_pct

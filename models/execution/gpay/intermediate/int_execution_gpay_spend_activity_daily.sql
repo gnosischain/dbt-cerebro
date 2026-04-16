@@ -11,8 +11,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_spend_activity_daily #}
-
 WITH gpay_safes AS (
     SELECT lower(address) AS pay_wallet FROM {{ ref('int_execution_gpay_wallets') }}
 ),

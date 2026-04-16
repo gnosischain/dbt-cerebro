@@ -9,12 +9,6 @@
     )
 }}
 
-{#
-  Materialized daily avatar token balances with dust filtering (> 0.001 CRC).
-  Derived from int_execution_circles_v2_balances_daily with unit conversion
-  from raw (18 decimals) to human-readable CRC.  Excludes zero-address rows.
-#}
-
 SELECT
     account AS avatar,
     date,

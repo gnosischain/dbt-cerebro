@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_retention_monthly #}
-
 WITH cohort_user AS (
     -- cohort_month = month of the user's 'onboard' row (first-seen in GA).
     SELECT

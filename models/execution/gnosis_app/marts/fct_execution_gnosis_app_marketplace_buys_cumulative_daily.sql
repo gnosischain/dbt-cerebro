@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_marketplace_buys_cumulative_daily #}
-
 WITH
 
 -- Per-(date, offer) buy counts.

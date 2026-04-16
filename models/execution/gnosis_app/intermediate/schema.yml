@@ -320,9 +320,12 @@ models:
                                  (int_execution_gnosis_app_gpay_topups).
       marketplace_buy         — GA marketplace purchases
                                  (int_execution_gnosis_app_marketplace_payments).
+      token_offer_claim       — GA token-offer claims (e.g. CRC → GNO discount)
+                                 (int_execution_gnosis_app_token_offer_claims).
 
-    amount_usd populated only for swap_filled and topup for now. marketplace
-    buys will carry USD once the Circles token price feed is wired.
+    amount_usd populated for swap_filled, topup, and token_offer_claim
+    (USD on the *received* side only). marketplace buys carry NULL until the
+    Circles token price feed is wired.
   columns:
   - name: date
     data_type: Date
@@ -593,6 +596,158 @@ models:
     owner: analytics_team
     authoritative: false
 
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_token_offers
+  description: |
+    Gnosis App token-offer registry — one row per `NextOffer` instance emitted
+    by the Circles v2 ERC20TokenOfferCycle contracts. Each cycle (there are 3
+    deployed — v1/v2/v3) periodically emits `NextOfferCreated` for a new sale
+    instance with a fixed CRC price and per-user CRC cap; users then pay CRC
+    to receive the cycle's `offerToken` (GNO today).
+
+    Sources & join:
+      1. CycleConfiguration event on the cycle address — carries offerToken,
+         admin, offersStart, offerDuration.
+      2. NextOfferCreated event on the same cycle address — carries the
+         specific offer (nextOffer) address, tokenPriceInCRC, offerLimitInCRC.
+      3. Joined on (contract_address = cycle_address) so each offer is
+         enriched with its parent cycle's configuration.
+      4. NextOfferTokensDeposited aggregated by offer for supply side.
+
+    Token metadata (symbol, decimals) comes from tokens_whitelist, keyed on
+    the lowercase offer_token_address.
+  columns:
+  - name: offer_address
+    description: Address of the specific offer instance (the `nextOffer` field of NextOfferCreated, 0x-prefixed lowercase).
+    data_type: String
+  - name: cycle_address
+    description: Address of the ERC20TokenOfferCycle contract that owns this offer (0x-prefixed lowercase).
+    data_type: String
+  - name: offer_token_address
+    description: Address of the token sold by the offer (e.g. GNO). 0x-prefixed lowercase.
+    data_type: String
+  - name: offer_token_symbol
+    description: Whitelist symbol of the offer token (NULL if not in tokens_whitelist).
+    data_type: Nullable(String)
+  - name: offer_token_decimals
+    description: Whitelist decimals of the offer token (defaults to 18 if not in whitelist).
+    data_type: UInt8
+  - name: cycle_admin
+    description: Admin address configured on the cycle (0x-prefixed lowercase).
+    data_type: String
+  - name: cycle_starts_at
+    description: UTC timestamp of the cycle's first offer (from `offersStart` in CycleConfiguration).
+    data_type: Nullable(DateTime)
+  - name: offer_duration_seconds
+    description: Duration of each offer within the cycle, in seconds.
+    data_type: Nullable(UInt64)
+  - name: offer_created_at
+    description: Block timestamp of the NextOfferCreated event that defined this offer.
+    data_type: DateTime
+  - name: created_tx_hash
+    description: Transaction hash of the NextOfferCreated event (0x-prefixed lowercase).
+    data_type: String
+  - name: token_price_in_crc_raw
+    description: Raw uint256 CRC price per offer_token unit (before decimals scaling).
+    data_type: Nullable(UInt256)
+  - name: token_price_in_crc
+    description: token_price_in_crc_raw / 1e18 (CRC human units per offer_token unit).
+    data_type: Float64
+  - name: offer_limit_in_crc_raw
+    description: Raw uint256 per-user CRC cap for this offer.
+    data_type: Nullable(UInt256)
+  - name: offer_limit_in_crc
+    description: offer_limit_in_crc_raw / 1e18 (CRC human units).
+    data_type: Float64
+  - name: supply_deposited
+    description: |
+      Sum of NextOfferTokensDeposited `amount` for this offer, scaled by 1e18.
+      Represents the total amount of offer_token made available for claims.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_gnosis_app_token_offer_claims
+  description: |
+    Gnosis App token-offer claims — one row per `OfferClaimed` event emitted
+    by any ERC20TokenOfferCycle where the claim was:
+
+      1. The caller (`account`) is a Gnosis App user
+         (int_execution_gnosis_app_users_current).
+      2. The outer tx was relayed by a Cometh V4 bundler
+         (seeds/gnosis_app_relayers, is_active=1).
+      3. The outer tx.to is the ERC-4337 EntryPoint v0.7
+         (0x0000000071727de22e5e9d8baf0edac6f37da032).
+
+    Mirrors the Dune reference query 6582075. Joined to
+    int_execution_gnosis_app_token_offers for offer/cycle/token metadata, and
+    to int_execution_token_prices_daily to price `received` (offer_token) in
+    USD. `spent` is in CRC base units; no USD pricing yet (CRC price feed TBD).
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    description: Outer tx hash (0x-prefixed lowercase).
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: ga_user
+    description: GA user who claimed the offer (= OfferClaimed.account). 0x-prefixed lowercase.
+    data_type: String
+  - name: offer_address
+    description: Specific offer instance address (= OfferClaimed.offer). 0x-prefixed lowercase.
+    data_type: String
+  - name: cycle_address
+    description: Parent ERC20TokenOfferCycle contract (NULL if offer not in registry). 0x-prefixed lowercase.
+    data_type: Nullable(String)
+  - name: offer_token_address
+    description: Address of the token delivered to the claimer (e.g. GNO). 0x-prefixed lowercase.
+    data_type: Nullable(String)
+  - name: offer_token_symbol
+    description: Whitelist symbol of the received token (e.g. 'GNO').
+    data_type: Nullable(String)
+  - name: amount_received_raw
+    description: Raw uint256 amount of offer_token received by the claimer.
+    data_type: Nullable(UInt256)
+  - name: amount_received
+    description: amount_received_raw scaled by offer_token_decimals (human units).
+    data_type: Float64
+  - name: amount_spent_crc_raw
+    description: Raw uint256 CRC amount spent by the claimer.
+    data_type: Nullable(UInt256)
+  - name: amount_spent_crc
+    description: amount_spent_crc_raw / 1e18 (CRC human units).
+    data_type: Float64
+  - name: amount_received_usd
+    description: |
+      USD value of `amount_received` priced via int_execution_token_prices_daily
+      (joined on date + offer_token_symbol). 0.0 on days without a price.
+    data_type: Float64
+  - name: offer_price_in_crc
+    description: Sticker CRC price per offer_token unit at the time of the claim (from the offer registry).
+    data_type: Nullable(Float64)
+  - name: relayer_address
+    description: Cometh V4 bundler EOA that submitted the UserOp (0x-prefixed lowercase).
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
   tests:
   - elementary.schema_changes:
       severity: warn

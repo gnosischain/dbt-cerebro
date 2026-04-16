@@ -6,12 +6,6 @@
   )
 }}
 
-{#
-  KPI: M1 retention % for the most recent cohort that has completed at
-  least one full activity month. Value = percentage of cohort users who
-  were active in their cohort_month + 1.
-#}
-
 SELECT
     anyIf(retention_pct, months_since = 1
                      AND cohort_month = (

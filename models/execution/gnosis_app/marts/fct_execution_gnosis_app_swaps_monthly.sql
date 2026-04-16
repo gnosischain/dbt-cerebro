@@ -7,8 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_swaps_monthly #}
-
 SELECT
     toStartOfMonth(block_timestamp)              AS month,
     count(*)                                     AS n_swaps,

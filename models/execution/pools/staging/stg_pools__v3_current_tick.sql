@@ -5,11 +5,6 @@
     )
 }}
 
-{#-
-  Latest tick per V3 pool from Swap events. Used by the user LP positions
-  model to determine whether a position is in-range (tick_lower <= current_tick < tick_upper).
--#}
-
 SELECT
     concat('0x', replaceAll(lower(contract_address), '0x', '')) AS pool_address,
     'Uniswap V3'                                                 AS protocol,

@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: total distinct GA users to date. #}
-
 SELECT
     count(*)   AS value,
     CAST(NULL AS Nullable(Float64)) AS change_pct

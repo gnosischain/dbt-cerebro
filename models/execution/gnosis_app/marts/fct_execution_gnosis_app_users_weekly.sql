@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_users_weekly #}
-
 WITH non_onboard AS (
     SELECT
         toStartOfWeek(date, 1) AS week,

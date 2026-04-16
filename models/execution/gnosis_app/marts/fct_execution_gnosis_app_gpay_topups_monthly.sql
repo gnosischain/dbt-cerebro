@@ -7,8 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_gpay_topups_monthly #}
-
 SELECT
     toStartOfMonth(block_timestamp)              AS month,
     count(*)                                     AS n_topups,

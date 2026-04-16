@@ -11,11 +11,6 @@
     )
 }}
 
-{#-
-  Daily fee collection amounts per user per pool, from V3 Collect events.
-  Feeds the fee income chart in the user portfolio dashboard.
--#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

@@ -14,20 +14,6 @@
     )
 }}
 
-{#
-  PaymentGatewayFactory calls — decoded via execution.traces because
-  createGateway is invoked almost exclusively through a Safe (Gnosis App
-  ERC-4337 bundler → Safe.execTransaction → Factory.createGateway).
-  `execution.transactions` only records the top-level call (to the Safe),
-  so the Factory selector is visible only one hop down in traces.
-
-  Switching to traces gives us all 63 createGateway invocations instead
-  of the ~1 top-level call the old source saw. The macro auto-detects
-  traces mode and emits an extra `trace_address` column (part of the
-  unique_key because one tx can have multiple internal calls to the
-  same target).
-#}
-
 {{
     decode_calls(
         tx_table          = source('execution','traces'),

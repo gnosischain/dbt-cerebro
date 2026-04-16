@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_activity_by_action_weekly #}
-
 SELECT
     toStartOfWeek(date, 1)                                              AS week,
     activity_kind                                                       AS activity_kind,

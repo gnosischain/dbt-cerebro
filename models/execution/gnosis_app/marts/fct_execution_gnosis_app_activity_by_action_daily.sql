@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_activity_by_action_daily #}
-
 SELECT
     date                                                                AS date,
     activity_kind                                                       AS activity_kind,

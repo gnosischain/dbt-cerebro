@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_marketplace_buys_daily #}
-
 SELECT
     toDate(block_timestamp)                  AS date,
     offer_name                               AS offer_name,

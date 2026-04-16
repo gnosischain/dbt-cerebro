@@ -15,8 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_safes #}
-
 {# execution.traces stores addresses + calldata as lowercase hex WITHOUT a
    '0x' prefix. Strip the prefix from the seed values when comparing. #}
 {% set traces_pre_filter %}

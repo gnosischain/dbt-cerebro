@@ -8,11 +8,6 @@
     )
 }}
 
-{#-
-  Current lending positions per user, enriched with current supply APY
-  from the yields opportunities table.
--#}
-
 WITH
 
 latest_date AS (

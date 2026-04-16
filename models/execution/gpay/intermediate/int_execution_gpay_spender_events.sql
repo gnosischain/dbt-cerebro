@@ -15,8 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_spender_events #}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

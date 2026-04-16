@@ -8,16 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_churn_monthly #}
-
-{#
-  Two scopes:
-    Any  — any non-onboard activity counts as 'active' in the month.
-    Swap — only swap_signed or swap_filled activity counts as 'active'.
-  Same monthly churn/retention semantic as fct_execution_gpay_churn_monthly
-  (new/retained/returning/churned segments; churn_rate; retention_rate).
-#}
-
 WITH
 
 -- ── Scope: Any ─────────────────────────────────────────────────────────

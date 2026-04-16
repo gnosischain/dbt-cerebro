@@ -1,6 +1,3 @@
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
-
 {{
   config(
     materialized='incremental',
@@ -15,30 +12,8 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gnosis_app_user_activity_daily #}
-
-{#
-  activity_kind enum, one row per (date, address, activity_kind):
-    onboard                  — first-ever heuristic hit per address (from
-                               int_execution_gnosis_app_users_current).
-                               One row per user; anchors cohort_month.
-    circles_register_human,
-    circles_invite_human,
-    circles_trust,
-    circles_profile_update,
-    circles_metri_fee,
-    safe_invitation_module   — raw heuristic events from
-                               int_execution_gnosis_app_user_events.
-    swap_signed              — PreSignature events from
-                               int_execution_gnosis_app_swaps (all rows).
-    swap_filled              — subset with was_filled = true.
-    topup                    — GA→GP TopUps.
-    marketplace_buy          — GA marketplace purchases.
-
-  Same address may appear multiple times per day with different kinds.
-  amount_usd is populated only for swap_filled, topup, marketplace_buy
-  (latter TBD until CRC pricing is wired).
-#}
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month',   none) %}
 
 WITH onboard_rows AS (
     -- One onboarding row per user on their first-seen date. Needed so the
@@ -150,6 +125,23 @@ marketplace_rows AS (
     WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
     {% endif %}
     GROUP BY toDate(block_timestamp), payer
+),
+
+token_offer_claim_rows AS (
+    SELECT
+        toDate(block_timestamp)  AS date,
+        ga_user                  AS address,
+        'token_offer_claim'      AS activity_kind,
+        count(*)                 AS n_events,
+        sum(toFloat64OrNull(toString(amount_received_usd))) AS amount_usd
+    FROM {{ ref('int_execution_gnosis_app_token_offer_claims') }}
+    {% if start_month and end_month %}
+    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+    {% else %}
+    WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    {% endif %}
+    GROUP BY toDate(block_timestamp), ga_user
 )
 
 SELECT * FROM onboard_rows
@@ -158,3 +150,4 @@ UNION ALL SELECT * FROM swap_signed_rows
 UNION ALL SELECT * FROM swap_filled_rows
 UNION ALL SELECT * FROM topup_rows
 UNION ALL SELECT * FROM marketplace_rows
+UNION ALL SELECT * FROM token_offer_claim_rows

@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_swaps_by_solver_daily #}
-
 SELECT
     toDate(block_timestamp)                      AS date,
     solver                                       AS solver,

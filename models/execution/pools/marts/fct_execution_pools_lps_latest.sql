@@ -8,8 +8,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 WITH
 
 latest_date AS (

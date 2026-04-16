@@ -19,8 +19,6 @@
   )
 }}
 
-{# Description in schema.yml — see api_execution_gnosis_app_swaps_daily #}
-
 SELECT
     date,
     n_swaps,

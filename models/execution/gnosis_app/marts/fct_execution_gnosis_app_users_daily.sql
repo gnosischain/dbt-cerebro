@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_users_daily #}
-
 WITH non_onboard AS (
     -- All real-activity rows (exclude synthetic 'onboard' rows so we don't
     -- double-count a user as active via their onboard marker alone).

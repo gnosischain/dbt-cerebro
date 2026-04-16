@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: distinct marketplace payers in the last 7 full days. #}
-
 SELECT
     countDistinct(payer)                             AS value,
     CAST(NULL AS Nullable(Float64))                  AS change_pct

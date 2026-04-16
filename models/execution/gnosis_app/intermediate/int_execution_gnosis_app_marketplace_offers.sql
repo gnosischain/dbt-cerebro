@@ -9,26 +9,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gnosis_app_marketplace_offers #}
-
-{#
-  One row per non-excluded PaymentGateway.
-
-  Sources:
-    1. contracts_circles_v2_PaymentGatewayFactory_calls (traces-decoded
-       via decode_calls auto-detect) — carries the `name` string input.
-    2. contracts_circles_v2_PaymentGatewayFactory_events.GatewayCreated
-       — carries the resulting `gateway` address and `owner`.
-
-  Joined on transaction_hash since createGateway emits GatewayCreated in
-  the same tx.
-
-  Blocklist: seeds/gnosis_app_marketplace_offers_excluded.csv. A row
-  matches the blocklist if offer_name (case-insensitive) OR
-  gateway_address matches any row there. Empty string means "ignore
-  this column for this blocklist row".
-#}
-
 WITH
 
 create_calls AS (

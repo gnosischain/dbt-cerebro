@@ -7,8 +7,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_gpay_wallets_daily #}
-
 WITH base AS (
     SELECT
         toDate(first_ga_owner_at) AS date,

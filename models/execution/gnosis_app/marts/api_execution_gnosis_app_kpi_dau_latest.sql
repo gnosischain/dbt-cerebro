@@ -6,8 +6,6 @@
   )
 }}
 
-{# KPI: DAU yesterday + pct change vs the day before. #}
-
 WITH days AS (
     SELECT date, active_users
     FROM {{ ref('fct_execution_gnosis_app_users_daily') }}

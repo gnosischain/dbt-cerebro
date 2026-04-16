@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see fct_execution_gnosis_app_activity_by_action_monthly #}
-
 SELECT
     toStartOfMonth(date)                                                AS month,
     activity_kind                                                       AS activity_kind,

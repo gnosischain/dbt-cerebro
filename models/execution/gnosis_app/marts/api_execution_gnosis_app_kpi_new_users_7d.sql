@@ -6,10 +6,6 @@
   )
 }}
 
-{#
-  KPI: new users in the last 7 full days, with pct change vs the prior 7d.
-#}
-
 WITH days AS (
     SELECT date, new_users FROM {{ ref('fct_execution_gnosis_app_users_daily') }}
 ),
