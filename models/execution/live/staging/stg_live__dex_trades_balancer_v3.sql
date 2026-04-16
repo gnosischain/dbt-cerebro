@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['live', 'execution', 'pools', 'trades', 'staging']) }}
+{{ config(materialized='view', tags=['dev', 'live', 'execution', 'pools', 'trades', 'staging']) }}
 
 SELECT
     e.block_number,

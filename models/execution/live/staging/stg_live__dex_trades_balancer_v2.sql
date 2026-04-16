@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['live', 'execution', 'pools', 'trades', 'staging']) }}
+{{ config(materialized='view', tags=['dev', 'live', 'execution', 'pools', 'trades', 'staging']) }}
 
 {#-
     Pool registry comes from the materialized `stg_pools__balancer_v2_pool_registry`

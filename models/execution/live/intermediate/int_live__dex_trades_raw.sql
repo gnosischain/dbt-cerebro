@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash, log_index)',
         ttl='block_timestamp + INTERVAL 48 HOUR',
         settings={'allow_nullable_key': 1},
-        tags=['live', 'execution', 'pools', 'trades', 'intermediate']
+        tags=['dev', 'live', 'execution', 'pools', 'trades', 'intermediate']
     )
 }}
 
