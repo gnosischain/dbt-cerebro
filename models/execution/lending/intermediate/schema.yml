@@ -2,23 +2,24 @@ version: 2
 models:
 
 - name: int_execution_lending_aave_daily
-  description: Daily Aave V3 lending metrics per reserve token on Gnosis Chain. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
+  description: Daily lending metrics per (protocol, reserve) on Gnosis Chain, covering both Aave V3 and SparkLend. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
   columns:
   - name: date
     data_type: Date
+  - name: protocol
+    description: Lending protocol identifier. One of 'Aave V3' or 'SparkLend'.
+    data_type: String
   - name: token_address
     data_type: String
   - name: symbol
     data_type: String
   - name: token_class
     data_type: String
-  - name: protocol
-    data_type: String
   - name: apy_daily
-    description: Annualized supply APY from Aave V3 liquidityRate (RAY / 1e27 * 100). Forward-filled on days without ReserveDataUpdated events.
+    description: Annualized supply APY from liquidityRate (RAY / 1e27 * 100). Forward-filled on days without ReserveDataUpdated events.
     data_type: Float64
   - name: borrow_apy_variable_daily
-    description: Annualized variable borrow APY from Aave V3 variableBorrowRate. Forward-filled.
+    description: Annualized variable borrow APY from variableBorrowRate. Forward-filled.
     data_type: Float64
   - name: spread_variable
     description: Borrow-supply APY spread (borrow_apy - apy_daily).
@@ -46,36 +47,43 @@ models:
     description: Daily Repay event volume in token units.
     data_type: Float64
   - name: liquidity_index
-    description: Aave V3 liquidityIndex (RAY) for the reserve, forward-filled. Used to convert scaled supply to actual token supply (scaledSupply * liquidityIndex / 1e27).
+    description: Protocol liquidityIndex (RAY), forward-filled. Multiply scaled supply by liquidityIndex / 1e27 to get actual token supply.
     data_type: Float64
   - name: variable_borrow_index
-    description: Aave V3 variableBorrowIndex (RAY) for the reserve, forward-filled. Used to convert scaled borrows to actual borrow amounts (scaledBorrow * variableBorrowIndex / 1e27).
+    description: Protocol variableBorrowIndex (RAY), forward-filled.
     data_type: Float64
   - name: net_supply_change_daily
     description: Daily net change in deposited supply (deposits - withdrawals - liquidated collateral) in token units. Legacy column kept for backward compatibility.
     data_type: Float64
+
 - name: int_execution_lending_aave_utilization_daily
-  description: Daily Aave V3 utilization rate per reserve token. Computes cumulative scaled supply and borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256 WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs each pool action with the ReserveDataUpdated snapshot at the same log_index position within its transaction. End-of-day liquidity and variable-borrow indices are sourced directly from raw ReserveDataUpdated events (UInt256) so the final utilization ratio is computed in exact arithmetic end-to-end.
+  description: Daily utilization rate per (protocol, reserve) across Aave V3 and SparkLend. Computes cumulative scaled supply/borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256 WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs each pool action with the ReserveDataUpdated snapshot at the same log_index position within its transaction. End-of-day indices sourced directly from raw events so the final utilization ratio is computed in exact arithmetic end-to-end.
   columns:
   - name: date
     data_type: Date
+  - name: protocol
+    description: Lending protocol identifier.
+    data_type: String
   - name: token_address
     data_type: String
   - name: cumulative_scaled_supply
-    description: Running total of scaled supply position in RAY-scaled units (sum of all supply/withdraw/liquidation deltas up to this date). Int256 for exact WadRayMath.
+    description: Running total of scaled supply in RAY-scaled units (Int256).
     data_type: Int256
   - name: cumulative_scaled_borrow
-    description: Running total of scaled borrow position in RAY-scaled units (sum of all borrow/repay/liquidation-repay deltas up to this date). Int256 for exact WadRayMath.
+    description: Running total of scaled borrow in RAY-scaled units (Int256).
     data_type: Int256
   - name: utilization_rate
-    description: Reserve utilization rate as percentage (totalBorrows / totalSupply * 100), computed as toFloat64(scaledBorrow * variableBorrowIndex) / toFloat64(scaledSupply * liquidityIndex) * 100. Null if supply is zero or indexes are unavailable.
+    description: Reserve utilization rate as percentage. Null when supply is zero or indices unavailable.
     data_type: Nullable(Float64)
 
 - name: int_execution_lending_aave_diffs_daily
-  description: Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Scaled math uses exact UInt256 WadRayMath (rayDivFloor for supply, rayDivCeil for withdraw/repay/liquidation_burn) and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its transaction. LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -> liquidator) event; counting both would double-debit the borrower. Lightweight event-processing model consumed by int_execution_lending_aave_user_balances_daily.
+  description: Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3 and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, protocol, user, reserve). Scaled math uses exact UInt256 WadRayMath and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its (protocol, transaction). LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -> liquidator) event.
   columns:
   - name: date
     data_type: Date
+  - name: protocol
+    description: Lending protocol identifier.
+    data_type: String
   - name: user_address
     description: Address of the aToken holder.
     data_type: String
@@ -83,34 +91,37 @@ models:
     description: Address of the underlying reserve token.
     data_type: String
   - name: diff_scaled
-    description: Net scaled balance change for this user-reserve on this day in RAY-scaled units (Int256). Positive = net supply, negative = net withdrawal.
+    description: Net scaled balance change for this (protocol, user, reserve) on this day in RAY-scaled units (Int256). Positive = net supply, negative = net withdrawal.
     data_type: Int256
 
 - name: int_execution_lending_aave_user_balances_daily
-  description: Daily per-user aToken balances for Aave V3 on Gnosis. Reads pre-computed scaled deltas from int_execution_lending_aave_diffs_daily, builds a calendar of all active user-reserve pairs, computes running cumulative scaled balances in Int256, then converts to underlying amounts using the end-of-day liquidityIndex (UInt256, sourced from raw ReserveDataUpdated events with log_index tiebreak). Scoped to reserves in atoken_reserve_mapping seed.
+  description: Daily per-user aToken balances across Gnosis lending markets (Aave V3 and SparkLend). Reads scaled deltas from int_execution_lending_aave_diffs_daily, builds a calendar of active (protocol, user, reserve) triples, computes running cumulative scaled balances in Int256, then converts to underlying amounts using the end-of-day liquidityIndex. Scoped to reserves in lending_market_mapping.
   columns:
   - name: date
     data_type: Date
+  - name: protocol
+    description: Lending protocol identifier.
+    data_type: String
   - name: reserve_address
     description: Address of the underlying reserve token (e.g. GNO, sDAI, USDC).
     data_type: String
   - name: symbol
-    description: Reserve token symbol from atoken_reserve_mapping.
+    description: Reserve token symbol from lending_market_mapping.
     data_type: String
   - name: user_address
     description: Address of the aToken holder.
     data_type: String
   - name: scaled_balance
-    description: Running cumulative scaled balance in RAY-scaled units (Int256). Multiply by liquidityIndex / 1e27 to get underlying amount.
+    description: Running cumulative scaled balance in RAY-scaled units (Int256).
     data_type: Int256
   - name: balance_raw
-    description: Underlying token amount in raw wei units, computed as floor(scaled_balance * liquidityIndex_eod / 1e27) with UInt256 math. Zero when scaled_balance <= 0.
+    description: Underlying token amount in raw wei units.
     data_type: UInt256
   - name: balance
-    description: Human-readable balance (toFloat64(balance_raw) / 10^decimals).
+    description: Human-readable balance.
     data_type: Float64
   - name: balance_usd
-    description: USD value of the balance (balance * price).
+    description: USD value of the balance.
     data_type: Float64
   meta:
     owner: analytics-team
@@ -124,15 +135,27 @@ models:
         - name: EURe
           vars:
             reserve_symbol: "EURe"
+        - name: WETH
+          vars:
+            reserve_symbol: "WETH"
+        - name: wstETH
+          vars:
+            reserve_symbol: "wstETH"
+        - name: USDT
+          vars:
+            reserve_symbol: "USDT"
         - name: others
           vars:
             reserve_symbol: "GNO,sDAI,USDC,USDC.e"
 
 - name: int_execution_lending_aave_balance_cohorts_daily
-  description: Daily Aave V3 lender balance cohort distributions per reserve token. Buckets users by deposit size (USD and native units) for concentration analysis. Derived from int_execution_lending_aave_user_balances_daily.
+  description: Daily lender balance cohort distributions per (protocol, reserve) across Aave V3 and SparkLend on Gnosis. Buckets users by deposit size (USD and native units) for concentration analysis.
   columns:
   - name: date
     data_type: Date
+  - name: protocol
+    description: Lending protocol identifier.
+    data_type: String
   - name: reserve_address
     description: Address of the underlying reserve token.
     data_type: String

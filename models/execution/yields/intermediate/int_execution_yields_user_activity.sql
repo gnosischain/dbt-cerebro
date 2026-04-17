@@ -42,48 +42,55 @@ lp_events AS (
       {% endif %}
 ),
 
+pool_events_raw AS (
+    SELECT 'Aave V3'   AS protocol, * FROM {{ ref('contracts_aaveV3_PoolInstance_events') }}
+    UNION ALL
+    SELECT 'SparkLend' AS protocol, * FROM {{ ref('contracts_spark_Pool_events') }}
+),
+
 lending_events AS (
     SELECT
-        block_timestamp,
-        transaction_hash,
+        e.block_timestamp,
+        e.transaction_hash,
         e.log_index,
-        'Aave V3'                                          AS protocol,
-        lower(decoded_params['reserve'])                   AS position_address,
+        e.protocol                                         AS protocol,
+        lower(e.decoded_params['reserve'])                 AS position_address,
         lower(
             multiIf(
-                event_name = 'Supply',  decoded_params['onBehalfOf'],
-                event_name = 'Withdraw', decoded_params['user'],
-                event_name = 'Borrow',  decoded_params['onBehalfOf'],
-                event_name = 'Repay',   decoded_params['user'],
-                decoded_params['user']
+                e.event_name = 'Supply',  e.decoded_params['onBehalfOf'],
+                e.event_name = 'Withdraw', e.decoded_params['user'],
+                e.event_name = 'Borrow',  e.decoded_params['onBehalfOf'],
+                e.event_name = 'Repay',   e.decoded_params['user'],
+                e.decoded_params['user']
             )
         )                                                  AS wallet_address,
         multiIf(
-            event_name = 'Supply',   'Supply',
-            event_name = 'Withdraw', 'Withdraw',
-            event_name = 'Borrow',   'Borrow',
+            e.event_name = 'Supply',   'Supply',
+            e.event_name = 'Withdraw', 'Withdraw',
+            e.event_name = 'Borrow',   'Borrow',
             'Repay'
         )                                                  AS action,
         rm.reserve_symbol                                  AS token_symbol,
-        lower(decoded_params['reserve'])                   AS token_address,
-        toFloat64(toUInt256OrNull(decoded_params['amount']))
+        lower(e.decoded_params['reserve'])                 AS token_address,
+        toFloat64(toUInt256OrNull(e.decoded_params['amount']))
             / power(10, rm.decimals)                       AS amount,
-        toFloat64(toUInt256OrNull(decoded_params['amount']))
+        toFloat64(toUInt256OrNull(e.decoded_params['amount']))
             / power(10, rm.decimals)
             * coalesce(pr.price, 0)                        AS amount_usd,
         'lending'                                          AS source
-    FROM {{ ref('contracts_aaveV3_PoolInstance_events') }} e
-    INNER JOIN {{ ref('atoken_reserve_mapping') }} rm
-        ON lower(rm.reserve_address) = lower(decoded_params['reserve'])
+    FROM pool_events_raw e
+    INNER JOIN {{ ref('lending_market_mapping') }} rm
+        ON  rm.protocol             = e.protocol
+       AND lower(rm.reserve_address) = lower(e.decoded_params['reserve'])
     LEFT JOIN {{ ref('int_execution_token_prices_daily') }} pr
         ON pr.symbol = rm.reserve_symbol
        AND pr.date   = toDate(e.block_timestamp)
-    WHERE event_name IN ('Supply', 'Withdraw', 'Borrow', 'Repay')
-      AND decoded_params['reserve'] IS NOT NULL
-      AND decoded_params['amount'] IS NOT NULL
-      AND block_timestamp < today()
+    WHERE e.event_name IN ('Supply', 'Withdraw', 'Borrow', 'Repay')
+      AND e.decoded_params['reserve'] IS NOT NULL
+      AND e.decoded_params['amount'] IS NOT NULL
+      AND e.block_timestamp < today()
       {% if not (start_month and end_month) %}
-        {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
+        {{ apply_monthly_incremental_filter('e.block_timestamp', 'block_timestamp', 'true') }}
       {% endif %}
 )
 

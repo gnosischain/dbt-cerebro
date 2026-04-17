@@ -2,7 +2,7 @@
     config(
         materialized='table',
         engine='ReplacingMergeTree()',
-        order_by='(user_address, reserve_address)',
+        order_by='(user_address, protocol, reserve_address)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'yields', 'user_portfolio', 'marts']
     )
@@ -18,6 +18,7 @@ latest_date AS (
 
 latest_balances AS (
     SELECT
+        b.protocol,
         b.user_address,
         b.reserve_address,
         b.symbol,
@@ -31,6 +32,7 @@ latest_balances AS (
 
 lending_apy AS (
     SELECT
+        protocol,
         token      AS symbol,
         yield_apy  AS supply_apy
     FROM {{ ref('fct_execution_yields_opportunities_latest') }}
@@ -41,10 +43,11 @@ SELECT
     lb.user_address,
     lb.reserve_address,
     lb.symbol,
-    round(lb.balance, 6)                         AS balance,
-    round(lb.balance_usd, 2)                     AS balance_usd,
-    round(la.supply_apy, 4)                      AS supply_apy,
-    'Aave V3'                                     AS protocol
+    round(lb.balance, 6)         AS balance,
+    round(lb.balance_usd, 2)     AS balance_usd,
+    round(la.supply_apy, 4)      AS supply_apy,
+    lb.protocol                   AS protocol
 FROM latest_balances lb
 LEFT JOIN lending_apy la
-    ON la.symbol = lb.symbol
+    ON  la.protocol = lb.protocol
+   AND  la.symbol   = lb.symbol

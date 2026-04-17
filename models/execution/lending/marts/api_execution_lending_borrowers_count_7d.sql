@@ -5,8 +5,11 @@
     )
 }}
 
+-- One row per protocol plus an ALL-protocols aggregate. See lenders_count_7d header.
+
 SELECT
     token,
+    protocol,
     value,
     change_pct
 FROM {{ ref('fct_execution_lending_latest') }}
