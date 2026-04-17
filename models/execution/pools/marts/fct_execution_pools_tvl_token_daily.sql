@@ -9,8 +9,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 WITH
 
 pools AS (

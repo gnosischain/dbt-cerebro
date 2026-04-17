@@ -8,13 +8,6 @@
     )
 }}
 
-{#-
-  Per-user LP position summary across all protocols. One row per
-  (provider, pool, tick_lower, tick_upper). Aggregates capital in/out and fee
-  collections from the enriched liquidity events, computes net liquidity for
-  V3 position activity status, and checks in-range against the latest pool tick.
--#}
-
 WITH
 
 position_amounts AS (

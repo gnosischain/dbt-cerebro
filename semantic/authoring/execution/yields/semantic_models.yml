@@ -1167,18 +1167,6 @@ semantic_models:
   - name: apy_value
     agg: average
     expr: apy
-  - name: apy_7DMA_value
-    agg: average
-    expr: apy_7DMA
-  - name: apy_30DMA_value
-    agg: average
-    expr: apy_30DMA
-  - name: apy_7DMM_value
-    agg: average
-    expr: apy_7DMM
-  - name: apy_30DMM_value
-    agg: average
-    expr: apy_30DMM
   config:
     meta:
       cerebro:
@@ -1186,6 +1174,8 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - yields sdai apy daily
+        - Savings xDAI APY (legacy view)
+        - Gnosis savings APY (legacy view)
         grain: day
 - name: yields_sdai_rate_daily
   model: ref('int_yields_sdai_rate_daily')
@@ -1211,5 +1201,137 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - yields sdai rate daily
+        - Savings xDAI daily rate (legacy view)
         grain: day
+
+- name: yields_savings_xdai_apy_daily
+  model: ref('fct_yields_savings_xdai_apy_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: label
+    type: categorical
+    expr: label
+  - name: canonical_label
+    type: categorical
+    expr: canonical_label
+  - name: legacy_symbol
+    type: categorical
+    expr: legacy_symbol
+  - name: backing_asset
+    type: categorical
+    expr: backing_asset
+  - name: yield_source
+    type: categorical
+    expr: yield_source
+  measures:
+  - name: apy_value
+    agg: average
+    expr: apy
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - yields savings xdai apy daily
+        - Savings xDAI APY
+        - Gnosis savings APY
+        - Spark savings APY on Gnosis
+        - bridge savings APY
+        - sDAI APY
+        - USDS savings APY on Gnosis (post-2025-11-07)
+        grain: day
+- name: yields_savings_xdai_rate_daily
+  model: ref('int_yields_savings_xdai_rate_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: canonical_label
+    type: categorical
+    expr: canonical_label
+  - name: legacy_symbol
+    type: categorical
+    expr: legacy_symbol
+  - name: backing_asset
+    type: categorical
+    expr: backing_asset
+  - name: yield_source
+    type: categorical
+    expr: yield_source
+  measures:
+  - name: share_price_value
+    agg: average
+    expr: share_price
+  - name: daily_rate_value
+    agg: average
+    expr: daily_rate
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - yields savings xdai rate daily
+        - Savings xDAI daily rate
+        - Savings xDAI share price
+        - Gnosis savings share price
+        grain: day
+- name: execution_yields_user_lending_positions_latest
+  model: ref('fct_execution_yields_user_lending_positions_latest')
+  entities:
+  - name: address
+    type: primary
+    expr: user_address
+  dimensions:
+  - name: user_address
+    type: categorical
+    expr: user_address
+  - name: reserve_address
+    type: categorical
+    expr: reserve_address
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: protocol
+    type: categorical
+    expr: protocol
+  measures:
+  - name: balance_usd_value
+    agg: sum
+    expr: balance_usd
+  - name: balance_value
+    agg: sum
+    expr: balance
+  - name: supply_apy_value
+    agg: average
+    expr: supply_apy
+  config:
+    meta:
+      cerebro:
+        owner: defi_team
+        quality_tier: approved
+        question_synonyms:
+        - lending positions
+        - who has lending positions
+        - aave user positions
+        graph:
+          enabled: true
+          profile: lending_user_to_reserve
+          source_column: user_address
+          target_column: reserve_address
+          source_kind: address
+          target_kind: token
+          directed: true
+          weight_column: balance_usd
 metrics: []

@@ -15,8 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_gpay_roles_events #}
-
 {#
   CLICKHOUSE ALIAS-SHADOWING GOTCHA
   --------------------------------

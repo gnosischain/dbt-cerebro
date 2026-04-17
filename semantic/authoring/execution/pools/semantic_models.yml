@@ -8,4 +8,101 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution pools balances daily
+- name: execution_pools_dex_liquidity_events_lp_edges
+  model: ref('int_execution_pools_dex_liquidity_events')
+  defaults:
+    agg_time_dimension: block_timestamp
+  entities:
+  - name: address
+    type: primary
+    expr: provider
+  dimensions:
+  - name: provider
+    type: categorical
+    expr: provider
+  - name: pool_address
+    type: categorical
+    expr: pool_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: event_type
+    type: categorical
+    expr: event_type
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  measures:
+  - name: amount_usd_value
+    agg: sum
+    expr: amount_usd
+  - name: amount_value
+    agg: sum
+    expr: amount
+  config:
+    meta:
+      cerebro:
+        owner: defi_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - liquidity providers
+        - who provides liquidity to pools
+        - lp positions by pool
+        graph:
+          enabled: true
+          profile: lp_in_pool
+          source_column: provider
+          target_column: pool_address
+          source_kind: address
+          target_kind: pool
+          directed: true
+          time_column: block_timestamp
+          weight_column: amount_usd
+- name: execution_pools_dex_liquidity_events_token_edges
+  model: ref('int_execution_pools_dex_liquidity_events')
+  defaults:
+    agg_time_dimension: block_timestamp
+  entities:
+  - name: pool
+    type: primary
+    expr: pool_address
+  dimensions:
+  - name: pool_address
+    type: categorical
+    expr: pool_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  config:
+    meta:
+      cerebro:
+        owner: defi_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - tokens in pools
+        - which tokens does a pool contain
+        graph:
+          enabled: true
+          profile: pool_contains_token
+          source_column: pool_address
+          target_column: token_address
+          source_kind: pool
+          target_kind: token
+          directed: false
+          time_column: block_timestamp
 metrics: []

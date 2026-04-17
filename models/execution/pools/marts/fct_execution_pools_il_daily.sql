@@ -9,8 +9,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 SELECT
     t.day AS date,
     t.protocol,

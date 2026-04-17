@@ -12,8 +12,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 
@@ -126,6 +124,25 @@ daily_deltas AS (
     GROUP BY date, pool_address, token_address
 ),
 
+overall_max_date AS (
+    SELECT
+        least(
+            {% if end_month %}
+                toLastDayOfMonth(toDate('{{ end_month }}')),
+            {% else %}
+                today(),
+            {% endif %}
+            yesterday(),
+            (
+                SELECT max(toDate(toStartOfDay(block_timestamp)))
+                FROM {{ ref('stg_pools__swapr_v3_events') }}
+                {% if end_month %}
+                WHERE toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+                {% endif %}
+            )
+        ) AS max_date
+),
+
 {% if start_month and end_month %}
 prev_balances AS (
     SELECT
@@ -142,55 +159,126 @@ prev_balances AS (
     )
 ),
 {% elif is_incremental() %}
+current_partition AS (
+    SELECT
+        max(date) AS max_date
+    FROM {{ this }}
+    WHERE date < yesterday()
+),
 prev_balances AS (
+    SELECT
+        t1.pool_address,
+        t1.token_address,
+        t1.token_amount_raw AS balance_raw,
+        t1.reserve_amount_raw AS reserve_raw,
+        t1.fee_amount_raw AS fee_raw
+    FROM {{ this }} t1
+    CROSS JOIN current_partition t2
+    WHERE t1.date = t2.max_date
+),
+{% endif %}
+
+{% if is_incremental() %}
+keys AS (
+    SELECT DISTINCT
+        pool_address,
+        token_address
+    FROM (
+        SELECT pool_address, token_address FROM prev_balances
+        UNION ALL
+        SELECT pool_address, token_address FROM daily_deltas
+    )
+),
+
+calendar AS (
+    SELECT
+        k.pool_address,
+        k.token_address,
+        {% if start_month and end_month %}
+            addDays(
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
+                offset + 1
+            ) AS date
+        {% else %}
+            addDays(cp.max_date, offset + 1) AS date
+        {% endif %}
+    FROM keys k
+    {% if not (start_month and end_month) %}
+    CROSS JOIN current_partition cp
+    {% endif %}
+    CROSS JOIN overall_max_date o
+    ARRAY JOIN range(
+        toUInt32(dateDiff('day',
+            {% if start_month and end_month %}
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
+            {% else %}
+                cp.max_date,
+            {% endif %}
+            o.max_date
+        ))
+    ) AS offset
+),
+{% else %}
+calendar AS (
     SELECT
         pool_address,
         token_address,
-        token_amount_raw AS balance_raw,
-        reserve_amount_raw AS reserve_raw,
-        fee_amount_raw AS fee_raw
-    FROM {{ this }} FINAL
-    WHERE date = (SELECT max(date) FROM {{ this }} FINAL)
+        addDays(min_date, offset) AS date
+    FROM (
+        SELECT
+            d.pool_address,
+            d.token_address,
+            min(d.date) AS min_date,
+            dateDiff('day', min(d.date), any(o.max_date)) AS num_days
+        FROM daily_deltas d
+        CROSS JOIN overall_max_date o
+        GROUP BY d.pool_address, d.token_address
+    )
+    ARRAY JOIN range(num_days + 1) AS offset
 ),
 {% endif %}
 
 balances AS (
     SELECT
-        date,
-        pool_address,
-        token_address,
-        sum(daily_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        c.date AS date,
+        c.pool_address AS pool_address,
+        c.token_address AS token_address,
+        sum(coalesce(d.daily_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         {% if is_incremental() %}
             + coalesce(p.balance_raw, toInt256(0))
         {% endif %}
         AS balance_raw,
-        sum(daily_reserve_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        sum(coalesce(d.daily_reserve_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         {% if is_incremental() %}
             + coalesce(p.reserve_raw, toInt256(0))
         {% endif %}
         AS reserve_raw,
-        sum(daily_fee_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        sum(coalesce(d.daily_fee_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         {% if is_incremental() %}
             + coalesce(p.fee_raw, toInt256(0))
         {% endif %}
         AS fee_raw
-    FROM daily_deltas d
+    FROM calendar c
+    LEFT JOIN daily_deltas d
+        ON d.pool_address = c.pool_address
+       AND d.token_address = c.token_address
+       AND d.date = c.date
     {% if is_incremental() %}
     LEFT JOIN prev_balances p
-        ON d.pool_address = p.pool_address
-        AND d.token_address = p.token_address
+        ON p.pool_address = c.pool_address
+       AND p.token_address = c.token_address
     {% endif %}
 ),
 

@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see contracts_safe_registry #}
-
 SELECT
     safe_address                      AS address,
     'SafeProxy'                       AS contract_type,

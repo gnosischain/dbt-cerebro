@@ -8,8 +8,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_safes_current_owners #}
-
 WITH owner_latest AS (
     SELECT
         safe_address,

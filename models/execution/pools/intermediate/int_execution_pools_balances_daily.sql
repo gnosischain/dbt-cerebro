@@ -9,8 +9,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 SELECT * FROM {{ ref('int_execution_pools_uniswap_v3_daily') }}
 
 UNION ALL

@@ -1,7 +1,5 @@
 {{ config(materialized='view') }}
 
-{#- Model documentation in schema.yml -#}
-
 WITH unique_pool_tokens AS (
     SELECT DISTINCT
         pool_address,

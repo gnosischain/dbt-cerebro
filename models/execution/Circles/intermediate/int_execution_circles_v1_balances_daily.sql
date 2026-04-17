@@ -11,17 +11,6 @@
     )
 }}
 
-{#
-    Sparse daily balance table for Circles v1.
-
-    Only stores rows on days when a transfer actually occurred (event-sourced).
-    Running balance is computed as a cumulative sum of deltas per account/token.
-    No calendar fill-forward — much smaller than a dense daily snapshot.
-
-    For current balances, downstream models can use:
-      argMax(balance_raw, date) per (account, token_address)
-#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
 WITH deltas AS (

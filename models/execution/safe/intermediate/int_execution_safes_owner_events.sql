@@ -15,8 +15,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_safes_owner_events #}
-
 WITH decoded AS (
     SELECT
         block_number,

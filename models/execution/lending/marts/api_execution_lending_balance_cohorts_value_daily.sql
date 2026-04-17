@@ -7,6 +7,7 @@
 
 SELECT
   date,
+  protocol,
   symbol AS token,
   cohort_unit,
   balance_bucket AS label,
@@ -14,4 +15,4 @@ SELECT
   value_usd_in_bucket AS value_usd
 FROM {{ ref('int_execution_lending_aave_balance_cohorts_daily') }}
 WHERE date < today()
-ORDER BY date, token, cohort_unit, label
+ORDER BY date, protocol, token, cohort_unit, label

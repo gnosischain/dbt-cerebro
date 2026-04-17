@@ -286,4 +286,126 @@ semantic_models:
         question_synonyms:
         - execution circles v2 avatars
         grain: day
+- name: execution_circles_v2_trust_relations_current
+  model: ref('api_execution_circles_v2_trust_relations_current')
+  defaults:
+    agg_time_dimension: valid_from
+  entities:
+  - name: circles_avatar
+    type: primary
+    expr: truster
+  dimensions:
+  - name: truster
+    type: categorical
+    expr: truster
+  - name: trustee
+    type: categorical
+    expr: trustee
+  - name: valid_from
+    type: time
+    expr: valid_from
+    type_params:
+      time_granularity: day
+  measures:
+  - name: active_trusts_value
+    agg: count
+    expr: truster
+  config:
+    meta:
+      cerebro:
+        owner: circles_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - circles trust graph
+        - circles trust relationships
+        - who trusts whom
+        graph:
+          enabled: true
+          profile: circles_trust
+          source_column: truster
+          target_column: trustee
+          source_kind: circles_avatar
+          target_kind: circles_avatar
+          directed: true
+          time_column: valid_from
+          node_enrichment_model: api_execution_circles_v2_avatar_metadata
+          node_enrichment_key: avatar
+          evidence_model: api_execution_circles_v2_trust_relations_current
+          evidence_source_column: truster
+          evidence_target_column: trustee
+- name: execution_circles_v2_avatar_metadata
+  model: ref('api_execution_circles_v2_avatar_metadata')
+  defaults:
+    agg_time_dimension: registered_at
+  entities:
+  - name: circles_avatar
+    type: primary
+    expr: avatar
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: avatar_type
+    type: categorical
+    expr: avatar_type
+  - name: invited_by
+    type: categorical
+    expr: invited_by
+  - name: metadata_name
+    type: categorical
+    expr: metadata_name
+  - name: registered_at
+    type: time
+    expr: registered_at
+    type_params:
+      time_granularity: day
+  config:
+    meta:
+      cerebro:
+        owner: circles_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - circles avatar profile
+        - circles avatar identity
+- name: execution_circles_v2_avatar_balances_latest
+  model: ref('fct_execution_circles_v2_avatar_balances_latest')
+  entities:
+  - name: circles_avatar
+    type: primary
+    expr: avatar
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: is_wrapped
+    type: categorical
+    expr: toString(is_wrapped)
+  measures:
+  - name: balance_value
+    agg: sum
+    expr: balance
+  config:
+    meta:
+      cerebro:
+        owner: circles_team
+        quality_tier: approved
+        question_synonyms:
+        - circles avatar balances
+        - who holds which crc token
+        graph:
+          enabled: true
+          profile: circles_avatar_balances
+          source_column: avatar
+          target_column: token_address
+          source_kind: circles_avatar
+          target_kind: token
+          directed: true
+          weight_column: balance
+          node_enrichment_model: api_execution_circles_v2_avatar_metadata
+          node_enrichment_key: avatar
 metrics: []

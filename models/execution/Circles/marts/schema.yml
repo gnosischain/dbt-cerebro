@@ -60,6 +60,17 @@ models:
     data_type: Float64
   meta: *meta_api
   tests: *elementary_error
+- name: api_execution_circles_v2_active_trusts_cnt_latest
+  description: Latest active trust count with 7-day change percentage.
+  columns:
+  - name: total
+    description: Current active trust count.
+    data_type: UInt64
+  - name: change_pct
+    description: 7-day percentage change.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
 - name: api_execution_circles_v2_avatar_metadata
   description: Per-avatar identity for Circles v2 — on-chain registration metadata (type, name, inviter, registration time) joined to the most recently fetched IPFS profile (display name, preview/image URL, description). Backs the "Avatar Identity" panel on the Circles dashboard.
   columns:
@@ -334,6 +345,32 @@ models:
     data_type: Float64
   meta: *meta_api
   tests: *elementary_error
+- name: api_execution_circles_v2_avatar_personal_token_supply_latest
+  description: One-row-per-avatar summary of a Circles v2 avatar's own personal CRC token — total supply and how much of it is currently held inside the avatar's ERC-20 wrapper contracts. Rolled up from api_execution_circles_v2_avatar_token_distribution so the supply figure respects the same 0.001 CRC dust threshold used by the distribution view.
+  columns:
+  - name: avatar
+    description: The avatar whose personal CRC token is being summarised.
+    data_type: String
+  - name: supply
+    description: Circulating supply of this avatar's personal CRC (sum of balances across all holder categories).
+    data_type: Float64
+  - name: wrapped
+    description: Portion of the supply currently held by the avatar's ERC-20 wrapper contracts.
+    data_type: Float64
+  - name: unwrapped
+    description: Portion of the supply held as native ERC-1155 (supply − wrapped).
+    data_type: Float64
+  - name: wrapped_pct
+    description: wrapped / supply × 100, rounded to 1 decimal. NULL when supply = 0.
+    data_type: Nullable(Float64)
+  - name: supply_demurraged
+    description: Demurrage-adjusted equivalent of supply.
+    data_type: Float64
+  - name: wrapped_demurraged
+    description: Demurrage-adjusted equivalent of wrapped.
+    data_type: Float64
+  meta: *meta_api
+  tests: *elementary_error
 - name: api_execution_circles_v2_avatar_trust_relations
   description: Current active trust relations pivoted to one row per (avatar, counterparty) pair with direction (outgoing, incoming, or mutual) and the timestamps of each direction.
   columns:
@@ -565,6 +602,29 @@ models:
     data_type: UInt64
   meta: *meta_fct
   tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_balances_daily
+  description: >
+    Materialized daily avatar token balances with dust filtering (> 0.001 CRC).
+    Derived from int_execution_circles_v2_balances_daily with unit conversion
+    from raw (18 decimals) to human-readable CRC. Excludes zero-address rows.
+  columns:
+  - name: avatar
+    description: Address of the token holder.
+    data_type: String
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+  - name: token_address
+    description: Address of the token contract.
+    data_type: String
+  - name: balance
+    description: End-of-day balance in CRC (human units).
+    data_type: Float64
+  - name: balance_demurraged
+    description: Demurrage-adjusted balance in CRC (human units).
+    data_type: Float64
+  meta: *meta_fct
+  tests: *elementary_warn
 - name: fct_execution_circles_v2_tokens_supply_daily
   description: Daily per-token CRC supply derived from the zero-address balance in balances_daily.
   columns:
@@ -584,7 +644,17 @@ models:
     description: Demurrage-adjusted supply in CRC.
     data_type: Float64
   meta: *meta_fct
-  tests: *elementary_warn
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: no_negative_supply
+      expression: "supply >= 0"
+      config:
+        severity: warn
+        where: "date >= today() - 7"
 - name: fct_execution_circles_v2_total_supply_daily
   description: Network-wide daily total CRC supply aggregated across all tokens.
   columns:
@@ -643,6 +713,97 @@ models:
   - name: rank
     description: Rank position by invite count (1 = most invites).
     data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_token_distribution
+  description: Per-avatar distribution of holders of the avatar's personal CRC token, classified as Self / Wrapped (ERC-20) / Other Circles avatars / Other contracts. Materialised daily as the latest-snapshot backing table for api_execution_circles_v2_avatar_token_distribution (which is a thin passthrough). One row per (avatar, holder_category).
+  columns:
+  - name: avatar
+    description: The avatar whose personal CRC token is being inspected.
+    data_type: String
+  - name: holder_category
+    description: One of Self, Wrapped (ERC-20), Other Circles avatars, Other contracts.
+    data_type: String
+  - name: holder_count
+    description: Number of distinct accounts in this category (above the 0.001 CRC dust threshold).
+    data_type: UInt64
+  - name: balance
+    description: Sum of static CRC balances held by accounts in this category.
+    data_type: Float64
+  - name: balance_demurraged
+    description: Sum of demurrage-adjusted CRC balances held by accounts in this category.
+    data_type: Float64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_balances_latest
+  description: Latest per-(avatar, token) CRC balance snapshot with an is_wrapped flag marking token_addresses that are ERC-20 wrappers. Materialised daily from fct_execution_circles_v2_avatar_balances_daily; backs the matching thin api_ view.
+  columns:
+  - name: avatar
+    description: Address of the avatar holding the balance.
+    data_type: String
+  - name: token_address
+    description: Address of the Circles token contract.
+    data_type: String
+  - name: is_wrapped
+    description: True when token_address is an ERC-20 wrapper registered in int_execution_circles_v2_wrappers; false when it is a native ERC-1155 personal CRC token.
+    data_type: UInt8
+  - name: balance
+    description: Static balance in CRC (human units, raw / 1e18).
+    data_type: Float64
+  - name: balance_demurraged
+    description: Demurrage-adjusted balance in CRC (human units).
+    data_type: Nullable(Float64)
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_tokens_held_count
+  description: Per-avatar count of distinct CRC tokens currently held above the 0.001 CRC dust threshold (1e15 raw wei). Materialised daily from int_execution_circles_v2_balances_daily; backs the matching thin api_ view.
+  columns:
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
+  - name: tokens_held_count
+    description: Number of distinct Circles v2 CRC tokens held above the dust threshold.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_trusts_summary
+  description: Latest per-avatar trust summary (trusts given and trusts received as of the last complete day). Materialised daily from fct_execution_circles_v2_avatar_trusts_daily; backs the matching thin api_ view.
+  columns:
+  - name: avatar
+    description: Address of the avatar.
+    data_type: String
+  - name: trusts_given_count
+    description: Cumulative count of outgoing trust relationships as of the snapshot day.
+    data_type: Int64
+  - name: trusts_received_count
+    description: Cumulative count of incoming trust relationships as of the snapshot day.
+    data_type: Int64
+  meta: *meta_fct
+  tests: *elementary_warn
+- name: fct_execution_circles_v2_avatar_personal_token_supply_latest
+  description: One-row-per-avatar summary of a Circles v2 avatar's own personal CRC token — total circulating supply and how much of it is currently held inside the avatar's ERC-20 wrapper contracts. Rolled up from fct_execution_circles_v2_avatar_token_distribution; backs the matching thin api_ view.
+  columns:
+  - name: avatar
+    description: The avatar whose personal CRC token is being summarised.
+    data_type: String
+  - name: supply
+    description: Circulating supply of this avatar's personal CRC (sum of balances across all holder categories).
+    data_type: Float64
+  - name: wrapped
+    description: Portion of the supply currently held by the avatar's ERC-20 wrapper contracts.
+    data_type: Float64
+  - name: unwrapped
+    description: Portion of the supply held as native ERC-1155 (supply − wrapped).
+    data_type: Float64
+  - name: wrapped_pct
+    description: wrapped / supply × 100, rounded to 1 decimal. NULL when supply = 0.
+    data_type: Nullable(Float64)
+  - name: supply_demurraged
+    description: Demurrage-adjusted equivalent of supply.
+    data_type: Float64
+  - name: wrapped_demurraged
+    description: Demurrage-adjusted equivalent of wrapped.
+    data_type: Float64
   meta: *meta_fct
   tests: *elementary_warn
 - name: api_execution_circles_v2_relative_trust_score_daily

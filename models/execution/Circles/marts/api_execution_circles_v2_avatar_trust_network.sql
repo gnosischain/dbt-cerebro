@@ -12,7 +12,11 @@
 -- avatar. For mutual relationships we emit TWO rows (avatar →
 -- counterparty AND counterparty → avatar) so the chart can render
 -- both arrows. The dashboard's avatar global filter scopes rows to
--- one focal avatar.
+-- one focal avatar — ClickHouse pushes that filter down into each
+-- UNION branch, so per-request cost stays small despite the apparent
+-- size of the query. Materialising this globally would produce
+-- ~millions of rows × long IPFS strings and blow the memory budget,
+-- so this one stays a view on purpose.
 --
 -- Each row carries display name and IPFS preview image for both
 -- endpoints. The dashboard graph chart consumes these via
@@ -78,8 +82,6 @@ edges AS (
     UNION ALL
 
     -- Mutual edges, SECOND direction: counterparty → focal avatar
-    -- (Two rows per mutual relationship so both arrows render in the
-    -- network panel.)
     SELECT
         tr.avatar         AS avatar,
         tr.counterparty   AS source_id,
@@ -110,8 +112,4 @@ SELECT
 FROM edges e
 LEFT JOIN meta src ON src.avatar = e.source_id
 LEFT JOIN meta tgt ON tgt.avatar = e.target_id
--- Deterministic order so the chart's edgeStyles Set picks up the
--- direction values in a stable sequence (mutual first, then given,
--- then received). This is purely defensive — `edgeStyleColors` in
--- the panel pins the colours regardless of order.
 ORDER BY e.direction_order, e.source_id, e.target_id

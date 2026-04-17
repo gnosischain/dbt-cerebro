@@ -232,15 +232,61 @@ WHERE {{ abi_filter }}
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 
+{# ---------------------------------------------------------------
+   Auto-detect whether `tx_table` points at `execution.traces`. When
+   it does, we normalise the trace column names (action_input / action_to
+   / etc.) onto the `execution.transactions` shape so the rest of the
+   macro stays unchanged. Also emit a `trace_address` column in that
+   case — both for the dedup key (one tx can have many internal calls
+   to the same target) and for the final output.
+
+   For traces mode we also pre-filter to successful real calls
+   (action_call_type IN (...) AND error IS NULL) so the downstream
+   abi-join logic sees a clean stream.
+
+   Safety: existing transactions-mode callers get byte-identical
+   output — no new column, no new filter, no schema drift on their
+   incremental tables.
+   --------------------------------------------------------------- #}
+{% set tx_table_name = (tx_table | string) | lower %}
+{% set is_traces = '"traces"' in tx_table_name or tx_table_name.endswith('.traces') or tx_table_name.endswith('traces`') %}
+
 WITH
+  src AS (
+    {% if is_traces %}
+    SELECT
+      block_number,
+      block_timestamp,
+      transaction_hash,
+      transaction_index,
+      insert_version,
+      action_input                         AS input,
+      action_to                            AS to_address,
+      action_from                          AS from_address,
+      action_value                         AS value_string,
+      CAST(NULL AS Nullable(UInt64))       AS nonce,
+      CAST(NULL AS Nullable(UInt64))       AS gas_price,
+      trace_address                        AS trace_address
+    FROM {{ tx_table }}
+    WHERE action_call_type IN ('call','delegate_call','static_call')
+      AND error IS NULL
+    {% else %}
+    -- `insert_version` is MATERIALIZED on execution.transactions so it's NOT
+    -- picked up by `SELECT *`. Reference it explicitly so the dedup
+    -- ROW_NUMBER further down can see it. The previous implementation
+    -- dodged this by reading `{{ tx_table }}` directly, which allows
+    -- referencing MATERIALIZED columns alongside `*`. Same trick here.
+    SELECT *, insert_version FROM {{ tx_table }}
+    {% endif %}
+  ),
   tx AS (
     SELECT * FROM (
       SELECT *,
         row_number() OVER (
-          PARTITION BY block_number, transaction_index
+          PARTITION BY block_number, transaction_index{% if is_traces %}, trace_address{% endif %}
           ORDER BY insert_version DESC
         ) AS _dedup_rn
-      FROM {{ tx_table }}
+      FROM src
       WHERE {{ addr_filter }}
         {% if start_blocktime %}
           AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
@@ -295,6 +341,7 @@ WITH
       t.nonce,
       t.gas_price,
       t.value_string AS value,
+      {% if is_traces %}t.trace_address AS trace_address,{% endif %}
       a.function_name,
       substring(replaceAll(t.input,'0x',''),1,8) AS call_selector,
       substring(replaceAll(t.input,'0x',''),9)   AS args_raw_hex,
@@ -541,6 +588,7 @@ SELECT
   nonce,
   gas_price,
   value,
+  {% if is_traces %}trace_address,{% endif %}
   function_name,
   decoded_input
 FROM process

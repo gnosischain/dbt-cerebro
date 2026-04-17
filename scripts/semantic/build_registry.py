@@ -32,6 +32,27 @@ BLOCKED_STATUSES = {"blocked"}
 SOURCE_PREFIX = "source."
 MODEL_PREFIX = "model."
 REQUIRED_APPROVED_META = ("grain", "owner", "quality_tier", "question_synonyms")
+GRAPH_REQUIRED = (
+    "enabled",
+    "profile",
+    "source_column",
+    "target_column",
+    "source_kind",
+    "target_kind",
+)
+GRAPH_OPTIONAL = (
+    "directed",
+    "time_column",
+    "weight_column",
+    "node_enrichment_model",
+    "node_enrichment_key",
+    "evidence_model",
+    "evidence_source_column",
+    "evidence_target_column",
+    "default_filters",
+    "notes",
+)
+GRAPH_ALLOWED = set(GRAPH_REQUIRED) | set(GRAPH_OPTIONAL)
 MODEL_NAME_RE = re.compile(r"ref\((?:'|\")(?P<name>[^'\"]+)(?:'|\")\)")
 
 
@@ -524,6 +545,86 @@ def validate_registry(
                     "message": f"Model {model_name} is missing an owner",
                 }
             )
+
+    for model_name, model in models.items():
+        graph = (model.get("semantic", {}).get("meta", {}) or {}).get("graph")
+        if not graph:
+            continue
+        if not isinstance(graph, dict):
+            errors.append(
+                {
+                    "code": "graph_meta_not_mapping",
+                    "severity": "error",
+                    "model": model_name,
+                    "message": f"{model_name}: config.meta.cerebro.graph must be a mapping",
+                }
+            )
+            continue
+        unknown = set(graph) - GRAPH_ALLOWED
+        if unknown:
+            errors.append(
+                {
+                    "code": "graph_meta_unknown_keys",
+                    "severity": "error",
+                    "model": model_name,
+                    "message": f"{model_name}: unknown cerebro.graph keys: {sorted(unknown)}",
+                }
+            )
+        if not graph.get("enabled"):
+            continue
+        missing = [key for key in GRAPH_REQUIRED if key not in graph]
+        if missing:
+            errors.append(
+                {
+                    "code": "graph_meta_missing_required",
+                    "severity": "error",
+                    "model": model_name,
+                    "message": f"{model_name}: cerebro.graph missing required keys {missing}",
+                }
+            )
+        columns = set(model.get("columns", {}).keys())
+        for key in ("source_column", "target_column", "time_column", "weight_column"):
+            col = graph.get(key)
+            if not col:
+                continue
+            # Expression form (e.g. substring(...)) — skip column existence check.
+            if "(" in col or " " in col:
+                continue
+            if col not in columns:
+                errors.append(
+                    {
+                        "code": "graph_meta_unknown_column",
+                        "severity": "error",
+                        "model": model_name,
+                        "message": f"{model_name}: cerebro.graph.{key}='{col}' not in model columns",
+                    }
+                )
+        for key in ("node_enrichment_model", "evidence_model"):
+            ref = graph.get(key)
+            if ref and ref not in models:
+                errors.append(
+                    {
+                        "code": "graph_meta_unknown_model_ref",
+                        "severity": "error",
+                        "model": model_name,
+                        "message": f"{model_name}: cerebro.graph.{key}='{ref}' not found in registry",
+                    }
+                )
+        entity_names = {entity.get("name") for entity in model.get("entities", [])}
+        for side in ("source_kind", "target_kind"):
+            kind = graph.get(side)
+            if kind and entity_names and kind not in entity_names:
+                warnings.append(
+                    {
+                        "code": "graph_meta_kind_without_entity",
+                        "severity": "warning",
+                        "model": model_name,
+                        "message": (
+                            f"{model_name}: cerebro.graph.{side}='{kind}' has no matching entity; "
+                            "cross-model enrichment joins will not resolve automatically"
+                        ),
+                    }
+                )
 
     dimension_providers: dict[str, set[str]] = defaultdict(set)
     for model_name, model in models.items():

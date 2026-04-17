@@ -6,10 +6,10 @@
 }}
 
 SELECT
-    account AS avatar,
+    avatar,
     date,
     token_address,
-    toFloat64(balance_raw) / pow(10, 18) AS balance,
-    toFloat64(demurraged_balance_raw) / pow(10, 18) AS balance_demurraged
-FROM {{ ref('int_execution_circles_v2_balances_daily') }}
-WHERE date < today() AND balance_raw > POW(10, 15)
+    balance,
+    balance_demurraged
+FROM {{ ref('fct_execution_circles_v2_avatar_balances_daily') }}
+WHERE date < today()

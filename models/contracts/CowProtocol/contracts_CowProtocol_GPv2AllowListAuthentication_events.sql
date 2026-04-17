@@ -16,9 +16,6 @@
     )
 }}
 
-{# Proxy contract — implementation ABI (GPv2AllowListAuthentication) was
-   fetched and stored under the proxy address by fetch_and_insert_abi. #}
-
 {{ 
     decode_logs(
         source_table      = source('execution','logs'),

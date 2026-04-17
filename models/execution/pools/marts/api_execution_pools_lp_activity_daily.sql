@@ -5,8 +5,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 WITH
 
 pool_labels AS (

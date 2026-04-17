@@ -11,8 +11,6 @@
     )
 }}
 
-{#- Model documentation in schema.yml -#}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

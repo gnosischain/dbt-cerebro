@@ -2,7 +2,11 @@ semantic_models:
 - name: execution_transfers_whitelisted_daily
   model: ref('int_execution_transfers_whitelisted_daily')
   defaults:
-    agg_time_dimension: date_start
+    agg_time_dimension: date
+  entities:
+  - name: address
+    type: primary
+    expr: "concat(ifNull(`from`,''),':',ifNull(`to`,''),':',token_address,':',toString(date))"
   dimensions:
   - name: token_address
     type: categorical
@@ -10,48 +14,43 @@ semantic_models:
   - name: symbol
     type: categorical
     expr: symbol
-  - name: date_start
-    type: time
-    expr: date_start
-    type_params:
-      time_granularity: day
-  - name: date_end
-    type: time
-    expr: date_end
-    type_params:
-      time_granularity: day
   - name: date
     type: time
     expr: date
     type_params:
       time_granularity: day
-  - name: from
+  - name: from_address
     type: categorical
-    expr: from
-  - name: to
+    expr: "`from`"
+  - name: to_address
     type: categorical
-    expr: to
-  - name: transfer_count
-    type: categorical
-    expr: transfer_count
+    expr: "`to`"
   measures:
-  - name: decimals_value
+  - name: transfer_count_value
     agg: sum
-    expr: decimals
-  - name: amount_value
-    agg: sum
-    expr: amount
-  - name: amount_usd_value
-    agg: sum
-    expr: amount_usd
+    expr: transfer_count
   config:
     meta:
       cerebro:
         owner: analytics_team
         quality_tier: candidate
         question_synonyms:
+        - whitelisted token transfers
+        - who sent tokens to whom
         - execution transfers whitelisted daily
         grain: day
+        graph:
+          enabled: true
+          profile: token_transfers
+          source_column: "`from`"
+          target_column: "`to`"
+          source_kind: address
+          target_kind: address
+          directed: true
+          time_column: date
+          weight_column: transfer_count
+          default_filters:
+            limit: 500
 - name: execution_transfers_whitelisted_raw
   model: ref('int_execution_transfers_whitelisted_raw')
   defaults:

@@ -12,8 +12,6 @@
   )
 }}
 
-{# Description in schema.yml — see int_execution_zodiac_module_proxies #}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

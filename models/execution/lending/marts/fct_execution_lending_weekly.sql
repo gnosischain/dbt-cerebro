@@ -2,7 +2,7 @@
     config(
         materialized='table',
         engine='ReplacingMergeTree()',
-        order_by='(week, token_address)',
+        order_by='(week, protocol, token_address)',
         partition_by='toYYYYMM(week)',
         settings={'allow_nullable_key': 1},
         tags=['production','execution','lending','lending']

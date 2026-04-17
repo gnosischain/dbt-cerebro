@@ -8,11 +8,6 @@
     )
 }}
 
-{#-
-  Per-wallet lifetime KPI metrics for the yields user portfolio.
-  Aggregates across LP positions and lending balances.
--#}
-
 WITH
 
 lp_metrics AS (

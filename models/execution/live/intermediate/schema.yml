@@ -1,0 +1,53 @@
+version: 2
+
+models:
+
+- name: int_live__dex_trades_raw
+  description: >
+    Cached, rolling 48h window of unified DEX swaps across all supported
+    protocols (Uniswap V3, Swapr V3, Balancer V2, Balancer V3) on Gnosis Chain.
+    Normalizes amounts by token decimals, resolves symbols, and attaches USD
+    prices per side via ASOF join against daily token prices. The final
+    `amount_usd` uses the LEAST of the two priced sides when both are known
+    (a conservative notional that rejects inflated long-tail prices), or the
+    single available price when only one side is priced.
+
+    MATERIALIZATION: incremental ReplacingMergeTree, refreshed by a k8s
+    CronJob running `dbt run --select +tag:live` every ~5 min. First run
+    backfills the last 48h (source TTL). Each subsequent run delete+inserts
+    the last `live_trades_overlap_minutes` (default 120 = 2h) to self-heal
+    against cryo-live's out-of-order / bulk-attach inserts. 48h TTL on
+    `block_timestamp` prevents unbounded growth and matches the source.
+    Downstream api views read this table directly, so dashboard queries
+    never trigger decode-log scans over `execution_live.logs`.
+  columns:
+  - name: block_number
+    tests: [not_null]
+  - name: block_timestamp
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: log_index
+    tests: [not_null]
+  - name: protocol
+    tests: [not_null]
+  - name: pool_address
+  - name: token_bought_address
+  - name: token_bought_symbol
+    description: Symbol resolved from `stg_pools__tokens_meta`. Empty string if the token is unknown.
+  - name: amount_bought_raw
+  - name: amount_bought
+    description: Decimal-normalized bought amount.
+  - name: token_bought_price_usd
+    description: USD price for the bought token (ASOF join on daily prices, last 7 days).
+  - name: amount_bought_usd
+  - name: token_sold_address
+  - name: token_sold_symbol
+  - name: amount_sold_raw
+  - name: amount_sold
+  - name: token_sold_price_usd
+  - name: amount_sold_usd
+  - name: amount_usd
+    description: >
+      Conservative USD notional. When both sides priced: least(bought_usd, sold_usd).
+      When only one side priced: that side's USD. When neither priced: NULL.
