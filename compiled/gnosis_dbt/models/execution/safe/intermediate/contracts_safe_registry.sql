@@ -1,7 +1,5 @@
 
 
-
-
 SELECT
     safe_address                      AS address,
     'SafeProxy'                       AS contract_type,

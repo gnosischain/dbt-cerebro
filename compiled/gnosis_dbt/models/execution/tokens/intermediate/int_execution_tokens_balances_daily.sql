@@ -57,7 +57,17 @@ WITH balances AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -100,7 +110,17 @@ WITH balances AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -138,7 +158,17 @@ WITH balances AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -191,7 +221,17 @@ prices AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -234,7 +274,17 @@ prices AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -272,7 +322,17 @@ prices AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     

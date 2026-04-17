@@ -8,11 +8,12 @@ WITH latest_date AS (
 )
 
 SELECT
-    b.symbol AS token,
+    b.protocol AS protocol,
+    b.symbol   AS token,
     sum(b.balance_usd) AS value
 FROM `dbt`.`int_execution_lending_aave_user_balances_daily` b
 CROSS JOIN latest_date d
 WHERE b.date = d.max_date
   AND b.balance_usd > 0
-GROUP BY b.symbol
+GROUP BY b.protocol, b.symbol
 ORDER BY value DESC

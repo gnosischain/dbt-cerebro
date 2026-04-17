@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_gpay_wallets</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_gpay_wallets</h1>
+    <p>Gnosis Pay wallets (Safes) that have been or currently are controlled
+by a Gnosis App user, via the Safe&#x27;s Zodiac **Delay Module**.
+
+Heuristic (Hugo&#x27;s Dune query 6675111, Bernardo review April 2026):
+
+  The Delay Module bound to each GP Safe has its OWN access control —
+  Zodiac&#x27;s enableModule(address)/disableModule(address) functions,
+  which emit EnabledModule/DisabledModule events. Any address enabled
+  as a module on the Delay can queue transactions on the GP Safe.
+
+  A GP wallet is &quot;on Gnosis App&quot; iff a GA user address has been
+  enabled (net +1) as a module on its Delay.
+
+Events scanned (from execution.logs):
+
+  EnabledModule  topic0 = 0xecdf3a3e…f8440 (module addr in DATA field)
+  DisabledModule topic0 = 0xaab4fa2b…54276 (module addr in DATA field)
+
+Mapping Delay Module → GP Safe comes from
+int_execution_gpay_safe_modules.contract_type = &#x27;DelayModule&#x27;.
+
+Incremental: on each run, scans only delay modules that had an
+EnabledModule/DisabledModule event in the last 30 days (or since
+previous-run watermark), then recomputes the FULL event history for
+just those modules. delete+insert on unique_key=pay_wallet keeps
+unchanged rows from previous runs. Full-refresh scans everything back
+to 2023-06-01.
+
+Onboarding classes (per Daniel&#x27;s dashboard request):
+
+  onboarded_via_ga : the very first module ever enabled on this Delay
+                     is a GA user — user went from zero → Gnosis Pay
+                     via Gnosis App.
+  imported         : a GA user was added as a module later — user
+                     already had Gnosis Pay, then linked their GA Safe.
+
+One row per GP Safe. A Safe with multiple GA modules enabled is still
+counted once.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_gpay_wallets.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>first_ga_owner_address</code></td><td>String</td><td>GA user address that first became a module on this Safe&#x27;s Delay (0x-prefixed).</td></tr><tr><td><code>first_ga_owner_at</code></td><td>DateTime</td><td>Earliest became-owner timestamp among GA-user modules.</td></tr><tr><td><code>initial_event_at</code></td><td>DateTime</td><td>Timestamp of the earliest EnabledModule event on this Safe&#x27;s Delay.</td></tr><tr><td><code>initial_owner_address</code></td><td>String</td><td>Address of the very first module enabled on this Safe&#x27;s Delay.</td></tr><tr><td><code>is_currently_ga_owned</code></td><td>Bool</td><td>True iff at least one GA user is currently enabled as a module on the Delay.</td></tr><tr><td><code>n_ga_owners_current</code></td><td>UInt64</td><td>Number of distinct GA-user addresses currently enabled as modules.</td></tr><tr><td><code>n_total_owners_current</code></td><td>UInt64</td><td>Number of distinct modules (GA or otherwise) currently enabled on the Delay.</td></tr><tr><td><code>onboarding_class</code></td><td>String</td><td>&#x27;onboarded_via_ga&#x27; or &#x27;imported&#x27; — see model description.</td></tr><tr><td><code>pay_wallet</code></td><td>String</td><td>GP Safe address (0x-prefixed, lowercase).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_users_current</code></li><li><code>int_execution_gpay_safe_modules</code></li><li><code>int_execution_gpay_wallets</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_gnosis_app_kpi_gp_wallets_latest</code></li><li><code>fct_execution_gnosis_app_gpay_wallets_daily</code></li><li><code>int_execution_address_roles_current</code></li></ul>
+    
+  </body>
+</html>

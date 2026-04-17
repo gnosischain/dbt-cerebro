@@ -1,3 +1,5 @@
+
+
 SELECT
     t.day AS date,
     t.protocol,

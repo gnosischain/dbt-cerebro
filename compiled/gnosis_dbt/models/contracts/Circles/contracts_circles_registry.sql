@@ -1,7 +1,5 @@
 
 
-
-
 -- depends_on: `dbt`.`contracts_factory_registry`
 -- depends_on: `dbt`.`contracts_circles_v2_BaseGroupFactory_events`
 -- depends_on: `dbt`.`contracts_circles_v2_CMGroupDeployer_events`

@@ -1,3 +1,5 @@
+
+
 SELECT '0x773cda0cade2a3d86e6d4e30699d40bb95174ff2' AS wrapper_address, 'waGnowstETH' AS wrapper_symbol, toUInt8(18) AS wrapper_decimals, '0x6c76971f98945ae98dd7d4dfca8711ebea946ea6' AS underlying_address
 UNION ALL
 SELECT '0x57f664882f762fa37903fc864e2b633d384b411a', 'waGnoWETH', toUInt8(18), '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1'

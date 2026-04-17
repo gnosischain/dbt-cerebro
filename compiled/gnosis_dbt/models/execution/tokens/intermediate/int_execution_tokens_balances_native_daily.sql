@@ -57,7 +57,17 @@ WITH deltas AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -100,7 +110,17 @@ WITH deltas AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -138,7 +158,17 @@ WITH deltas AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -196,7 +226,17 @@ current_partition AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -241,7 +281,17 @@ prev_balances AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     

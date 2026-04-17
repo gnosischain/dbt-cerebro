@@ -1,6 +1,8 @@
 
 
 
+
+
 WITH
 
 uniswap_v3_lp_events AS (

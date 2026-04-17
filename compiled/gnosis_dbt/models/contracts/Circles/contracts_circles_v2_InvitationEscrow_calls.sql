@@ -25,6 +25,16 @@
 
 
 WITH
+  src AS (
+    
+    -- `insert_version` is MATERIALIZED on execution.transactions so it's NOT
+    -- picked up by `SELECT *`. Reference it explicitly so the dedup
+    -- ROW_NUMBER further down can see it. The previous implementation
+    -- dodged this by reading ``execution`.`transactions`` directly, which allows
+    -- referencing MATERIALIZED columns alongside `*`. Same trick here.
+    SELECT *, insert_version FROM `execution`.`transactions`
+    
+  ),
   tx AS (
     SELECT * FROM (
       SELECT *,
@@ -32,7 +42,7 @@ WITH
           PARTITION BY block_number, transaction_index
           ORDER BY insert_version DESC
         ) AS _dedup_rn
-      FROM `execution`.`transactions`
+      FROM src
       WHERE replaceAll(lower(to_address),'0x','') = '8f8b74fa13eaaff4176d061a0f98ad5c8e19c903'
         
           AND block_timestamp >= toDateTime('2025-09-01')
@@ -79,6 +89,7 @@ WHERE replaceAll(lower(contract_address),'0x','') = '8f8b74fa13eaaff4176d061a0f9
       t.nonce,
       t.gas_price,
       t.value_string AS value,
+      
       a.function_name,
       substring(replaceAll(t.input,'0x',''),1,8) AS call_selector,
       substring(replaceAll(t.input,'0x',''),9)   AS args_raw_hex,
@@ -323,6 +334,7 @@ SELECT
   nonce,
   gas_price,
   value,
+  
   function_name,
   decoded_input
 FROM process

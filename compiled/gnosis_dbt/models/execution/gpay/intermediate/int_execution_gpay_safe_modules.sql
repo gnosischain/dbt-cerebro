@@ -1,7 +1,5 @@
 
 
-
-
 WITH gpay_safes AS (
     SELECT lower(address) AS pay_wallet FROM `dbt`.`int_execution_gpay_wallets`
 ),

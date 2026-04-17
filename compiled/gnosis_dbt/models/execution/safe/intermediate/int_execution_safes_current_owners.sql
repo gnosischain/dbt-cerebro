@@ -1,7 +1,5 @@
 
 
-
-
 WITH owner_latest AS (
     SELECT
         safe_address,

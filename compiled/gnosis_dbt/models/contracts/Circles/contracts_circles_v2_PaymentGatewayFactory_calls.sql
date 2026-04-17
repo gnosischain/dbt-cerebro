@@ -25,14 +25,34 @@
 
 
 WITH
+  src AS (
+    
+    SELECT
+      block_number,
+      block_timestamp,
+      transaction_hash,
+      transaction_index,
+      insert_version,
+      action_input                         AS input,
+      action_to                            AS to_address,
+      action_from                          AS from_address,
+      action_value                         AS value_string,
+      CAST(NULL AS Nullable(UInt64))       AS nonce,
+      CAST(NULL AS Nullable(UInt64))       AS gas_price,
+      trace_address                        AS trace_address
+    FROM `execution`.`traces`
+    WHERE action_call_type IN ('call','delegate_call','static_call')
+      AND error IS NULL
+    
+  ),
   tx AS (
     SELECT * FROM (
       SELECT *,
         row_number() OVER (
-          PARTITION BY block_number, transaction_index
+          PARTITION BY block_number, transaction_index, trace_address
           ORDER BY insert_version DESC
         ) AS _dedup_rn
-      FROM `execution`.`transactions`
+      FROM src
       WHERE replaceAll(lower(to_address),'0x','') = '186725d8fe10a573dc73144f7a317fcae5314f19'
         
           AND block_timestamp >= toDateTime('2025-12-01')
@@ -79,6 +99,7 @@ WHERE replaceAll(lower(contract_address),'0x','') = '186725d8fe10a573dc73144f7a3
       t.nonce,
       t.gas_price,
       t.value_string AS value,
+      t.trace_address AS trace_address,
       a.function_name,
       substring(replaceAll(t.input,'0x',''),1,8) AS call_selector,
       substring(replaceAll(t.input,'0x',''),9)   AS args_raw_hex,
@@ -323,6 +344,7 @@ SELECT
   nonce,
   gas_price,
   value,
+  trace_address,
   function_name,
   decoded_input
 FROM process

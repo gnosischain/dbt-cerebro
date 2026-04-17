@@ -11,29 +11,43 @@ WITH
 
 reserve_map AS (
     SELECT
-        lower(atoken_address)  AS atoken_address,
-        lower(reserve_address) AS reserve_address,
+        protocol,
+        lower(supply_token_address) AS atoken_address,
+        lower(reserve_address)      AS reserve_address,
         reserve_symbol,
         decimals
-    FROM `dbt`.`atoken_reserve_mapping`
+    FROM `dbt`.`lending_market_mapping`
 ),
 
--- ReserveDataUpdated events carry the liquidityIndex snapshot that should be applied
--- to each pool action in the same tx. Order them within (tx, reserve) by log_index so
--- we can pair the N-th RDU with the N-th pool action (handles multi-action txs correctly).
+pool_events_raw AS (
+    SELECT 'Aave V3'   AS protocol, * FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    UNION ALL
+    SELECT 'SparkLend' AS protocol, * FROM `dbt`.`contracts_spark_Pool_events`
+),
+
+atoken_events_raw AS (
+    SELECT 'Aave V3'   AS protocol, * FROM `dbt`.`contracts_aaveV3_AToken_events`
+    UNION ALL
+    SELECT 'SparkLend' AS protocol, * FROM `dbt`.`contracts_spark_AToken_events`
+),
+
+-- ReserveDataUpdated events carry the liquidityIndex snapshot applied immediately
+-- before each user action in the same (tx, reserve). We do NOT rank them; instead we
+-- ASOF-join each pool action below to the RDU with the largest log_index < the action's
+-- log_index. This handles Spark correctly, where FlashLoan RDUs interleave with user
+-- action RDUs and rank-based pairing would misalign (e.g. pair the user's Supply with
+-- the FlashLoan's RDU).
 reserve_index_by_tx AS (
     SELECT
+        e.protocol,
         e.transaction_hash,
         lower(e.decoded_params['reserve']) AS reserve_address,
         e.log_index,
-        toUInt256OrZero(e.decoded_params['liquidityIndex']) AS liquidity_index,
-        row_number() OVER (
-            PARTITION BY e.transaction_hash, lower(e.decoded_params['reserve'])
-            ORDER BY e.log_index
-        ) AS event_order
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events` e
+        toUInt256OrZero(e.decoded_params['liquidityIndex']) AS liquidity_index
+    FROM pool_events_raw e
     INNER JOIN reserve_map rm
-        ON rm.reserve_address = lower(e.decoded_params['reserve'])
+        ON rm.protocol        = e.protocol
+       AND rm.reserve_address = lower(e.decoded_params['reserve'])
     WHERE e.event_name = 'ReserveDataUpdated'
       AND e.block_timestamp < today()
       
@@ -64,6 +78,7 @@ reserve_index_by_tx AS (
 
 pool_events AS (
     SELECT
+        protocol,
         toDate(block_timestamp) AS date,
         transaction_hash,
         log_index,
@@ -71,7 +86,7 @@ pool_events AS (
         lower(decoded_params['onBehalfOf']) AS user_address,
         'Supply' AS action,
         toUInt256OrZero(decoded_params['amount']) AS amount
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    FROM pool_events_raw
     WHERE event_name = 'Supply'
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
@@ -104,6 +119,7 @@ pool_events AS (
     UNION ALL
 
     SELECT
+        protocol,
         toDate(block_timestamp) AS date,
         transaction_hash,
         log_index,
@@ -111,7 +127,7 @@ pool_events AS (
         lower(decoded_params['user']) AS user_address,
         'Withdraw' AS action,
         toUInt256OrZero(decoded_params['amount']) AS amount
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    FROM pool_events_raw
     WHERE event_name = 'Withdraw'
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
@@ -144,6 +160,7 @@ pool_events AS (
     UNION ALL
 
     SELECT
+        protocol,
         toDate(block_timestamp) AS date,
         transaction_hash,
         log_index,
@@ -151,11 +168,8 @@ pool_events AS (
         lower(decoded_params['repayer']) AS user_address,
         'RepayWithATokens' AS action,
         toUInt256OrZero(decoded_params['amount']) AS amount
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    FROM pool_events_raw
     WHERE event_name = 'Repay'
-      -- decode_logs now emits bool as '0'/'1' (matching uint* convention);
-      -- was silently matching 0 rows before the macro fix because decode_logs
-      -- used to fall through to NULL for static bool params.
       AND decoded_params['useATokens'] = '1'
       AND decoded_params['reserve'] IS NOT NULL
       AND decoded_params['amount'] IS NOT NULL
@@ -188,6 +202,7 @@ pool_events AS (
     UNION ALL
 
     SELECT
+        protocol,
         toDate(block_timestamp) AS date,
         transaction_hash,
         log_index,
@@ -195,11 +210,8 @@ pool_events AS (
         lower(decoded_params['user']) AS user_address,
         'LiquidationWithdraw' AS action,
         toUInt256OrZero(decoded_params['liquidatedCollateralAmount']) AS amount
-    FROM `dbt`.`contracts_aaveV3_PoolInstance_events`
+    FROM pool_events_raw
     WHERE event_name = 'LiquidationCall'
-      -- Only count the burn case; when receiveAToken=true the collateral movement
-      -- is already captured by aToken BalanceTransfer(borrower -> liquidator) below,
-      -- so including those rows here would double-debit the borrower.
       AND decoded_params['receiveAToken'] = '0'
       AND decoded_params['collateralAsset'] IS NOT NULL
       AND decoded_params['liquidatedCollateralAmount'] IS NOT NULL
@@ -230,31 +242,26 @@ pool_events AS (
       
 ),
 
--- Filter to in-scope reserves and assign per-(tx, reserve) event_order so we can pair
--- each pool action with the ReserveDataUpdated snapshot that fires at the same position.
-pool_events_ordered AS (
+-- Filter to in-scope reserves.
+pool_events_scoped AS (
     SELECT
-        pe.date             AS date,
-        pe.transaction_hash AS transaction_hash,
-        pe.log_index        AS log_index,
-        pe.reserve_address  AS reserve_address,
-        pe.user_address     AS user_address,
-        pe.action           AS action,
-        pe.amount           AS amount,
-        row_number() OVER (
-            PARTITION BY pe.transaction_hash, pe.reserve_address
-            ORDER BY pe.log_index
-        ) AS event_order
+        pe.protocol,
+        pe.date,
+        pe.transaction_hash,
+        pe.log_index,
+        pe.reserve_address,
+        pe.user_address,
+        pe.action,
+        pe.amount
     FROM pool_events pe
-    INNER JOIN reserve_map rm ON rm.reserve_address = pe.reserve_address
+    INNER JOIN reserve_map rm
+      ON rm.protocol        = pe.protocol
+     AND rm.reserve_address = pe.reserve_address
 ),
 
--- Convert pool actions to SCALED deltas using exact UInt256 arithmetic that matches
--- Aave's on-chain WadRayMath:
---   Supply              -> rayDivFloor(amount, index) = floor(amount * RAY / index)
---   Withdraw/Repay/Liq  -> rayDivCeil (amount, index) = floor((amount*RAY + index-1) / index)
 pool_deltas AS (
     SELECT
+        pe.protocol        AS protocol,
         pe.date            AS date,
         pe.user_address    AS user_address,
         pe.reserve_address AS reserve_address,
@@ -275,29 +282,31 @@ pool_deltas AS (
                     )
                 )
         END AS scaled_delta
-    FROM pool_events_ordered pe
-    INNER JOIN reserve_index_by_tx ri
-        ON ri.transaction_hash = pe.transaction_hash
+    FROM pool_events_scoped pe
+    ASOF INNER JOIN reserve_index_by_tx ri
+        ON ri.protocol         = pe.protocol
+       AND ri.transaction_hash = pe.transaction_hash
        AND ri.reserve_address  = pe.reserve_address
-       AND ri.event_order      = pe.event_order
+       AND ri.log_index        <  pe.log_index
     WHERE ri.liquidity_index > toUInt256OrZero('0')
 ),
 
--- aToken BalanceTransfer values are emitted by Aave already in scaled units, so they
--- flow straight into the Int256 ledger without any index conversion.
+-- aToken BalanceTransfer values are already in scaled units.
 transfer_deltas AS (
     SELECT
-        toDate(block_timestamp) AS date,
-        lower(decoded_params['from']) AS user_address,
+        t.protocol,
+        toDate(t.block_timestamp) AS date,
+        lower(t.decoded_params['from']) AS user_address,
         rm.reserve_address AS reserve_address,
-        -toInt256(toUInt256OrZero(decoded_params['value'])) AS scaled_delta
-    FROM `dbt`.`contracts_aaveV3_AToken_events` t
+        -toInt256(toUInt256OrZero(t.decoded_params['value'])) AS scaled_delta
+    FROM atoken_events_raw t
     INNER JOIN reserve_map rm
-        ON rm.atoken_address = lower(t.contract_address)
+        ON rm.protocol       = t.protocol
+       AND rm.atoken_address = lower(t.contract_address)
     WHERE t.event_name = 'BalanceTransfer'
-      AND decoded_params['from'] != '0x0000000000000000000000000000000000000000'
-      AND decoded_params['to']   != '0x0000000000000000000000000000000000000000'
-      AND block_timestamp < today()
+      AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
+      AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
+      AND t.block_timestamp < today()
       
         
   
@@ -305,12 +314,12 @@ transfer_deltas AS (
     
 
    AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
+    toStartOfMonth(toDate(t.block_timestamp)) >= (
       SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
       WHERE 1=1 
     )
-    AND toDate(block_timestamp) >= (
+    AND toDate(t.block_timestamp) >= (
       SELECT 
         
           addDays(max(toDate(x2.date)), -0)
@@ -326,17 +335,19 @@ transfer_deltas AS (
     UNION ALL
 
     SELECT
-        toDate(block_timestamp) AS date,
-        lower(decoded_params['to']) AS user_address,
+        t.protocol,
+        toDate(t.block_timestamp) AS date,
+        lower(t.decoded_params['to']) AS user_address,
         rm.reserve_address AS reserve_address,
-        toInt256(toUInt256OrZero(decoded_params['value'])) AS scaled_delta
-    FROM `dbt`.`contracts_aaveV3_AToken_events` t
+        toInt256(toUInt256OrZero(t.decoded_params['value'])) AS scaled_delta
+    FROM atoken_events_raw t
     INNER JOIN reserve_map rm
-        ON rm.atoken_address = lower(t.contract_address)
+        ON rm.protocol       = t.protocol
+       AND rm.atoken_address = lower(t.contract_address)
     WHERE t.event_name = 'BalanceTransfer'
-      AND decoded_params['from'] != '0x0000000000000000000000000000000000000000'
-      AND decoded_params['to']   != '0x0000000000000000000000000000000000000000'
-      AND block_timestamp < today()
+      AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
+      AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
+      AND t.block_timestamp < today()
       
         
   
@@ -344,12 +355,12 @@ transfer_deltas AS (
     
 
    AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
+    toStartOfMonth(toDate(t.block_timestamp)) >= (
       SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
       FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
       WHERE 1=1 
     )
-    AND toDate(block_timestamp) >= (
+    AND toDate(t.block_timestamp) >= (
       SELECT 
         
           addDays(max(toDate(x2.date)), -0)
@@ -364,25 +375,27 @@ transfer_deltas AS (
 ),
 
 all_deltas AS (
-    SELECT date, user_address, reserve_address, scaled_delta
+    SELECT protocol, date, user_address, reserve_address, scaled_delta
     FROM pool_deltas
     UNION ALL
-    SELECT date, user_address, reserve_address, scaled_delta
+    SELECT protocol, date, user_address, reserve_address, scaled_delta
     FROM transfer_deltas
 ),
 
 agg AS (
     SELECT
         date,
+        protocol,
         user_address,
         reserve_address,
         sum(scaled_delta) AS diff_scaled
     FROM all_deltas
-    GROUP BY date, user_address, reserve_address
+    GROUP BY date, protocol, user_address, reserve_address
 )
 
 SELECT
     date,
+    protocol,
     user_address,
     reserve_address,
     diff_scaled

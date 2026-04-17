@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_token_offers</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_token_offers</h1>
+    <p>Gnosis App token-offer registry — one row per `NextOffer` instance emitted
+by the Circles v2 ERC20TokenOfferCycle contracts. Each cycle (there are 3
+deployed — v1/v2/v3) periodically emits `NextOfferCreated` for a new sale
+instance with a fixed CRC price and per-user CRC cap; users then pay CRC
+to receive the cycle&#x27;s `offerToken` (GNO today).
+
+Sources &amp; join:
+  1. CycleConfiguration event on the cycle address — carries offerToken,
+     admin, offersStart, offerDuration.
+  2. NextOfferCreated event on the same cycle address — carries the
+     specific offer (nextOffer) address, tokenPriceInCRC, offerLimitInCRC.
+  3. Joined on (contract_address = cycle_address) so each offer is
+     enriched with its parent cycle&#x27;s configuration.
+  4. NextOfferTokensDeposited aggregated by offer for supply side.
+
+Token metadata (symbol, decimals) comes from tokens_whitelist, keyed on
+the lowercase offer_token_address.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_token_offers.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>token_offers</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>created_tx_hash</code></td><td>String</td><td>Transaction hash of the NextOfferCreated event (0x-prefixed lowercase).</td></tr><tr><td><code>cycle_address</code></td><td>String</td><td>Address of the ERC20TokenOfferCycle contract that owns this offer (0x-prefixed lowercase).</td></tr><tr><td><code>cycle_admin</code></td><td>String</td><td>Admin address configured on the cycle (0x-prefixed lowercase).</td></tr><tr><td><code>cycle_starts_at</code></td><td>Nullable(DateTime)</td><td>UTC timestamp of the cycle&#x27;s first offer (from `offersStart` in CycleConfiguration).</td></tr><tr><td><code>offer_address</code></td><td>String</td><td>Address of the specific offer instance (the `nextOffer` field of NextOfferCreated, 0x-prefixed lowercase).</td></tr><tr><td><code>offer_created_at</code></td><td>DateTime</td><td>Block timestamp of the NextOfferCreated event that defined this offer.</td></tr><tr><td><code>offer_duration_seconds</code></td><td>Nullable(UInt64)</td><td>Duration of each offer within the cycle, in seconds.</td></tr><tr><td><code>offer_limit_in_crc</code></td><td>Float64</td><td>offer_limit_in_crc_raw / 1e18 (CRC human units).</td></tr><tr><td><code>offer_limit_in_crc_raw</code></td><td>Nullable(UInt256)</td><td>Raw uint256 per-user CRC cap for this offer.</td></tr><tr><td><code>offer_token_address</code></td><td>String</td><td>Address of the token sold by the offer (e.g. GNO). 0x-prefixed lowercase.</td></tr><tr><td><code>offer_token_decimals</code></td><td>UInt8</td><td>Whitelist decimals of the offer token (defaults to 18 if not in whitelist).</td></tr><tr><td><code>offer_token_symbol</code></td><td>Nullable(String)</td><td>Whitelist symbol of the offer token (NULL if not in tokens_whitelist).</td></tr><tr><td><code>supply_deposited</code></td><td>Float64</td><td>Sum of NextOfferTokensDeposited `amount` for this offer, scaled by 1e18.
+Represents the total amount of offer_token made available for claims.
+</td></tr><tr><td><code>token_price_in_crc</code></td><td>Float64</td><td>token_price_in_crc_raw / 1e18 (CRC human units per offer_token unit).</td></tr><tr><td><code>token_price_in_crc_raw</code></td><td>Nullable(UInt256)</td><td>Raw uint256 CRC price per offer_token unit (before decimals scaling).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_ERC20TokenOfferCycle_events</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gnosis_app_token_offer_claims</code></li></ul>
+    
+  </body>
+</html>

@@ -15,17 +15,17 @@
   <body>
     
     <h1>int_execution_lending_aave_diffs_daily</h1>
-    <p>Daily per-user scaled balance deltas for Aave V3 on Gnosis. Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, user, reserve). Scaled math uses exact UInt256 WadRayMath (rayDivFloor for supply, rayDivCeil for withdraw/repay/liquidation_burn) and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its transaction. LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -&gt; liquidator) event; counting both would double-debit the borrower. Lightweight event-processing model consumed by int_execution_lending_aave_user_balances_daily.</p>
+    <p>Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3 and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, protocol, user, reserve). Scaled math uses exact UInt256 WadRayMath and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its (protocol, transaction). LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -&gt; liquidator) event.</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> </p>
     <p><strong>Path:</strong> <code>models/execution/lending/intermediate/int_execution_lending_aave_diffs_daily.sql</code></p>
-    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>lending</span> <span class='pill'>aave</span> <span class='pill'>diffs</span></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>lending</span> <span class='pill'>aave</span> <span class='pill'>spark</span> <span class='pill'>diffs</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td></td></tr><tr><td><code>diff_scaled</code></td><td>Int256</td><td>Net scaled balance change for this user-reserve on this day in RAY-scaled units (Int256). Positive = net supply, negative = net withdrawal.</td></tr><tr><td><code>reserve_address</code></td><td>String</td><td>Address of the underlying reserve token.</td></tr><tr><td><code>user_address</code></td><td>String</td><td>Address of the aToken holder.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td></td></tr><tr><td><code>diff_scaled</code></td><td>Int256</td><td>Net scaled balance change for this (protocol, user, reserve) on this day in RAY-scaled units (Int256). Positive = net supply, negative = net withdrawal.</td></tr><tr><td><code>protocol</code></td><td>String</td><td>Lending protocol identifier.</td></tr><tr><td><code>reserve_address</code></td><td>String</td><td>Address of the underlying reserve token.</td></tr><tr><td><code>user_address</code></td><td>String</td><td>Address of the aToken holder.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>user_address</code> (categorical)</li><li><code>reserve_address</code> (categorical)</li></ul>
     <h2>Measures</h2><ul><li><code>diff_scaled_value</code> (sum)</li></ul>
-    <h2>Upstream</h2><ul><li><code>contracts_aaveV3_AToken_events</code></li><li><code>contracts_aaveV3_PoolInstance_events</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_aaveV3_AToken_events</code></li><li><code>contracts_aaveV3_PoolInstance_events</code></li><li><code>contracts_spark_AToken_events</code></li><li><code>contracts_spark_Pool_events</code></li></ul>
     <h2>Downstream</h2><ul><li><code>int_execution_lending_aave_user_balances_daily</code></li></ul>
     
   </body>

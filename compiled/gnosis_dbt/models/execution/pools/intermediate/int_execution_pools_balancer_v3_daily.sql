@@ -1,6 +1,8 @@
 
 
 
+
+
 WITH
 
 /* ========================================
@@ -177,56 +179,117 @@ daily_deltas AS (
     GROUP BY date, pool_address, token_address
 ),
 
+overall_max_date AS (
+    SELECT
+        least(
+            
+                today(),
+            
+            yesterday(),
+            (
+                SELECT max(toDate(toStartOfDay(block_timestamp)))
+                FROM `dbt`.`stg_pools__balancer_v3_events`
+                
+            )
+        ) AS max_date
+),
 
+
+current_partition AS (
+    SELECT
+        max(date) AS max_date
+    FROM `dbt`.`int_execution_pools_balancer_v3_daily`
+    WHERE date < yesterday()
+),
 prev_balances AS (
     SELECT
+        t1.pool_address,
+        t1.token_address,
+        t1.token_amount_raw AS balance_raw,
+        t1.reserve_amount_raw AS reserve_raw,
+        t1.fee_amount_raw AS fee_raw
+    FROM `dbt`.`int_execution_pools_balancer_v3_daily` t1
+    CROSS JOIN current_partition t2
+    WHERE t1.date = t2.max_date
+),
+
+
+
+keys AS (
+    SELECT DISTINCT
         pool_address,
-        token_address,
-        token_amount_raw AS balance_raw,
-        reserve_amount_raw AS reserve_raw,
-        fee_amount_raw AS fee_raw
-    FROM `dbt`.`int_execution_pools_balancer_v3_daily` FINAL
-    WHERE date = (SELECT max(date) FROM `dbt`.`int_execution_pools_balancer_v3_daily` FINAL)
+        token_address
+    FROM (
+        SELECT pool_address, token_address FROM prev_balances
+        UNION ALL
+        SELECT pool_address, token_address FROM daily_deltas
+    )
+),
+
+calendar AS (
+    SELECT
+        k.pool_address,
+        k.token_address,
+        
+            addDays(cp.max_date, offset + 1) AS date
+        
+    FROM keys k
+    
+    CROSS JOIN current_partition cp
+    
+    CROSS JOIN overall_max_date o
+    ARRAY JOIN range(
+        toUInt32(dateDiff('day',
+            
+                cp.max_date,
+            
+            o.max_date
+        ))
+    ) AS offset
 ),
 
 
 balances AS (
     SELECT
-        date,
-        pool_address,
-        token_address,
-        sum(daily_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        c.date AS date,
+        c.pool_address AS pool_address,
+        c.token_address AS token_address,
+        sum(coalesce(d.daily_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
             + coalesce(p.balance_raw, toInt256(0))
         
         AS balance_raw,
-        sum(daily_reserve_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        sum(coalesce(d.daily_reserve_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
             + coalesce(p.reserve_raw, toInt256(0))
         
         AS reserve_raw,
-        sum(daily_fee_delta_raw) OVER (
-            PARTITION BY pool_address, token_address
-            ORDER BY date
+        sum(coalesce(d.daily_fee_delta_raw, toInt256(0))) OVER (
+            PARTITION BY c.pool_address, c.token_address
+            ORDER BY c.date
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
             + coalesce(p.fee_raw, toInt256(0))
         
         AS fee_raw
-    FROM daily_deltas d
+    FROM calendar c
+    LEFT JOIN daily_deltas d
+        ON d.pool_address = c.pool_address
+       AND d.token_address = c.token_address
+       AND d.date = c.date
     
     LEFT JOIN prev_balances p
-        ON d.pool_address = p.pool_address
-        AND d.token_address = p.token_address
+        ON p.pool_address = c.pool_address
+       AND p.token_address = c.token_address
     
 ),enriched AS (
     SELECT

@@ -1,3 +1,5 @@
+
+
 WITH
 
 position_amounts AS (

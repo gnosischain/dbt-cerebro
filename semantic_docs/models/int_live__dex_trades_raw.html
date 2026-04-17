@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_live__dex_trades_raw</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_live__dex_trades_raw</h1>
+    <p>Cached, rolling 48h window of unified DEX swaps across all supported protocols (Uniswap V3, Swapr V3, Balancer V2, Balancer V3) on Gnosis Chain. Normalizes amounts by token decimals, resolves symbols, and attaches USD prices per side via ASOF join against daily token prices. The final `amount_usd` uses the LEAST of the two priced sides when both are known (a conservative notional that rejects inflated long-tail prices), or the single available price when only one side is priced.
+MATERIALIZATION: incremental ReplacingMergeTree, refreshed by a k8s CronJob running `dbt run --select +tag:live` every ~5 min. First run backfills the last 48h (source TTL). Each subsequent run delete+inserts the last `live_trades_overlap_minutes` (default 120 = 2h) to self-heal against cryo-live&#x27;s out-of-order / bulk-attach inserts. 48h TTL on `block_timestamp` prevents unbounded growth and matches the source. Downstream api views read this table directly, so dashboard queries never trigger decode-log scans over `execution_live.logs`.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/execution/live/intermediate/int_live__dex_trades_raw.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>dev</span> <span class='pill'>live</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>trades</span> <span class='pill'>intermediate</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td></td><td>Decimal-normalized bought amount.</td></tr><tr><td><code>amount_bought_raw</code></td><td></td><td></td></tr><tr><td><code>amount_bought_usd</code></td><td></td><td></td></tr><tr><td><code>amount_sold</code></td><td></td><td></td></tr><tr><td><code>amount_sold_raw</code></td><td></td><td></td></tr><tr><td><code>amount_sold_usd</code></td><td></td><td></td></tr><tr><td><code>amount_usd</code></td><td></td><td>Conservative USD notional. When both sides priced: least(bought_usd, sold_usd). When only one side priced: that side&#x27;s USD. When neither priced: NULL.</td></tr><tr><td><code>block_number</code></td><td></td><td></td></tr><tr><td><code>block_timestamp</code></td><td></td><td></td></tr><tr><td><code>log_index</code></td><td></td><td></td></tr><tr><td><code>pool_address</code></td><td></td><td></td></tr><tr><td><code>protocol</code></td><td></td><td></td></tr><tr><td><code>token_bought_address</code></td><td></td><td></td></tr><tr><td><code>token_bought_price_usd</code></td><td></td><td>USD price for the bought token (ASOF join on daily prices, last 7 days).</td></tr><tr><td><code>token_bought_symbol</code></td><td></td><td>Symbol resolved from `stg_pools__tokens_meta`. Empty string if the token is unknown.</td></tr><tr><td><code>token_sold_address</code></td><td></td><td></td></tr><tr><td><code>token_sold_price_usd</code></td><td></td><td></td></tr><tr><td><code>token_sold_symbol</code></td><td></td><td></td></tr><tr><td><code>transaction_hash</code></td><td></td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_token_prices_daily</code></li><li><code>stg_live__dex_trades_balancer_v2</code></li><li><code>stg_live__dex_trades_balancer_v3</code></li><li><code>stg_live__dex_trades_swapr_v3</code></li><li><code>stg_live__dex_trades_uniswap_v3</code></li><li><code>stg_pools__tokens_meta</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_live_trades</code></li></ul>
+    
+  </body>
+</html>

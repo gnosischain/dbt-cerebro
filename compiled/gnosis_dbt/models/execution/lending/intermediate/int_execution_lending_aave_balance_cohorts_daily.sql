@@ -7,12 +7,13 @@ WITH
 
 balances_base AS (
     SELECT
-        b.date AS date,
+        b.date            AS date,
+        b.protocol        AS protocol,
         b.reserve_address AS reserve_address,
-        b.symbol AS symbol,
-        b.user_address AS user_address,
-        b.balance AS balance,
-        b.balance_usd AS balance_usd
+        b.symbol          AS symbol,
+        b.user_address    AS user_address,
+        b.balance         AS balance,
+        b.balance_usd     AS balance_usd
     FROM `dbt`.`int_execution_lending_aave_user_balances_daily` b
     WHERE b.date < today()
       AND b.user_address != '0x0000000000000000000000000000000000000000'
@@ -45,6 +46,7 @@ balances_base AS (
 bucketed_usd AS (
     SELECT
         date,
+        protocol,
         reserve_address,
         symbol,
         user_address,
@@ -71,6 +73,7 @@ bucketed_usd AS (
 bucketed_native AS (
     SELECT
         date,
+        protocol,
         reserve_address,
         symbol,
         user_address,
@@ -94,16 +97,17 @@ bucketed_native AS (
 ),
 
 bucketed AS (
-    SELECT date, reserve_address, symbol, user_address, balance, balance_usd, cohort_unit, balance_bucket
+    SELECT date, protocol, reserve_address, symbol, user_address, balance, balance_usd, cohort_unit, balance_bucket
     FROM bucketed_usd
     UNION ALL
-    SELECT date, reserve_address, symbol, user_address, balance, balance_usd, cohort_unit, balance_bucket
+    SELECT date, protocol, reserve_address, symbol, user_address, balance, balance_usd, cohort_unit, balance_bucket
     FROM bucketed_native
 ),
 
 agg AS (
     SELECT
         date,
+        protocol,
         reserve_address,
         symbol,
         cohort_unit,
@@ -114,6 +118,7 @@ agg AS (
     FROM bucketed
     GROUP BY
         date,
+        protocol,
         reserve_address,
         symbol,
         cohort_unit,
@@ -122,6 +127,7 @@ agg AS (
 
 SELECT
     date,
+    protocol,
     reserve_address,
     symbol,
     cohort_unit,

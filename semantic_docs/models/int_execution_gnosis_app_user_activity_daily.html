@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_user_activity_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_user_activity_daily</h1>
+    <p>Foundation table for all Gnosis App user-activity analytics — one row
+per (date, address, activity_kind). Every downstream cohort, retention,
+churn, DAU/WAU/MAU, and activity-by-action mart derives from this table.
+
+activity_kind enum:
+  onboard                 — first-ever heuristic hit for this address
+                             (from int_execution_gnosis_app_users_current.
+                             first_seen_at). Exactly one row per user.
+                             Anchors the cohort_month for retention.
+  circles_register_human,
+  circles_invite_human,
+  circles_trust,
+  circles_profile_update,
+  circles_metri_fee,
+  safe_invitation_module  — raw heuristic rows from
+                             int_execution_gnosis_app_user_events.
+  swap_signed             — PreSignature events (all rows in
+                             int_execution_gnosis_app_swaps).
+  swap_filled             — subset with was_filled = true.
+  topup                   — GA→GP TopUps
+                             (int_execution_gnosis_app_gpay_topups).
+  marketplace_buy         — GA marketplace purchases
+                             (int_execution_gnosis_app_marketplace_payments).
+  token_offer_claim       — GA token-offer claims (e.g. CRC → GNO discount)
+                             (int_execution_gnosis_app_token_offer_claims).
+
+amount_usd populated for swap_filled, topup, and token_offer_claim
+(USD on the *received* side only). marketplace buys carry NULL until the
+Circles token price feed is wired.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_user_activity_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>activity_daily</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activity_kind</code></td><td>String</td><td>See enum above.</td></tr><tr><td><code>address</code></td><td>String</td><td>GA user address (0x-prefixed, lowercase).</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>date</code></td><td>Date</td><td></td></tr><tr><td><code>n_events</code></td><td>UInt64</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_gpay_topups</code></li><li><code>int_execution_gnosis_app_marketplace_payments</code></li><li><code>int_execution_gnosis_app_swaps</code></li><li><code>int_execution_gnosis_app_token_offer_claims</code></li><li><code>int_execution_gnosis_app_user_events</code></li><li><code>int_execution_gnosis_app_users_current</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_gnosis_app_kpi_repeat_purchase_rate_latest</code></li><li><code>fct_execution_gnosis_app_activity_by_action_daily</code></li><li><code>fct_execution_gnosis_app_activity_by_action_monthly</code></li><li><code>fct_execution_gnosis_app_activity_by_action_weekly</code></li><li><code>fct_execution_gnosis_app_churn_monthly</code></li><li><code>fct_execution_gnosis_app_retention_by_action_monthly</code></li><li><code>fct_execution_gnosis_app_retention_monthly</code></li><li><code>fct_execution_gnosis_app_users_daily</code></li><li><code>fct_execution_gnosis_app_users_monthly</code></li><li><code>fct_execution_gnosis_app_users_weekly</code></li></ul>
+    
+  </body>
+</html>

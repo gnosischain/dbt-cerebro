@@ -6,8 +6,6 @@
 
 
 
-
-
 WITH traces AS (
     
 

@@ -56,7 +56,17 @@ WITH base AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -99,7 +109,17 @@ WITH base AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     
@@ -137,7 +157,17 @@ WITH base AS (
         
           'spUSDC', 
         
-          'spUSDC.e'
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
         
       )
     

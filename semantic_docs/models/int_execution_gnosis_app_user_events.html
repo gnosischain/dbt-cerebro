@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_user_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_user_events</h1>
+    <p>Long-form heuristic event log for Gnosis App user identification.
+
+Six rules, all keyed off the same chokepoint: a Cometh ERC-4337
+bundler (one of three relayer addresses in
+seeds/gnosis_app_relayers.csv) sent the outer transaction to the
+canonical EntryPoint v0.7. Any account that appears as a parameter
+inside such a transaction is, by construction, acting through Gnosis
+App for that action.
+
+Rules:
+  safe_invitation_module  — Safe created in the same Cometh tx that
+                            enabled the Circles InvitationModule
+                            (0x00738aca…). The Safe address is the
+                            user.
+  circles_metri_fee       — CRC ERC-1155 transfer to the Metri fee
+                            receiver (0x97FD8f78…) inside a Cometh tx.
+  circles_register_human  — Hub.RegisterHuman event inside a Cometh
+                            tx. decoded_params[&#x27;avatar&#x27;] is the user.
+  circles_invite_human    — Same RegisterHuman event with a non-zero
+                            decoded_params[&#x27;inviter&#x27;] — the inviter
+                            is the user.
+  circles_trust           — Hub.Trust event inside a Cometh tx.
+                            decoded_params[&#x27;truster&#x27;] is the user.
+  circles_profile_update  — NameRegistry.UpdateMetadataDigest event
+                            inside a Cometh tx.
+                            decoded_params[&#x27;avatar&#x27;] is the user.
+
+Address columns are stored lowercase WITH the 0x prefix to match the
+rest of the dbt outputs and the format that decode_logs produces for
+decoded_params address values. Rule 1 reads from int_execution_safes
+(which is already 0x-prefixed) and rules 2-6 read from
+contracts_circles_v2_*_events.decoded_params (also 0x-prefixed).
+
+Privacy: this is the source-of-truth intermediate for sector
+membership. Raw addresses are kept here because they are required
+for the snapshot argMax and for the cross-reference with
+int_execution_safes. The pseudonymization boundary is in
+int_execution_gnosis_app_user_identities, one model downstream.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_user_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>The Gnosis App user address (avatar / inviter / truster / Safe, depending on the rule). Lowercase, 0x-prefixed — the same form that decode_logs writes for decoded_params address values and that stg_mixpanel_ga__events sees for wallet-identified users. Storing in this form means the cross-domain pseudonym join lines up exactly without any per-side normalization.
+</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the block in which the action happened.</td></tr><tr><td><code>heuristic_kind</code></td><td>String</td><td>Enum: safe_invitation_module, circles_metri_fee, circles_register_human, circles_invite_human, circles_trust, circles_profile_update.
+</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>The Cometh-relayed transaction hash (lowercase, no 0x prefix).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_Hub_events</code></li><li><code>contracts_circles_v2_NameRegistry_events</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_module_events</code></li><li><code>transactions</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gnosis_app_user_activity_daily</code></li><li><code>int_execution_gnosis_app_users_current</code></li></ul>
+    
+  </body>
+</html>

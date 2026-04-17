@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_swaps</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_swaps</h1>
+    <p>Gnosis App swaps — one row per CoW order pre-signed by a GA user through
+the Cometh ERC-4337 bundler. Matches the Dune semantic: the anchor is
+the PreSignature event, NOT the Trade fill. Orders that are pre-signed
+but never filled (cancelled, expired, solver mismatch) are still counted
+as app activity.
+
+Strict heuristic (all must hold for a row to appear):
+  1. GPv2Settlement.PreSignature event with signed=true
+  2. PreSignature tx.to  = ERC-4337 EntryPoint v0.7 (0x…7727de22…)
+  3. PreSignature tx.from ∈ Cometh Relayers V4 (seed gnosis_app_relayers)
+  4. PreSignature owner   ∈ GA users
+                            (int_execution_gnosis_app_users_current)
+
+Trade enrichment (tokens, amounts, USD, solver) is a LEFT JOIN — NULL
+for unfilled orders. `was_filled` surfaces this as a boolean. Partial
+fills produce multiple Trade rows for one PreSignature; for the LEFT
+JOIN we pick the first fill (argMin on block_timestamp) and aggregate
+amounts via sum so one PreSignature = one output row.
+
+Grain: (transaction_hash, log_index) of the PreSignature event. Row
+count on this model = count of GA-app signed orders.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_swaps.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>cow</span> <span class='pill'>swaps</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_bought_raw</code></td><td>Nullable(UInt256)</td><td>Sum of buyAmount across partial fills.</td></tr><tr><td><code>amount_sold</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_sold_raw</code></td><td>Nullable(UInt256)</td><td>Sum of sellAmount across partial fills.</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>Sum of trade-level amount_usd across partial fills.</td></tr><tr><td><code>block_number</code></td><td>UInt64</td><td></td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td>UTC timestamp of the PreSignature event (= when the user signed in-app).</td></tr><tr><td><code>fee_amount</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>fee_amount_raw</code></td><td>Nullable(UInt256)</td><td></td></tr><tr><td><code>first_fill_at</code></td><td>Nullable(DateTime)</td><td>Timestamp of the first Trade fill (NULL if unfilled).</td></tr><tr><td><code>first_fill_tx</code></td><td>Nullable(String)</td><td>Settlement tx hash of the first Trade fill, 0x-prefixed (NULL if unfilled).</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>Log index of the PreSignature event within its tx.</td></tr><tr><td><code>n_fills</code></td><td>Nullable(UInt64)</td><td>Count of Trade events for this order (partial fills &gt; 1; NULL/0 if unfilled).</td></tr><tr><td><code>order_uid</code></td><td>String</td><td></td></tr><tr><td><code>relayer_address</code></td><td>String</td><td>Cometh bundler EOA that submitted the PreSignature tx (0x-prefixed, lowercase).</td></tr><tr><td><code>solver</code></td><td>Nullable(String)</td><td>Solver that filled the first partial fill (NULL if unfilled).</td></tr><tr><td><code>taker</code></td><td>String</td><td>Order owner — the GA user address (lowercase, 0x-prefixed).</td></tr><tr><td><code>token_bought_address</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_bought_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_sold_address</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_sold_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Bundler-relayed UserOp tx hash carrying the PreSignature (0x-prefixed, lowercase).</td></tr><tr><td><code>was_filled</code></td><td>Bool</td><td>True iff at least one Trade event matched this order_uid.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_CowProtocol_GPv2Settlement_events</code></li><li><code>int_execution_cow_trades</code></li><li><code>int_execution_gnosis_app_users_current</code></li><li><code>transactions</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_gnosis_app_swaps_by_pair_daily</code></li><li><code>fct_execution_gnosis_app_swaps_by_solver_daily</code></li><li><code>fct_execution_gnosis_app_swaps_daily</code></li><li><code>fct_execution_gnosis_app_swaps_monthly</code></li><li><code>fct_execution_gnosis_app_swaps_weekly</code></li><li><code>int_execution_gnosis_app_user_activity_daily</code></li></ul>
+    
+  </body>
+</html>

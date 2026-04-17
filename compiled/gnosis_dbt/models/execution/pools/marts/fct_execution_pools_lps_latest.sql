@@ -1,3 +1,5 @@
+
+
 WITH
 
 latest_date AS (

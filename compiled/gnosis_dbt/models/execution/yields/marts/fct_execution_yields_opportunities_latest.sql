@@ -179,18 +179,20 @@ FROM (
 
     lending_cumulative_latest AS (
         SELECT
+            protocol,
             token_address,
             argMax(cumulative_scaled_supply, date) AS cumulative_scaled_supply,
             argMax(cumulative_scaled_borrow, date) AS cumulative_scaled_borrow,
             argMax(utilization_rate, date) AS latest_utilization_rate
         FROM `dbt`.`int_execution_lending_aave_utilization_daily`
         WHERE utilization_rate IS NOT NULL
-        GROUP BY token_address
+        GROUP BY protocol, token_address
     ),
 
     lending_trend_source AS (
         SELECT
             a.date AS date,
+            a.protocol AS protocol,
             a.symbol AS symbol,
             toFloat64(a.apy_daily) AS apy_daily
         FROM `dbt`.`int_execution_lending_aave_daily` a
@@ -201,6 +203,7 @@ FROM (
 
     lending_trends AS (
         SELECT
+            protocol,
             symbol,
             arrayMap(
                 point -> point.2,
@@ -208,14 +211,15 @@ FROM (
             ) AS rate_trend_14d
         FROM (
             SELECT
+                protocol,
                 symbol,
                 date,
                 apy_daily,
-                row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                row_number() OVER (PARTITION BY protocol, symbol ORDER BY date DESC) AS rn
             FROM lending_trend_source
         )
         WHERE rn <= 14
-        GROUP BY symbol
+        GROUP BY protocol, symbol
     ),
 
     lending_markets AS (
@@ -223,7 +227,7 @@ FROM (
             'Lending' AS type,
             a.symbol AS token,
             a.symbol AS name,
-            rm.atoken_address AS address,
+            rm.supply_token_address AS address,
             NULL AS yield_apr,
             a.apy_daily AS yield_apy,
             a.borrow_apy_variable_daily AS borrow_apy,
@@ -241,12 +245,14 @@ FROM (
         FROM `dbt`.`int_execution_lending_aave_daily` a
         CROSS JOIN lending_latest_date d
         LEFT JOIN lending_cumulative_latest lc
-            ON lc.token_address = a.token_address
-        INNER JOIN `dbt`.`atoken_reserve_mapping` rm
-            ON lower(rm.reserve_address) = a.token_address
+            ON  lc.protocol      = a.protocol
+           AND  lc.token_address = a.token_address
+        INNER JOIN `dbt`.`lending_market_mapping` rm
+            ON  rm.protocol              = a.protocol
+           AND lower(rm.reserve_address) = a.token_address
         LEFT JOIN `dbt`.`int_execution_token_prices_daily` pr
             ON pr.symbol = a.symbol
-           AND pr.date = a.date
+           AND pr.date   = a.date
         WHERE a.date = d.max_date
           AND a.apy_daily IS NOT NULL
           AND a.apy_daily > 0
@@ -298,6 +304,7 @@ FROM (
         lm.fee_pct
     FROM lending_markets lm
     LEFT JOIN lending_trends ltr
-        ON ltr.symbol = lm.token
+        ON  ltr.protocol = lm.protocol
+       AND  ltr.symbol   = lm.token
 )
 ORDER BY COALESCE(yield_apr, yield_apy) DESC

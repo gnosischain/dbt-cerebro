@@ -29,8 +29,8 @@ WITH deltas AS (
         date,
         account,
         token_address,
-        max(circles_type) AS circles_type,
-        sum(delta_raw) AS net_delta_raw,
+        argMax(circles_type, last_activity_ts) AS circles_type,
+        argMax(delta_raw, last_activity_ts) AS net_delta_raw,
         max(last_activity_ts) AS last_activity_ts_for_day
     FROM `dbt`.`int_execution_circles_v2_balance_diffs_daily`
     WHERE date < today()

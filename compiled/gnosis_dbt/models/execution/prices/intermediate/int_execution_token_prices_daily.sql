@@ -27,13 +27,15 @@ wxdai_from_xdai AS (
     WHERE symbol = 'XDAI'
 ),
 
-agnosdai_from_sdai AS (
+wrapper_prices AS (
+    -- Supply-token prices (Aave aTokens, Spark spTokens) inherit 1:1 from their reserve.
     SELECT
-        date,
-        'AGNOSDAI' AS symbol,
-        price
-    FROM dune
-    WHERE symbol = 'SDAI'
+        p.date,
+        upper(m.supply_token_symbol) AS symbol,
+        p.price
+    FROM `dbt`.`lending_market_mapping` m
+    INNER JOIN dune p
+        ON upper(p.symbol) = upper(m.reserve_symbol)
 ),
 
 usd_pegs AS (
@@ -54,7 +56,7 @@ all_prices AS (
     UNION ALL
     SELECT date, symbol, price, 1 AS priority FROM wxdai_from_xdai
     UNION ALL
-    SELECT date, symbol, price, 1 AS priority FROM agnosdai_from_sdai
+    SELECT date, symbol, price, 2 AS priority FROM wrapper_prices
     UNION ALL
     SELECT date, symbol, 1.0 AS price, 3 AS priority FROM usd_pegs
 ),
