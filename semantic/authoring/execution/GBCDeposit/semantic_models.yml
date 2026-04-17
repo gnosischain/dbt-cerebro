@@ -3,6 +3,10 @@ semantic_models:
   model: ref('int_GBCDeposit_deposists_daily')
   defaults:
     agg_time_dimension: date
+  entities:
+  - name: address
+    type: primary
+    expr: "concat('0x', substring(withdrawal_credentials, 27, 40))"
   dimensions:
   - name: date
     type: time
@@ -12,6 +16,9 @@ semantic_models:
   - name: withdrawal_credentials
     type: categorical
     expr: withdrawal_credentials
+  - name: withdrawal_address
+    type: categorical
+    expr: "concat('0x', substring(withdrawal_credentials, 27, 40))"
   measures:
   - name: amount_value
     agg: sum
@@ -19,9 +26,21 @@ semantic_models:
   config:
     meta:
       cerebro:
-        owner: analytics_team
-        quality_tier: candidate
+        owner: consensus_team
+        quality_tier: approved
+        grain: day
         question_synonyms:
         - GBCDeposit deposists daily
-        grain: day
+        - validator deposits
+        - who deposited to which validator
+        graph:
+          enabled: true
+          profile: deposit_to_validator
+          source_column: "concat('0x', substring(withdrawal_credentials, 27, 40))"
+          target_column: withdrawal_credentials
+          source_kind: address
+          target_kind: validator
+          directed: true
+          time_column: date
+          weight_column: amount
 metrics: []

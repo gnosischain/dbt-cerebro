@@ -1,0 +1,48 @@
+semantic_models:
+- name: execution_safes_current_owners
+  model: ref('int_execution_safes_current_owners')
+  defaults:
+    agg_time_dimension: became_owner_at
+  entities:
+  - name: safe
+    type: primary
+    expr: safe_address
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: owner
+    type: categorical
+    expr: owner
+  - name: became_owner_at
+    type: time
+    expr: became_owner_at
+    type_params:
+      time_granularity: day
+  measures:
+  - name: current_threshold_value
+    agg: average
+    expr: current_threshold
+  - name: owner_count_value
+    agg: count
+    expr: owner
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - safe owners
+        - who owns what safe
+        - gnosis safe ownership
+        graph:
+          enabled: true
+          profile: safe_ownership
+          source_column: owner
+          target_column: safe_address
+          source_kind: address
+          target_kind: safe
+          directed: true
+          time_column: became_owner_at
+metrics: []

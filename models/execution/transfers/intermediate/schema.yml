@@ -142,3 +142,52 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_execution_bridges_address_flows_daily
+  description: |
+    Address-grain bridge flows. Joins whitelisted transfers against the
+    dune labels set filtered on bridge projects to extract one row per
+    (date, bridge_contract, user_address, token, direction). Enables the
+    Graph Explorer to render (address -> bridge) edges that the aggregate
+    chain-level bridge models do not expose.
+  meta:
+    owner: bridges_team
+    authoritative: false
+  columns:
+  - name: date
+    description: Day bucket of the transfer leg.
+    data_type: Date
+    tests:
+    - not_null
+  - name: bridge_contract
+    description: 0x-prefixed bridge contract address (either the from or to leg of the transfer).
+    data_type: String
+  - name: bridge_name
+    description: "Project label for the bridge (e.g. 'Hop', 'Across', 'xDai Bridge') from dune labels."
+    data_type: String
+  - name: token_address
+    description: ERC20 token address being bridged.
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: user_address
+    description: The non-bridge counterparty of the transfer (the user).
+    data_type: String
+  - name: direction
+    description: "'in' when the bridge is on the from side (user receives), 'out' when on the to side (user sends to bridge)."
+    data_type: String
+  - name: amount_raw_sum
+    description: Sum of raw token amounts for the (user, bridge, token, direction, date) bucket.
+    data_type: Float64
+  - name: volume_usd
+    description: USD volume (currently NULL — placeholder for when whitelisted_daily carries USD).
+    data_type: Nullable(Float64)
+  - name: transfer_count
+    description: Number of transfers aggregated into this bucket.
+    data_type: UInt64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary

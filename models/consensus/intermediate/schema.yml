@@ -893,6 +893,35 @@ models:
       severity: warn
       tags:
       - elementary
+- name: int_consensus_validators_withdrawal_addresses
+  description: |
+    Thin view over int_consensus_validators_labels that derives the
+    controlling EVM address from each validator's withdrawal_credentials
+    (trailing 20 bytes for 0x01-type credentials). Saves downstream
+    queries the substring extraction and enables direct joins from
+    consensus validators to execution-side address-bearing tables.
+  meta:
+    owner: consensus_team
+    authoritative: false
+  columns:
+  - name: validator_index
+    description: Unique numerical identifier assigned to each validator.
+    data_type: UInt32
+    tests:
+    - unique
+    - not_null
+  - name: pubkey
+    description: BLS public key for the validator.
+    data_type: String
+  - name: withdrawal_credentials
+    description: Raw 32-byte withdrawal credentials from the deposit contract.
+    data_type: String
+  - name: withdrawal_address
+    description: |
+      0x-prefixed EVM address derived from the trailing 20 bytes of
+      withdrawal_credentials (only populated for 0x01-type credentials;
+      NULL for legacy 0x00 BLS credentials).
+    data_type: Nullable(String)
 - name: int_consensus_validators_per_index_apy_daily
   description: This model calculates daily validator consensus participation and withdrawal metrics, aggregated by validator index, to support analysis of validator performance and network health.
   meta:

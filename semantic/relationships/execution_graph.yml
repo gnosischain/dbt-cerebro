@@ -1,0 +1,131 @@
+version: 1
+
+# Cross-sector relationships authored for the Graph Explorer mini-app.
+# These unlock approved-tier enrichment joins that the explorer surfaces as
+# "Suggested next hops" on the node details panel.
+
+relationships:
+  - name: circles_trust_to_avatar_metadata
+    left_model: api_execution_circles_v2_trust_relations_current
+    right_model: api_execution_circles_v2_avatar_metadata
+    left_keys: [trustee]
+    right_keys: [avatar]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: circles_avatar
+    preferred_bridge: true
+    safe_for_dimension_enrichment: true
+    aggregate_then_join_only: false
+    allow_any_join: false
+    quality_tier: approved
+
+  - name: circles_avatar_balances_to_metadata
+    left_model: fct_execution_circles_v2_avatar_balances_latest
+    right_model: api_execution_circles_v2_avatar_metadata
+    left_keys: [avatar]
+    right_keys: [avatar]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: circles_avatar
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: gpay_wallet_is_safe
+    left_model: int_execution_gpay_wallet_owners
+    right_model: int_execution_safes_current_owners
+    left_keys: [pay_wallet]
+    right_keys: [safe_address]
+    cardinality: one_to_many
+    join_semantics: left
+    via_entity: safe
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: circles_avatar_is_safe_owner
+    left_model: api_execution_circles_v2_avatar_metadata
+    right_model: int_execution_safes_current_owners
+    left_keys: [avatar]
+    right_keys: [owner]
+    cardinality: many_to_many
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: lp_provider_is_lending_user
+    left_model: int_execution_pools_dex_liquidity_events
+    right_model: fct_execution_yields_user_lending_positions_latest
+    left_keys: [provider]
+    right_keys: [user_address]
+    cardinality: many_to_many
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    aggregate_then_join_only: true
+    quality_tier: candidate
+
+  - name: deposit_to_validator_identity
+    left_model: int_GBCDeposit_deposists_daily
+    right_model: int_consensus_validators_labels
+    left_keys: [withdrawal_credentials]
+    right_keys: [withdrawal_credentials]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: validator
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: validator_address_is_safe
+    left_model: int_consensus_validators_withdrawal_addresses
+    right_model: int_execution_safes_current_owners
+    left_keys: [withdrawal_address]
+    right_keys: [safe_address]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: candidate
+
+  - name: address_roles_pivot_to_safe
+    left_model: int_execution_address_roles_current
+    right_model: int_execution_safes_current_owners
+    left_keys: [address]
+    right_keys: [owner]
+    cardinality: many_to_many
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: address_roles_pivot_to_dune_label
+    left_model: int_execution_address_roles_current
+    right_model: int_crawlers_data_labels
+    left_keys: [address]
+    right_keys: [address]
+    cardinality: one_to_one
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: approved
+
+  - name: transfer_endpoint_dune_label
+    left_model: int_execution_transfers_whitelisted_daily
+    right_model: int_crawlers_data_labels
+    left_keys: ["`from`"]
+    right_keys: [address]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: candidate
+
+  - name: bridge_flow_endpoint_dune_label
+    left_model: int_execution_bridges_address_flows_daily
+    right_model: int_crawlers_data_labels
+    left_keys: [user_address]
+    right_keys: [address]
+    cardinality: many_to_one
+    join_semantics: left
+    via_entity: address
+    safe_for_dimension_enrichment: true
+    quality_tier: candidate

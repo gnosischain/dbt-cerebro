@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: int_execution_address_roles_current
+    description: |
+      Identity-role pivot: one row per on-chain address with boolean flags
+      for every role it plays across the sectors we track (Safe, GPay,
+      Circles, DeFi pools/lending, validator withdrawal, Dune labels).
+      Powers the Graph Explorer's node-kind badges and auto-discovery of
+      applicable graph profiles when a user seeds from a bare address.
+    columns:
+      - name: address
+        description: Lowercase, 0x-prefixed EVM address. Sort key for the ReplacingMergeTree.
+        data_type: String
+        tests:
+          - not_null
+          - unique
+      - name: is_safe
+        description: 1 if the address is registered as a Safe in contracts_safe_registry.
+        data_type: UInt8
+      - name: is_gpay_wallet
+        description: 1 if the address is a Gnosis Pay wallet (Safe with GP setup).
+        data_type: UInt8
+      - name: is_ga_user
+        description: |
+          1 if this EOA currently controls at least one GP Safe via its
+          Delay Module (per int_execution_gnosis_app_gpay_wallets
+          heuristic — NOT via safes_current_owners, which returns sentinel
+          0x…0002 for GP Safes).
+        data_type: UInt8
+      - name: controls_gpay_wallet
+        description: One of the GP Safes this GA user controls (pay_wallet address).
+        data_type: String
+      - name: is_circles_avatar
+        description: 1 if the address is a registered Circles v2 avatar.
+        data_type: UInt8
+      - name: circles_avatar_type
+        description: "Human | Group | Org (from Circles v2 registration)."
+        data_type: String
+      - name: is_circles_wrapper
+        description: 1 if the address is an ERC20 wrapper token contract for a Circles avatar.
+        data_type: UInt8
+      - name: is_safe_owner
+        description: 1 if the address appears as an owner of at least one Safe.
+        data_type: UInt8
+      - name: is_lp_provider
+        description: 1 if the address has provided liquidity to a tracked DEX pool.
+        data_type: UInt8
+      - name: pool_protocol
+        description: "Protocol label if is_lp_provider=1 (Uniswap V3 / Swapr V3 / Balancer V2 / Balancer V3)."
+        data_type: String
+      - name: is_pool
+        description: 1 if the address is a DEX pool contract tracked in pools_dex_liquidity_events.
+        data_type: UInt8
+      - name: is_lending_user
+        description: 1 if the address has an active Aave V3 / SparkLend lending position.
+        data_type: UInt8
+      - name: is_validator_depositor
+        description: |
+          1 if the address is the trailing-20-bytes extraction of a
+          consensus validator's withdrawal_credentials (only validators
+          with 0x01-type credentials).
+        data_type: UInt8
+      - name: has_dune_label
+        description: 1 if the address appears in int_crawlers_data_labels.
+        data_type: UInt8
+      - name: dune_project
+        description: Project classification from Dune labels (Safe, Circles, GnosisPay, Balancer, etc.).
+        data_type: String
