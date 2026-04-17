@@ -1,12 +1,5 @@
 {{ config(materialized='view', tags=['dev', 'live', 'execution', 'pools', 'trades', 'staging']) }}
 
-{#-
-    Pool registry comes from the materialized `stg_pools__balancer_v2_pool_registry`
-    table (NOT from re-scanning historical Vault events here). PoolRegistered events
-    fire once at pool creation — often years before any given live trade — and scanning
-    the full historical events table on every dashboard poll would be expensive.
--#}
-
 SELECT
     e.block_number,
     e.block_timestamp,

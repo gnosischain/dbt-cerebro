@@ -5,13 +5,6 @@
     )
 }}
 
-{#
-    One-row summary stats for the live-trades tab header tiles.
-    Reads from `api_execution_live_trades` so every tile matches the
-    population users see in the table exactly (same 30-min window,
-    same dust filter, same multi-hop collapse).
-#}
-
 SELECT
     count()                                                                         AS trade_count,
     round(sum(trade_usd), 0)                                                        AS volume_usd,

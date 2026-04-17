@@ -5,29 +5,6 @@
     )
 }}
 
-{#
-    Dashboard feed of recent DEX trades on Gnosis Chain.
-    - Window: last 30 minutes of CACHED data, excluding the most recent 60s
-      (reorg buffer). Anchored on `max(block_timestamp)` in
-      `int_live__dex_trades_raw` — that's the data we've actually materialized,
-      which may be a few minutes behind the source HWM depending on the
-      incremental refresh cadence. To surface ingestion-level staleness
-      separately, query `api_execution_live_trades_freshness`.
-    - Multi-hop routes are collapsed to one row per transaction:
-        token_sold  = first-hop input   (argMin by log_index)
-        token_bought = last-hop output  (argMax by log_index)
-        via         = comma-separated list of protocols touched
-        hops        = number of swap events in the tx
-    - Dust filter: `trade_usd >= live_trades_min_usd` (default 1). Rows with
-      unknown USD (no price on either side) are kept; the dashboard can filter
-      them if needed.
-    - NO LIMIT here. Apply `LIMIT` / ordering tweaks at the dashboard query layer
-      so the same model backs multiple views (recent list, big-trade highlights, etc.).
-    - `execution_live.transactions` is pre-filtered to the same time window
-      BEFORE the join — a full-table join materializes ~10 GB of transactions
-      into memory and OOMs downstream aggregates.
-#}
-
 {%- set min_usd = var('live_trades_min_usd', 1) -%}
 
 WITH
@@ -73,14 +50,6 @@ tx_summary AS (
     GROUP BY transaction_hash
 )
 
-{#
-    Explicit AS on EVERY column. The ClickHouse new analyzer otherwise keeps
-    the CTE alias (e.g. "s.transaction_hash") in the output column name when
-    there's a collision with another CTE — which breaks downstream callers
-    that expect bare `transaction_hash`. This also used to trip up explicit
-    column lists in SELECTs from this view with "Unknown expression identifier"
-    errors; aliasing here fixes both.
-#}
 SELECT
     s.block_timestamp            AS block_timestamp,
     s.block_number               AS block_number,
