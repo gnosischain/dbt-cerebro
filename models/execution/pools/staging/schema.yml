@@ -37,6 +37,23 @@ models:
     description: Block timestamp of the factory creation event.
     data_type: DateTime
 
+- name: stg_pools__balancer_v2_pool_registry
+  description: >
+    Mapping of Balancer V2 poolId (bytes32) → pool contract address, built from
+    PoolRegistered events on the Vault. Materialized as a small table so that
+    downstream views — especially the live-trades staging model queried on every
+    dashboard poll — can join against it cheaply instead of re-scanning the full
+    historical Vault events table.
+  columns:
+  - name: pool_id
+    description: Balancer V2 poolId (bytes32 hex string, lowercase).
+    data_type: String
+    tests: [not_null, unique]
+  - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
+    data_type: String
+    tests: [not_null]
+
 - name: stg_pools__uniswap_v3_events
   description: >
     Normalized event deltas for Uniswap V3 pools.

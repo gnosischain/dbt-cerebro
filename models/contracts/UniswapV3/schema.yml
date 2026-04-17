@@ -19,3 +19,14 @@ models:
     full_refresh:
       start_date: "2022-04-22"
       batch_months: 6
+
+- name: contracts_UniswapV3_Pool_events_live
+  description: >
+    Plain view over `execution_live.logs` that decodes Uniswap V3 Pool events
+    in near-real-time. Materialized as a view (not a materialized_view) because
+    the cryo-live indexer populates logs via bulk part attaches that do not fire
+    MV triggers. The source is pre-filtered to the last 4h (relative to the
+    source HWM, not wall-clock) so the decode_logs scan stays fast instead of
+    covering the full 48h TTL. The filter lands inside the macro's FROM clause
+    — before the dedup window function and ABI join — which is the only position
+    where ClickHouse can use it for partition/granule skipping.
