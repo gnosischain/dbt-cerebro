@@ -7,11 +7,11 @@
     unique_key='(date, project)',
     partition_by='toStartOfMonth(date)',
     settings={ 'allow_nullable_key': 1 },
+    tags=['production','execution','transactions'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','transactions']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {% set month       = var('month', none) %}
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

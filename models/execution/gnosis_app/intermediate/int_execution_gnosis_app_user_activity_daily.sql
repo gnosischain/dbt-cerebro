@@ -7,11 +7,11 @@
     unique_key='(date, address, activity_kind)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
+    tags=['production','execution','gnosis_app','activity_daily'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','gnosis_app','activity_daily']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

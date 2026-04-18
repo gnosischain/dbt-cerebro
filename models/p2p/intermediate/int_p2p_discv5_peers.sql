@@ -6,15 +6,11 @@
         order_by='(visit_ended_at, peer_id)',
         unique_key='(visit_ended_at, peer_id)',
         partition_by='toStartOfMonth(visit_ended_at)',
-        pre_hook=[
-          "SET allow_experimental_json_type = 1",
-          "SET enable_dynamic_type = 1",
-          "SET join_use_nulls = 1"
-        ],
-        tags=['production','p2p','discv5']
+        tags=['production','p2p','discv5'],
+        pre_hook=["SET allow_experimental_json_type = 1", "SET enable_dynamic_type = 1", "SET join_use_nulls = 1"],
+        post_hook=["SET allow_experimental_json_type = 0", "SET enable_dynamic_type = 0", "SET join_use_nulls = 0"]
     )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 

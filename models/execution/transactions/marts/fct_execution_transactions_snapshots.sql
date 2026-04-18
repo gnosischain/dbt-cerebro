@@ -3,11 +3,11 @@
     materialized='table',
     engine='MergeTree()',
     order_by='(window, label)',
+    tags=['production','execution','transactions'],
     pre_hook=["SET join_algorithm = 'hash'"],
-    tags=['production','execution','transactions']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 WITH wd AS (
   SELECT max(date) AS max_date
   FROM {{ ref('int_execution_transactions_by_project_daily') }}

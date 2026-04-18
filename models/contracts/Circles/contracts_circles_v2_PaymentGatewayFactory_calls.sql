@@ -9,11 +9,11 @@
         settings                = {
                                     'allow_nullable_key': 1
                                 },
-        pre_hook                = ["SET allow_experimental_json_type = 1"],
-        tags                    = ['production', 'contracts', 'circles_v2', 'calls']
+        tags                    = ['production', 'contracts', 'circles_v2', 'calls'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 {{
     decode_calls(
         tx_table          = source('execution','traces'),

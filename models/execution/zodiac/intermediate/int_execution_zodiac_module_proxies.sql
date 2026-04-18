@@ -7,11 +7,11 @@
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(proxy_address)',
     settings={ 'allow_nullable_key': 1 },
+    tags=['production','execution','zodiac'],
     pre_hook=["SET allow_experimental_json_type = 1"],
-    tags=['production','execution','zodiac']
+    post_hook=["SET allow_experimental_json_type = 0"]
   )
 }}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

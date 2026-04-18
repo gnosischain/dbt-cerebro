@@ -4,11 +4,11 @@
     engine='ReplacingMergeTree()',
     order_by='(cycle_address, offer_address)',
     settings={'allow_nullable_key': 1},
+    tags=['production','execution','gnosis_app','token_offers'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','gnosis_app','token_offers']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 WITH cycles AS (
     SELECT
         contract_address                                         AS cycle_address,

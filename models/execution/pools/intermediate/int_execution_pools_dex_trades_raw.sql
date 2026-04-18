@@ -7,13 +7,11 @@
         unique_key='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        pre_hook=[
-            "SET allow_experimental_json_type = 1"
-        ],
-        tags=['production', 'execution', 'pools', 'trades', 'intermediate']
+        tags=['production', 'execution', 'pools', 'trades', 'intermediate'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

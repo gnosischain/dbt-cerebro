@@ -10,11 +10,11 @@
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(safe_address)',
     settings={ 'allow_nullable_key': 1 },
+    tags=['production','execution','safe'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','safe']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {# execution.traces stores addresses + calldata as lowercase hex WITHOUT a
    '0x' prefix. Strip the prefix from the seed values when comparing. #}
 {% set traces_pre_filter %}

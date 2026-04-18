@@ -6,12 +6,12 @@
         order_by='(date, protocol, pool_address, token_address)',
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
-        pre_hook=["SET join_use_nulls = 0"],
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate']
+        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate'],
+        pre_hook=["SET join_use_nulls = 0"],
+        post_hook=["SET join_use_nulls = 0"]
     )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 

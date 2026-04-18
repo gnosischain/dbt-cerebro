@@ -7,12 +7,12 @@
         order_by='(date, protocol, reserve_address, user_address)',
         unique_key='(date, protocol, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
-        pre_hook=["SET join_use_nulls = 0"],
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','lending','aave','spark','user_balances']
+        tags=['production','execution','lending','aave','spark','user_balances'],
+        pre_hook=["SET join_use_nulls = 0"],
+        post_hook=["SET join_use_nulls = 0"]
     )
 }}
-
 -- depends_on: {{ ref('int_execution_lending_aave_diffs_daily') }}
 -- NOTE: scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
 -- (mirrors Aave's on-chain WadRayMath). Run with --full-refresh when migrating from

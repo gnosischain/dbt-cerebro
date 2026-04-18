@@ -1,13 +1,11 @@
 {{
     config(
         materialized='view',
-        pre_hook=[
-            "SET allow_experimental_json_type = 1"
-        ],
-        tags=['dev', 'live', 'contracts', 'balancerv2', 'events']
+        tags=['dev', 'live', 'contracts', 'balancerv2', 'events'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 {%- set src = source('execution_live', 'logs') -%}
 {%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT max(block_timestamp) FROM " ~ src ~ ") - INTERVAL 4 HOUR)" -%}
 

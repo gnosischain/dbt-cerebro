@@ -4,11 +4,11 @@
         engine='ReplacingMergeTree()',
         order_by='avatar',
         settings={'allow_nullable_key': 1},
+        tags=['production', 'execution', 'circles_v2', 'avatar_metadata'],
         pre_hook=["SET allow_experimental_json_type = 1"],
-        tags=['production', 'execution', 'circles_v2', 'avatar_metadata']
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 -- Current parsed IPFS metadata for every Circles v2 avatar.
 -- Joins the latest known (avatar, metadata_digest) pair from
 -- `int_execution_circles_v2_avatar_metadata_targets` to the most

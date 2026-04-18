@@ -6,13 +6,11 @@
         order_by='(visit_ended_at, peer_id)',
         unique_key='(visit_ended_at, peer_id)',
         partition_by='toStartOfMonth(visit_ended_at)',
-        pre_hook=[
-          "SET allow_experimental_json_type = 1"
-        ],
-        tags=['production','p2p','discv4']
+        tags=['production','p2p','discv4'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     ) 
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
 

@@ -9,14 +9,11 @@
         settings                = { 
                                     'allow_nullable_key': 1 
                                 },
-        pre_hook                = [
-                                    "SET allow_experimental_json_type = 1"
-                                ],
-        tags                    = ['production','contracts','circles_v2','events']
+        tags                    = ['production','contracts','circles_v2','events'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
-
 {{ 
     decode_logs(
         source_table      = source('execution','logs'),

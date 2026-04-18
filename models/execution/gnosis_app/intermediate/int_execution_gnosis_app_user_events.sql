@@ -7,14 +7,13 @@
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(address, heuristic_kind, transaction_hash)',
     settings={ 'allow_nullable_key': 1 },
+    tags=['production','execution','gnosis_app'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','gnosis_app']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
-
 
 {% set relayer_filter %}
     tx.to_address = '0000000071727de22e5e9d8baf0edac6f37da032'

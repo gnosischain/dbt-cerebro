@@ -1,13 +1,11 @@
 {{ 
     config(
         materialized='table',
-        pre_hook=[
-            "SET enable_dynamic_type = 1"
-        ],
-        tags=['production','p2p','discv5']
+        tags=['production','p2p','discv5'],
+        pre_hook=["SET enable_dynamic_type = 1"],
+        post_hook=["SET enable_dynamic_type = 0"]
     )
 }}
-
 WITH
 
 -- 1) First CTE: basic peer info

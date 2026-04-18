@@ -745,6 +745,66 @@ meta:
 
 Allowed meta keys: `owner`, `authoritative`, `full_refresh`, `inference_notes`. No other keys should be added to model meta.
 
+### Session-level ClickHouse settings — pair pre_hook with post_hook
+
+#### Why the post_hook is required
+
+A `pre_hook=["SET foo = bar"]` on a dbt model looks self-contained, but it isn't. The dbt-ClickHouse adapter opens **one** ClickHouse connection when `dbt run` starts and reuses that same connection for every model in the invocation. ClickHouse's `SET` statement modifies the current **session**, not the current query, so the setting stays in effect on that connection until something else changes it or the connection closes.
+
+Concretely, the daily cron issues something like:
+
+```
+dbt run --select tag:production   # ~400 models, one connection
+  ├─ model A  pre_hook: SET join_algorithm = 'grace_hash'     ← session now: grace_hash
+  ├─ model B  (no pre_hook)                                   ← still grace_hash
+  ├─ model C  (uses ASOF JOIN, no pre_hook)                   ← still grace_hash → fails
+  └─ ...
+```
+
+Model C never asked for `grace_hash` and the SQL is fine in isolation, but its ASOF planner fails because it inherited the session state from A. The same class of problem bit us twice in one week:
+
+- **Code 48 NOT_IMPLEMENTED** — `join_algorithm = 'grace_hash'` leaked forward; downstream ASOF JOINs can't run on `grace_hash` and raise *"Can't execute any of specified algorithms for specified strictness/kind and right storage type."*
+- **Code 403 INVALID_JOIN_ON_EXPRESSION** — `join_use_nulls = 1` leaked forward; downstream LEFT JOINs with a range predicate (`ON a.x >= b.x - interval`) refuse to compile under `join_use_nulls = 1`.
+
+Both were invisible locally because `dbt run --select one_model` starts its own fresh connection, so nothing has leaked yet. They only manifest in batched runs.
+
+#### The rule
+
+**Whoever turns a knob puts it back.** If a model's `pre_hook` issues `SET <setting> = <value>`, the same model's `post_hook` must issue a matching `SET <setting> = <server default>`:
+
+```python
+{{ config(
+    materialized='incremental',
+    ...
+    tags=['production','...'],
+    pre_hook=["SET join_algorithm = 'grace_hash'", "SET join_use_nulls = 1"],
+    post_hook=["SET join_algorithm = 'default'", "SET join_use_nulls = 0"],
+) }}
+```
+
+This keeps the contamination window to exactly the one model that asked for the override. The next model on the same connection sees baseline state.
+
+#### Use the real default, not the string `'default'`
+
+ClickHouse accepts `SET join_algorithm = 'default'` because `'default'` is literally the string-typed default of that setting. It **rejects** `SET join_use_nulls = 'default'` with **Code 467 CANNOT_PARSE_BOOL** because `join_use_nulls` is a bool. Use the actual built-in default for each setting type:
+
+| Setting | Default | Notes |
+|---|---|---|
+| `join_algorithm` | `'default'` | string |
+| `join_use_nulls` | `0` | bool |
+| `allow_experimental_json_type` | `0` | bool |
+| `enable_dynamic_type` | `0` | bool |
+| `max_block_size` | `65505` | UInt64 |
+| `max_memory_usage` | `0` | UInt64, 0 = unlimited within profile |
+| `max_bytes_before_external_sort` | `0` | UInt64 |
+| `max_bytes_before_external_group_by` | `0` | UInt64 |
+
+When introducing a new setting, confirm its default with `SELECT value FROM system.settings WHERE name = '<setting>'` on a fresh session, and add it to this table.
+
+#### Prefer `settings={...}` when possible
+
+If a knob is accepted as a query-scoped `SETTINGS` clause (e.g. `allow_nullable_key`), put it in `config(settings={...})` instead of `pre_hook`. The dbt-ClickHouse adapter compiles that into `SETTINGS key=value` on the model's DDL/DML statement, which is per-query scoped and cannot leak across models — no post_hook needed. Reserve `pre_hook`/`post_hook` for session-level knobs that aren't accepted as query SETTINGS.
+
 ### Source Metadata
 
 Source files (`*_sources.yml`) carry freshness configuration:

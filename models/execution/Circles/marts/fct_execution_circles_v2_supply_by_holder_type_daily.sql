@@ -5,11 +5,11 @@
         order_by='(holder_type, date)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
+        tags=['production', 'execution', 'circles_v2', 'supply_daily'],
         pre_hook=["SET join_use_nulls = 1"],
-        tags=['production', 'execution', 'circles_v2', 'supply_daily']
+        post_hook=["SET join_use_nulls = 0"]
     )
 }}
-
 WITH balance_addresses AS (
     SELECT DISTINCT account AS address
     FROM {{ ref('int_execution_circles_v2_balances_daily') }}

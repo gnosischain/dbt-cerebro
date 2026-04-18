@@ -7,14 +7,11 @@
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(transaction_hash, log_index)',
     settings={ 'allow_nullable_key': 1 },
-    pre_hook=[
-      "SET allow_experimental_json_type = 1",
-      "SET join_algorithm = 'grace_hash'"
-    ],
-    tags=['production','execution','gpay']
+    tags=['production','execution','gpay'],
+    pre_hook=["SET allow_experimental_json_type = 1", "SET join_algorithm = 'grace_hash'"],
+    post_hook=["SET allow_experimental_json_type = 0", "SET join_algorithm = 'default'"]
   )
 }}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

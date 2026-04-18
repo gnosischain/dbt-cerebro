@@ -9,11 +9,11 @@
     order_by='(pay_wallet)',
     unique_key='pay_wallet',
     settings={'allow_nullable_key': 1},
+    tags=['production','execution','gnosis_app','gpay'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','gnosis_app','gpay']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {% set enabled_topic  = 'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440' %}
 {% set disabled_topic = 'aab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276' %}
 

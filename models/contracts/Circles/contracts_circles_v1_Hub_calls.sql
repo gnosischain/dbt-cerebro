@@ -7,11 +7,11 @@
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
+        tags=['production', 'contracts', 'circles_v1', 'calls'],
         pre_hook=["SET allow_experimental_json_type = 1"],
-        tags=['production', 'contracts', 'circles_v1', 'calls']
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 {{ decode_calls(
     tx_table=source('execution', 'transactions'),
     contract_address='0x29b9a7fbb8995b2423a71cc17cf9810798f6c543',

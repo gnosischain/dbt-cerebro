@@ -7,11 +7,11 @@
     unique_key='(transaction_hash, log_index)',
     partition_by='toStartOfMonth(block_timestamp)',
     settings={'allow_nullable_key': 1},
+    tags=['production','execution','gnosis_app','token_offers','claims'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],
-    tags=['production','execution','gnosis_app','token_offers','claims']
+    post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

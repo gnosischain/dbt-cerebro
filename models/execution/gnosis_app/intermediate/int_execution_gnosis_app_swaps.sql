@@ -7,14 +7,11 @@
     unique_key='(transaction_hash, log_index)',
     partition_by='toStartOfMonth(block_timestamp)',
     settings={'allow_nullable_key': 1},
-    pre_hook=[
-      "SET join_use_nulls = 1",
-      "SET join_algorithm = 'grace_hash'"
-    ],
-    tags=['production','execution','gnosis_app','cow','swaps']
+    tags=['production','execution','gnosis_app','cow','swaps'],
+    pre_hook=["SET join_use_nulls = 1", "SET join_algorithm = 'grace_hash'"],
+    post_hook=["SET join_use_nulls = 0", "SET join_algorithm = 'default'"]
   )
 }}
-
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 

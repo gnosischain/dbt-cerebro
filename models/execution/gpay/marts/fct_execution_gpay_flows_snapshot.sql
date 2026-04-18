@@ -3,14 +3,11 @@
     materialized='table',
     engine='MergeTree()',
     order_by='(window, days, symbol, from_label, to_label)',
-    pre_hook=[
-      "SET join_use_nulls = 1",
-      "SET join_algorithm = 'grace_hash'"
-    ],
-    tags=['production','execution','gpay']
+    tags=['production','execution','gpay'],
+    pre_hook=["SET join_use_nulls = 1", "SET join_algorithm = 'grace_hash'"],
+    post_hook=["SET join_use_nulls = 0", "SET join_algorithm = 'default'"]
   )
 }}
-
 WITH wd AS (
   SELECT max(date) AS max_date
   FROM {{ ref('int_execution_transfers_whitelisted_daily') }}

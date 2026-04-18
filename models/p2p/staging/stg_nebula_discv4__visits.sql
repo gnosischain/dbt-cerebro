@@ -1,12 +1,10 @@
 {{ 
     config(
-        pre_hook=[
-          "SET allow_experimental_json_type = 1"
-        ],
-        tags=['production','nebula_discv4','visits']
+        tags=['production','nebula_discv4','visits'],
+        pre_hook=["SET allow_experimental_json_type = 1"],
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 WITH
 
 source AS (
@@ -28,6 +26,4 @@ source AS (
 )
 
 SELECT * FROM source
-
-
 

@@ -1,13 +1,11 @@
 {{ 
     config(
         materialized='view',
-        pre_hook=[
-            "SET enable_dynamic_type = 1"
-        ],
-        tags=['production','p2p','topology']
+        tags=['production','p2p','topology'],
+        pre_hook=["SET enable_dynamic_type = 1"],
+        post_hook=["SET enable_dynamic_type = 0"]
     )
 }}
-
 WITH
 
 discv4_topology AS (

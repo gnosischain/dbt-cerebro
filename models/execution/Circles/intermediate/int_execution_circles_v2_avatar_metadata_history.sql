@@ -7,11 +7,11 @@
         unique_key='(avatar, metadata_digest)',
         partition_by='toStartOfMonth(valid_from)',
         settings={'allow_nullable_key': 1},
+        tags=['production', 'execution', 'circles_v2', 'avatar_metadata'],
         pre_hook=["SET allow_experimental_json_type = 1"],
-        tags=['production', 'execution', 'circles_v2', 'avatar_metadata']
+        post_hook=["SET allow_experimental_json_type = 0"]
     )
 }}
-
 -- SCD-style historical view of every Circles v2 avatar metadata change.
 --
 -- One row per (avatar, metadata_digest) ever announced by the
