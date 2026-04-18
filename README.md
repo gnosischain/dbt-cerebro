@@ -248,43 +248,177 @@ open reports/elementary_report.html  # macOS
 # or: xdg-open reports/elementary_report.html  # Linux
 ```
 
-### Running the Cron Orchestrator Locally
+### The daily cron pipeline
 
-The production pipeline uses a shared orchestrator script. To test it locally:
+The daily pipeline is a single Kubernetes `CronJob` (defined in `infrastructure-gnosis-analytics-deployments/aws/deployments/gnosis-analytics/dbt/{preview,prod}/6_cron.tf`) that fires at 06:00 UTC, spins up one pod, and runs a shared orchestrator script end-to-end. The same script runs locally and in cluster — preview and prod only differ in which steps are marked mandatory.
+
+#### Entry points
+
+| Wrapper | Env | `MANDATORY_STEPS` | `DBT_TEST_SCOPE` | Script called |
+|---|---|---|---|---|
+| [`cron_preview.sh`](cron_preview.sh) | preview | `dbt-run,edr-report` | `preview_subset` | `scripts/run_dbt_observability.sh` |
+| [`cron.sh`](cron.sh) | prod | full list (incl. `dbt-test`) | `full` | `scripts/run_dbt_observability.sh` |
+
+Both wrappers just set env vars and exec the orchestrator. All pipeline logic lives in [`scripts/run_dbt_observability.sh`](scripts/run_dbt_observability.sh).
+
+Local invocations (inside the docker container):
 
 ```bash
 docker exec -it dbt /bin/bash
 
-# Preview mode (minimal mandatory steps, reduced test scope)
+# Preview mode
 /app/cron_preview.sh
 
-# Production mode (all steps mandatory)
+# Production mode
 /app/cron.sh
 
-# Or run the orchestrator directly with custom env
-EDR_REPORT_ENV=dev DBT_TEST_SCOPE=preview_subset /app/scripts/run_dbt_observability.sh
+# Direct with custom env
+EDR_REPORT_ENV=dev DBT_TEST_SCOPE=preview_subset \
+  /app/scripts/run_dbt_observability.sh
 ```
 
-Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they do not depend on bind-mounted `./logs`.
-If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
+#### Pipeline flow
 
-The orchestrator runs these steps in order:
-1. `dbt source freshness` — check source data staleness
-2. `dbt run --select tag:production` — run all production models
-3. batched `dbt test` runs — execute model and Elementary tests without exhausting ClickHouse temp tables
-4. `dbt docs generate` — refresh manifest, catalog, and semantic manifest artifacts
-5. `python scripts/semantic/build_registry.py --target-dir target` — build semantic registry, validation report, summary, and Prometheus text metrics
-6. `python scripts/semantic/build_semantic_docs.py --target-dir target` — build semantic docs pages and docs index
-7. `edr monitor` — send Slack alerts (only when `SLACK_WEBHOOK` is set)
-8. `edr report` — generate the HTML observability report
+```
+┌───────────────────────────────────────────────────────────────┐
+│ Kubernetes CronJob @ 06:00 UTC                                │
+│   restart_policy = Never    backoff_limit = 0                 │
+│   (no blunt pod-level retry — the orchestrator owns retries)  │
+└──────────────────────────┬────────────────────────────────────┘
+                           ▼
+               /app/cron{,_preview}.sh
+                           ▼
+        /app/scripts/run_dbt_observability.sh
+                           │
+   §0  cleanup-tmp-tables          ──┐
+   §0  cleanup-dbt-trash             │ run-operations. Clear
+   §0  kill-failed-mutations         │ orphaned tmp tables,
+                                     │ stuck mutations.
+                                   ──┘
+                           │
+   §1  source-freshness             dbt source freshness --select source:*
+                           │
+   §1b circles-metadata-targets     Refresh IPFS queue model
+   §1b circles-metadata-fetch       Python backfill (concurrent, gateway-fallback)
+                           │
+   §2  MAIN BATCH LOOP (tag:production)
+       ┌────────────────────────────────────────────────────────┐
+       │ rm -rf target/failed_batches/                          │
+       │                                                        │
+       │ dbt_run_batches.py --select tag:production             │
+       │   → lineage-aware batch plan                           │
+       │                                                        │
+       │ for each batch:                                        │
+       │   dbt run --select <batch_selector>                    │
+       │   if rc ≠ 0:                                           │
+       │     cp target/run_results.json \                       │
+       │        target/failed_batches/<batch_id>.json           │
+       └────────────────────────────────────────────────────────┘
+                           │
+   §2b SMART RETRY (only if any batch failed)
+       ┌────────────────────────────────────────────────────────┐
+       │ classify_failed_nodes.py --stash-dir failed_batches/   │
+       │   TRANSIENT ← nodes whose error message matches        │
+       │       Code: 241|159|209|210                            │
+       │       MEMORY_LIMIT_EXCEEDED | TIMEOUT_EXCEEDED         │
+       │       SOCKET_TIMEOUT | NETWORK_ERROR                   │
+       │   PERMANENT ← everything else (SQL bugs, schema drift) │
+       │                                                        │
+       │ If TRANSIENT non-empty:                                │
+       │   dbt run --select <nodes>+ --threads 1                │
+       │   For every node the retry recovered:                  │
+       │     prune it from failed_batches/*.json                │
+       │     if a batch has no remaining errors, flip its       │
+       │     step_exit_codes entry 0 → mandatory-check passes   │
+       │                                                        │
+       │ PERMANENT failures are NOT retried — they propagate    │
+       │ to the summary check and fail the Job.                 │
+       └────────────────────────────────────────────────────────┘
+                           │
+   §3  TEST BATCHES (build_test_batches)
+       Grouped by layer to stay under ClickHouse
+       max_table_num_to_throw (Elementary writes temp
+       tables per test result). See DBT_TEST_SCOPE below.
+                           │
+   §4  dbt-docs           dbt docs generate
+   §4  semantic-registry  scripts/semantic/build_registry.py
+   §4  semantic-docs      scripts/semantic/build_semantic_docs.py
+                           │
+   §5  edr-monitor        (only if SLACK_WEBHOOK && EDR_MONITOR_ENV)
+   §6  edr-report         Always — produces elementary_report.html
+                           │
+                           ▼
+   SUMMARY
+       overall_exit = 0 unless any mandatory step failed.
+       Mandatory list comes from $MANDATORY_STEPS (comma-sep).
+       For batched steps (dbt-run, dbt-test) any sub-batch
+       failure fails the whole group.
+                           │
+                           ▼
+            exit code → k8s Job Status
+            (no pod restart — k8s retry disabled)
+```
 
-Each step's exit code is captured independently. The script never exits early — it always completes all steps, then prints a summary and exits non-zero if any mandatory step failed.
+#### Section-by-section reference
 
-`DBT_TEST_SCOPE` controls which dbt test batches are run:
-- `full` (default) keeps the current full batch list used by production.
-- `preview_subset` runs only source tests, crawler-data tests, contract tests, and `api_*` marts tests discovered at runtime.
+| § | Step(s) | Purpose | Can skip? |
+|---|---|---|---|
+| 0 | `cleanup-tmp-tables`, `cleanup-dbt-trash`, `kill-failed-mutations` | Undo state left behind by crashed previous runs — orphaned Elementary temp tables, Elementary-trash objects, stuck ClickHouse mutations. | Non-mandatory; failures here are logged, run continues. |
+| 1 | `source-freshness` | Warn if source data is stale. Elementary's `on_run_end` uploads the results. | Non-mandatory. |
+| 1b | `circles-metadata-targets`, `circles-metadata-fetch` | Refresh the IPFS fetch queue, then pull unresolved (avatar, metadata_digest) pairs from public IPFS gateways via a concurrent Python backfill. Replaces the old dbt `run-operation` path which retried dead CIDs for 5–10 minutes and aborted runs on the first failure. | Non-mandatory. |
+| 2 | `dbt-run:<batch_id>` | The main production build. `dbt_run_batches.py` emits a lineage-aware batch plan (chains grouped by size) so large graphs fit into memory; each batch runs `dbt run --select <batch_selector>`. Failed batches stash `run_results.json` for the retry classifier. | **Mandatory** (preview and prod). |
+| 2b | `dbt-run:retry-transient` | Classifies failures by ClickHouse error code; retries only the transient nodes (and their downstream) at `--threads 1` to reduce memory pressure. Recovered nodes' mandatory-fail flag is cleared. | New. Only fires if transient failures exist. |
+| 3 | `dbt-test:<path>` | Tests batched by model layer so Elementary's per-test temp-table count stays under ClickHouse's `max_table_num_to_throw` (1000). `TEST_MODE=daily` (default) makes `not_null`/`unique` scan only the last 7 days via the `test_recency_filter` macro; `TEST_MODE=full` scans everything (weekly). | Mandatory in prod, not in preview. |
+| 4 | `dbt-docs`, `semantic-registry`, `semantic-docs` | Generate `target/manifest.json`, `catalog.json`, `semantic_manifest.json`, plus the cerebro semantic registry and docs pages. Outputs feed both the observability HTTP server and `cerebro-mcp`. | Non-mandatory. |
+| 5 | `edr-monitor` | Sends Slack alerts based on Elementary state. Auto-skipped if `SLACK_WEBHOOK` / `EDR_MONITOR_ENV` are unset. | Non-mandatory. |
+| 6 | `edr-report` | Renders the Elementary HTML report served by the observability pod. | **Mandatory** (preview and prod). |
 
-This scopes preview runs at runtime only. Existing schema, source, and Elementary test definitions stay in the repo unchanged.
+#### Retry semantics (the new failed-only + transient-only flow)
+
+Previously, a failed run exited non-zero and Kubernetes' `restart_policy=OnFailure` restarted the pod, re-running the **entire script** — including the models that already succeeded. Up to 6 times per day. Wasteful when a real SQL bug was the cause; still wasteful when a single model OOM-ed.
+
+The current flow is:
+
+1. **k8s retry disabled.** `restart_policy=Never`, `backoff_limit=0`. The pod runs exactly once per scheduled trigger.
+2. **Per-batch failure stash.** After each batch's `dbt run`, if it failed, the orchestrator copies `target/run_results.json` to `target/failed_batches/<batch_id>.json` before the next batch overwrites it.
+3. **Classifier partitions failures.** [`scripts/refresh/classify_failed_nodes.py`](scripts/refresh/classify_failed_nodes.py) scans all stashed files and emits two lists:
+   - **TRANSIENT** — nodes whose `message` matches `Code: 241|159|209|210\b`, `MEMORY_LIMIT_EXCEEDED`, `TIMEOUT_EXCEEDED`, `SOCKET_TIMEOUT`, or `NETWORK_ERROR`.
+   - **PERMANENT** — everything else.
+4. **Targeted retry.** If `TRANSIENT` is non-empty, one more `dbt run --select <node1>+ <node2>+ ... --threads 1` runs. The `+` pulls in descendants so any skipped downstream rebuilds too. `--threads 1` removes concurrent memory pressure.
+5. **Recovery cleanup.** For every node the retry turned green, the orchestrator prunes it from `failed_batches/*.json` and — if a batch has no remaining errors — flips its `step_exit_codes` entry to 0. The mandatory-step summary check at end-of-run then passes for batches that were fully recovered.
+6. **No retry for `PERMANENT`.** Logic bugs, missing columns, and schema drift fail fast, are logged to `PERMANENT=...` for visibility, and cause `overall_exit=1`. Slack/Elementary/Grafana alert as usual.
+
+#### Mandatory vs non-mandatory steps
+
+`MANDATORY_STEPS` is a comma-separated list. Any step whose name matches an entry in that list fails the whole Job on `rc ≠ 0`. Preview sets `dbt-run,edr-report`; prod adds `dbt-test` and others. Batched steps (`dbt-run`, `dbt-test`) match by *prefix* — any `dbt-run:<batch_id>` with `rc ≠ 0` fails the group.
+
+Non-mandatory steps' failures show up in the run summary but don't change `overall_exit`.
+
+#### `DBT_TEST_SCOPE` (test batch selection)
+
+- `full` (prod default) — the complete batch list in [`build_test_batches`](scripts/run_dbt_observability.sh), covering all production sources, staging, intermediate, and marts across consensus/execution/p2p.
+- `preview_subset` — only source tests, crawler-data tests, contract tests, and `api_*` marts tests discovered at runtime by globbing `models/**/marts/api_*.sql`.
+
+This scopes preview runs at runtime; the test definitions in the repo are identical across envs.
+
+#### Persisted state (between runs)
+
+The cron pod mounts a `ReadWriteOnce` PVC (`dbt-cerebro-data`, 2 GiB) at `/data`. Symlinked from `/app/target` → `/data/target`. Survives pod restarts and across days:
+
+- `/data/target/manifest.json`, `run_results.json`, `semantic_manifest.json` — dbt artifacts, regenerated each run.
+- `/data/target/failed_batches/` — per-batch failure stash, cleared at the start of each run.
+- `/data/reports/elementary_report.html` — the report served by the observability pod.
+- `/data/logs/` — dbt and Elementary logs (promtail scrapes these into Loki).
+
+#### Observability
+
+- **Grafana dashboard**: `Cerebro DBT Observability` (uid `dbt-cerebro-observability`). Loki queries extract ClickHouse error codes (`Code: N. DB::Exception: ... (CATEGORY)`) into structured panels: a "ClickHouse Errors by Code" table, "Failures by Category" bar chart, and a "Transient vs Permanent" stat showing whether the in-pod retry likely helped. Dashboard source: [docs/grafana/dbt-cerebro-observability.json](docs/grafana/dbt-cerebro-observability.json).
+- **Slack alerts**: via `edr monitor` (section 5).
+- **Elementary HTML report**: served over HTTP at port 8080; port-forward with `kubectl -n analytics-preview port-forward svc/dbt-cerebro 8080:80` and open `/reports/elementary_report.html`.
+
+#### Local log / permission caveat
+
+Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they don't depend on bind-mounted `./logs`. If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
 
 ## Semantic Layer Workflow
 
@@ -1471,20 +1605,7 @@ dbt test --select int_execution_circles_v2_avatar_metadata int_execution_circles
 
 ### Daily Cron Job
 
-The production pipeline runs daily at 6 AM UTC via a Kubernetes CronJob:
-
-```
-dbt source freshness → upload freshness → dbt run → dbt test → edr monitor → edr report
-```
-
-### Cron Scripts
-
-| Script | Environment | Mandatory Steps |
-|--------|-------------|-----------------|
-| `cron_preview.sh` | Preview (dev) | dbt run, edr report |
-| `cron.sh` | Production | dbt run, dbt test, source freshness, upload, edr report, edr monitor |
-
-Both are thin wrappers around `scripts/run_dbt_observability.sh`, which captures per-step exit codes and never exits early. `cron_preview.sh` sets `DBT_TEST_SCOPE=preview_subset`, while production keeps the default `DBT_TEST_SCOPE=full`.
+See [The daily cron pipeline](#the-daily-cron-pipeline) under Local Development for the complete flow — entry points, pipeline sections, retry semantics, mandatory-step rules, persisted state on the PVC, and Grafana observability. That section is the single source of truth for how the cron runs in both preview and prod.
 
 ### Full Refresh Orchestrator
 
