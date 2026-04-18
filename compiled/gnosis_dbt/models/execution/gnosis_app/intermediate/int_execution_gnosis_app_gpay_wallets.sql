@@ -3,44 +3,11 @@
 
 
 
+
+
+
 WITH
 
--- Watermark: start of the current incremental batch. Used to scope the
--- "changed" scan. Everything before this is assumed stable.
--- On full-refresh / first run we push it back to 2023-06-01 (all time).
-changed_window_start AS (
-    SELECT
-        
-            greatest(
-                toDateTime('2023-06-01'),
-                subtractDays(
-                    coalesce(
-                        (SELECT max(coalesce(first_ga_owner_at,
-                                             initial_event_at,
-                                             toDateTime('2023-06-01')))
-                         FROM `dbt`.`int_execution_gnosis_app_gpay_wallets`),
-                        toDateTime('2023-06-01')
-                    ),
-                    30
-                )
-            )                                                   AS ts
-        
-),
-
-gp_safes AS (
-    SELECT address AS pay_wallet
-    FROM `dbt`.`int_execution_gpay_wallets`
-),
-
-ga_users AS (
-    SELECT address FROM `dbt`.`int_execution_gnosis_app_users_current`
-),
-
--- All delay modules (delay_module proxy → GP Safe map).
--- IMPORTANT: `delay_module_lc` is built WITHOUT the 0x prefix so it can
--- match `execution.logs.address` (which is stored as raw hex, no 0x).
--- `delay_module` keeps the 0x prefix for downstream joins against CTEs
--- that also prefix via concat('0x', ...).
 all_delay_modules AS (
     SELECT
         lower(replaceAll(sm.module_proxy_address, '0x', '')) AS delay_module_lc,
@@ -50,58 +17,76 @@ all_delay_modules AS (
     WHERE sm.contract_type = 'DelayModule'
 ),
 
--- Delay modules that had ANY EnabledModule/DisabledModule event since the
--- watermark. On full-refresh / first run, this equals all delay modules.
+-- Delay modules touched in the incremental window. The macro bounds
+-- l.block_timestamp by max(last_event_at) from `dbt`.`int_execution_gnosis_app_gpay_wallets`; on full-refresh
+-- / first run the macro emits nothing and we scan all history.
 changed_delay_modules AS (
     SELECT DISTINCT lower(l.address) AS delay_module_lc
     FROM `execution`.`logs` l
-    WHERE l.topic0 IN (
-            'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440',
-            'aab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276'
-          )
-      AND l.block_timestamp >= (SELECT ts FROM changed_window_start)
+    WHERE l.topic0 IN ('ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440', 'aab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276')
       AND lower(l.address) IN (SELECT delay_module_lc FROM all_delay_modules)
+    
+      
+  
+    
+    
+
+   AND 
+    toStartOfMonth(toDate(l.block_timestamp)) >= (
+      SELECT toStartOfMonth(addDays(max(toDate(x1.last_event_at)), -1))
+      FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x1
+      WHERE 1=1 
+    )
+    AND toDate(l.block_timestamp) >= (
+      SELECT 
+        
+          addDays(max(toDate(x2.last_event_at)), -1)
+        
+
+      FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x2
+      WHERE 1=1 
+    )
+  
+
+    
 ),
 
--- Restrict downstream to the delay modules that need recomputing.
 delay_modules AS (
     SELECT dm.*
     FROM all_delay_modules dm
-    INNER JOIN changed_delay_modules cdm
-        ON cdm.delay_module_lc = dm.delay_module_lc
+    INNER JOIN changed_delay_modules cdm USING (delay_module_lc)
 ),
 
--- Full event history (back to 2023-06-01) for ONLY the changed delay
--- modules. Net-sum needs full history for correctness, but the IN-scan
--- is now bounded to a small number of delay modules.
+ga_users AS (
+    SELECT address FROM `dbt`.`int_execution_gnosis_app_users_current`
+),
+
+-- Full event history for ONLY the changed delay modules. Net-sum requires
+-- full history for correctness, but the IN-scan is bounded to a small set.
 module_events AS (
     SELECT
         concat('0x', lower(l.address))                          AS delay_module,
         concat('0x', lower(substring(l.data, 25, 40)))          AS module_address,
-        if(l.topic0 = 'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440', 1, -1) AS diff,
+        if(l.topic0 = 'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440', 1, -1)             AS diff,
         l.block_timestamp                                       AS block_timestamp
     FROM `execution`.`logs` l
-    WHERE l.topic0 IN (
-            'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440',
-            'aab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276'
-          )
+    WHERE l.topic0 IN ('ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440', 'aab4fa2b463f581b2b32cb3b7e3b704b9ce37cc209b5fb4d77e593ace4054276')
       AND l.block_timestamp >= toDateTime('2023-06-01')
       AND lower(l.address) IN (SELECT delay_module_lc FROM delay_modules)
 ),
 
--- Net enable state per (delay_module, enabled_module). Positive = currently enabled.
 net_modules AS (
     SELECT
         delay_module,
         module_address,
         sum(diff)                                               AS net_enabled,
-        minIf(block_timestamp, diff = 1)                        AS first_enabled_at
+        minIf(block_timestamp, diff = 1)                        AS first_enabled_at,
+        max(block_timestamp)                                    AS last_event_at
     FROM module_events
     WHERE module_address != '0x0000000000000000000000000000000000000000'
     GROUP BY delay_module, module_address
 ),
 
--- GA users attached to a delay module, joined back to the GP Safe.
 ga_enabled AS (
     SELECT
         dm.pay_wallet                                           AS pay_wallet,
@@ -124,18 +109,16 @@ per_wallet AS (
     GROUP BY pay_wallet
 ),
 
--- Total current modules enabled on the Delay (for n_total_owners_current).
--- Any module with net_enabled > 0 counts (GA or otherwise).
 total_current AS (
     SELECT
         dm.pay_wallet                                           AS pay_wallet,
-        countIf(n.net_enabled > 0)                              AS n_total_owners_current
+        countIf(n.net_enabled > 0)                              AS n_total_owners_current,
+        max(n.last_event_at)                                    AS last_event_at
     FROM net_modules n
     INNER JOIN delay_modules dm ON dm.delay_module = n.delay_module
     GROUP BY dm.pay_wallet
 ),
 
--- Onboarding class: iff the FIRST-ever module enabled on the Delay is a GA user.
 first_enable_per_delay AS (
     SELECT
         delay_module,
@@ -168,7 +151,8 @@ SELECT
     p.n_ga_owners_current > 0                                   AS is_currently_ga_owned,
     p.n_ga_owners_current                                       AS n_ga_owners_current,
     coalesce(tc.n_total_owners_current, 0)                      AS n_total_owners_current,
-    coalesce(o.onboarding_class, 'imported')                    AS onboarding_class
+    coalesce(o.onboarding_class, 'imported')                    AS onboarding_class,
+    tc.last_event_at                                            AS last_event_at
 FROM per_wallet p
 LEFT JOIN total_current tc    ON tc.pay_wallet = p.pay_wallet
 LEFT JOIN onboarding_class o  ON o.pay_wallet  = p.pay_wallet
