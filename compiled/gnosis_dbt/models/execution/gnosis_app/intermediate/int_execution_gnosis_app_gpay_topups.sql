@@ -2,7 +2,6 @@
 
 
 
-
 WITH ga_users AS (
     SELECT address FROM `dbt`.`int_execution_gnosis_app_users_current`
 ),

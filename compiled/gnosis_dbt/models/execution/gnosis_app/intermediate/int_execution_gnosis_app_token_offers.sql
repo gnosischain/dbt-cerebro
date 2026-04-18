@@ -1,5 +1,4 @@
 
-
 WITH cycles AS (
     SELECT
         contract_address                                         AS cycle_address,

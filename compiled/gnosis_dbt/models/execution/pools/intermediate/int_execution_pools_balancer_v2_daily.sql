@@ -2,7 +2,6 @@
 
 
 
-
 WITH
 
 pool_registry AS (

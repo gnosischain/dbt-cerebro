@@ -2,7 +2,6 @@
 
 
 
-
 WITH
 constants AS (
     SELECT

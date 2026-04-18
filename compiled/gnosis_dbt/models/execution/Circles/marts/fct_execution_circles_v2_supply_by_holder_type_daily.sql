@@ -1,5 +1,4 @@
 
-
 WITH balance_addresses AS (
     SELECT DISTINCT account AS address
     FROM `dbt`.`int_execution_circles_v2_balances_daily`

@@ -1,5 +1,4 @@
 
-
 WITH
 
 source AS (

@@ -2,7 +2,6 @@
 
 
 
-
 WITH onboard_rows AS (
     -- One onboarding row per user on their first-seen date. Needed so the
     -- "new user" cohort_month can be computed without looking at the event

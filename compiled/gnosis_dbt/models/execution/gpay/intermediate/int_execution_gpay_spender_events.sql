@@ -1,5 +1,4 @@
 
-
 WITH decoded AS (
     SELECT * FROM (
         

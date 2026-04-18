@@ -2,7 +2,6 @@
 
 
 
-
 WITH
 
   peers AS (

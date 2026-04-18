@@ -5,7 +5,6 @@
 
 
 
-
 WITH
 
 all_delay_modules AS (

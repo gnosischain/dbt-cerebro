@@ -1,5 +1,4 @@
 
-
 -- SCD-style historical view of every Circles v2 avatar metadata change.
 --
 -- One row per (avatar, metadata_digest) ever announced by the

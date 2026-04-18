@@ -2,7 +2,6 @@
 
 
 
-
 WITH
 
 all_swaps AS (

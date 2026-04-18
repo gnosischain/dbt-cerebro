@@ -5,7 +5,6 @@
 
 
 
-
 WITH deduped_transactions AS (
     SELECT
         block_timestamp,

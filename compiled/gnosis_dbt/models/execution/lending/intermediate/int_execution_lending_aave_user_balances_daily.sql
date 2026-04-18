@@ -1,5 +1,4 @@
 
-
 -- depends_on: `dbt`.`int_execution_lending_aave_diffs_daily`
 -- NOTE: scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
 -- (mirrors Aave's on-chain WadRayMath). Run with --full-refresh when migrating from

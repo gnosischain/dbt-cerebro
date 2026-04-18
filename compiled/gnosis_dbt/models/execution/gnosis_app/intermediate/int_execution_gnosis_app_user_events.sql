@@ -4,8 +4,6 @@
 
 
 
-
-
 WITH cometh_txs AS (
     -- Narrow execution.transactions ONCE to the Cometh-relayed tx set per
     -- monthly batch. Every rule joins this CTE instead of re-scanning the

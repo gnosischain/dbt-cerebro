@@ -1,5 +1,4 @@
 
-
 WITH wd AS (
   SELECT max(date) AS max_date
   FROM `dbt`.`int_execution_transfers_whitelisted_daily`

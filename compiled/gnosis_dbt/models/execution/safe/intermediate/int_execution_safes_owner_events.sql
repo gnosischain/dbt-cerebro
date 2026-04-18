@@ -1,5 +1,4 @@
 
-
 WITH decoded AS (
     SELECT
         block_number,

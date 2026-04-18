@@ -1,5 +1,4 @@
 
-
 WITH
 
 discv4_topology AS (

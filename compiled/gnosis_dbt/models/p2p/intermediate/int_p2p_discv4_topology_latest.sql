@@ -1,5 +1,4 @@
 
-
 WITH
 
 -- 1) First CTE: basic peer info
