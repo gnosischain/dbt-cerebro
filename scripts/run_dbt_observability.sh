@@ -188,6 +188,11 @@ DBT_RUN_BATCH_SIZE="${DBT_RUN_BATCH_SIZE:-5}"
 DBT_RUN_BATCH_SLEEP_SECONDS="${DBT_RUN_BATCH_SLEEP_SECONDS:-0}"
 RUN_BATCH_PLAN="$(mktemp)"
 
+# Fresh stash for this run — stale files from previous days would bleed into
+# today's transient/permanent classification.
+FAILED_BATCHES_DIR="${PROJECT_DIR}/target/failed_batches"
+rm -rf "$FAILED_BATCHES_DIR"
+
 if python "$PROJECT_DIR/scripts/refresh/dbt_run_batches.py" \
   --select tag:production \
   --batch-size "$DBT_RUN_BATCH_SIZE" \
@@ -204,6 +209,14 @@ then
       --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
       || true
 
+    # Stash per-batch run_results.json before the next batch overwrites it.
+    if [ "${step_exit_codes["dbt-run:${batch_id}"]}" -ne 0 ] \
+       && [ -f "${PROJECT_DIR}/target/run_results.json" ]; then
+      mkdir -p "$FAILED_BATCHES_DIR"
+      cp "${PROJECT_DIR}/target/run_results.json" \
+         "${FAILED_BATCHES_DIR}/${batch_id}.json"
+    fi
+
     if [ "$DBT_RUN_BATCH_SLEEP_SECONDS" -gt 0 ] && [ "$batch_index" -lt "$(( ${#run_batches[@]} - 1 ))" ]; then
       echo "[$(date -u)] Sleeping ${DBT_RUN_BATCH_SLEEP_SECONDS}s before next dbt-run batch"
       sleep "$DBT_RUN_BATCH_SLEEP_SECONDS"
@@ -217,6 +230,83 @@ else
 fi
 
 rm -f "$RUN_BATCH_PLAN"
+
+# ── 2b. Smart retry for transient ClickHouse errors ──────────────────────
+# Classify failed nodes by error code. Memory-limit / timeout / network
+# errors are worth a single low-concurrency retry; SQL bugs are not.
+if [ -d "$FAILED_BATCHES_DIR" ]; then
+  CLASSIFY_OUT="$(python "$PROJECT_DIR/scripts/refresh/classify_failed_nodes.py" \
+    --stash-dir "$FAILED_BATCHES_DIR" 2>&1)"
+  echo "$CLASSIFY_OUT"
+  TRANSIENT_LINE="$(echo "$CLASSIFY_OUT" | grep '^TRANSIENT=' || true)"
+  PERMANENT_LINE="$(echo "$CLASSIFY_OUT" | grep '^PERMANENT=' || true)"
+  TRANSIENT_IDS="${TRANSIENT_LINE#TRANSIENT=}"
+  PERMANENT_IDS="${PERMANENT_LINE#PERMANENT=}"
+
+  if [ -n "$TRANSIENT_IDS" ]; then
+    # dbt's --select accepts fqn selectors; unique_ids look like
+    # "model.project.name" — strip to "name+" for descendants.
+    retry_selector=""
+    for uid in $TRANSIENT_IDS; do
+      node_name="${uid##*.}"
+      retry_selector="$retry_selector $node_name+"
+    done
+    echo "[$(date -u)] Retrying transient failures: $retry_selector"
+    run_step "dbt-run:retry-transient" \
+      dbt run --select $retry_selector --threads 1 \
+      --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+      || true
+
+    # Flip original batch exit codes for nodes that the retry recovered.
+    if [ -f "${PROJECT_DIR}/target/run_results.json" ]; then
+      RECOVERED="$(python -c "
+import json, sys
+data = json.load(open('${PROJECT_DIR}/target/run_results.json'))
+ok = [r['unique_id'] for r in data.get('results', [])
+      if r.get('status') == 'success']
+print(' '.join(ok))
+" 2>/dev/null || echo "")"
+      if [ -n "$RECOVERED" ]; then
+        # Remove recovered nodes from the per-batch failure stash so the
+        # summary check sees only still-failing nodes.
+        python - "$FAILED_BATCHES_DIR" "$RECOVERED" <<'PYEOF'
+import json, sys
+from pathlib import Path
+
+stash_dir = Path(sys.argv[1])
+recovered = set(sys.argv[2].split())
+for path in stash_dir.glob("*.json"):
+    data = json.loads(path.read_text())
+    still_failed = [
+        r for r in data.get("results", [])
+        if not (r.get("status") == "error" and r.get("unique_id") in recovered)
+    ]
+    remaining_errors = [r for r in still_failed if r.get("status") == "error"]
+    if not remaining_errors:
+        path.unlink()
+    else:
+        data["results"] = still_failed
+        path.write_text(json.dumps(data))
+PYEOF
+        # If every stashed batch was fully recovered, clear its mandatory-fail flag.
+        for key in "${!step_exit_codes[@]}"; do
+          if [[ "$key" == "dbt-run:"* ]] && [[ "$key" != "dbt-run:retry-transient" ]]; then
+            batch_id="${key#dbt-run:}"
+            if [ ! -f "${FAILED_BATCHES_DIR}/${batch_id}.json" ] \
+               && [ "${step_exit_codes[$key]}" -ne 0 ]; then
+              echo "[$(date -u)] Retry recovered batch: $key"
+              step_exit_codes["$key"]=0
+            fi
+          fi
+        done
+      fi
+    fi
+  fi
+
+  if [ -n "$PERMANENT_IDS" ]; then
+    echo "[$(date -u)] Permanent (non-retryable) failures: $PERMANENT_IDS"
+  fi
+fi
 
 # ── 3. Tests (batched to stay under ClickHouse max_table_num_to_throw) ──
 # Elementary's on_run_end hook creates temp tables per test result.
