@@ -22,7 +22,8 @@ changed_window_start AS (
                         toDateTime('2023-06-01')
                     ),
                     30
-                )                                               AS ts
+                )
+            )                                                   AS ts
         
 ),
 
