@@ -49,7 +49,10 @@ events_base AS (
         ON  tm.token_address          = l.token_address
         AND toDate(l.block_timestamp) >= toDate(tm.date_start)
     WHERE l.amount_raw > 0
-      {% if not (start_month and end_month) %}
+      {% if start_month and end_month %}
+        AND toStartOfMonth(l.block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(l.block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
         {{ apply_monthly_incremental_filter('l.block_timestamp', 'block_timestamp', 'true') }}
       {% endif %}
 ),
