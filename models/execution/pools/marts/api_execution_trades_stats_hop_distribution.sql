@@ -5,50 +5,32 @@
     )
 }}
 
--- Static hop-count distribution over the last 30 days. One row per bucket
--- (1, 2, 3, 4+ hops) with the share (%) of trades and raw count. Not
--- affected by the dashboard's time window — the chart label notes the
--- fixed 30d window.
+-- Hop-count distribution over the last 30 days. Light GROUP BY on the
+-- pre-bucketed hop_bucket column in int_execution_trades_by_tx.
 
 WITH
 
-trades AS (
-    SELECT
-        transaction_hash,
-        count()                                             AS hop_count
-    FROM {{ ref('int_execution_pools_dex_trades') }}
-    WHERE block_timestamp >= today() - INTERVAL 30 DAY
-      AND block_timestamp < today()
-    GROUP BY transaction_hash
+recent AS (
+    SELECT hop_bucket
+    FROM {{ ref('int_execution_trades_by_tx') }}
+    WHERE date >= today() - INTERVAL 30 DAY
+      AND date <  today()
 ),
 
-bucketed AS (
-    SELECT
-        multiIf(
-            hop_count = 1, '1 hop',
-            hop_count = 2, '2 hops',
-            hop_count = 3, '3 hops',
-            '4+ hops'
-        )                                                   AS bucket,
-        multiIf(
-            hop_count = 1, 1,
-            hop_count = 2, 2,
-            hop_count = 3, 3,
-            4
-        )                                                   AS bucket_order
-    FROM trades
-),
-
-totals AS (
-    SELECT count() AS total_trades FROM bucketed
+total AS (
+    SELECT count() AS n FROM recent
 )
 
 SELECT
-    b.bucket                                                AS label,
-    round(100.0 * count() / any(t.total_trades), 2)         AS value,
-    count()                                                 AS trade_count,
-    min(b.bucket_order)                                     AS bucket_order
-FROM bucketed b
-CROSS JOIN totals t
-GROUP BY b.bucket
+    hop_bucket                                                                  AS label,
+    count()                                                                     AS trade_count,
+    round(100.0 * count() / (SELECT n FROM total), 2)                           AS value,
+    multiIf(
+        hop_bucket = '1 hop',  1,
+        hop_bucket = '2 hops', 2,
+        hop_bucket = '3 hops', 3,
+                               4
+    )                                                                           AS bucket_order
+FROM recent
+GROUP BY hop_bucket
 ORDER BY bucket_order

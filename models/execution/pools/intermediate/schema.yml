@@ -457,3 +457,63 @@ models:
     data_type: UInt8
   - name: price1_usd
     data_type: Float64
+
+- name: int_execution_trades_by_tx
+  description: >
+    Transaction-grain collapse of `int_execution_pools_dex_trades` — one row
+    per (date, transaction_hash). Runs the expensive tx-level GROUP BY and
+    `int_crawlers_data_labels` JOIN exactly once, so downstream facts and api
+    views operate on a small pre-shaped table instead of scanning the 31M+
+    swap rows. `aggregator_label` uses the 3-bucket Option-2 heuristic:
+    labeled → project name; unlabeled + multi-hop → "Other Router";
+    unlabeled + 1-hop → "Direct". `hop_bucket` and `size_bucket` are
+    pre-computed so api views can group by string columns directly.
+  meta:
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 3
+  columns:
+  - name: date
+    description: Day of the transaction (UTC, derived from block_timestamp).
+    data_type: Date
+    tests: [not_null]
+  - name: block_timestamp
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    data_type: String
+    tests: [not_null]
+  - name: tx_from
+    description: Transaction origin address (the EOA / account that initiated the swap).
+    data_type: String
+  - name: tx_to
+    description: Contract the transaction called (aggregator / router / pool).
+    data_type: String
+  - name: aggregator_label
+    description: >
+      Named project from `int_crawlers_data_labels` if matched; otherwise
+      "Other Router" when `hop_count >= 2` (clearly routed) or "Direct" when
+      `hop_count = 1` (conservative — may be a direct pool swap or a simple
+      single-hop router).
+    data_type: String
+  - name: hop_count
+    description: Number of swap events in the transaction.
+    data_type: UInt64
+  - name: hop_bucket
+    description: Pre-bucketed hop count — "1 hop", "2 hops", "3 hops", "4+ hops".
+    data_type: String
+  - name: trade_usd
+    description: Max of per-hop amount_usd across the transaction (matches the live-feed convention).
+    data_type: Nullable(Float64)
+  - name: size_bucket
+    description: Pre-bucketed trade size — "< $100", "$100 – $1K", "$1K – $10K", "$10K – $100K", "$100K+", "unknown".
+    data_type: String
+  - name: token_sold_first
+    description: Symbol of the token sold on the first hop (lowest log_index).
+    data_type: String
+  - name: token_bought_last
+    description: Symbol of the token bought on the last hop (highest log_index).
+    data_type: String
+  - name: protocols_used
+    description: Array of protocols touched by the transaction, in hop order, deduplicated.
+    data_type: Array(String)

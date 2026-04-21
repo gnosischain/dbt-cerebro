@@ -5,70 +5,46 @@
     )
 }}
 
--- Weekly token activity, stacked by the top-8 tokens by lifetime volume
--- (sold + bought side combined), with all other tokens rolled into "Other".
--- Top-8 is computed globally so the stack colors stay consistent regardless
--- of the dashboard's time window. The `value_volume` and `value_trades`
--- columns let the dashboard toggle between volume and trade-count views.
+-- Weekly token activity, bucketed to top-8 lifetime + 'Other'. Top-8 is
+-- picked globally so stack colors stay stable regardless of the dashboard
+-- time window. Reads from the pre-aggregated daily fact.
 
 WITH
 
-per_token AS (
-    -- One row per (hop, side) — a hop contributes amount_usd to BOTH its
-    -- sold token and its bought token. Trade count is per unique
-    -- (transaction, token) so a multi-hop trade counts once per token
-    -- touched.
+weekly AS (
     SELECT
-        toStartOfWeek(block_timestamp, 1)   AS date,  -- mode 1 = Monday start
-        transaction_hash,
-        token_sold_symbol                   AS token,
-        coalesce(amount_usd, 0)             AS usd
-    FROM {{ ref('int_execution_pools_dex_trades') }}
-    WHERE amount_usd IS NOT NULL
-      AND token_sold_symbol != ''
-      AND block_timestamp < today()
-
-    UNION ALL
-
-    SELECT
-        toStartOfWeek(block_timestamp, 1)   AS date,
-        transaction_hash,
-        token_bought_symbol                 AS token,
-        coalesce(amount_usd, 0)             AS usd
-    FROM {{ ref('int_execution_pools_dex_trades') }}
-    WHERE amount_usd IS NOT NULL
-      AND token_bought_symbol != ''
-      AND block_timestamp < today()
-),
-
-lifetime_rank AS (
-    -- Top-8 tokens by lifetime total USD volume.
-    SELECT
+        toStartOfWeek(date, 1) AS week,
         token,
-        sum(usd) AS lifetime_usd,
-        row_number() OVER (ORDER BY sum(usd) DESC) AS rnk
-    FROM per_token
-    GROUP BY token
+        sum(combined_usd)                       AS volume_usd,
+        sum(bought_trades + sold_trades)        AS trade_count
+    FROM {{ ref('fct_execution_trades_by_token_daily') }}
+    WHERE date < today()
+      AND token != ''
+    GROUP BY week, token
 ),
 
-top_tokens AS (
-    SELECT token FROM lifetime_rank WHERE rnk <= 8
+top_lifetime AS (
+    SELECT token
+    FROM weekly
+    GROUP BY token
+    ORDER BY sum(volume_usd) DESC
+    LIMIT 8
 ),
 
 bucketed AS (
     SELECT
-        p.date,
-        if(p.token IN (SELECT token FROM top_tokens), p.token, 'Other') AS label,
-        p.transaction_hash,
-        p.usd
-    FROM per_token p
+        w.week                                                                  AS date,
+        if(w.token IN (SELECT token FROM top_lifetime), w.token, 'Other')       AS label,
+        sum(w.volume_usd)                                                       AS value_volume,
+        sum(w.trade_count)                                                      AS value_trades
+    FROM weekly w
+    GROUP BY date, label
 )
 
 SELECT
     date,
     label,
-    round(sum(usd), 0)                      AS value_volume,
-    uniqExact(transaction_hash)             AS value_trades
+    value_volume,
+    value_trades
 FROM bucketed
-GROUP BY date, label
 ORDER BY date, label
