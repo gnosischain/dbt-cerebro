@@ -328,3 +328,131 @@ models:
   - name: change_pct
     description: Percentage change vs prior 7-day window (or vs 7 days ago for TVL).
     data_type: Float64
+
+- name: api_execution_trades_stats_volume_ts
+  description: >
+    Daily USD volume of DEX trades across Gnosis Chain, stacked by protocol.
+    Volume is summed per hop, so multi-hop trades contribute to every
+    protocol they touch. Feeds the top chart on the Trades → Stats tab.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: Protocol (Uniswap V3, Balancer V2/V3, Swapr V3).
+    data_type: String
+  - name: value
+    description: Sum of per-hop `amount_usd` for that (day, protocol).
+    data_type: Float64
+
+- name: api_execution_trades_stats_aggregator_share_ts
+  description: >
+    Daily aggregator market share as percentage of trades (one trade = one
+    transaction, aggregator = the labeled `tx_to` via int_crawlers_data_labels
+    or "Direct" when unlabeled). Each date sums to 100.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: Aggregator/router name or "Direct" for unlabeled `tx_to`.
+    data_type: String
+  - name: value
+    description: Percentage share of trades for this aggregator on this date.
+    data_type: Float64
+
+- name: api_execution_trades_stats_top_tokens_weekly
+  description: >
+    Weekly token activity for the top-8 tokens by lifetime volume (sold +
+    bought combined). All other tokens are rolled into "Other". Top-8 is
+    computed globally so stack colors are stable across window changes.
+    Each hop contributes to both its sold and bought token. Returns both
+    volume and trade-count metrics so the dashboard can toggle between them.
+  columns:
+  - name: date
+    description: Week start (Monday). Used as the x-axis for stacked bars.
+    data_type: Date
+  - name: label
+    description: Token symbol (one of the top-8) or "Other".
+    data_type: String
+  - name: value_volume
+    description: USD volume for that (week, token), summed across sold+bought sides.
+    data_type: Float64
+  - name: value_trades
+    description: Count of unique transactions touching that token in the week.
+    data_type: UInt64
+
+- name: api_execution_trades_stats_hop_distribution
+  description: >
+    Static hop-count distribution over the last 30 days. One row per
+    bucket (1, 2, 3, 4+ hops) with the share (%) of trades and raw count.
+    Not affected by the dashboard time window.
+  columns:
+  - name: label
+    description: Hop-count bucket label ("1 hop", "2 hops", "3 hops", "4+ hops").
+    data_type: String
+  - name: value
+    description: Percentage of trades in this bucket over the last 30 days.
+    data_type: Float64
+  - name: trade_count
+    description: Raw number of trades in this bucket.
+    data_type: UInt64
+  - name: bucket_order
+    description: Sort order for the bucket (1..4). Used by the dashboard to render the x-axis.
+    data_type: UInt8
+
+- name: api_execution_trades_stats_size_distribution
+  description: >
+    Static trade-size distribution over the last 30 days. Trade USD is the
+    max of per-hop amount_usd within a transaction. Buckets:
+    &lt;$100, $100–$1K, $1K–$10K, $10K–$100K, $100K+. Not affected by the
+    dashboard time window.
+  columns:
+  - name: label
+    description: USD size bucket.
+    data_type: String
+  - name: value
+    description: Percentage of trades in this bucket over the last 30 days.
+    data_type: Float64
+  - name: trade_count
+    description: Raw number of trades in this bucket.
+    data_type: UInt64
+  - name: bucket_order
+    description: Sort order for the bucket (1..5). Used by the dashboard to render the x-axis.
+    data_type: UInt8
+
+- name: api_execution_trades_stats_net_flow
+  description: >
+    Top 10 tokens by absolute net USD flow over the last 30 days. A token's
+    net is bought-side USD minus sold-side USD. Positive = net accumulation,
+    negative = net distribution. Rendered as a diverging bar on the Stats tab.
+  columns:
+  - name: label
+    description: Token symbol.
+    data_type: String
+  - name: value
+    description: Net USD flow (signed). Positive = net bought, negative = net sold.
+    data_type: Float64
+  - name: bought_usd
+    description: Total USD value bought into this token over 30d.
+    data_type: Float64
+  - name: sold_usd
+    description: Total USD value sold out of this token over 30d.
+    data_type: Float64
+
+- name: api_execution_trades_stats_lifetime
+  description: >
+    One-row lifetime summary of DEX trading on Gnosis Chain. Feeds the four
+    fixed tiles at the bottom of the Trades → Stats tab — always all-time,
+    never affected by the window selector.
+  columns:
+  - name: lifetime_volume_usd
+    description: All-time sum of per-hop `amount_usd`.
+    data_type: Float64
+  - name: lifetime_trade_count
+    description: All-time distinct transaction count.
+    data_type: UInt64
+  - name: lifetime_unique_traders
+    description: All-time distinct `tx_from` count.
+    data_type: UInt64
+  - name: first_trade_date
+    description: Date of the earliest indexed DEX trade.
+    data_type: Date

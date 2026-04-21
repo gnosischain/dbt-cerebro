@@ -32,9 +32,15 @@ models:
   - name: trade_usd
     description: Conservative USD notional for the trade (max across hops of the per-hop conservative notional).
   - name: via
-    description: Comma-separated list of DEX protocols touched by the transaction.
+    description: Arrow-separated list of DEX protocols touched by the transaction, in hop order.
   - name: hops
     description: Number of swap events in the transaction. 1 for direct pool swaps, >1 for router/aggregator paths.
+  - name: hops_detail
+    description: >
+      Per-hop breakdown as a nested array, sorted by `log_index`. Each hop is a
+      positional string array with fields [log_index, protocol, pool,
+      token_sold, amount_sold, token_bought, amount_bought, amount_usd]. Used
+      by the dashboard for inline row expansion.
   - name: trader
     description: Transaction origin address (`tx.from_address`) — the EOA that initiated the swap.
   - name: aggregator
@@ -58,6 +64,25 @@ models:
     description: Percentage of trades where `tx.to_address` was labeled as a known aggregator/router.
   - name: multihop_share_pct
     description: Percentage of trades with more than one swap event (router/aggregator paths).
+
+- name: api_execution_live_trades_hourly_48h
+  description: >
+    Hourly USD volume over the live window (up to 48h), stacked by protocol.
+    Feeds the "last 48h volume" chart on the Live Feed tab. Volume is summed
+    per swap event (per hop), so multi-hop trades contribute to every
+    protocol they touch — this is the standard DEX-activity view. Rows with
+    unknown USD are excluded. Anchored on `max(block_timestamp)` in
+    `int_live__dex_trades_raw` so the window stays aligned with the feed.
+  columns:
+  - name: date
+    description: Hour bucket (start of hour, UTC). Name matches the dashboard's `xField` convention.
+    tests: [not_null]
+  - name: label
+    description: DEX protocol (Uniswap V3, Balancer V2, Balancer V3, Swapr V3). Used as the stacked series field.
+    tests: [not_null]
+  - name: value
+    description: Sum of per-swap `amount_usd` for that (hour, protocol), rounded to whole USD.
+    tests: [not_null]
 
 - name: api_execution_live_trades_freshness
   description: >
