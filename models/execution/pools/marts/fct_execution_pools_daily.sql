@@ -213,42 +213,66 @@ distinct_token_pool_dates AS (
     INNER JOIN registry_pool_tokens r
       ON r.protocol = d.protocol
      AND r.pool_address = d.pool_address
+),
+
+base AS (
+    SELECT
+        b.date AS date,
+        b.protocol AS protocol,
+        b.pool_address AS pool_address,
+        pl.pool AS pool,
+        b.token_address AS token_address,
+        b.token AS token,
+        pm.tvl_usd AS tvl_usd,
+        pm.fees_usd_daily AS fees_usd_daily,
+        pm.volume_usd_daily AS volume_usd_daily,
+        pm.swap_count AS swap_count,
+        pm.fee_apr_7d AS fee_apr_7d_raw,
+        il.lvr_apr_7d AS lvr_apr_7d_raw
+    FROM distinct_token_pool_dates b
+    INNER JOIN top_pools_by_token tp
+      ON tp.token = b.token
+     AND tp.protocol = b.protocol
+     AND tp.pool_address = b.pool_address
+     AND tp.token_address = b.token_address
+    LEFT JOIN pool_labels pl
+      ON pl.protocol = b.protocol
+     AND pl.pool_address = b.pool_address
+    LEFT JOIN {{ ref('int_execution_pools_metrics_daily') }} pm
+      ON pm.date = b.date
+     AND pm.protocol = b.protocol
+     AND pm.pool_address = b.pool_address
+    LEFT JOIN {{ ref('fct_execution_pools_il_daily') }} il
+      ON il.date = b.date
+     AND il.protocol = b.protocol
+     AND il.pool_address = b.pool_address
+    WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+      AND b.date < today()
 )
 
 SELECT
-    b.date AS date,
-    b.protocol AS protocol,
-    b.pool_address AS pool_address,
-    pl.pool AS pool,
-    b.token_address AS token_address,
-    b.token AS token,
-    pm.tvl_usd AS tvl_usd,
-    pm.fees_usd_daily AS fees_usd_daily,
-    pm.volume_usd_daily AS volume_usd_daily,
-    pm.swap_count AS swap_count,
-    pm.fee_apr_7d AS fee_apr_7d,
-    il.lvr_apr_7d AS lvr_apr_7d,
-    CASE
-        WHEN pm.fee_apr_7d IS NOT NULL AND il.lvr_apr_7d IS NOT NULL
-        THEN pm.fee_apr_7d + il.lvr_apr_7d
-        ELSE NULL
-    END AS net_apr_7d
-FROM distinct_token_pool_dates b
-INNER JOIN top_pools_by_token tp
-  ON tp.token = b.token
- AND tp.protocol = b.protocol
- AND tp.pool_address = b.pool_address
- AND tp.token_address = b.token_address
-LEFT JOIN pool_labels pl
-  ON pl.protocol = b.protocol
- AND pl.pool_address = b.pool_address
-LEFT JOIN {{ ref('int_execution_pools_metrics_daily') }} pm
-  ON pm.date = b.date
- AND pm.protocol = b.protocol
- AND pm.pool_address = b.pool_address
-LEFT JOIN {{ ref('fct_execution_pools_il_daily') }} il
-  ON il.date = b.date
- AND il.protocol = b.protocol
- AND il.pool_address = b.pool_address
-WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
-  AND b.date < today()
+    date,
+    protocol,
+    pool_address,
+    pool,
+    token_address,
+    token,
+    tvl_usd,
+    fees_usd_daily,
+    volume_usd_daily,
+    swap_count,
+    avg(fee_apr_7d_raw) OVER w AS fee_apr_7d,
+    avg(lvr_apr_7d_raw) OVER w AS lvr_apr_7d,
+    avg(
+        CASE
+            WHEN fee_apr_7d_raw IS NOT NULL AND lvr_apr_7d_raw IS NOT NULL
+            THEN fee_apr_7d_raw + lvr_apr_7d_raw
+            ELSE NULL
+        END
+    ) OVER w AS net_apr_7d
+FROM base
+WINDOW w AS (
+    PARTITION BY protocol, pool_address
+    ORDER BY date
+    RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
+)
