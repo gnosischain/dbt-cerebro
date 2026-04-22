@@ -59,7 +59,11 @@ daily_deltas AS (
         date,
         pool_address,
         token_address,
-        sum(delta_amount_raw) AS daily_delta_raw,
+        sum(multiIf(
+            delta_category = 'liquidity' AND delta_amount_raw < toInt256(0),
+                toInt256(0),
+            delta_amount_raw
+        )) AS daily_delta_raw,
         sum(multiIf(
             delta_category = 'swap_in',
                 delta_amount_raw - intDiv(delta_amount_raw * toInt256(effective_fee_ppm), toInt256(1000000)),

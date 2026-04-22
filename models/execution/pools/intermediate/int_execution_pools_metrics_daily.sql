@@ -91,6 +91,7 @@ SELECT
         protocol NOT IN ('Uniswap V3', 'Swapr V3', 'Balancer V3'), NULL,
         days_in_window < 3, NULL,
         tvl_usd_7d_avg <= 0, NULL,
+        tvl_usd_7d_avg < 500, NULL,
         (fees_usd_7d / tvl_usd_7d_avg) * (365.0 / 7.0) * 100.0
     ) AS fee_apr_7d
 FROM pool_metrics_daily
