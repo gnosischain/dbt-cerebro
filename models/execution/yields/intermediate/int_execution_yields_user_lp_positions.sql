@@ -76,7 +76,7 @@ SELECT
         pa.capital_in_usd > pa.capital_out_usd
     )                                        AS is_active,
     multiIf(
-        pa.tick_lower IS NULL, NULL,
+        pa.tick_lower IS NULL, true,
         ct.current_tick IS NULL, NULL,
         pa.tick_lower <= ct.current_tick AND ct.current_tick < pa.tick_upper
     )                                        AS is_in_range,
