@@ -15,5 +15,6 @@ SELECT
     countDistinct(address)                                              AS n_users,
     sum(amount_usd)                                                     AS amount_usd
 FROM {{ ref('int_execution_gnosis_app_user_activity_daily') }}
+WHERE toStartOfWeek(date, 1) < toStartOfWeek(today(), 1)
 GROUP BY week, activity_kind
 ORDER BY week, activity_kind

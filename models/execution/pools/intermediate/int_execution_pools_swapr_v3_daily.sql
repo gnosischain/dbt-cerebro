@@ -52,8 +52,6 @@ first_fee AS (
     GROUP BY pool_address_no0x
 ),
 
-{#- ASOF join for dynamic fees, then fee split + daily aggregation.
-    The ASOF join requires a subquery with ORDER BY, so we nest it. -#}
 daily_deltas AS (
     SELECT
         date,

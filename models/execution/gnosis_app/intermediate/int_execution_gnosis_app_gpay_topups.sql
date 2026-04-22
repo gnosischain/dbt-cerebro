@@ -41,6 +41,7 @@ ga_trades AS (
     FROM {{ ref('int_execution_cow_trades') }} t
     WHERE t.taker IN (SELECT address FROM ga_users)
       AND t.block_timestamp >= toDateTime('2025-11-12')
+      AND t.block_timestamp < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(t.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(t.block_timestamp) <= toDate('{{ end_month }}')

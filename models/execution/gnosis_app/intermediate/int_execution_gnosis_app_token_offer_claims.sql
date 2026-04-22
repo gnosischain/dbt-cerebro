@@ -51,6 +51,7 @@ claim_events AS (
     FROM {{ ref('contracts_circles_v2_ERC20TokenOfferCycle_events') }} e
     WHERE e.event_name = 'OfferClaimed'
       AND e.block_timestamp >= toDateTime('2025-11-12')
+      AND e.block_timestamp < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')

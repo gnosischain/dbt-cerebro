@@ -72,7 +72,13 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_metadata
-  description: Per-avatar identity for Circles v2 — on-chain registration metadata (type, name, inviter, registration time) joined to the most recently fetched IPFS profile (display name, preview/image URL, description). Backs the "Avatar Identity" panel on the Circles dashboard.
+  description: |
+    Per-avatar identity for Circles v2: on-chain registration metadata
+    (avatar type, on-chain name, inviter, token_id, registration timestamp)
+    joined to the most recently fetched IPFS profile from
+    int_execution_circles_v2_avatar_metadata (display name,
+    preview/image URLs, description, current digest / CID / gateway URL,
+    fetched_at). Backs the "Avatar Identity" panel on the Circles dashboard.
   columns:
   - name: avatar
     description: Address of the registered avatar.
@@ -122,7 +128,14 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_search
-  description: Lightweight (avatar, display_name) lookup mart used by the dashboard global filter to support searching avatars by display name OR address. One row per registered Circles v2 avatar. `display_name` prefers the IPFS profile name and falls back to the on-chain name; empty string when neither is set.
+  description: |
+    Lightweight (avatar, display_name) lookup used by the dashboard global
+    filter to support searching avatars by display name OR address. Two
+    columns, one row per registered Circles v2 avatar (sourced from
+    api_execution_circles_v2_avatar_metadata). display_name prefers the
+    IPFS profile name and falls back to the on-chain name (Group/Org only)
+    so every row has something usable to search against; the avatar
+    address is always present.
   columns:
   - name: avatar
     description: Address of the registered avatar.
@@ -133,7 +146,14 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_metadata_history
-  description: Historical timeline of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by NameRegistry, in event order, with valid_from / valid_to / is_current columns. Backs the "Metadata History" panel on the Circles dashboard.
+  description: |
+    Historical timeline of every Circles v2 avatar metadata change. Thin
+    passthrough over int_execution_circles_v2_avatar_metadata_history with
+    one row per (avatar, metadata_digest) ever announced, in event order,
+    carrying valid_from / valid_to / is_current and the parsed IPFS profile
+    fields (name, symbol, description, imageUrl, previewImageUrl) so the
+    dashboard can render the full sequence of name + image updates per
+    avatar.
   columns:
   - name: avatar
     description: Address of the registered avatar.
@@ -189,7 +209,12 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_balances_latest
-  description: Latest per-token CRC balance for each avatar (one row per avatar/token). Includes an `is_wrapped` flag indicating whether the token is an ERC-20 wrapper around a personal CRC token.
+  description: |
+    Latest per-(avatar, token) CRC balance snapshot with an is_wrapped flag
+    indicating whether the token_address is an ERC-20 wrapper. Thin
+    passthrough over fct_execution_circles_v2_avatar_balances_latest, which
+    is materialised daily from the per-day balance fact joined to the
+    distinct wrapper registry.
   columns:
   - name: avatar
     description: Address of the avatar holding the balance.
@@ -260,7 +285,13 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_tokens_held_count
-  description: Per-avatar count of distinct CRC tokens currently held with a balance above the 0.001 CRC dust threshold (1e15 raw wei). Backs the "Tokens Held" KPI card on the Circles Avatar tab.
+  description: |
+    Per-avatar count of distinct CRC tokens currently held with a balance
+    above the 0.001 CRC dust threshold (1e15 raw wei). Thin passthrough
+    over fct_execution_circles_v2_avatar_tokens_held_count, which is
+    materialised daily from int_execution_circles_v2_balances_daily on the
+    last completed day. Backs the "Tokens Held" KPI card on the Circles
+    Avatar tab.
   columns:
   - name: avatar
     description: Address of the avatar holding the tokens.
@@ -271,7 +302,25 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_trust_network
-  description: Trust-network edge list per Circles v2 avatar. One row per active trust relation, with source/target endpoints, display names, IPFS preview images for both endpoints, and a `direction` column ("Mutual", "Trust given", "Trust received") that drives the dashboard graph panel's edge colouring. Backs the "Trust Network" panel on the Circles Avatar tab.
+  description: |
+    Trust-network edge list for the Circles v2 Avatar Trust Network panel.
+
+    One row per directed trust edge from the perspective of the focal
+    avatar. For mutual relationships TWO rows are emitted (avatar →
+    counterparty AND counterparty → avatar) so the chart renders both
+    arrows. The dashboard's avatar global filter scopes rows to one focal
+    avatar — ClickHouse pushes that filter down into each UNION branch, so
+    per-request cost stays small despite the apparent size of the query.
+    Materialising this globally would produce ~millions of rows × long IPFS
+    strings and blow the memory budget, so this stays a view on purpose.
+
+    Each row carries display name and IPFS preview image for both
+    endpoints (joined from api_execution_circles_v2_avatar_metadata). The
+    dashboard graph chart consumes these via sourceImageField /
+    targetImageField to render avatar thumbnails on the nodes. The
+    target_layer / source_layer columns drive the chart's concentric
+    layout: "Focal avatar" lives at the centre, "Mutual" forms the inner
+    ring, "Trust given" the middle ring, "Trust received" the outer ring.
   columns:
   - name: avatar
     description: The focal avatar this row belongs to (used by the dashboard's avatar global filter).
@@ -309,7 +358,18 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_mint_activity_daily
-  description: Daily personal-mint activity per Circles v2 avatar — number of mint events and total CRC minted that day. A mint is a Hub TransferSingle from the zero address. Backs the "Mint Activity" panel on the Circles Avatar tab.
+  description: |
+    Daily personal-mint activity per Circles v2 avatar.
+
+    A Circles v2 personal mint is a Hub TransferSingle event where
+    from_address is the zero address (0x0000…0000) and the recipient is
+    the avatar itself. Each row in int_execution_circles_v2_hub_transfers
+    matching that shape represents one personalMint() call (or the
+    unscheduled mint that happens during a transfer).
+
+    Output is one row per (avatar, date) with the number of mint events
+    and the total amount minted that day (raw / 1e18). Backs the "Mint
+    Activity" panel on the Circles Avatar tab.
   columns:
   - name: avatar
     description: Address of the avatar receiving the mint.
@@ -326,7 +386,17 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_token_distribution
-  description: For each Circles v2 avatar's personal CRC token (the ERC-1155 token whose token_address equals the avatar address), classifies all current holders into Self / Wrapped (ERC-20) / Other Circles avatars / Other contracts. One row per (avatar, holder_category) — the dashboard's avatar global filter selects which avatar's token distribution to inspect.
+  description: |
+    Per-avatar distribution of holders of a Circles v2 personal CRC token
+    (the ERC-1155 token whose token_address equals the avatar address).
+    Thin passthrough over fct_execution_circles_v2_avatar_token_distribution,
+    which classifies every current holder (above the 0.001 CRC dust
+    threshold) as one of: Self (the avatar itself holds its own CRC),
+    Wrapped (ERC-20) (held by an ERC20Lift wrapper contract registered for
+    this avatar), Other Circles avatars (any other registered avatar), or
+    Other contracts (DEX pools, custodians, etc.). One row per (avatar,
+    holder_category); the dashboard's avatar global filter selects which
+    avatar's token distribution to inspect.
   columns:
   - name: avatar
     description: The avatar whose personal CRC token is being inspected.
@@ -346,7 +416,14 @@ models:
   meta: *meta_api
   tests: *elementary_error
 - name: api_execution_circles_v2_avatar_personal_token_supply_latest
-  description: One-row-per-avatar summary of a Circles v2 avatar's own personal CRC token — total supply and how much of it is currently held inside the avatar's ERC-20 wrapper contracts. Rolled up from api_execution_circles_v2_avatar_token_distribution so the supply figure respects the same 0.001 CRC dust threshold used by the distribution view.
+  description: |
+    One-row-per-avatar summary of a Circles v2 avatar's own personal CRC
+    token: total circulating supply, how much is wrapped as ERC-20, and
+    the wrapped share. Thin passthrough over
+    fct_execution_circles_v2_avatar_personal_token_supply_latest, which
+    rolls up fct_execution_circles_v2_avatar_token_distribution so the
+    supply respects the same 0.001 CRC dust threshold used by the
+    distribution fact.
   columns:
   - name: avatar
     description: The avatar whose personal CRC token is being summarised.
@@ -716,7 +793,18 @@ models:
   meta: *meta_fct
   tests: *elementary_warn
 - name: fct_execution_circles_v2_avatar_token_distribution
-  description: Per-avatar distribution of holders of the avatar's personal CRC token, classified as Self / Wrapped (ERC-20) / Other Circles avatars / Other contracts. Materialised daily as the latest-snapshot backing table for api_execution_circles_v2_avatar_token_distribution (which is a thin passthrough). One row per (avatar, holder_category).
+  description: |
+    Per-avatar distribution of holders of a Circles v2 personal CRC token
+    (the ERC-1155 token whose token_address equals the avatar address).
+    Classifies every current holder (balance above the 0.001 CRC dust
+    threshold = 1e15 raw wei on the last completed day from
+    int_execution_circles_v2_balances_daily) as one of: Self (the avatar
+    itself holds its own CRC), Wrapped (ERC-20) (held by an ERC20Lift
+    wrapper contract registered for this avatar via
+    int_execution_circles_v2_wrappers), Other Circles avatars (any other
+    registered Circles avatar), or Other contracts (DEX pools, custodians,
+    …). One row per (avatar, holder_category) materialised daily; the
+    matching api_ view is a thin passthrough consumed by the dashboard.
   columns:
   - name: avatar
     description: The avatar whose personal CRC token is being inspected.
@@ -736,7 +824,13 @@ models:
   meta: *meta_fct
   tests: *elementary_warn
 - name: fct_execution_circles_v2_avatar_balances_latest
-  description: Latest per-(avatar, token) CRC balance snapshot with an is_wrapped flag marking token_addresses that are ERC-20 wrappers. Materialised daily from fct_execution_circles_v2_avatar_balances_daily; backs the matching thin api_ view.
+  description: |
+    Latest per-(avatar, token) CRC balance snapshot with an is_wrapped flag
+    indicating whether the token_address is an ERC-20 wrapper. Materialised
+    daily from fct_execution_circles_v2_avatar_balances_daily on the last
+    completed day, joined to the distinct wrapper registry from
+    int_execution_circles_v2_wrappers. The matching api_ view is a thin
+    passthrough for dashboard consumption.
   columns:
   - name: avatar
     description: Address of the avatar holding the balance.
@@ -756,7 +850,11 @@ models:
   meta: *meta_fct
   tests: *elementary_warn
 - name: fct_execution_circles_v2_avatar_tokens_held_count
-  description: Per-avatar count of distinct CRC tokens currently held above the 0.001 CRC dust threshold (1e15 raw wei). Materialised daily from int_execution_circles_v2_balances_daily; backs the matching thin api_ view.
+  description: |
+    Per-avatar count of distinct CRC tokens currently held with a balance
+    above the 0.001 CRC dust threshold (1e15 raw wei). Materialised daily
+    from int_execution_circles_v2_balances_daily on the last completed day;
+    the matching api_ view is a thin passthrough.
   columns:
   - name: avatar
     description: Address of the avatar.
@@ -767,7 +865,11 @@ models:
   meta: *meta_fct
   tests: *elementary_warn
 - name: fct_execution_circles_v2_avatar_trusts_summary
-  description: Latest per-avatar trust summary (trusts given and trusts received as of the last complete day). Materialised daily from fct_execution_circles_v2_avatar_trusts_daily; backs the matching thin api_ view.
+  description: |
+    Latest per-avatar trust summary: trusts given and trusts received as of
+    the last complete day. Materialised daily from
+    fct_execution_circles_v2_avatar_trusts_daily; the matching api_ is a
+    thin passthrough.
   columns:
   - name: avatar
     description: Address of the avatar.
@@ -781,7 +883,13 @@ models:
   meta: *meta_fct
   tests: *elementary_warn
 - name: fct_execution_circles_v2_avatar_personal_token_supply_latest
-  description: One-row-per-avatar summary of a Circles v2 avatar's own personal CRC token — total circulating supply and how much of it is currently held inside the avatar's ERC-20 wrapper contracts. Rolled up from fct_execution_circles_v2_avatar_token_distribution; backs the matching thin api_ view.
+  description: |
+    One-row-per-avatar summary of a Circles v2 avatar's own personal CRC
+    token: total circulating supply, how much is wrapped as ERC-20, and
+    the wrapped share. Rolled up from
+    fct_execution_circles_v2_avatar_token_distribution so the supply
+    respects the same 0.001 CRC dust threshold used by the distribution
+    fact. The matching api_ is a thin passthrough.
   columns:
   - name: avatar
     description: The avatar whose personal CRC token is being summarised.

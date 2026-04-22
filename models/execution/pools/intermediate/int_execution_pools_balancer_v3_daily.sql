@@ -331,8 +331,6 @@ balances AS (
     {% endif %}
 ),
 
-{#- Resolve ERC4626 wrappers (waGno*) to underlying for decimals and price lookup.
-    Wrapper ≈ 1:1 with underlying. -#}
 enriched AS (
     SELECT
         b.date AS date,

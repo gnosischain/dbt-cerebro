@@ -215,7 +215,6 @@ all_fees_token AS (
 ),
 
 all_fees_with_token AS (
-    {#- V3 pools: need registry join to map token_position → token_address -#}
     SELECT
         fw.date AS date,
         fw.protocol AS protocol,
@@ -251,7 +250,6 @@ all_fees_with_token AS (
 
     UNION ALL
 
-    {# Balancer V3: resolve wrappers to underlying for token metadata #}
     SELECT
         bf.date AS date,
         bf.protocol AS protocol,

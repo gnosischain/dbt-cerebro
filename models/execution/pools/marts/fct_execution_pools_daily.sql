@@ -11,8 +11,6 @@
 
 WITH
 
-{# Balancer V3 pools where ALL tokens have metadata (symbol + price).
-   Pools with partial coverage are excluded to avoid misleading TVL/APR. #}
 balancer_v3_complete_pools AS (
     SELECT pool_address
     FROM (
@@ -27,10 +25,6 @@ balancer_v3_complete_pools AS (
     WHERE total_tokens = known_tokens
 ),
 
-{# Resolve token symbols from the pool registry without date_end filtering.
-   Covers V3 pools where migrated tokens (e.g. EURe, GBPe) have date_end in
-   the whitelist but still exist in active pools. Each address appears once
-   in the whitelist, so no duplication risk. #}
 registry_pool_tokens AS (
     SELECT protocol, pool_address, token_address, token
     FROM (
@@ -71,7 +65,6 @@ registry_pool_tokens AS (
       AND pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools)
 ),
 
-{# Pool-level TVL from enriched (respects date_end for price safety). #}
 pool_tvl_daily AS (
     SELECT
         date,
@@ -196,8 +189,6 @@ pool_labels AS (
      AND sl.pool_address = p.pool_address
 ),
 
-{# Dates × pools from enriched, crossed with registry tokens so that
-   migrated tokens (e.g. old EURe) still appear as filter options. #}
 distinct_token_pool_dates AS (
     SELECT
         d.date AS date,

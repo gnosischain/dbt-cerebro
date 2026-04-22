@@ -448,6 +448,20 @@ models:
     decode_logs returns decoded_params as a Map(String, String). Array
     params are stored as JSON array strings (toJSONString of the decoded
     array). ClickHouse JSONExtract* functions are 1-indexed.
+
+    ClickHouse alias-shadowing gotcha: SELECT aliases shadow source columns
+    in WHERE clauses, so writing `SELECT 'X' AS event_name FROM decoded WHERE
+    event_name = 'X'` evaluates the WHERE against the alias literal (always
+    TRUE). Combined with UNION ALL + ReplacingMergeTree, this would silently
+    relabel every row with the last-unioned CTE's literal event_name and drop
+    AssignRoles entirely. The AssignRoles, SetAllowance and ConsumeAllowance
+    CTEs all wrap their FROM in a pre-filter subquery (`FROM (SELECT * FROM
+    decoded WHERE event_name = 'X') d`) so the WHERE runs in a scope where
+    nothing shadows event_name. The pre-filter subquery is also required for
+    AssignRoles' ARRAY JOIN — ClickHouse evaluates the range() expression
+    before the outer WHERE, so without the subquery non-AssignRoles rows
+    reach the ARRAY JOIN with NULL roleKeys and `range(1, JSONLength(NULL)+1)`
+    fails with `Illegal (null) value`.
   columns:
   - name: roles_module_address
     description: The Roles module proxy address (lowercase, 0x-prefixed).

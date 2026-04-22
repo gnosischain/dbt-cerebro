@@ -6,7 +6,7 @@
             "api": {
                 "methods": ["GET", "POST"],
                 "allow_unfiltered": false,
-                "require_any_of": ["withdrawal_credentials", "pubkey"],
+                "require_any_of": ["withdrawal_credentials", "pubkey", "validator_index", "withdrawal_address"],
                 "parameters": [
                     {
                         "name": "withdrawal_credentials",
@@ -25,6 +25,23 @@
                         "case": "lower",
                         "max_items": 200,
                         "description": "Validator public key(s)"
+                    },
+                    {
+                        "name": "validator_index",
+                        "column": "validator_index",
+                        "operator": "IN",
+                        "type": "integer_list",
+                        "max_items": 200,
+                        "description": "Validator index / indices"
+                    },
+                    {
+                        "name": "withdrawal_address",
+                        "column": "withdrawal_address",
+                        "operator": "IN",
+                        "type": "string_list",
+                        "case": "lower",
+                        "max_items": 200,
+                        "description": "20-byte withdrawal address(es) (derived from 0x01/0x02 credentials)"
                     }
                 ],
                 "pagination": {

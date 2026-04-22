@@ -737,13 +737,32 @@ meta:
   owner: analytics_team           # Always analytics_team
   authoritative: false            # true for source-of-truth models
   full_refresh:                   # Optional — consumed by scripts/full_refresh/refresh.py
-    start_date: "2021-01-01"
-    batch_months: 6
-    stages: [...]                 # Optional multi-stage batching
+    start_date: "2021-01-01"      # Default start for all stages (YYYY-MM-DD)
+    batch_months: 6               # Default months per batch
+    stages:                       # Optional — per-slice stage overrides
+      - name: <stage_name>
+        start_date: "2023-10-01"  # Overrides model default
+        batch_months: 3           # Overrides model default
+        vars:                     # Arbitrary vars passed as `dbt run --vars {...}`
+          symbol: "EURe"          # The model's Jinja reads via var('symbol')
   inference_notes: "..."          # Optional documentation
 ```
 
 Allowed meta keys: `owner`, `authoritative`, `full_refresh`, `inference_notes`. No other keys should be added to model meta.
+
+**How `stages` work.** `scripts/full_refresh/refresh.py` iterates each stage, then each date batch inside the stage, issuing one `dbt run --vars '{"start_month": "...", "end_month": "...", <stage.vars>}'` call per batch. The model's SQL reads those vars with `var('start_month')`, `var('end_month')`, and any stage-specific vars like `var('symbol')` or `var('slice')` to filter its WHERE clauses. This keeps each invocation's working set bounded (one slice × one date window), so memory and query time don't blow up on models that span years of data or many tokens.
+
+The common stage-variable patterns used in this repo:
+
+| Var                          | Shape                     | When to use                                                           |
+|------------------------------|---------------------------|-----------------------------------------------------------------------|
+| `symbol: "EURe"`             | Single token              | Per-token filter; one stage per token for the heavy ones              |
+| `symbol: "EURe,GBPe,USDC.e"` | CSV list                  | Grouping low-volume tokens into one stage                             |
+| `symbol_exclude: "WxDAI,GNO"`| CSV list                  | Run "everything except…" once, then each excluded token as its own stage |
+| `slice: "holdings:EURe"`     | CSV of `scope:value` pairs | Composite key (e.g. `stream_type:symbol`) where one axis isn't enough |
+| `validator_index_start/end`  | Numeric range             | Non-time numeric partitioning (e.g. validator indices)                |
+
+The authoritative pattern catalogue — including full schema + SQL examples for each — lives in [scripts/full_refresh/README.md](scripts/full_refresh/README.md).
 
 ### Session-level ClickHouse settings — pair pre_hook with post_hook
 

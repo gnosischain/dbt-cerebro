@@ -84,13 +84,16 @@ models:
     data_type: Nullable(Float64)
 
 - name: int_execution_pools_swapr_v3_daily
-  description: >
+  description: |
     Daily Swapr V3 pool token balances with oracle price enrichment.
     Built from event deltas (Mint, Burn, Swap, Collect, Flash) with dynamic fee rates
-    via Fee events (ASOF join), falling back to first observed fee for swaps before
-    the first Fee event. Separates reserves from unclaimed fees:
+    via Fee events. Per-swap effective fee is resolved via ASOF join on event_order
+    (toUInt64(toUnixTimestamp(block_timestamp)) * 2^32 + log_index), falling back to
+    the pool's first observed fee for swaps before the first Fee event. Fees are
+    applied in ppm (1e6 denominator) to split each swap_in delta into a reserve
+    portion (delta - fee) and a fee portion. Separates reserves from unclaimed fees:
     reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
-    fee_amount = swap fee income − collected fees + flash loan fees.
+    fee_amount = swap fee income - collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   columns: *protocol_model_columns
 
@@ -104,14 +107,15 @@ models:
   columns: *protocol_model_columns
 
 - name: int_execution_pools_balancer_v3_daily
-  description: >
+  description: |
     Daily Balancer V3 pool token balances with oracle price enrichment.
     Built from delta events (LiquidityAdded, LiquidityRemoved, Swap).
     Token resolution uses PoolRegistered tokenConfig with sentinel-address inference
     from Swap events. ERC4626 wrappers (waGno*) are resolved to underlying tokens
-    for symbol and price lookups. Fee separation uses event-level swapFeeAmountsRaw.
-    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
-    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+    (wrapper ~= 1:1 with underlying) for decimals, symbol and price lookups. Fee
+    separation uses event-level swapFeeAmountsRaw. Excludes BPT tokens (where
+    token_address = pool_address) and sentinel addresses (0x0...0, 0x0...1). Includes
+    oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   columns: *protocol_model_columns
 
 - name: int_execution_pools_balances_daily
@@ -323,7 +327,7 @@ models:
   meta:
     full_refresh:
       start_date: "2022-04-01"
-      batch_months: 12
+      batch_months: 1
   columns:
   - name: block_number
     description: Block height containing the liquidity event.
@@ -378,15 +382,21 @@ models:
     data_type: Nullable(String)
 
 - name: int_execution_pools_fees_daily
-  description: >
-    Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and
-    Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of
-    Collect/claims). V3 swap/flash deltas are sourced from staging models
-    (stg_pools__uniswap_v3_events, stg_pools__swapr_v3_events) which handle int256
-    two's-complement decoding. Fees are applied in ppm (1e6 denominator). Volume = gross
-    incoming token amount per swap; flash loans contribute 0 volume. Swapr V3 (Algebra)
-    fees are dynamic via Fee events — the latest fee is applied as-of each swap, with
-    swaps before the first Fee event backfilled using the pool's first observed fee.
+  description: |
+    Daily accrued pool fees and trading volume at pool x token grain for Uniswap V3,
+    Swapr V3, and Balancer V3 pools, computed from Swap + Flash events (gross fees;
+    independent of Collect/claims). V3 swap/flash deltas are sourced from staging
+    models (stg_pools__uniswap_v3_events, stg_pools__swapr_v3_events) which handle
+    int256 two's-complement decoding. Uniswap V3 uses a static fee tier per pool
+    from PoolCreated; fees are applied in ppm (1e6 denominator) as
+    fee = swap_in_delta * fee_ppm / 1e6. Volume = gross incoming token amount per
+    swap; flash loans contribute 0 volume. Swapr V3 (Algebra) fees are dynamic via
+    Fee events — the latest fee as-of each swap is applied via ASOF join on
+    event_order (unix_ts * 2^32 + log_index), with swaps before the first Fee event
+    backfilled using the pool's first observed fee. Balancer V3 takes explicit
+    swapFeeAmount and amountIn fields directly from Swap events and resolves ERC4626
+    wrappers to underlying for token metadata. V3 token positions are mapped to
+    addresses via stg_pools__v3_pool_registry.
   meta:
     full_refresh:
       start_date: "2023-10-01"

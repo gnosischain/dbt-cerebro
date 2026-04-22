@@ -16,5 +16,6 @@ SELECT
     sum(amount_received_usd)                     AS volume_received_usd,
     sum(amount_spent_crc)                        AS volume_spent_crc
 FROM {{ ref('int_execution_gnosis_app_token_offer_claims') }}
+WHERE toStartOfWeek(block_timestamp, 1) < toStartOfWeek(today(), 1)
 GROUP BY week
 ORDER BY week

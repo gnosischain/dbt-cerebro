@@ -18,9 +18,15 @@ models:
 
     Source: execution.traces. We use dedup_source(..., pre_filter=...) so
     the time-range and selector filters land BEFORE the ROW_NUMBER window
-    function and ClickHouse can prune monthly partitions. Critical: this is
-    the largest scan in the family (8B traces, 5+ years) — every monthly
-    batch must fit under the CH Cloud memory budget.
+    function and ClickHouse can prune monthly partitions. This is the
+    largest scan in the family (8B traces, 5+ years) — every monthly batch
+    must fit under the CH Cloud memory budget.
+
+    Address normalization: execution.traces stores addresses + calldata as
+    lowercase hex WITHOUT a '0x' prefix. The seed values in safe_singletons
+    are stripped of the prefix when matching, and outputs (safe_address,
+    creation_singleton, tx_hash) are re-prefixed with '0x' so downstream
+    models see the canonical form.
   columns:
 
   - name: safe_address
@@ -162,6 +168,13 @@ models:
       decode_logs emits arrays as toJSONString([...]) under the param name,
       so decoded_params['owners'] is a JSON array string like
       '["0xabc","0xdef"]'. ClickHouse JSONExtract* functions are 1-indexed.
+
+    SafeSetup unrolling uses a pre-filter subquery before the ARRAY JOIN
+    because ClickHouse evaluates ARRAY JOIN's range() expression before the
+    outer WHERE. Without the subquery, non-SafeSetup rows would reach the
+    ARRAY JOIN with NULL `owners` and `range(1, JSONLength(NULL)+1)` would
+    fail with `Illegal (null) value` — same fix pattern as
+    int_execution_gpay_roles_events.assign_role_rows.
   columns:
 
   - name: safe_address

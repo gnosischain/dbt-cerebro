@@ -1,0 +1,173 @@
+version: 2
+
+models:
+
+# ---------- Holdings (EURe / USDC.e / BRLA / ZCHF) ----------
+
+- name: fct_revenue_holdings_cohorts_weekly
+  description: Rolling-52-week holdings-interest revenue by symbol and user cohort bucket.
+  columns:
+  - {name: week,                      description: Week start.,                                        data_type: Date}
+  - {name: symbol,                    description: Canonical token symbol.,                            data_type: String}
+  - {name: cohort,                    description: Annualised $-bucket for user's rolling fees.,       data_type: String}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees for users in this cohort.,  data_type: Float64}
+  - {name: users_cnt,                 description: Number of users with >$0 rolling fees in cohort.,   data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_holdings_cohorts_monthly
+  description: Monthly holdings-interest revenue by symbol and user cohort bucket (month-scaled thresholds).
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: symbol,     description: Canonical token symbol., data_type: String}
+  - {name: cohort,     description: Monthly $-bucket for user's monthly fees., data_type: String}
+  - {name: fees_total, description: Sum of monthly fees for users in this cohort., data_type: Float64}
+  - {name: users_cnt,  description: Number of users with >$0 monthly fees in cohort., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+# ---------- sDAI ----------
+
+- name: fct_revenue_sdai_cohorts_weekly
+  description: Rolling-52-week sDAI DAO revenue share by user cohort bucket.
+  columns:
+  - {name: week,                      description: Week start., data_type: Date}
+  - {name: cohort,                    description: Annualised $-bucket., data_type: String}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees for users in this cohort., data_type: Float64}
+  - {name: users_cnt,                 description: Users with >$0 rolling fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_sdai_cohorts_monthly
+  description: Monthly sDAI DAO revenue share by user cohort bucket.
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: cohort,     description: Monthly $-bucket., data_type: String}
+  - {name: fees_total, description: Sum of monthly fees for users in this cohort., data_type: Float64}
+  - {name: users_cnt,  description: Users with >$0 monthly fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+# ---------- Gnosis Pay ----------
+
+- name: fct_revenue_gpay_cohorts_weekly
+  description: Rolling-52-week Gnosis Pay revenue by symbol and user cohort bucket.
+  columns:
+  - {name: week,                      description: Week start., data_type: Date}
+  - {name: symbol,                    description: Payment token (EURe, GBPe, USDC.e)., data_type: String}
+  - {name: cohort,                    description: Annualised $-bucket., data_type: String}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees for users in this cohort., data_type: Float64}
+  - {name: users_cnt,                 description: Users with >$0 rolling fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_gpay_cohorts_monthly
+  description: Monthly Gnosis Pay revenue by symbol and user cohort bucket.
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: symbol,     description: Payment token., data_type: String}
+  - {name: cohort,     description: Monthly $-bucket., data_type: String}
+  - {name: fees_total, description: Sum of monthly fees., data_type: Float64}
+  - {name: users_cnt,  description: Users with >$0 monthly fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+# ---------- Active users (cross-stream) ----------
+
+- name: fct_revenue_active_users_cohorts_weekly
+  description: |
+    Cross-stream unique-active-user cohort (rolling 52-week).
+    A user's rolling fees are summed across all streams/symbols before
+    bucketing, so the same user isn't double-counted in multiple cohorts.
+  columns:
+  - {name: week,                      description: Week start., data_type: Date}
+  - {name: cohort,                    description: Annualised $-bucket (includes `<1`)., data_type: String}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees across all streams for users in this cohort., data_type: Float64}
+  - {name: users_cnt,                 description: Unique users in this cohort., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_active_users_cohorts_monthly
+  description: |
+    Cross-stream unique-active-user cohort (monthly).
+    Fees per user summed over all streams/symbols in the month, then bucketed.
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: cohort,     description: Monthly $-bucket., data_type: String}
+  - {name: fees_total, description: Sum of monthly fees across all streams., data_type: Float64}
+  - {name: users_cnt,  description: Unique users in this cohort., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+# ---------- API views (thin wrappers for the query API) ----------
+
+- name: api_revenue_holdings_cohorts_weekly
+  description: API view over fct_revenue_holdings_cohorts_weekly.
+- name: api_revenue_holdings_cohorts_monthly
+  description: API view over fct_revenue_holdings_cohorts_monthly.
+- name: api_revenue_sdai_cohorts_weekly
+  description: API view over fct_revenue_sdai_cohorts_weekly.
+- name: api_revenue_sdai_cohorts_monthly
+  description: API view over fct_revenue_sdai_cohorts_monthly.
+- name: api_revenue_gpay_cohorts_weekly
+  description: API view over fct_revenue_gpay_cohorts_weekly.
+- name: api_revenue_gpay_cohorts_monthly
+  description: API view over fct_revenue_gpay_cohorts_monthly.
+- name: api_revenue_active_users_cohorts_weekly
+  description: API view over fct_revenue_active_users_cohorts_weekly.
+- name: api_revenue_active_users_cohorts_monthly
+  description: API view over fct_revenue_active_users_cohorts_monthly.
+
+# ---------- Cross-stream totals ----------
+
+- name: fct_revenue_active_users_totals_weekly
+  description: |
+    Weekly cross-stream active-user totals (no cohort split).
+    A user is counted once per week if their trailing-52w fees summed across
+    all streams (holdings + sDAI + GPay) is >= $6 — the "meaningfully active
+    revenue-generating user" threshold from the Dune methodology.
+  columns:
+  - {name: week,                      description: Week start.,                                           data_type: Date}
+  - {name: users_cnt,                 description: Unique users above the $6/year threshold.,             data_type: UInt64}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees from qualifying users.,       data_type: Float64}
+
+- name: fct_revenue_active_users_totals_monthly
+  description: |
+    Monthly cross-stream active-user totals (no cohort split).
+    Threshold is $0.50/month — the month-scaled equivalent of the yearly $6
+    threshold (6 ÷ 12 ≈ 0.5).
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: users_cnt,  description: Unique users above the $0.50/month threshold., data_type: UInt64}
+  - {name: fees_total, description: Sum of monthly fees from qualifying users., data_type: Float64}
+
+- name: api_revenue_active_users_totals_weekly
+  description: API view over fct_revenue_active_users_totals_weekly.
+- name: api_revenue_active_users_totals_monthly
+  description: API view over fct_revenue_active_users_totals_monthly.
+
+# ---------- Per-token holdings API views ----------
+
+- name: api_revenue_holdings_eure_cohorts_weekly
+  description: EURe holdings rolling-52w cohort API view.
+- name: api_revenue_holdings_eure_cohorts_monthly
+  description: EURe holdings monthly cohort API view.
+- name: api_revenue_holdings_usdce_cohorts_weekly
+  description: USDC.e holdings rolling-52w cohort API view.
+- name: api_revenue_holdings_usdce_cohorts_monthly
+  description: USDC.e holdings monthly cohort API view.
+- name: api_revenue_holdings_brla_cohorts_weekly
+  description: BRLA holdings rolling-52w cohort API view.
+- name: api_revenue_holdings_brla_cohorts_monthly
+  description: BRLA holdings monthly cohort API view.
+- name: api_revenue_holdings_zchf_cohorts_weekly
+  description: ZCHF holdings rolling-52w cohort API view.
+- name: api_revenue_holdings_zchf_cohorts_monthly
+  description: ZCHF holdings monthly cohort API view.
+
+# ---------- Per-token Gnosis Pay API views ----------
+
+- name: api_revenue_gpay_eure_cohorts_weekly
+  description: EURe Gnosis Pay rolling-52w cohort API view.
+- name: api_revenue_gpay_eure_cohorts_monthly
+  description: EURe Gnosis Pay monthly cohort API view.
+- name: api_revenue_gpay_gbpe_cohorts_weekly
+  description: GBPe Gnosis Pay rolling-52w cohort API view.
+- name: api_revenue_gpay_gbpe_cohorts_monthly
+  description: GBPe Gnosis Pay monthly cohort API view.
+- name: api_revenue_gpay_usdce_cohorts_weekly
+  description: USDC.e Gnosis Pay rolling-52w cohort API view.
+- name: api_revenue_gpay_usdce_cohorts_monthly
+  description: USDC.e Gnosis Pay monthly cohort API view.

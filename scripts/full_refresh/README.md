@@ -177,7 +177,95 @@ models:
 
 This optimizes both by skipping non-existent periods AND reducing batch count for low-volume tokens.
 
-### Pattern 3: Time + Numeric Range Batching
+### Pattern 3: Composite Slice Filter (multi-axis, single var)
+
+Some models partition by a **composite key** that a single dbt var can't
+describe cleanly — for example `int_revenue_fees_weekly_per_user` splits by
+`(stream_type, symbol)`, so `symbol='EURe'` alone would collide between
+`holdings:EURe` and `gpay:EURe`. The convention is a single `slice` var
+carrying comma-separated `"scope:value"` pairs, with the model's Jinja
+resolving it into a tuple filter.
+
+**Schema:**
+
+```yaml
+models:
+  - name: int_revenue_fees_weekly_per_user
+    meta:
+      full_refresh:
+        start_date: "2023-10-01"
+        batch_months: 3
+        stages:
+          - name: holdings_eure
+            start_date: "2023-10-01"
+            batch_months: 3
+            vars: {slice: "holdings:EURe"}
+          - name: holdings_usdce
+            start_date: "2023-10-01"
+            batch_months: 6
+            vars: {slice: "holdings:USDC.e"}
+          - name: sdai
+            start_date: "2023-10-01"
+            batch_months: 6
+            vars: {slice: "sdai:sDAI"}
+          - name: gpay
+            start_date: "2023-10-01"
+            batch_months: 6
+            vars: {slice: "gpay:EURe,gpay:GBPe,gpay:USDC.e"}
+```
+
+**Model side:** declare every stream × symbol in a Jinja list, then filter
+that list by the `slice` var and emit one self-contained subquery per
+retained tuple (UNION ALL). Each sub-query has its own aggregation / window
+state, which keeps memory bounded per slice.
+
+```sql
+{% set all_streams = [
+    ('holdings', 'int_revenue_holdings_fees_daily', 'EURe'),
+    ('holdings', 'int_revenue_holdings_fees_daily', 'USDC.e'),
+    ('sdai',     'int_revenue_sdai_fees_daily',     'sDAI'),
+    ('gpay',     'int_revenue_gpay_fees_daily',     'EURe'),
+    ('gpay',     'int_revenue_gpay_fees_daily',     'GBPe'),
+    ('gpay',     'int_revenue_gpay_fees_daily',     'USDC.e'),
+] %}
+
+{% set slice_filter = var('slice', none) %}
+{% set streams = [] %}
+{% if slice_filter %}
+  {% set wanted = slice_filter.split(',') | map('trim') | list %}
+  {% for s in all_streams %}
+    {% set st, _, sym = s[0], s[1], s[2] %}
+    {% if (st ~ ':' ~ sym) in wanted or sym in wanted %}
+      {% do streams.append(s) %}
+    {% endif %}
+  {% endfor %}
+{% else %}
+  {% set streams = all_streams %}
+{% endif %}
+
+{% for stream_type, src_ref, symbol in streams %}
+  {% if not loop.first %}UNION ALL{% endif %}
+  SELECT week, '{{ stream_type }}' AS stream_type, symbol, user, ...
+  FROM {{ ref(src_ref) }}
+  WHERE symbol = '{{ symbol }}'
+    {# per-batch date filter #}
+{% endfor %}
+```
+
+**When to reach for this pattern:**
+
+- A single `symbol` var isn't enough because the same symbol appears in
+  multiple scopes (streams, protocols, cohorts).
+- The work per slice is independent — each slice's result set is a pure
+  UNION with the others, no cross-slice joins or window partitions.
+- You want one CLI knob (`--stage gpay`) that maps to a set of slices
+  rather than enumerating N stages for N symbols by hand.
+
+**Fallback behaviour:** omit `slice` entirely and the model processes all
+slices in one run (useful for dev / small datasets). Production full-refresh
+via `refresh.py` always passes `slice` through stages.
+
+### Pattern 4: Time + Numeric Range Batching
 
 For models with numeric range filtering (e.g., validator indices):
 

@@ -16,5 +16,6 @@ SELECT
     sum(amount_received_usd)                     AS volume_received_usd,
     sum(amount_spent_crc)                        AS volume_spent_crc
 FROM {{ ref('int_execution_gnosis_app_token_offer_claims') }}
+WHERE toStartOfMonth(block_timestamp) < toStartOfMonth(today())
 GROUP BY month
 ORDER BY month

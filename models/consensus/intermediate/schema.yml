@@ -3,6 +3,12 @@ models:
 
 - name: int_consensus_validators_status_daily
   description: The int_consensus_validators_status_daily model aggregates daily counts of validators' statuses to monitor network health and validator activity trends over time.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 6
   columns:
 
   - name: date
@@ -310,6 +316,12 @@ models:
       - elementary
 - name: int_consensus_credentials_daily
   description: The int_consensus_credentials_daily model tracks the daily count of validator credentials by type, supporting analysis of credential usage trends over time.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 6
   columns:
 
   - name: date
@@ -895,11 +907,11 @@ models:
       - elementary
 - name: int_consensus_validators_withdrawal_addresses
   description: |
-    Thin view over int_consensus_validators_labels that derives the
-    controlling EVM address from each validator's withdrawal_credentials
-    (trailing 20 bytes for 0x01-type credentials). Saves downstream
-    queries the substring extraction and enables direct joins from
-    consensus validators to execution-side address-bearing tables.
+    Thin projection over int_consensus_validators_labels that derives the controlling
+    EVM address from each validator's withdrawal_credentials (concatenation of '0x'
+    with the trailing 20 bytes via substring(withdrawal_credentials, 27, 40)). Saves
+    downstream queries the substring extraction. Only rows with a 0x01-type credential
+    expose a withdrawal_address — older 0x00-type BLS credentials return NULL.
   meta:
     owner: consensus_team
     authoritative: false
@@ -988,6 +1000,9 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 6
   columns:
 
   - name: date
@@ -1053,3 +1068,500 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_consensus_validators_snapshots_daily
+  description: Last-of-day validator snapshot per (date, validator_index). Built from stg_consensus__validators_all so exited and zero-balance validators remain visible. Canonical daily validator base used by int_consensus_validators_income_daily.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+      stages:
+      - name: validators_0_100k
+        start_date: "2021-12-01"
+        vars:
+          validator_index_start: 0
+          validator_index_end: 100000
+      - name: validators_100k_200k
+        start_date: "2022-06-01"
+        vars:
+          validator_index_start: 100000
+          validator_index_end: 200000
+      - name: validators_200k_300k
+        start_date: "2024-01-01"
+        vars:
+          validator_index_start: 200000
+          validator_index_end: 300000
+      - name: validators_300k_400k
+        start_date: "2024-08-01"
+        vars:
+          validator_index_start: 300000
+          validator_index_end: 400000
+      - name: validators_400k_500k
+        start_date: "2024-11-01"
+        vars:
+          validator_index_start: 400000
+          validator_index_end: 500000
+      - name: validators_500k_600k
+        start_date: "2025-02-01"
+        vars:
+          validator_index_start: 500000
+          validator_index_end: 600000
+  columns:
+  - name: date
+    description: Start-of-day UTC timestamp for the snapshot.
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: validator_index
+    description: Beacon-chain validator index.
+    data_type: UInt64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: status
+    description: Validator lifecycle status at end of day.
+    data_type: String
+  - name: pubkey
+    description: Lowercased validator public key.
+    data_type: String
+  - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials.
+    data_type: String
+  - name: withdrawal_address
+    description: 20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL otherwise.
+    data_type: Nullable(String)
+  - name: balance_gwei
+    description: End-of-day validator balance in Gwei.
+    data_type: UInt64
+  - name: effective_balance_gwei
+    description: End-of-day effective balance in Gwei.
+    data_type: UInt64
+  - name: slashed
+    data_type: UInt64
+  - name: activation_epoch
+    data_type: UInt64
+  - name: exit_epoch
+    data_type: UInt64
+  - name: withdrawable_epoch
+    data_type: UInt64
+  - name: last_slot
+    description: Highest slot whose snapshot was included in this row.
+    data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_consensus_validators_deposits_daily
+  description: Daily per-validator consensus-layer deposits in GNO. Combines beacon deposits (stg_consensus__deposits) with execution-request deposits (EIP-7002/7251) parsed from stg_consensus__execution_requests.payload.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 6
+  columns:
+  - name: date
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: validator_index
+    data_type: UInt64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: deposits_amount_gno
+    description: Sum of deposit amounts credited to the validator on the date, in GNO (source Gwei / 1e9).
+    data_type: Float64
+  - name: deposits_count
+    data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_consensus_validators_withdrawals_daily
+  description: Daily per-validator consensus-layer withdrawals in GNO, keyed by validator_index. Withdrawals only exist on Gnosis post-Shapella (2023-07).
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-07-01"
+      batch_months: 1
+      stages:
+      - name: validators_0_100k
+        start_date: "2023-07-01"
+        vars:
+          validator_index_start: 0
+          validator_index_end: 100000
+      - name: validators_100k_200k
+        start_date: "2023-07-01"
+        vars:
+          validator_index_start: 100000
+          validator_index_end: 200000
+      - name: validators_200k_300k
+        start_date: "2024-01-01"
+        vars:
+          validator_index_start: 200000
+          validator_index_end: 300000
+      - name: validators_300k_400k
+        start_date: "2024-08-01"
+        vars:
+          validator_index_start: 300000
+          validator_index_end: 400000
+      - name: validators_400k_500k
+        start_date: "2024-11-01"
+        vars:
+          validator_index_start: 400000
+          validator_index_end: 500000
+      - name: validators_500k_600k
+        start_date: "2025-02-01"
+        vars:
+          validator_index_start: 500000
+          validator_index_end: 600000
+  columns:
+  - name: date
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: validator_index
+    data_type: UInt64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: withdrawals_amount_gno
+    description: Sum of withdrawal amounts on the date in GNO.
+    data_type: Float64
+  - name: withdrawals_count
+    data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_consensus_validators_consolidations_daily
+  description: |
+    EIP-7251 (MaxEB) consolidation events at per-(date, validator_index, role) grain. See
+    https://notes.ethereum.org/@fradamt/maxeb-consolidation for the spec. Materialized as a
+    table because consolidations are rare and the application day can lag the request by
+    weeks, breaking monthly-partitioned incremental assumptions.
+
+    Two flavours emitted:
+      * Self-consolidation (source_pubkey == target_pubkey): a credential switch
+        0x01 -> 0x02 with no balance transfer. Emitted on the request day with
+        role='self', transferred_amount_gno = 0.
+      * Cross-consolidation (source != target): processed at the source's withdrawable
+        epoch — the source's full effective balance transfers to the target and the
+        source exits. Emitted on the inferred APPLICATION day for both source
+        (role='source') and target (role='target'); if application has not yet occurred
+        no row is emitted (a later run will pick it up).
+
+    Application day is inferred as the first day at/after the request where the source
+    validator's effective_balance_gwei first reaches 0. transferred_amount_gno is taken
+    as the source's last non-zero effective balance, observed regardless of whether that
+    day is before or after the request day — Gnosis's high churn limit means a
+    consolidation can apply in the same slot as the request, leaving no post-request
+    eb>0 row to capture.
+
+    Pubkey -> validator_index resolution reads fct_consensus_validators_status_latest
+    (not int_consensus_validators_labels) so exited source validators — by definition
+    every successful consolidation source — remain resolvable. JOINs are pre-filtered
+    to only the pubkeys appearing in the current batch's requests, and the source
+    snapshot lookup is bounded to a tight window (-7d/+30d around request_date) so
+    the build doesn't OOM on busy months.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-05-01"
+      batch_months: 1
+  columns:
+  - name: date
+    description: Application date (request date for 'self'; inferred application day for 'source'/'target').
+    data_type: DateTime64
+  - name: validator_index
+    data_type: UInt64
+  - name: role
+    description: One of 'self', 'source', 'target'.
+    data_type: String
+  - name: counterparty_validator_index
+    description: NULL for self; target index for source rows; source index for target rows.
+    data_type: Nullable(UInt64)
+  - name: transferred_amount_gno
+    description: 0 for self rows; positive for source/target rows.
+    data_type: Float64
+  - name: cnt
+    data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index, role]
+
+- name: int_consensus_validators_proposer_rewards_daily
+  description: Daily per-validator proposer rewards aggregated from slot-level stg_consensus__rewards. Amounts in GNO (source Gwei / 1e9).
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+      stages:
+      - name: validators_0_100k
+        start_date: "2021-12-01"
+        vars:
+          validator_index_start: 0
+          validator_index_end: 100000
+      - name: validators_100k_200k
+        start_date: "2022-06-01"
+        vars:
+          validator_index_start: 100000
+          validator_index_end: 200000
+      - name: validators_200k_300k
+        start_date: "2024-01-01"
+        vars:
+          validator_index_start: 200000
+          validator_index_end: 300000
+      - name: validators_300k_400k
+        start_date: "2024-08-01"
+        vars:
+          validator_index_start: 300000
+          validator_index_end: 400000
+      - name: validators_400k_500k
+        start_date: "2024-11-01"
+        vars:
+          validator_index_start: 400000
+          validator_index_end: 500000
+      - name: validators_500k_600k
+        start_date: "2025-02-01"
+        vars:
+          validator_index_start: 500000
+          validator_index_end: 600000
+  columns:
+  - name: date
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: validator_index
+    description: Equal to proposer_index from stg_consensus__rewards.
+    data_type: UInt64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: proposed_blocks_count
+    data_type: UInt64
+  - name: proposer_reward_total_gno
+    data_type: Float64
+  - name: proposer_reward_attestations_gno
+    data_type: Float64
+  - name: proposer_reward_sync_aggregate_gno
+    data_type: Float64
+  - name: proposer_reward_proposer_slashings_gno
+    data_type: Float64
+  - name: proposer_reward_attester_slashings_gno
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_consensus_validators_income_daily
+  description: |
+    Daily per-(date, validator_index) consensus income fact, including exited and
+    zero-balance validators. Amount columns in GNO. Identifier columns (pubkey,
+    withdrawal_credentials, withdrawal_address, status) are joined at the API layer from
+    int_consensus_validators_snapshots_daily to keep this table memory-efficient.
+
+    Two deposit numbers are emitted because of the post-Pectra accounting problem:
+    pre-Pectra, beacon-chain deposits credited the same day they were requested. Post
+    EIP-7002 / EIP-7251 (MaxEB) a single execution-request can ask for up to 2048 GNO
+    for one validator, but the beacon chain credits it gradually through the
+    pending_deposits queue (churn-bounded), so a 1767-GNO request can land as ~0.01 GNO
+    on the request day and ~1 GNO/day for weeks afterward. The naive
+    income = balance_delta - reported_deposit + withdrawals - cons_net then produces
+    catastrophic per-day errors (~-1767 GNO on request day, large false positives on
+    drain days).
+
+    Fix: spec-bounded effective-credit. The consensus spec gives a closed-form maximum
+    reward per epoch per validator,
+        base_reward_per_epoch = effective_balance_gwei * BASE_REWARD_FACTOR
+                              / sqrt(total_active_effective_balance_gwei)
+    With Gnosis constants BASE_REWARD_FACTOR=25, SLOTS_PER_EPOCH=16, SECONDS_PER_SLOT=5
+    (so EPOCHS_PER_DAY = 86400 / (5*16) = 1080) and a 3x safety multiplier for
+    attestation + proposer + sync duties, we get
+        expected_reward_cap = 3 * effective_balance_gwei * 25 * 1080
+                            / sqrt(network_active_effective_balance_gwei)        (in gwei)
+        effective_deposits_credited = GREATEST(
+            0,
+            balance_delta + withdrawals - cons_net - expected_reward_cap
+        )
+        consensus_income_amount_gno = balance_delta
+                                    - effective_deposits_credited
+                                    + withdrawals - cons_net
+    This caps daily income at the spec maximum, keeps cumulative balance-flow exact,
+    leaves queued-but-not-yet-credited deposits in reported_deposit until the balance
+    actually moves, and scales with both validator size and total network stake.
+    Same base_reward * sqrt(total_stake)^-1 relation used by beaconcha.in's calculator,
+    applied here as a validity bound on observed income rather than a forward projection.
+
+    NOT additionally capped at reported_deposit: post-Pectra, on a queue-drain day the
+    reported amount is 0 but the balance jumps by hundreds of GNO; capping at reported
+    would falsely attribute the jump to income. The spec cap alone is sufficient.
+    Edge cases handled: pure reward day, reported-but-not-credited, queue-drain, slashing,
+    and consolidation source/target all reconcile correctly.
+
+    Cumulatives use effective credits (cumulative_deposits_gno) for total_income_estimated_gno;
+    cumulative_reported_deposits_gno is kept alongside for audit. Incremental strategy
+    follows int_execution_tokens_balances_native_daily — daily deltas + balance reads
+    are pulled only from the incremental window, with prior-state (last balance and
+    cumulatives at the previous partition boundary) loaded from {{ this }} so lifetime
+    cumulatives stay correct without scanning history. balance_prev_gno uses lagInFrame
+    within the window, falling back to prev_state at the partition boundary.
+
+    Known upstream limitation: consensus.validators crawler outages (observed
+    2025-12-10 .. 2025-12-28, 20 fully-empty days) cause withdrawals/deposits/
+    consolidations during the gap to have no matching snapshot, producing a large
+    one-day negative income on the resume day for affected validators. Documented
+    here so consumers know those single-day outliers are upstream-data, not formula.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      # Per-stage start_date reflects when each validator_index range first appears
+      # in consensus.validators. Earlier months are empty no-ops for that range.
+      start_date: "2021-12-01"
+      batch_months: 1
+      stages:
+      - name: validators_0_100k
+        start_date: "2021-12-01"
+        vars:
+          validator_index_start: 0
+          validator_index_end: 100000
+      - name: validators_100k_200k
+        start_date: "2022-06-01"
+        vars:
+          validator_index_start: 100000
+          validator_index_end: 200000
+      - name: validators_200k_300k
+        start_date: "2024-01-01"
+        vars:
+          validator_index_start: 200000
+          validator_index_end: 300000
+      - name: validators_300k_400k
+        start_date: "2024-08-01"
+        vars:
+          validator_index_start: 300000
+          validator_index_end: 400000
+  columns:
+  - name: date
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: validator_index
+    data_type: UInt64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_gno
+    description: End-of-day validator balance in GNO.
+    data_type: Float64
+  - name: balance_prev_gno
+    description: Previous-day balance in GNO (lagInFrame by 1 within validator_index).
+    data_type: Float64
+  - name: effective_balance_gno
+    data_type: Float64
+  - name: deposits_amount_gno
+    description: |
+      RAW reported deposit amount for the date (execution_request and beacon deposit
+      amounts summed per validator). Post-Pectra this is a REQUEST amount — the beacon
+      chain credits it gradually via the churn-limited queue, so this column may be
+      far larger than what actually hit the validator's balance that day. Use
+      effective_deposits_credited_gno for income-accounting purposes; use this column
+      for "when was a deposit requested" audit/display.
+    data_type: Float64
+  - name: effective_deposits_credited_gno
+    description: |
+      Spec-bounded actual deposit credit for the date (in GNO). Computed as
+      GREATEST(0, balance_delta + withdrawals - cons_net - expected_reward_cap) so
+      that it captures queue-drain days (balance jumps without a same-day request)
+      while ignoring request-but-not-yet-credited days. Sum over time equals the
+      true cumulative deposit principal for the validator.
+    data_type: Float64
+  - name: expected_reward_cap_gno
+    description: |
+      Consensus-spec upper bound on this validator's possible daily reward, in GNO.
+      3 × effective_balance_gwei × BASE_REWARD_FACTOR (25) × EPOCHS_PER_DAY (1080)
+      ÷ √(network_effective_balance_gwei) ÷ 1e9. Anything above this in daily balance
+      growth is attributed to effective_deposits_credited_gno, not income. Useful for
+      debugging and for constructing validator-balance-weighted APY.
+    data_type: Float64
+  - name: deposits_count
+    data_type: UInt64
+  - name: withdrawals_amount_gno
+    data_type: Float64
+  - name: withdrawals_count
+    data_type: UInt64
+  - name: consolidation_inflow_gno
+    description: Consolidation amount received (target role) on the date, in GNO.
+    data_type: Float64
+  - name: consolidation_outflow_gno
+    description: Consolidation amount transferred out (source role) on the date, in GNO.
+    data_type: Float64
+  - name: consensus_income_amount_gno
+    description: |
+      Consensus income on the date, in GNO. Computed as
+      balance_delta − effective_deposits_credited_gno + withdrawals_amount_gno
+      − consolidation_inflow_gno + consolidation_outflow_gno.
+      Capped above by the consensus-spec expected_reward_cap_gno (plus 3× safety for
+      attestation + proposer + sync duties); can be negative on slashing events.
+    data_type: Float64
+  - name: daily_rate
+    description: consensus_income_amount_gno / NULLIF(balance_prev_gno + effective_deposits_credited_gno + consolidation_inflow_gno, 0).
+    data_type: Nullable(Float64)
+  - name: apy
+    description: Annualized percent yield computed from daily_rate.
+    data_type: Float64
+  - name: cumulative_deposits_gno
+    description: |
+      Running sum of effective_deposits_credited_gno for this validator. Used by
+      total_income_estimated_gno and by the Validator Explorer's cumulative-flow charts.
+    data_type: Float64
+  - name: cumulative_reported_deposits_gno
+    description: |
+      Running sum of raw deposits_amount_gno (REPORTED requests) for this validator —
+      may exceed cumulative_deposits_gno while queued requests are still draining.
+      Kept for audit / display; NOT used in total_income_estimated_gno.
+    data_type: Float64
+  - name: cumulative_withdrawals_gno
+    data_type: Float64
+  - name: cumulative_consolidation_inflow_gno
+    data_type: Float64
+  - name: cumulative_consolidation_outflow_gno
+    data_type: Float64
+  - name: total_income_estimated_gno
+    description: balance_gno + cumulative_withdrawals_gno − cumulative_deposits_gno (effective) − cumulative_consolidation_inflow_gno + cumulative_consolidation_outflow_gno. In GNO.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, validator_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

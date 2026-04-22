@@ -8,13 +8,6 @@
     )
 }}
 
-{#-
-    Mapping of Balancer V2 poolId (bytes32) → pool contract address,
-    built from PoolRegistered events emitted once per pool at creation.
-    Materialized as a small table so live views don't scan the full
-    historical Vault events table on every query.
--#}
-
 SELECT DISTINCT
     lower(decoded_params['poolId'])                                          AS pool_id,
     concat('0x', replaceAll(lower(decoded_params['poolAddress']), '0x', '')) AS pool_address
