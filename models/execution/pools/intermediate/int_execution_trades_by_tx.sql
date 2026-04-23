@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'trades', 'intermediate']
+        tags=['dev', 'execution', 'pools', 'trades', 'intermediate']
     )
 }}
 
