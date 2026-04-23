@@ -22,6 +22,7 @@ position_amounts AS (
         coalesce(sumIf(amount_usd, event_type = 'mint'), 0)    AS capital_in_usd,
         coalesce(sumIf(amount_usd, event_type = 'burn'), 0)    AS capital_out_usd,
         coalesce(sumIf(amount_usd, event_type = 'collect'), 0) AS fees_collected_usd,
+        countIf(amount_usd IS NULL AND event_type IN ('mint', 'burn')) > 0 AS has_unpriced_tokens,
         min(block_timestamp)                           AS entry_date,
         max(block_timestamp)                           AS last_action_date
     FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
@@ -91,8 +92,10 @@ SELECT
     round(pa.capital_out_usd, 2)             AS capital_out_usd,
     multiIf(
         pa.tick_lower IS NOT NULL, round(pa.fees_collected_usd, 2),
-        coalesce(ba.has_active_tokens, 0) = 0 AND pa.capital_out_usd > pa.capital_in_usd,
-            round(pa.capital_out_usd - pa.capital_in_usd, 2),
+        coalesce(ba.has_active_tokens, 0) = 0
+            AND pa.capital_in_usd > 0
+            AND pa.capital_out_usd > pa.capital_in_usd,
+                round(pa.capital_out_usd - pa.capital_in_usd, 2),
         0
     )                                        AS fees_collected_usd,
     coalesce(nl.net_liquidity, toInt256(0))  AS net_liquidity,
@@ -106,6 +109,7 @@ SELECT
         pa.tick_lower <= ct.current_tick AND ct.current_tick < pa.tick_upper
     )                                        AS is_in_range,
     ct.current_tick                          AS pool_current_tick,
+    pa.has_unpriced_tokens                   AS has_unpriced_tokens,
     pa.entry_date                            AS entry_date,
     pa.last_action_date                      AS last_action_date
 FROM position_amounts pa
