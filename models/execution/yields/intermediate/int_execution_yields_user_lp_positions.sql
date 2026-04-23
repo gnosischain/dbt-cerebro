@@ -89,7 +89,12 @@ SELECT
     pa.tick_upper_key                        AS tick_upper_key,
     round(pa.capital_in_usd, 2)              AS capital_in_usd,
     round(pa.capital_out_usd, 2)             AS capital_out_usd,
-    round(pa.fees_collected_usd, 2)          AS fees_collected_usd,
+    multiIf(
+        pa.tick_lower IS NOT NULL, round(pa.fees_collected_usd, 2),
+        coalesce(ba.has_active_tokens, 0) = 0 AND pa.capital_out_usd > pa.capital_in_usd,
+            round(pa.capital_out_usd - pa.capital_in_usd, 2),
+        0
+    )                                        AS fees_collected_usd,
     coalesce(nl.net_liquidity, toInt256(0))  AS net_liquidity,
     multiIf(
         pa.tick_lower IS NOT NULL, nl.net_liquidity > toInt256(0),
