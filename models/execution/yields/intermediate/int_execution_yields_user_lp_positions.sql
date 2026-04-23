@@ -19,9 +19,9 @@ position_amounts AS (
         tick_upper,
         coalesce(tick_lower, toInt32(0))              AS tick_lower_key,
         coalesce(tick_upper, toInt32(0))              AS tick_upper_key,
-        sumIf(amount_usd, event_type = 'mint')        AS capital_in_usd,
-        sumIf(amount_usd, event_type = 'burn')        AS capital_out_usd,
-        sumIf(amount_usd, event_type = 'collect')     AS fees_collected_usd,
+        coalesce(sumIf(amount_usd, event_type = 'mint'), 0)    AS capital_in_usd,
+        coalesce(sumIf(amount_usd, event_type = 'burn'), 0)    AS capital_out_usd,
+        coalesce(sumIf(amount_usd, event_type = 'collect'), 0) AS fees_collected_usd,
         min(block_timestamp)                           AS entry_date,
         max(block_timestamp)                           AS last_action_date
     FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
