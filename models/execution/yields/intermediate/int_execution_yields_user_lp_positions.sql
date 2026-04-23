@@ -91,7 +91,8 @@ SELECT
     round(pa.capital_in_usd, 2)              AS capital_in_usd,
     round(pa.capital_out_usd, 2)             AS capital_out_usd,
     multiIf(
-        pa.tick_lower IS NOT NULL, round(pa.fees_collected_usd, 2),
+        pa.tick_lower IS NOT NULL,
+            round(greatest(pa.fees_collected_usd - pa.capital_out_usd, 0), 2),
         coalesce(ba.has_active_tokens, 0) = 0
             AND pa.capital_in_usd > 0
             AND pa.capital_out_usd > pa.capital_in_usd,
