@@ -54,6 +54,26 @@ net_liquidity AS (
     GROUP BY provider, pool_address, tick_lower_key, tick_upper_key
 ),
 
+balancer_active AS (
+    SELECT
+        provider,
+        pool_address,
+        max(has_positive_balance) AS has_active_tokens
+    FROM (
+        SELECT
+            provider,
+            pool_address,
+            token_address,
+            coalesce(sumIf(amount_raw, event_type = 'mint'), toUInt256(0))
+              > coalesce(sumIf(amount_raw, event_type = 'burn'), toUInt256(0)) AS has_positive_balance
+        FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
+        WHERE tick_lower IS NULL
+          AND event_type IN ('mint', 'burn')
+        GROUP BY provider, pool_address, token_address
+    )
+    GROUP BY provider, pool_address
+),
+
 current_ticks AS (
     SELECT pool_address, current_tick
     FROM {{ ref('stg_pools__v3_current_tick') }}
@@ -73,7 +93,7 @@ SELECT
     coalesce(nl.net_liquidity, toInt256(0))  AS net_liquidity,
     multiIf(
         pa.tick_lower IS NOT NULL, nl.net_liquidity > toInt256(0),
-        pa.capital_in_usd > pa.capital_out_usd
+        coalesce(ba.has_active_tokens, 0) = 1
     )                                        AS is_active,
     multiIf(
         pa.tick_lower IS NULL, true,
@@ -89,5 +109,9 @@ LEFT JOIN net_liquidity nl
     AND nl.pool_address   = pa.pool_address
     AND nl.tick_lower_key = pa.tick_lower_key
     AND nl.tick_upper_key = pa.tick_upper_key
+LEFT JOIN balancer_active ba
+    ON  ba.provider     = pa.provider
+    AND ba.pool_address = pa.pool_address
+    AND pa.tick_lower IS NULL
 LEFT JOIN current_ticks ct
     ON ct.pool_address = pa.pool_address
