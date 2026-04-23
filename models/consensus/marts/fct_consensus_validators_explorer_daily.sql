@@ -51,6 +51,10 @@ SELECT
     ,SUM(i.consolidation_outflow_gno) AS consolidation_outflow_gno
     ,SUM(COALESCE(p.proposer_reward_total_gno, 0)) AS proposer_reward_total_gno
     ,SUM(COALESCE(p.proposed_blocks_count, 0)) AS proposed_blocks_count
+    -- v2 (2026-04): count of distinct active validators under the credential on the date.
+    -- Dashboard uses this to decide whether to show quantile bands (N>1) or collapse to
+    -- the rolling-median line (N=1) on the per-credential APY chart.
+    ,uniqExact(i.validator_index) AS validator_count_active
 FROM {{ ref('int_consensus_validators_income_daily') }} i
 INNER JOIN {{ ref('fct_consensus_validators_status_latest') }} wl
     ON wl.validator_index = i.validator_index

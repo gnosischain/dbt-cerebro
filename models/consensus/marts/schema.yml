@@ -1823,6 +1823,122 @@ models:
   - name: income_gno
     description: Sum of consensus_income_amount_gno across all validators on the date.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - min
+        - max
+        - average
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        training_period:
+          period: day
+          count: 56
+        anomaly_sensitivity: 3
+        severity: warn
+        tags:
+        - elementary
+  - name: income_gno_rolling_7d_median
+    description: 7-day trailing median of income_gno. Advisory overlay for the dashboard chart.
+    data_type: Float64
+  - name: income_gno_rolling_30d_median
+    description: 30-day trailing median of income_gno.
+    data_type: Float64
+  - name: validators_snapshot_count
+    description: Count of validators snapshotted on the date from int_consensus_validators_snapshots_daily.
+    data_type: UInt64
+  - name: anomaly_flag
+    description: |
+      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 500 GNO.
+      Advisory only — raw income_gno remains visible. Surfaced in the dashboard tooltip.
+    data_type: UInt8
+  tests:
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+
+- name: fct_consensus_validators_apy_dist_income_daily
+  description: |
+    Physical materialisation of int_consensus_validators_apy_dist_income_daily — network-wide
+    daily APY quantile distribution (q05..q95) + balance-weighted mean, built on the
+    spec-bounded int_consensus_validators_income_daily. Feeds the Network Average APY band
+    chart on the Consensus tab via api_consensus_validators_apy_dist_income_daily.
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    description: Network median APY on the date.
+    data_type: Float64
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: avg_apy_weighted
+    data_type: Float64
+  - name: validators_included
+    data_type: UInt64
+
+- name: api_consensus_validators_apy_dist_income_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_apy_dist_income_daily. Filter/pagination metadata in model config.
+
+- name: fct_consensus_validators_explorer_apy_dist_daily
+  description: |
+    Per-(date, withdrawal_credentials) APY quantile distribution + rolling medians.
+    Physical materialisation of int_consensus_validators_explorer_apy_dist_daily; ordered
+    on (withdrawal_credentials, date) so the API's WHERE withdrawal_credentials filter
+    prunes via the primary index. Feeds the "Average APY" band chart on the Validator
+    Explorer tab.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: withdrawal_credentials
+    data_type: String
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    data_type: Float64
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: apy_weighted
+    data_type: Float64
+  - name: validator_count_active
+    data_type: UInt64
+  - name: apy_rolling_7d_median
+    data_type: Float64
+  - name: apy_rolling_30d_median
+    data_type: Float64
+
+- name: api_consensus_validators_explorer_apy_dist_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_apy_dist_daily. Requires withdrawal_credentials filter; see model config.
 
 - name: fct_consensus_validators_apy_mean_daily
   description: |
@@ -1848,6 +1964,38 @@ models:
   - name: apy
     description: Average APY (%) across all validators on the date, outliers filtered.
     data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - min
+        - max
+        - average
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        training_period:
+          period: day
+          count: 56
+        anomaly_sensitivity: 3
+        severity: warn
+        tags:
+        - elementary
+  - name: apy_rolling_7d_median
+    description: 7-day trailing median of apy. Smoothing overlay for the dashboard band chart.
+    data_type: Float64
+  - name: apy_rolling_30d_median
+    description: 30-day trailing median of apy.
+    data_type: Float64
+  tests:
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
 
 - name: fct_consensus_consolidations_daily
   description: |
@@ -2016,6 +2164,12 @@ models:
     data_type: Float64
   - name: consolidation_outflow_gno
     data_type: Float64
+  - name: validator_count_active
+    description: |
+      Count of distinct validator_index rows included in this (date, credential)
+      aggregation. v2 (2026-04). Dashboard uses this to decide between quantile bands
+      (N>1) and a clean rolling-median line (N=1 → solo credential) on the APY chart.
+    data_type: UInt64
 
 - name: fct_consensus_validators_explorer_members_table
   description: |

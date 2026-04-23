@@ -225,19 +225,31 @@ network_state AS (
 -- both its own effective_balance and the network total; the spec cap can then be
 -- computed row-by-row without a separate join later.
 --
--- KNOWN LIMITATION (upstream data-pipeline issue, not fixed here):
--- The consensus.validators crawler has occasional multi-day outages where zero rows
--- are written for any validator (observed: 2025-12-10 through 2025-12-28 — 20 days
--- completely empty). On the first post-gap snapshot day, withdrawals/deposits/
--- consolidations that occurred during the gap have no matching snapshot row and
--- therefore don't flow into this fact — producing a large negative daily
--- consensus_income on that single resume day for affected validators. The right
--- fix is to backfill the missing rows in consensus.validators (beacon node state
--- snapshots for the specific dates are retrievable). Attempting to bridge the gap
--- here with a range join (sum events in (prev_snapshot_date, current_date])
--- duplicates patchwork logic in every snapshots↔events join in the DAG and makes
--- daily numbers hard to read on the resume day. Documented here so consumers know
--- the single-day outliers come from the upstream gap, not this model's formula.
+-- DATA-QUALITY NOTES (2026-04 audit via cerebro-dev MCP):
+--
+-- 1. consensus.validators DOES NOT have day-level gaps. An earlier version of this
+--    comment claimed a crawler outage 2025-12-10 → 2025-12-28; that was incorrect.
+--    Day-gap audit over full history: the only gap is day 1 (genesis). What the
+--    earlier debug actually observed was unmerged SharedReplacingMergeTree
+--    DUPLICATE rows in the raw source (ratios up to 2.9× normal on
+--    2025-12-{04,12,13,14,15,16}). Those duplicates are filtered at the staging
+--    layer — stg_consensus__validators{,_all} both apply FINAL — so the dedup
+--    happens before this model reads anything. See
+--    tests/consensus_raw_validators_no_unmerged_dup.sql for the ops monitor.
+--
+-- 2. The real source of per-validator negative-income spikes observed on Validator
+--    Explorer charts was a BUG in int_consensus_validators_consolidations_daily
+--    (fixed 2026-04, v4). That model's unique_key=(date, validator_index, role) on
+--    ReplacingMergeTree collapsed N target rows down to 1 when N legacy 0x01 sources
+--    consolidated into the same 0x02 target on the same application day (common).
+--    Result: target's consolidation_inflow_gno was under-credited by (N-1) × 32 GNO;
+--    the spec-cap formula below then absorbed the missing credit into
+--    effective_deposits_credited_gno, producing per-validator income that looked
+--    hugely negative. Aggregate ledger still balanced (eff_deposits absorbed
+--    exactly what was missing from cons_in) — so the bug was invisible at network
+--    level, only broke per-credential and per-validator attribution. The v4 fix
+--    aggregates at the unique-key grain so target rows survive dedup. Verified by
+--    tests/consensus_consolidations_mass_balance.sql.
 daily_raw AS (
     SELECT
         s.date AS date

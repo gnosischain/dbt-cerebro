@@ -944,21 +944,35 @@ models:
       batch_months: 1
       stages:
       - name: validators_0_100k
+        start_date: "2021-12-01"
         vars:
           validator_index_start: 0
           validator_index_end: 100000
       - name: validators_100k_200k
+        start_date: "2022-06-01"
         vars:
           validator_index_start: 100000
           validator_index_end: 200000
       - name: validators_200k_300k
+        start_date: "2024-01-01"
         vars:
           validator_index_start: 200000
           validator_index_end: 300000
       - name: validators_300k_400k
+        start_date: "2024-08-01"
         vars:
           validator_index_start: 300000
           validator_index_end: 400000
+      - name: validators_400k_500k
+        start_date: "2024-11-01"
+        vars:
+          validator_index_start: 400000
+          validator_index_end: 500000
+      - name: validators_500k_600k
+        start_date: "2025-02-01"
+        vars:
+          validator_index_start: 500000
+          validator_index_end: 600000
   columns:
 
   - name: date
@@ -1283,6 +1297,28 @@ models:
     to only the pubkeys appearing in the current batch's requests, and the source
     snapshot lookup is bounded to a tight window (-7d/+30d around request_date) so
     the build doesn't OOM on busy months.
+
+    v4 (2026-04): final aggregation grain matches the ReplacingMergeTree unique_key
+    (date, validator_index, role). When N sources consolidate into the same target
+    on the same application day the per-counterparty fidelity is collapsed — the
+    target row carries transferred_amount_gno = SUM(incoming), cnt = N, and
+    counterparty_validator_index = any() representative. Before this fix, emitting
+    one row per (date, validator_index, role, counterparty) made all but one of the
+    N target rows get silently dropped by ReplacingMergeTree dedup, under-crediting
+    the target by (N-1)*32 GNO and corrupting per-validator income in
+    int_consensus_validators_income_daily. Mass-balance invariant
+    SUMIf(transferred_amount_gno, role='source') = SUMIf(transferred_amount_gno, role='target')
+    per date is enforced by tests/consensus_consolidations_mass_balance.sql.
+
+    v5 (2026-04): transferred_amount_gno is the source's last-observed REAL balance
+    (balance_gwei / 1e9), not its effective balance. Effective balance is a 32-GNO-step
+    function that over-reports the actual mass moved when a source has accrued inactivity
+    penalties; using real balance makes the target's consolidation_inflow_gno match the
+    target's actual balance delta, eliminating the ~10-120 GNO per-target "loss" days
+    seen under v4 on heavy-consolidation events. After this change, the target's
+    consensus_income_amount_gno on the application day is ~0 (pure reward) rather than
+    slightly negative. The sweep still uses effective_balance_gwei=0 as the
+    application-day indicator.
   meta:
     owner: analytics_team
     authoritative: false
@@ -1381,6 +1417,132 @@ models:
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
+- name: int_consensus_validators_apy_dist_income_daily
+  description: |
+    Network-wide daily APY quantile distribution, built on int_consensus_validators_income_daily
+    (the spec-bounded APY source). Parallel to the frozen int_consensus_validators_dists_daily
+    lineage which reads per_index_apy_daily; both coexist. This model feeds the new
+    api_consensus_validators_apy_dist_income_daily view consumed by the "Network Average APY"
+    band chart on the Consensus tab.
+
+    Filter: apy BETWEEN 0 AND 200 (drops exited / numerical noise) AND effective_balance_gno > 0
+    (drops pending / exited). Emits T-Digest quantiles q05..q95, balance-weighted mean
+    avg_apy_weighted matching fct_consensus_validators_apy_mean_daily, and
+    validators_included for sanity audit.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies: [min, max, average]
+        timestamp_column: date
+        time_bucket: {period: day, count: 1}
+        training_period: {period: day, count: 56}
+        anomaly_sensitivity: 3
+        severity: warn
+        tags: [elementary]
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: avg_apy_weighted
+    description: Balance-weighted mean APY on the date. Matches fct_consensus_validators_apy_mean_daily.apy.
+    data_type: Float64
+  - name: validators_included
+    description: Count of (date, validator_index) rows that passed the outlier+active filters.
+    data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_consensus_validators_explorer_apy_dist_daily
+  description: |
+    Per-(date, withdrawal_credentials) cross-sectional APY distribution plus rolling 7d/30d
+    medians of the credential's balance-weighted daily APY. Built on
+    int_consensus_validators_income_daily INNER JOIN fct_consensus_validators_status_latest
+    with the exit-date guard from fct_consensus_validators_explorer_daily.
+
+    Two smoothings coexist:
+      * Cross-sectional quantiles (q05_apy..q95_apy) across the validators in the credential's
+        set — meaningful for multi-validator credentials, collapsed for solo credentials.
+      * Time-series rolling median (apy_rolling_7d_median, apy_rolling_30d_median) on the
+        credential's own daily weighted-mean APY — the primary line the dashboard plots for
+        solo credentials where the raw daily APY is jittery.
+
+    Incremental monthly with a 30-day lookback so the rolling median at partition boundaries
+    is seeded correctly. Order (withdrawal_credentials, date) so the API filter prunes via
+    the primary index.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: withdrawal_credentials
+    data_type: String
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    description: Cross-sectional median APY across validators under this credential.
+    data_type: Float64
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: apy_weighted
+    description: Balance-weighted mean APY for the credential on the date.
+    data_type: Float64
+  - name: validator_count_active
+    description: Distinct validators under this credential contributing to the day's stats.
+    data_type: UInt64
+  - name: apy_rolling_7d_median
+    description: 7-day trailing median of apy_weighted per credential. Primary smoothing line for solo credentials.
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies: [min, max, average]
+        timestamp_column: date
+        time_bucket: {period: day, count: 1}
+        training_period: {period: day, count: 56}
+        anomaly_sensitivity: 3
+        severity: warn
+        tags: [elementary]
+  - name: apy_rolling_30d_median
+    description: 30-day trailing median of apy_weighted per credential.
+    data_type: Float64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, withdrawal_credentials]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
 - name: int_consensus_validators_income_daily
   description: |
     Daily per-(date, validator_index) consensus income fact, including exited and
@@ -1443,8 +1605,6 @@ models:
     owner: analytics_team
     authoritative: false
     full_refresh:
-      # Per-stage start_date reflects when each validator_index range first appears
-      # in consensus.validators. Earlier months are empty no-ops for that range.
       start_date: "2021-12-01"
       batch_months: 1
       stages:
@@ -1468,6 +1628,16 @@ models:
         vars:
           validator_index_start: 300000
           validator_index_end: 400000
+      - name: validators_400k_500k
+        start_date: "2024-11-01"
+        vars:
+          validator_index_start: 400000
+          validator_index_end: 500000
+      - name: validators_500k_600k
+        start_date: "2025-02-01"
+        vars:
+          validator_index_start: 500000
+          validator_index_end: 600000
   columns:
   - name: date
     data_type: DateTime64
