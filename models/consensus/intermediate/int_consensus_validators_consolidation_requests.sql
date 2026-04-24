@@ -19,11 +19,26 @@
 -- 8× (observed: 2025-10-06 target 548367, 449 raw requests vs 109 unique sources,
 -- cascading into -36,311 GNO phantom network income).
 --
--- Dedup rule: ROW_NUMBER() partitioned by source_pubkey, ordered by request_slot, keep
--- rn=1. This mirrors the beacon chain's slot-FIFO processing. A small residual
--- edge case (~4% of duplicated sources whose earliest request targeted validator A
--- but whose actually-processed request targeted B) remains but covers >95% of
--- cases and all large-impact days.
+-- Dedup rule (v2, 2026-04): ROW_NUMBER() partitioned by
+--   (source_pubkey, is_self_consolidation)
+-- where is_self_consolidation = (source_pubkey = target_pubkey). A single validator can
+-- legitimately have BOTH a self-consolidation (credential switch 0x01→0x02; validator
+-- keeps running) AND a later cross-consolidation (balance transfer out; validator exits).
+-- Both apply and the beacon chain processes them in sequence. Partitioning dedup by
+-- (source, is_self) keeps one row of each kind per source, rather than dropping the
+-- cross-consolidation when the self-consolidation happens to be submitted first.
+--
+-- Observed impact of getting this wrong: on 2025-07-14 validator 113039 (and 65 sibling
+-- validators in the same batch) appeared as TARGETS of 33 consolidations each. Their own
+-- outbound cross-consolidation request — which is what actually reduced their balance to
+-- 0 — was being dropped by the old v1 dedup because a self-consolidation request from
+-- the same source had been submitted earlier. Result: 1,056 GNO of phantom inflow per
+-- validator, totalling -33,932 GNO of phantom negative income on that single day (out of
+-- the model's -31,536 GNO network total).
+--
+-- Within each (source, is_self) partition, we still keep only the earliest request. Per
+-- EIP-7251 the beacon-chain queue processes the first valid request of each kind and
+-- rejects subsequent resubmissions.
 --
 -- Scale: full source `consensus.execution_requests` has ~82k rows; after ARRAY JOIN
 -- on the consolidations subarray and dedup we expect a few thousand rows — trivial
@@ -40,7 +55,10 @@ FROM (
         ,lower(JSONExtractString(c, 'source_pubkey')) AS source_pubkey
         ,lower(JSONExtractString(c, 'target_pubkey')) AS target_pubkey
         ,ROW_NUMBER() OVER (
-            PARTITION BY lower(JSONExtractString(c, 'source_pubkey'))
+            PARTITION BY
+                lower(JSONExtractString(c, 'source_pubkey'))
+                ,(lower(JSONExtractString(c, 'source_pubkey'))
+                  = lower(JSONExtractString(c, 'target_pubkey')))
             ORDER BY r.slot
         ) AS rn
     FROM {{ ref('stg_consensus__execution_requests') }} r

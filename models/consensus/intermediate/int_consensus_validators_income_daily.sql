@@ -191,23 +191,56 @@ withdrawals AS (
     {% endif %}
 ),
 
-consolidations AS (
-    SELECT
-        date
-        ,validator_index
-        ,SUMIf(transferred_amount_gno, role = 'target') AS consolidation_inflow_gno
-        ,SUMIf(transferred_amount_gno, role = 'source') AS consolidation_outflow_gno
-    FROM {{ ref('int_consensus_validators_consolidations_daily') }}
+-- v3 (2026-04): self-derived consolidation flows per validator.
+--
+-- Previously `consolidations` read pre-computed `consolidation_inflow_gno` /
+-- `consolidation_outflow_gno` from int_consensus_validators_consolidations_daily,
+-- which tries to PAIR source↔target with per-source application_date inference
+-- from the raw request events. That pairing has irreducible edge cases:
+--   * duplicate requests per source → dedup must pick the right one
+--   * requests to targets that exit the same day are rejected by the beacon chain
+--     but the model still tried to apply them, producing phantom inflow
+--   * sources with BOTH self-consolidation (credential switch) and cross-consolidation
+--     requests apply BOTH; dedup mustn't over-collapse
+--
+-- This approach is the beaconcha.in pattern (see
+-- github.com/gobitfly/eth2-beaconchain-explorer/blob/fd4838987939d83198dd87db1a54d37513184d23/db/statistics.go
+-- `ClRewardsGWei = EndBalance - previousDayData.EndBalance + WithdrawalsAmount - DepositsAmount`
+-- with `GetValidatorDepositsAndIncomingConsolidations` / `GetValidatorWithdrawalsAndOutgoingConsolidations`
+-- folding consolidation flows into deposit/withdrawal aggregates). Since we don't
+-- have access to the beacon-state pending_consolidations queue (ingestion captures
+-- only raw execution-request events), we derive consolidation flows from each
+-- validator's OWN observable behaviour + a boolean "has consolidation request"
+-- flag per role:
+--
+--   * If a validator has a consolidation request AS SOURCE and its effective
+--     balance went from >0 to 0 on date D, treat balance_prev as
+--     consolidation_outflow on D. This is the exit-via-consolidation pattern;
+--     validated on 2025-10-02 through 2025-10-09 where 97-100% of validators
+--     exiting on heavy-consolidation days had source requests and 0% did on
+--     days without consolidation activity.
+--   * If a validator has a consolidation request AS TARGET and its balance
+--     jumped by more than 1.1 × expected_reward_cap_gno on date D, treat the
+--     excess as consolidation_inflow on D. (The spec-cap formula already
+--     captures the magnitude; we just tag it correctly.)
+--
+-- Mass balance at network level no longer holds day-by-day (source's eb→0 day
+-- may precede the target's balance bump by hours/days via the churn queue), but
+-- does hold over any window long enough to contain both sides. Per-validator
+-- income is correct every day.
+-- Per-validator consolidation flags pre-materialised in
+-- int_consensus_validators_consolidation_flags. Restricting to the batch's
+-- validator_index range keeps the hash small.
+consol_flags AS (
+    SELECT validator_index,
+           has_source_consolidation_request,
+           has_target_consolidation_request
+    FROM {{ ref('int_consensus_validators_consolidation_flags') }}
     WHERE 1=1
-    {% if start_month and end_month %}
-      AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-    {% endif %}
     {% if validator_index_start is not none and validator_index_end is not none %}
       AND validator_index >= {{ validator_index_start }}
       AND validator_index < {{ validator_index_end }}
     {% endif %}
-    GROUP BY 1, 2
 ),
 
 -- Daily network-wide active effective balance (the denominator of the spec reward
@@ -261,13 +294,13 @@ daily_raw AS (
         ,COALESCE(d.deposits_count, 0) AS deposits_count
         ,COALESCE(w.withdrawals_amount_gno, 0) AS withdrawals_amount_gno
         ,COALESCE(w.withdrawals_count, 0) AS withdrawals_count
-        ,COALESCE(c.consolidation_inflow_gno, 0) AS consolidation_inflow_gno
-        ,COALESCE(c.consolidation_outflow_gno, 0) AS consolidation_outflow_gno
+        ,COALESCE(cf.has_source_consolidation_request, 0) AS has_source_request
+        ,COALESCE(cf.has_target_consolidation_request, 0) AS has_target_request
         ,n.network_effective_balance_gno AS network_effective_balance_gno
     FROM snapshots s
     LEFT JOIN deposits d ON d.date = s.date AND d.validator_index = s.validator_index
     LEFT JOIN withdrawals w ON w.date = s.date AND w.validator_index = s.validator_index
-    LEFT JOIN consolidations c ON c.date = s.date AND c.validator_index = s.validator_index
+    LEFT JOIN consol_flags cf ON cf.validator_index = s.validator_index
     INNER JOIN network_state n ON n.date = s.date
 ),
 
@@ -316,8 +349,8 @@ scored AS (
         ,r.deposits_count AS deposits_count
         ,r.withdrawals_amount_gno AS withdrawals_amount_gno
         ,r.withdrawals_count AS withdrawals_count
-        ,r.consolidation_inflow_gno AS consolidation_inflow_gno
-        ,r.consolidation_outflow_gno AS consolidation_outflow_gno
+        ,r.has_source_request AS has_source_request
+        ,r.has_target_request AS has_target_request
         ,COALESCE(
             lagInFrame(toNullable(r.balance_gno), 1, NULL) OVER (
                 PARTITION BY r.validator_index ORDER BY r.date
@@ -361,14 +394,56 @@ scored AS (
 --   * slashing                    : balance_delta < 0 → effective_credit = 0 → income = balance_delta ✓ (negative, real)
 --   * consolidation source        : balance_delta = −X, cons_outflow = +X → net = 0 → both income and credit = 0 ✓
 --   * consolidation target        : balance_delta = +X, cons_inflow = +X → net = 0 → both income and credit = 0 ✓
+-- v3: derive consolidation_inflow_gno / consolidation_outflow_gno from observables.
+-- Two signals per validator per day:
+--   (a) had a cross-consolidation request at any time as a SOURCE (has_source_request)
+--   (b) had a cross-consolidation request at any time as a TARGET (has_target_request)
+--
+-- Outflow: a validator is exiting via consolidation iff balance_prev_gno > 0 AND
+-- balance_gno = 0 AND has_source_request. Its entire balance_prev transfers out.
+-- (Normal voluntary exits also go balance_prev → 0 but skip the has_source_request
+-- check, so they stay attributed as withdrawal / slashing etc.)
+--
+-- Inflow: a validator is receiving consolidation(s) iff has_target_request AND
+-- balance_delta significantly exceeds expected_reward_cap_gno. The "inflow" amount
+-- is everything above the spec cap — same quantity the old `effective_deposits_credited`
+-- captured, but now it's explicitly labelled as consolidation inflow rather than a
+-- synthetic "deposit". For validators that are BOTH targets AND receive actual
+-- deposits on the same day we still track that via deposits_amount_gno; the
+-- effective-credit formula below absorbs both uniformly.
+-- v3 inline: consolidation flows + effective_deposits_credited computed in one CTE.
+-- Previously these were in two separate CTEs (with_consolidation → with_credit); ClickHouse
+-- was materialising each with its own 10+ columns × 3M rows, doubling the memory footprint
+-- of the downstream window step. Inlining saves a materialization pass.
 with_credit AS (
     SELECT
         *
+        ,if(
+            has_source_request = 1 AND balance_prev_gno > 0 AND balance_gno = 0,
+            balance_prev_gno,
+            0
+        ) AS consolidation_outflow_gno
+        ,if(
+            has_target_request = 1
+            AND (balance_gno - balance_prev_gno) > expected_reward_cap_gno * 1.1,
+            (balance_gno - balance_prev_gno) - expected_reward_cap_gno,
+            0
+        ) AS consolidation_inflow_gno
         ,GREATEST(
             0,
             (balance_gno - balance_prev_gno)
             + withdrawals_amount_gno
-            - consolidation_inflow_gno + consolidation_outflow_gno
+            - if(
+                has_target_request = 1
+                AND (balance_gno - balance_prev_gno) > expected_reward_cap_gno * 1.1,
+                (balance_gno - balance_prev_gno) - expected_reward_cap_gno,
+                0
+            )
+            + if(
+                has_source_request = 1 AND balance_prev_gno > 0 AND balance_gno = 0,
+                balance_prev_gno,
+                0
+            )
             - expected_reward_cap_gno
         ) AS effective_deposits_credited_gno
     FROM scored

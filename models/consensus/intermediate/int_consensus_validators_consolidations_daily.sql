@@ -121,6 +121,7 @@ source_snapshots AS (
       AND date <= (SELECT max(request_date) FROM cross_requests) + INTERVAL 30 DAY
 ),
 
+
 applications AS (
     SELECT
         cr.request_slot
