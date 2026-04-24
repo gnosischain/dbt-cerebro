@@ -59,6 +59,8 @@ swaps AS (
         {% if start_month and end_month %}
         WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        {% elif is_incremental() %}
+        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
         {% endif %}
     ) st ON st.transaction_hash = t.transaction_hash
     WHERE t.amount_bought_raw > 0
