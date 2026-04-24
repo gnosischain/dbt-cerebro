@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, pool_address, token_address)',
         unique_key='(date, pool_address, token_address)',
@@ -42,7 +42,11 @@ daily_deltas AS (
             e.token_position = 'token1', p.token1_address,
             NULL
         ) AS token_address,
-        sum(e.delta_amount_raw) AS daily_delta_raw,
+        sum(multiIf(
+            e.delta_category = 'liquidity' AND e.delta_amount_raw < toInt256(0),
+                toInt256(0),
+            e.delta_amount_raw
+        )) AS daily_delta_raw,
         sum(multiIf(
             e.delta_category = 'swap_in',
                 e.delta_amount_raw - intDiv(e.delta_amount_raw * toInt256(p.fee_tier_ppm), toInt256(1000000)),

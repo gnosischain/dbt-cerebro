@@ -33,6 +33,7 @@ api_fees AS (
         fee_token,
         fee_amount
     FROM {{ ref('stg_crawlers_data__cow_api_trade_fees') }}
+    WHERE order_uid IN (SELECT order_uid FROM trades)
 )
 
 SELECT

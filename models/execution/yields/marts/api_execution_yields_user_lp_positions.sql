@@ -17,6 +17,7 @@ SELECT
     is_active,
     is_in_range,
     pool_current_tick,
+    has_unpriced_tokens,
     entry_date,
     last_action_date
 FROM {{ ref('int_execution_yields_user_lp_positions') }}

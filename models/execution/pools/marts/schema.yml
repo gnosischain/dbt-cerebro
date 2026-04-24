@@ -339,3 +339,195 @@ models:
   - name: change_pct
     description: Percentage change vs prior 7-day window (or vs 7 days ago for TVL).
     data_type: Float64
+
+- name: fct_execution_trades_by_protocol_daily
+  description: >
+    Daily per-protocol DEX activity. Aggregated from
+    `int_execution_pools_dex_trades` at the swap (hop) grain — so multi-hop
+    trades contribute to every protocol they touch.
+  columns:
+  - name: date
+    data_type: Date
+  - name: protocol
+    description: Uniswap V3, Balancer V2/V3, Swapr V3.
+    data_type: String
+  - name: swap_count
+    description: Number of swap events on this protocol on this day.
+    data_type: UInt64
+  - name: volume_usd
+    description: Sum of per-swap `amount_usd`.
+    data_type: Float64
+
+- name: fct_execution_trades_by_token_daily
+  description: >
+    Daily per-token DEX activity. Each swap contributes to BOTH its sold
+    and bought side, so `combined_usd` across all tokens sums to ~2x total
+    chain volume. Suited for "token activity" views — shows every time a
+    token was involved in a trade.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    data_type: String
+  - name: bought_usd
+    description: USD value bought INTO this token on this day (summed across hops).
+    data_type: Float64
+  - name: sold_usd
+    description: USD value sold OUT of this token on this day.
+    data_type: Float64
+  - name: bought_trades
+    description: Number of swap events that bought this token on this day.
+    data_type: UInt64
+  - name: sold_trades
+    description: Number of swap events that sold this token on this day.
+    data_type: UInt64
+  - name: combined_usd
+    description: bought_usd + sold_usd. Total token participation in USD.
+    data_type: Float64
+
+- name: fct_execution_trades_by_aggregator_daily
+  description: >
+    Daily per-aggregator share of trades. Reads from `int_execution_trades_by_tx`
+    (tx grain). share_pct is pre-computed so the dashboard api view is a pure
+    SELECT. Each date sums to 100.0% across all rows for that date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: aggregator_label
+    description: >
+      Named project from `int_crawlers_data_labels` if matched; otherwise
+      "Other Router" (unlabeled multi-hop) or "Direct" (unlabeled single-hop).
+    data_type: String
+  - name: trade_count
+    description: Number of transactions for this (date, aggregator_label).
+    data_type: UInt64
+  - name: share_pct
+    description: Percentage share of that day's trades (0–100).
+    data_type: Float64
+
+- name: fct_execution_trades_lifetime
+  description: >
+    One-row lifetime summary of DEX trading on Gnosis Chain. Materialized
+    as a table, full rebuild on every dbt run. Feeds the lifetime tiles on
+    the Trades → Stats tab.
+  columns:
+  - name: lifetime_volume_usd
+    description: All-time sum of per-tx `trade_usd`.
+    data_type: Float64
+  - name: lifetime_trade_count
+    description: All-time distinct transaction count.
+    data_type: UInt64
+  - name: lifetime_unique_traders
+    description: All-time distinct `tx_from` count.
+    data_type: UInt64
+
+- name: api_execution_trades_stats_volume_ts
+  description: >
+    Dashboard view — daily protocol volume. Pure SELECT from
+    fct_execution_trades_by_protocol_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: Protocol name.
+    data_type: String
+  - name: value
+    description: Daily volume in USD.
+    data_type: Float64
+
+- name: api_execution_trades_stats_aggregator_share_ts
+  description: >
+    Dashboard view — daily aggregator share. Pure SELECT from
+    fct_execution_trades_by_aggregator_daily. Each date's values sum to 100.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: Aggregator name, "Other Router" or "Direct".
+    data_type: String
+  - name: value
+    description: Percentage share of that day's trades.
+    data_type: Float64
+
+- name: api_execution_trades_stats_top_tokens_weekly
+  description: >
+    Dashboard view — weekly top-8 token activity + Other. Aggregates from
+    fct_execution_trades_by_token_daily to the week grain and buckets the
+    top-8 lifetime tokens (stable stack order across windows). Exposes both
+    `value_volume` and `value_trades` so the dashboard can toggle metric.
+  columns:
+  - name: date
+    description: Week start (Monday, UTC).
+    data_type: Date
+  - name: label
+    description: Token symbol (top 8) or "Other".
+    data_type: String
+  - name: value_volume
+    data_type: Float64
+  - name: value_trades
+    data_type: UInt64
+
+- name: api_execution_trades_stats_hop_distribution
+  description: >
+    Dashboard view — last-30d hop-count distribution. Light GROUP BY on
+    the pre-bucketed `hop_bucket` column in `int_execution_trades_by_tx`.
+    Not affected by the dashboard time window.
+  columns:
+  - name: label
+    description: hop_bucket value ("1 hop", "2 hops", "3 hops", "4+ hops").
+    data_type: String
+  - name: trade_count
+    data_type: UInt64
+  - name: value
+    description: Percentage of trades in this bucket over the last 30 days.
+    data_type: Float64
+  - name: bucket_order
+    description: Sort order (1..4). Used by the dashboard to render x-axis.
+    data_type: UInt8
+
+- name: api_execution_trades_stats_size_distribution
+  description: >
+    Dashboard view — last-30d trade-size distribution. Light GROUP BY on
+    the pre-bucketed `size_bucket` column in `int_execution_trades_by_tx`.
+    Not affected by the dashboard time window.
+  columns:
+  - name: label
+    description: size_bucket value ("< $100", "$100 – $1K", etc.).
+    data_type: String
+  - name: trade_count
+    data_type: UInt64
+  - name: value
+    description: Percentage of trades in this bucket over the last 30 days.
+    data_type: Float64
+  - name: bucket_order
+    description: Sort order (1..5). Used by the dashboard to render x-axis.
+    data_type: UInt8
+
+- name: api_execution_trades_stats_net_flow
+  description: >
+    Dashboard view — top 10 tokens by absolute net USD flow over the last
+    30 days. Reads from fct_execution_trades_by_token_daily. Positive
+    value = net bought, negative = net sold.
+  columns:
+  - name: label
+    description: Token symbol.
+    data_type: String
+  - name: value
+    description: Net USD flow (signed).
+    data_type: Float64
+  - name: bought_usd
+    data_type: Float64
+  - name: sold_usd
+    data_type: Float64
+
+- name: api_execution_trades_stats_lifetime
+  description: >
+    Dashboard view — lifetime scalar totals. Pure SELECT from
+    fct_execution_trades_lifetime.
+  columns:
+  - name: lifetime_volume_usd
+    data_type: Float64
+  - name: lifetime_trade_count
+    data_type: UInt64
+  - name: lifetime_unique_traders
+    data_type: UInt64
