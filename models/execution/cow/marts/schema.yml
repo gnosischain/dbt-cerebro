@@ -52,10 +52,22 @@ models:
   - name: amount_usd
     data_type: Nullable(Float64)
   - name: fee_amount_raw
-    description: On-chain fee atoms from Trade event (0 for 2024+).
+    description: >
+      On-chain fee atoms from the GPv2 Trade event. Non-zero pre-Sep 2024,
+      zero afterwards. WARNING — under CoW v1's fee-subsidy model this field
+      represented the user's *signed-maximum* fee (the ceiling they agreed
+      to pay), NOT the executed-after-subsidy fee that actually accrued to
+      the protocol. CoW DAO reimbursed solvers off-chain via CIP-12 / solver
+      rewards for gas + a small protocol margin, so summing fee_amount_raw
+      does not measure protocol revenue. For revenue analysis use fee_usd
+      filtered to fee_source = 'api' (the surplus-based fee model from
+      Sep 2024 onwards).
     data_type: Nullable(UInt256)
   - name: fee_amount
-    description: On-chain fee in sell-token human units.
+    description: >
+      fee_amount_raw scaled to sell-token human units. Same caveat as
+      fee_amount_raw — represents signed-maximum under v1, not actual
+      protocol revenue.
     data_type: Nullable(Float64)
   - name: api_fee_token
     description: Token address the API fee is denominated in.
@@ -65,11 +77,18 @@ models:
     data_type: Nullable(String)
   - name: fee_usd
     description: >
-      Fee in USD. Derived from on-chain feeAmount when > 0 (pre-2024 trades),
-      otherwise from the API fee scaled to USD via the trade's USD value.
+      Fee in USD. Derived from on-chain feeAmount when > 0 (pre-Sep 2024
+      trades), otherwise from the CoW API surplus fee scaled to USD via the
+      trade's USD value. WARNING — only the api-sourced rows reflect actual
+      protocol revenue. The on-chain rows reflect signed-maximum under CoW
+      v1's fee-subsidy model (see fee_amount_raw note). For revenue
+      analytics, filter fee_source = 'api'.
     data_type: Nullable(Float64)
   - name: fee_source
-    description: "'onchain' | 'api' | NULL — which source produced fee_usd."
+    description: >
+      'onchain' | 'api' | NULL — which source produced fee_usd. 'onchain'
+      values are signed-maximum, NOT actual revenue. 'api' values are
+      surplus-based protocol revenue (Sep 2024 onwards).
     data_type: Nullable(String)
   - name: taker
     data_type: String
@@ -205,12 +224,13 @@ models:
 
 - name: api_execution_cow_kpi_fees_7d
   description: >
-    7-day CoW Protocol total fees (USD) with week-over-week change.
-    Combines on-chain fee_amount (pre-2024) and CoW API surplus fees (2024+)
-    via fct_execution_cow_trades.
+    7-day CoW Protocol revenue (USD) with week-over-week change. Reflects
+    surplus-based fees (fee_source = 'api', Sep 2024+). Pre-Sep 2024
+    on-chain feeAmount is excluded because those values represent
+    signed-maximum under CoW v1's fee-subsidy model, not actual revenue.
   columns:
   - name: value
-    description: Total fees USD over the last 7 complete days.
+    description: Total api-sourced fees USD over the last 7 complete days.
     data_type: Nullable(Float64)
   - name: change_pct
     description: Percentage change vs the prior 7-day window.
@@ -218,18 +238,19 @@ models:
 
 - name: api_execution_cow_fees_ts
   description: >
-    Daily CoW Protocol fees (USD), split by fee_source ('onchain' vs 'api').
-    Visualizes the 2024 transition from explicit on-chain feeAmount to the
-    surplus-based protocol fee model exposed via the CoW API. Trades with
-    no derivable fee are excluded.
+    Daily CoW Protocol revenue (USD) on Gnosis Chain. Filtered to
+    fee_source = 'api' — surplus-based fees introduced Sep 2024.
+    Pre-Sep 2024 on-chain feeAmount values are excluded: under CoW v1's
+    fee-subsidy model that field represented the user's signed-maximum fee
+    ceiling, not actual protocol revenue (the DAO reimbursed solvers for
+    gas + a small margin off-chain via CIP-12 / solver rewards). Including
+    those values would overstate revenue for 2021–mid-2024 by orders of
+    magnitude relative to what the protocol actually kept.
   columns:
   - name: date
     data_type: Date
-  - name: label
-    description: "'onchain' | 'api' | 'unknown'."
-    data_type: String
   - name: value
-    description: Daily USD fees attributed to this source.
+    description: Daily USD fees collected via the surplus-based fee model.
     data_type: Nullable(Float64)
 
 - name: api_execution_cow_volume_ts
