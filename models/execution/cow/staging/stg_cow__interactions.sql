@@ -1,6 +1,6 @@
 {{ config(
     materialized='view',
-    tags=['production', 'execution', 'cow', 'interactions', 'staging']
+    tags=['dev', 'execution', 'cow', 'interactions', 'staging']
   )
 }}
 
