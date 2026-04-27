@@ -192,11 +192,45 @@ models:
 
 - name: api_execution_cow_kpi_active_solvers
   description: >
-    Number of solvers currently active on the GPv2 AllowList.
+    Number of distinct solvers that settled at least one batch in the last
+    7 complete days, with week-over-week change. Reflects who is actually
+    competing for batches, not just who is allow-listed.
   columns:
   - name: value
-    description: Count of solvers whose latest event is SolverAdded.
+    description: Distinct solvers with >=1 batch in the last 7 complete days.
     data_type: UInt64
+  - name: change_pct
+    description: Percentage change vs the prior 7-day window.
+    data_type: Nullable(Float64)
+
+- name: api_execution_cow_kpi_fees_7d
+  description: >
+    7-day CoW Protocol total fees (USD) with week-over-week change.
+    Combines on-chain fee_amount (pre-2024) and CoW API surplus fees (2024+)
+    via fct_execution_cow_trades.
+  columns:
+  - name: value
+    description: Total fees USD over the last 7 complete days.
+    data_type: Nullable(Float64)
+  - name: change_pct
+    description: Percentage change vs the prior 7-day window.
+    data_type: Nullable(Float64)
+
+- name: api_execution_cow_fees_ts
+  description: >
+    Daily CoW Protocol fees (USD), split by fee_source ('onchain' vs 'api').
+    Visualizes the 2024 transition from explicit on-chain feeAmount to the
+    surplus-based protocol fee model exposed via the CoW API. Trades with
+    no derivable fee are excluded.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: "'onchain' | 'api' | 'unknown'."
+    data_type: String
+  - name: value
+    description: Daily USD fees attributed to this source.
+    data_type: Nullable(Float64)
 
 - name: api_execution_cow_volume_ts
   description: >
@@ -222,14 +256,15 @@ models:
 - name: api_execution_cow_solvers_volume_ts
   description: >
     Daily volume by solver, top 6 by recent (180d) volume plus an
-    "Other" bucket. Solver addresses are truncated for display.
-    Uses a 180-day ranking window to surface currently active
-    solvers rather than historically dominant but now-inactive ones.
+    "Other" bucket. Solver labels come from the cow_solvers seed when
+    available; otherwise fall back to a truncated address. Uses a
+    180-day ranking window to surface currently active solvers rather
+    than historically dominant but now-inactive ones.
   columns:
   - name: date
     data_type: Date
   - name: label
-    description: Truncated solver address or "Other".
+    description: Solver name (from seed) or truncated address, or "Other".
     data_type: String
   - name: value
     description: Daily USD volume for this solver group.
