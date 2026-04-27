@@ -19,7 +19,7 @@ SELECT
     CASE
         WHEN d.solver IN (SELECT solver FROM top_solvers)
         THEN coalesce(
-                 n.name,
+                 nullIf(n.name, ''),
                  concat(substring(d.solver, 1, 6), '..', substring(d.solver, length(d.solver) - 3, 4))
              )
         ELSE 'Other'
