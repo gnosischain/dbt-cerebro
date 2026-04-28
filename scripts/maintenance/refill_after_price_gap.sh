@@ -10,18 +10,29 @@
 # that date entirely. Once the upstream is back-filled, those downstream models
 # need to re-pull the affected window.
 #
-# Two-phase recovery (this script does both)
-# ------------------------------------------
-# Phase 1 — `int_execution_tokens_balances_daily` (special case)
-#   Microbatch-annotated, so its incremental path is "no-overlap append" and
-#   *cannot* re-pull historical days; the alternative `delete+insert` lookback
-#   path mutates a multi-day window which OOMs (CH 341). Recovery is a
-#   targeted *append-mode rewrite* of each affected month, followed by a
-#   `OPTIMIZE TABLE … PARTITION '<month>' FINAL DEDUPLICATE` to collapse the
-#   duplicates RMT would otherwise merge lazily. Cohorts/sectors that depend
-#   on this model run in Phase 2 once balances are correct.
+# Three-phase recovery (this script does all three)
+# --------------------------------------------------
+# Phase 1 — `tag:refill_append` cohort (heavy aggregates over balances)
+#   Each model is run twice (Pass A + Pass B) with start_month/end_month
+#   set, which selects `append` strategy. Between passes (and after the
+#   second), `OPTIMIZE TABLE … PARTITION '<month>' FINAL DEDUPLICATE`
+#   forces RMT to collapse duplicate rows so dependent aggregators see
+#   merged source data on the next pass.
 #
-# Phase 2 — every descendant of `int_execution_token_prices_daily`
+#   Why two passes: dbt resolves DAG order within a single `dbt run`
+#   invocation, but RMT merges happen lazily AFTER each write. So in a
+#   single-pass refill, an aggregator that runs immediately after its
+#   upstream sees the upstream's *unmerged* duplicate parts and bakes a
+#   multi-× inflated `sum(...)` into its row. RMT later collapses both
+#   layers but the wrong aggregator value survives. Pass B re-runs every
+#   aggregator against the now-merged source so the correct value gets
+#   appended; the post-Pass-B OPTIMIZE keeps that correct row.
+#
+#   Phase 1.5 (canary) checks for adjacent-day jumps > 1.5× on a known
+#   metric (GNO supply) at the month boundary; warns if Phase 1 didn't
+#   converge.
+#
+# Phase 2 — every descendant of `int_execution_token_prices_daily` (lighter)
 #   Lineage-driven (no manual tag): the dbt selector
 #   `int_execution_token_prices_daily+` resolves to every model that ref()s
 #   prices, transitively. The `apply_monthly_incremental_filter` macro reads
@@ -29,9 +40,15 @@
 #   line widens the window for every model in the subtree — no per-model
 #   plumbing, no tag registry to keep in sync.
 #
-#   `int_execution_tokens_balances_daily` is `--exclude`d — Phase 1 already
-#   recovered it via append + OPTIMIZE because its delete+insert path OOMs
-#   (CH 341) on multi-day windows.
+#   `tag:refill_append` is `--exclude`d — Phase 1 already recovered those
+#   because their delete+insert path OOMs (CH 341) on multi-day windows.
+#
+# Phase 3 — rebuild downstream `fct_*` (table) and `api_*` (view)
+#   `fct_*` tables are full-rebuild (`materialized='table'`); they only
+#   refresh when explicitly run. After Phase 1 corrects the upstream
+#   `int_*` rows, dependent `fct_*` keep their STALE values until rebuilt.
+#   Phase 3 runs `tag:refill_append+` minus `tag:refill_append` so every
+#   descendant of the cohort gets refreshed.
 #
 # Usage
 # -----
@@ -196,9 +213,25 @@ run_or_print() {
 OVERALL_RC=0
 
 # -- Phase 1 ------------------------------------------------------------------
-# For each affected month: dbt runs every `tag:refill_append` model in DAG
-# order in a single invocation (start_month/end_month → append strategy),
-# then we iterate the same model list to OPTIMIZE each partition.
+# Two-pass per month:
+#   Pass A — append-rewrite + OPTIMIZE every model. After this, source-of-
+#            truth tables (e.g. int_execution_tokens_balances_daily) have
+#            their correct, merged rows. But aggregators that ran during
+#            Pass A may have read upstream BEFORE OPTIMIZE collapsed it,
+#            so their rows can hold the inflated sums of unmerged duplicates.
+#   Pass B — append-rewrite + OPTIMIZE every model AGAIN. This time every
+#            aggregator's source is already merged, so it reads correct
+#            values. The OPTIMIZE retains the latest (correct) row per key.
+#
+# Two passes are required because dbt's `--select tag:refill_append` runs
+# all 12 models in one invocation, but RMT merges happen lazily AFTER each
+# write — so an aggregator running mid-invocation sees its upstream's
+# unmerged duplicates. There is no single-pass ordering that fixes this;
+# we need a hard barrier (OPTIMIZE) between dependent layers, which means
+# running twice.
+#
+# Phase 3 (after both passes complete) rebuilds the downstream `fct_*`
+# tables and `api_*` views so they pick up the corrected `int_*` values.
 if [ "$SKIP_PHASE1" = "false" ]; then
   if [ "$DRY_RUN" = "false" ]; then
     PHASE1_MODELS=$(dbt ls --select "tag:$PHASE1_TAG" --resource-type model --output name \
@@ -211,31 +244,55 @@ if [ "$SKIP_PHASE1" = "false" ]; then
     PHASE1_MODELS="<resolved at runtime from tag:$PHASE1_TAG>"
   fi
 
-  echo "=== Phase 1: append-rewrite tag:$PHASE1_TAG + OPTIMIZE ==="
+  echo "=== Phase 1: two-pass append-rewrite tag:$PHASE1_TAG + OPTIMIZE ==="
   echo "[phase1] models: $(echo "$PHASE1_MODELS" | tr '\n' ' ')"
 
   for m in "${MONTHS[@]}"; do
-    echo "[phase1] month=$m  rewrite (append, dbt-managed DAG order)"
-    run_or_print dbt run \
-      --select "tag:$PHASE1_TAG" \
-      --vars "{\"start_month\":\"$m\",\"end_month\":\"$m\"}" \
-      --project-dir "$PROJECT_DIR" \
-      --profiles-dir "$PROFILES_DIR" \
-      || { echo "[phase1] rewrite failed for $m"; OVERALL_RC=2; break; }
+    for pass in A B; do
+      echo "[phase1][pass-$pass] month=$m  rewrite (append, dbt-managed DAG order)"
+      run_or_print dbt run \
+        --select "tag:$PHASE1_TAG" \
+        --vars "{\"start_month\":\"$m\",\"end_month\":\"$m\"}" \
+        --project-dir "$PROJECT_DIR" \
+        --profiles-dir "$PROFILES_DIR" \
+        || { echo "[phase1][pass-$pass] rewrite failed for $m"; OVERALL_RC=2; break 2; }
 
-    if [ "$DRY_RUN" = "false" ]; then
-      for model in $PHASE1_MODELS; do
-        echo "[phase1] $model  month=$m  OPTIMIZE PARTITION FINAL DEDUPLICATE"
-        run_or_print dbt run-operation optimize_partition_final \
-          --args "{database: dbt, table_name: ${model}, partition: \"$m\"}" \
-          --project-dir "$PROJECT_DIR" \
-          --profiles-dir "$PROFILES_DIR" \
-          || { echo "[phase1] $model OPTIMIZE failed for $m"; OVERALL_RC=2; break 2; }
-      done
-    else
-      echo "[dry-run] for each model in tag:$PHASE1_TAG: optimize_partition_final partition=$m"
-    fi
+      if [ "$DRY_RUN" = "false" ]; then
+        for model in $PHASE1_MODELS; do
+          echo "[phase1][pass-$pass] $model  month=$m  OPTIMIZE PARTITION FINAL DEDUPLICATE"
+          run_or_print dbt run-operation optimize_partition_final \
+            --args "{database: dbt, table_name: ${model}, partition: \"$m\"}" \
+            --project-dir "$PROJECT_DIR" \
+            --profiles-dir "$PROFILES_DIR" \
+            || { echo "[phase1][pass-$pass] $model OPTIMIZE failed for $m"; OVERALL_RC=2; break 3; }
+        done
+      else
+        echo "[dry-run][pass-$pass] for each model in tag:$PHASE1_TAG: optimize_partition_final partition=$m"
+      fi
+    done
   done
+  echo
+fi
+
+# -- Phase 1.5 — sanity check ------------------------------------------------
+# After the two-pass refill, scan a known canary metric for an adjacent-day
+# jump > 1.5× across the month boundary. A jump means some aggregator still
+# holds inflated values from an earlier write — a sign Phase 1 didn't fully
+# converge. Refill is a no-op if the canary is clean.
+if [ "$SKIP_PHASE1" = "false" ] && [ "$OVERALL_RC" -eq 0 ] && [ "$DRY_RUN" = "false" ]; then
+  echo "=== Phase 1.5: canary check on int_execution_tokens_supply_holders_daily (GNO) ==="
+  CANARY_SQL="WITH s AS (SELECT date, supply FROM dbt.int_execution_tokens_supply_holders_daily \
+WHERE symbol='GNO' AND date >= toDate('${FROM_DATE}') - 7 AND date <= toDate('${FROM_DATE}') + 7) \
+SELECT date, supply, supply / nullIf(lagInFrame(supply) OVER (ORDER BY date), 0) AS ratio \
+FROM s ORDER BY date"
+  CANARY_OUT=$(dbt run-operation run_query --args "{sql: \"$CANARY_SQL\"}" \
+    --project-dir "$PROJECT_DIR" --profiles-dir "$PROFILES_DIR" 2>/dev/null || true)
+  echo "$CANARY_OUT" | tail -20
+  if echo "$CANARY_OUT" | awk '/^\| / && NF>=7 {gsub(/[|]/," "); r=$5+0; if(r>1.5||(r>0&&r<0.66)) print}' | grep -q .; then
+    echo "[phase1.5] WARNING: adjacent-day GNO supply ratio > 1.5× detected — Phase 1 may not have converged"
+    echo "[phase1.5] Inspect manually before declaring success."
+    OVERALL_RC=3
+  fi
   echo
 fi
 
@@ -252,6 +309,24 @@ if [ "$SKIP_PHASE2" = "false" ] && [ "$OVERALL_RC" -eq 0 ]; then
     --select "$SELECTOR" \
     --exclude "tag:$PHASE1_TAG" \
     --vars "{\"price_lookback_days\": $LOOKBACK}" \
+    --project-dir "$PROJECT_DIR" \
+    --profiles-dir "$PROFILES_DIR" \
+    || OVERALL_RC=$?
+fi
+
+# -- Phase 3 — rebuild downstream `fct_*` (table) and `api_*` (view) -----------
+# `fct_*` tables are full-rebuild (`materialized='table'`) and only refresh
+# when explicitly run. After Phase 1 corrects the upstream `int_*` rows,
+# any dependent `fct_*` keeps its STALE values until rebuilt — and `api_*`
+# views downstream of those `fct_*` tables expose the stale values too.
+# This phase rebuilds every descendant of tag:refill_append, excluding the
+# refill_append nodes themselves (Phase 1 handled them) and the price-
+# dependent leaves (Phase 2 handled them).
+if [ "$SKIP_PHASE1" = "false" ] && [ "$OVERALL_RC" -eq 0 ]; then
+  echo "=== Phase 3: rebuild downstream fct_*/api_* of tag:$PHASE1_TAG ==="
+  run_or_print dbt run \
+    --select "tag:$PHASE1_TAG+" \
+    --exclude "tag:$PHASE1_TAG" \
     --project-dir "$PROJECT_DIR" \
     --profiles-dir "$PROFILES_DIR" \
     || OVERALL_RC=$?
