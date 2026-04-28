@@ -18,6 +18,7 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 - [Contract Decoding System](#contract-decoding-system)
 - [Circles V2 Avatar IPFS Metadata](#circles-v2-avatar-ipfs-metadata)
 - [Production Pipeline](#production-pipeline)
+- [Running Models](#running-models)
 - [Project Structure](#project-structure)
 - [Troubleshooting](#troubleshooting)
 
@@ -420,6 +421,308 @@ The cron pod mounts a `ReadWriteOnce` PVC (`dbt-cerebro-data`, 2 GiB) at `/data`
 
 Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they don't depend on bind-mounted `./logs`. If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
 
+## Running Models
+
+There are **three execution modes** for materializing dbt models in this project, each suited to a different operational scenario. The cron pipeline (`run_dbt_observability.sh`) automates mode selection, but operators frequently need to invoke them manually.
+
+### When to use which mode
+
+| Scenario | Mode | Command surface |
+|---|---|---|
+| Daily incremental catch-up (production cron path) | **Microbatch runner** | `scripts/refresh/dbt_incremental_runner.py` |
+| Multi-month historical backfill of a large model | **Full-refresh orchestrator** | `scripts/full_refresh/refresh.py` |
+| One-off ad-hoc rebuild / quick smoke test of a single model | **Plain `dbt run`** | `dbt run --select <model>` |
+
+The runner and orchestrator wrap `dbt run` and add behaviour you almost always want for production-shaped workloads (per-day slicing, transient-error retry, atomic per-batch state). Reach for plain `dbt run` only when those guarantees are not needed.
+
+### Mode 1 — Microbatch runner (daily incremental hot path)
+
+`scripts/refresh/dbt_incremental_runner.py` is the daily-cadence runner. It is what `run_dbt_observability.sh` invokes for every `dbt-run:<batch_id>` step. **Always prefer this over plain `dbt run` for any selector that includes incremental models.**
+
+What the runner does for each selected model, in topological order:
+
+- **Plain (non-microbatch-annotated) models** — accumulated into a buffer and run as a single `dbt run --select <buffer>` call. The buffer is flushed at every microbatch boundary so dependencies between plain and microbatch models always run in the right order.
+- **Microbatch-annotated models** (those with `meta.full_refresh.incremental.enabled: true` in their schema.yml) — the runner reads `max(date_column)` from the target per stage, slices the catch-up window into per-day INSERTs (`incremental_strategy=append`, no `ALTER … DELETE` mutation), and runs each slice as its own `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'`. State is persisted to `target/incremental_microbatch_state.json` so `--resume` skips already-completed slices.
+
+**Safety guarantees:**
+
+- Per-stage gap exceeding `--max-slices-per-stage` (default 30) is **refused** with a pointer to `scripts/full_refresh/refresh.py`. The runner is for daily catch-up only; it will never silently spend hours doing a multi-year backfill.
+- Empty target tables bootstrap from `today − --bootstrap-lookback-days` (default 7), not from the model's full historical `start_date`.
+- Any plain-passthrough failure or microbatch-slice failure is recorded with a unique stash filename in `target/failed_batches/` and propagates to the runner's exit code so the cron wrapper's transient classifier sees it.
+
+**Common invocations** (all assume you are inside the `dbt` container — `docker exec -it dbt /bin/bash` first):
+
+```bash
+# Drop-in replacement for `dbt run --select tag:production`
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production \
+  --project-dir /app --profiles-dir /app
+
+# Catch up a single model with a fixed date cap (useful for partial recoveries)
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select int_consensus_validators_income_daily \
+  --max-end-date 2026-04-25 \
+  --project-dir /app --profiles-dir /app
+
+# Restrict to specific stages (e.g. just the validator-range buckets you want)
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select int_consensus_validators_income_daily \
+  --stage validators_0_100k --stage validators_100k_200k \
+  --project-dir /app --profiles-dir /app
+
+# Plan-only (prints what would run without touching the warehouse)
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production --dry-run \
+  --project-dir /app --profiles-dir /app
+
+# Resume an interrupted run (re-uses target/incremental_microbatch_state.json)
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production --resume \
+  --project-dir /app --profiles-dir /app
+```
+
+**Important flags** (full reference: `dbt_incremental_runner.py --help`):
+
+| Flag | Default | Use when |
+|---|---|---|
+| `--select <selector>` | required | Standard dbt selector. Mixed plain + microbatch is fine and recommended. |
+| `--max-end-date YYYY-MM-DD` | today UTC | Cap how far forward to slice. Useful for partial recoveries / smoke tests. |
+| `--batch-days N` | per-model `meta.full_refresh.incremental.batch_days` | Override slice width. |
+| `--bootstrap-lookback-days N` | 7 | First-run bootstrap window for empty targets. |
+| `--max-slices-per-stage N` | 30 | Refusal cap. Set to `0` to disable (not recommended). |
+| `--stage <name>` | all stages | Restrict to one or more stage names; pass repeatedly. |
+| `--resume` | off | Continue from `target/incremental_microbatch_state.json`. |
+| `--dry-run` | off | Print plan, no DB writes. |
+| `--delay <sec>` | 0 | Sleep between slices, for cluster cooldown. |
+| `--threads N` | dbt profile default | Forward to `dbt run`. |
+| `--defer / --favor-state / --state PATH` | off | Forwarded to every `dbt run` for prod-state deferral in dev. |
+| `--no-kill-failed-mutations` | off | Skip the pre-flight `kill_failed_mutations` macro. |
+
+**To annotate a model as microbatch**, add an `incremental:` block under its existing `meta.full_refresh` in `schema.yml`:
+
+```yaml
+meta:
+  full_refresh:
+    start_date: "2024-01-01"        # used by full_refresh.py only
+    batch_months: 1                  # used by full_refresh.py only
+    stages: [...]                    # optional, shared with full_refresh.py
+    incremental:                     # ← microbatch annotation
+      enabled: true
+      date_column: date              # column the runner reads max() from
+      batch_days: 1                  # window per slice (default 1)
+```
+
+The model's SQL also needs the strategy expression to honor `incremental_end_date`:
+
+```sql
+{% set start_month = var('start_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
+
+{{ config(
+    materialized='incremental',
+    incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+    ...
+) }}
+```
+
+The macro `apply_monthly_incremental_filter` automatically picks up `incremental_end_date` and emits a strict no-overlap upper bound.
+
+See [`scripts/refresh/README.md`](scripts/refresh/README.md) for the full algorithm reference and the lineage-batching helper (`dbt_run_batches.py`) that produces the per-batch model lists the cron wrapper feeds to the runner.
+
+### Mode 2 — Full-refresh orchestrator (multi-month historical backfill)
+
+`scripts/full_refresh/refresh.py` rebuilds large incremental models in monthly batches, optionally split into per-stage sub-batches (e.g. validator-index ranges or per-symbol partitions). It is the right tool when:
+
+- The microbatch runner refused with `gap is N day(s); exceeds --max-slices-per-stage` — meaning the table is too far behind for daily catch-up.
+- A new model has just been added and needs its historical depth filled.
+- A schema change forces a full rebuild.
+
+**Common invocations:**
+
+```bash
+# Full historical rebuild of one model (drops the table, rebuilds from start_date)
+python /app/scripts/full_refresh/refresh.py \
+  --select int_consensus_validators_income_daily \
+  --delay 5 \
+  --project-dir /app --profiles-dir /app
+
+# Append-only (don't drop the table) — for filling a recent gap without losing
+# existing data. Recommended when ranges/stages are independent.
+python /app/scripts/full_refresh/refresh.py \
+  --select int_consensus_validators_income_daily \
+  --incremental-only \
+  --delay 5
+
+# Resume after a transient failure
+python /app/scripts/full_refresh/refresh.py \
+  --select int_consensus_validators_income_daily \
+  --resume
+
+# Restrict to specific stages
+python /app/scripts/full_refresh/refresh.py \
+  --select int_consensus_validators_income_daily \
+  --stage validators_200k_300k,validators_300k_400k \
+  --incremental-only
+
+# Plan-only
+python /app/scripts/full_refresh/refresh.py \
+  --select tag:production --dry-run
+```
+
+**Built-in resilience:**
+
+- `--resume` — picks up from `.refresh_state.json`. State is persisted after every successful batch.
+- **Transient retry** — on ClickHouse codes 241 (memory), 159/209/210 (network/timeout), or any `MEMORY_LIMIT_EXCEEDED` / `OvercommitTracker` error, the orchestrator waits with exponential backoff (30 s → 60 s → 120 s → 240 s → 480 s, up to 5 retries) before giving up. This handles shared-cluster pressure without operator intervention.
+
+`--full-refresh` (default, no flag needed) drops the table on the first batch and rebuilds. `--incremental-only` skips the drop and appends — use it whenever you want to fill a gap without losing existing data.
+
+See [`scripts/full_refresh/README.md`](scripts/full_refresh/README.md) for full configuration patterns (time-only batching, multi-stage with per-stage `start_date` and `batch_months`, composite slice filters, etc.).
+
+### Mode 3 — Plain `dbt run` (ad-hoc / single-model rebuilds)
+
+For one-off rebuilds that don't fit either of the orchestrators — quick smoke tests, ad-hoc development, regenerating a single mart that doesn't have heavy upstream — plain `dbt run` is fine:
+
+```bash
+docker exec -i dbt dbt run \
+  --select <model_name> \
+  --project-dir /app --profiles-dir /app
+
+# Force-rebuild from scratch (drops and recreates incremental tables)
+docker exec -i dbt dbt run \
+  --select <model_name> --full-refresh \
+  --project-dir /app --profiles-dir /app
+
+# Pass start_month/end_month manually for a bounded incremental window
+docker exec -i dbt dbt run \
+  --select <model_name> \
+  --vars '{"start_month":"2026-04-01","end_month":"2026-04-01"}' \
+  --project-dir /app --profiles-dir /app
+```
+
+**Caveats:**
+
+- For incremental models, plain `dbt run` uses `delete+insert` strategy by default (unless the model checks `start_month` / `incremental_end_date` to switch to `append`), which issues an `ALTER TABLE … DELETE` mutation. This is fine for small lookbacks but can OOM on heavy tables. The runner avoids this by injecting `incremental_end_date`.
+- No transient-error retry; a memory OOM kills the run immediately.
+- No state file; an interrupted run cannot be resumed (you'd just re-run from scratch).
+
+Use plain `dbt run` for **debugging** and **single-shot view/mart rebuilds**, not for the daily refresh path.
+
+### Maintenance: OPTIMIZE housekeeping
+
+Every dbt incremental run accumulates parts on the target table. ClickHouse merges them in the background, but on small or saturated clusters merges can fall behind, eating cluster RAM (mark-cache + primary-index per part) and slowing reads.
+
+`scripts/maintenance/optimize_dbt_tables.sh` is a weekly cron-friendly job that issues per-partition `OPTIMIZE TABLE … FINAL DEDUPLICATE` for any (table, partition) whose active part count exceeds a threshold:
+
+```bash
+# Default: threshold=50 parts/partition, dry_run=false, database=dbt
+docker exec dbt /app/scripts/maintenance/optimize_dbt_tables.sh
+
+# Triage what would run before committing
+docker exec -e OPTIMIZE_DRY_RUN=true dbt /app/scripts/maintenance/optimize_dbt_tables.sh
+
+# Target a specific table (LIKE pattern)
+docker exec -e OPTIMIZE_TABLE_FILTER='int_consensus_validators_%' \
+  dbt /app/scripts/maintenance/optimize_dbt_tables.sh
+```
+
+Schedule weekly during off-peak (e.g. Sunday 03:00 UTC). Don't run on the daily path — `OPTIMIZE FINAL` on a hot table competes with foreground writes for merge-pool slots and will return ClickHouse code 388 if the pool is saturated.
+
+For one-off whole-table rebuilds after a large backfill, the lower-level macro is also available:
+
+```bash
+docker exec dbt dbt run-operation optimize_table_final \
+  --args '{"database":"dbt","table_name":"int_consensus_validators_income_daily"}' \
+  --project-dir /app --profiles-dir /app
+```
+
+### Maintenance: re-fill after the prices source skips a day
+
+`int_execution_token_prices_daily` is the source of truth for USD valuations. When its upstream (a Dune query) skips a day, every dbt model that joins with prices either drops rows (LEFT JOIN excluded by NULL price) or has zero rows for the affected date. Once the upstream is back-filled, the downstream models need to re-pull the affected window.
+
+The recovery is **lineage-driven**: instead of a manual `price_dependent` tag (which had to be plumbed onto every prices consumer and was easy to miss), the script uses dbt's graph selector `int_execution_token_prices_daily+` to pick up every descendant of the prices view transitively. The macro `apply_monthly_incremental_filter` reads `var('price_lookback_days', N)` directly, so a single `--vars '{"price_lookback_days": N}'` widens the window for every model in the subtree — no per-model edits, no tag registry to maintain.
+
+The only model that needs a different recovery path is `int_execution_tokens_balances_daily` — its `delete+insert` lookback OOMs at multi-day windows (CH 341), so Phase 1 of the script rewrites the affected month in `append` mode and runs `OPTIMIZE PARTITION FINAL DEDUPLICATE` to converge. Phase 2 then `--exclude`s it from the lineage run.
+
+`scripts/maintenance/refill_after_price_gap.sh` wraps the **two-phase recovery flow**:
+
+| Phase | What | How |
+| --- | --- | --- |
+| 1 | For each affected month, append-rewrite every `tag:refill_append` model in DAG order, then OPTIMIZE its partition | `dbt run --select tag:refill_append --vars '{"start_month":"<m>","end_month":"<m>"}'` (append) → for each model, `dbt run-operation optimize_partition_final --args '{database: dbt, table_name: <m>, partition: "<m>"}'` |
+| 2 | Re-pull every prices descendant *not* in Phase 1 with the wider lookback | `dbt run --select int_execution_token_prices_daily+ --exclude tag:refill_append --vars '{"price_lookback_days": N}'` |
+
+Why two phases: heavy aggregates (`tag:refill_append`) cannot use the lookback path (delete+insert OOMs at multi-day windows — CH 341), so they need append + OPTIMIZE. Phase 2 picks up the corrected balances via the lineage selector and re-aggregates everything lighter downstream.
+
+#### Adding a new heavy aggregate to Phase 1
+
+1. Tag it `refill_append` in `tags=[...]`.
+2. Make sure its `incremental_strategy` is the three-branch expression:
+   ```python
+   incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert')
+   ```
+3. Make sure it has the `start_month`/`end_month` filter branch in its WHERE clause (the standard pattern in this repo).
+
+That's it — the script picks it up via `tag:refill_append` automatically. No edits to `refill_after_price_gap.sh`.
+
+Invocations:
+
+```bash
+# Re-pull every prices descendant + all downstream marts back to a known
+# gap date. The script computes the right lookback automatically.
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --from-date 2026-04-17
+
+# Or set the lookback explicitly
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --lookback-days 11
+
+# Triage first: print the dbt run command without executing it
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --from-date 2026-04-17 --dry-run
+
+# Restrict the Phase 2 selector (Phase 1 still runs unless --skip-balances-rewrite)
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --from-date 2026-04-17 --select int_revenue_sdai_fees_daily+
+
+# Phase 2 only (skip the tokens_balances_daily rewrite + OPTIMIZE)
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --from-date 2026-04-17 --skip-balances-rewrite
+
+# Phase 1 only (only fix tokens_balances_daily, leave cohorts/fees alone)
+docker exec dbt /app/scripts/maintenance/refill_after_price_gap.sh \
+  --from-date 2026-04-17 --skip-price-dependent
+```
+
+Default selector is `int_execution_token_prices_daily+` — the trailing `+` is dbt's "all descendants" operator, so every model that ref()s prices (including the `fct_*` / `api_*` views downstream) re-materializes against the corrected upstream. The script computes:
+
+```
+LOOKBACK = (today_utc − from_date) + 1 (inclusive) + buffer_days (default 1)
+```
+
+The buffer covers cases where the gap window has soft edges (e.g. partial data on one of the adjacent days). Override with `--buffer-days N` if needed.
+
+Adding a new prices consumer to the workflow: **nothing**. The model is already in `int_execution_token_prices_daily+` by virtue of its `ref()` chain, and `apply_monthly_incremental_filter` reads `var('price_lookback_days', …)` directly. No tag, no per-model var plumbing.
+
+#### Why `int_execution_tokens_balances_daily` needs the append + OPTIMIZE phase
+
+The two recovery paths the macro can produce are incompatible with this specific model:
+
+- **Microbatch path** (active when `incremental_end_date` is set) uses the no-overlap branch: strict `> max(date)`. It cannot re-pull historical days because the slice filter is exclusive.
+- **Lookback path** (`price_lookback_days` → `delete+insert` over a multi-day window) triggers `CH 341 — Mutation … memory limit exceeded` on this model — the same OOM the microbatch annotation was added to escape.
+
+So Phase 1 of the script bypasses the macro entirely: `start_month=end_month=<month>` puts the model in **append** mode, writing fresh rows for every date in the affected month(s). RMT collapses the duplicates lazily on background merges; the explicit `OPTIMIZE PARTITION '<month>' FINAL DEDUPLICATE` collapses them immediately so downstream Phase 2 reads the corrected values. The OPTIMIZE is scoped to one partition (one month), not the whole table — the cost is bounded.
+
+### Recovering from common failure modes
+
+| Symptom | Mode used | Fix |
+|---|---|---|
+| `Code: 341 — Mutation … memory limit exceeded` on a daily run | plain `dbt run` or unannotated incremental | Annotate the model as microbatch (see Mode 1) and re-run via the runner |
+| `Code: 388 — Cannot run optimize, background pool is already full` | OPTIMIZE invocation | Wait for the merge pool to drain (minutes to an hour); retry. Run during off-peak |
+| `Code: 241 — OvercommitTracker decision` (cluster contention) | any | Auto-retried by `full_refresh.py` (Mode 2). For Mode 1, the bash wrapper's transient classifier in `run_dbt_observability.sh` handles it at the cron level |
+| `Code: 159 / 209 / 210` network timeouts | any | Same — auto-retried by both orchestrators |
+| `gap is N day(s); exceeds --max-slices-per-stage` | microbatch runner | Run `full_refresh.py` for the affected stage with `--incremental-only` to fill the gap, then microbatch resumes normally |
+| Stuck poisoned mutation (CH 341 *referencing dropped tmp table*) | any | Run `dbt run-operation kill_failed_mutations`. The microbatch runner does this automatically on startup unless `--no-kill-failed-mutations` is passed |
+| Failed batch state survives in `target/failed_batches/` | runner | Inspect the per-batch `run_results.json`; once the underlying issue is fixed, just re-run — the state file is overwritten on the next successful run |
+
 ## Semantic Layer Workflow
 
 The semantic layer in `dbt-cerebro` is not a second dbt project. It is a repository-local authoring and compilation system that sits next to normal dbt modeling.
@@ -737,13 +1040,32 @@ meta:
   owner: analytics_team           # Always analytics_team
   authoritative: false            # true for source-of-truth models
   full_refresh:                   # Optional — consumed by scripts/full_refresh/refresh.py
-    start_date: "2021-01-01"
-    batch_months: 6
-    stages: [...]                 # Optional multi-stage batching
+    start_date: "2021-01-01"      # Default start for all stages (YYYY-MM-DD)
+    batch_months: 6               # Default months per batch
+    stages:                       # Optional — per-slice stage overrides
+      - name: <stage_name>
+        start_date: "2023-10-01"  # Overrides model default
+        batch_months: 3           # Overrides model default
+        vars:                     # Arbitrary vars passed as `dbt run --vars {...}`
+          symbol: "EURe"          # The model's Jinja reads via var('symbol')
   inference_notes: "..."          # Optional documentation
 ```
 
 Allowed meta keys: `owner`, `authoritative`, `full_refresh`, `inference_notes`. No other keys should be added to model meta.
+
+**How `stages` work.** `scripts/full_refresh/refresh.py` iterates each stage, then each date batch inside the stage, issuing one `dbt run --vars '{"start_month": "...", "end_month": "...", <stage.vars>}'` call per batch. The model's SQL reads those vars with `var('start_month')`, `var('end_month')`, and any stage-specific vars like `var('symbol')` or `var('slice')` to filter its WHERE clauses. This keeps each invocation's working set bounded (one slice × one date window), so memory and query time don't blow up on models that span years of data or many tokens.
+
+The common stage-variable patterns used in this repo:
+
+| Var                          | Shape                     | When to use                                                           |
+|------------------------------|---------------------------|-----------------------------------------------------------------------|
+| `symbol: "EURe"`             | Single token              | Per-token filter; one stage per token for the heavy ones              |
+| `symbol: "EURe,GBPe,USDC.e"` | CSV list                  | Grouping low-volume tokens into one stage                             |
+| `symbol_exclude: "WxDAI,GNO"`| CSV list                  | Run "everything except…" once, then each excluded token as its own stage |
+| `slice: "holdings:EURe"`     | CSV of `scope:value` pairs | Composite key (e.g. `stream_type:symbol`) where one axis isn't enough |
+| `validator_index_start/end`  | Numeric range             | Non-time numeric partitioning (e.g. validator indices)                |
+
+The authoritative pattern catalogue — including full schema + SQL examples for each — lives in [scripts/full_refresh/README.md](scripts/full_refresh/README.md).
 
 ### Session-level ClickHouse settings — pair pre_hook with post_hook
 

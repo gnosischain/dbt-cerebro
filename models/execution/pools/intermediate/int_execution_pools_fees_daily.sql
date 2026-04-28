@@ -7,7 +7,7 @@
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate'],
+        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate', 'refill_append'],
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"]
     )
@@ -215,7 +215,6 @@ all_fees_token AS (
 ),
 
 all_fees_with_token AS (
-    {#- V3 pools: need registry join to map token_position → token_address -#}
     SELECT
         fw.date AS date,
         fw.protocol AS protocol,
@@ -251,7 +250,6 @@ all_fees_with_token AS (
 
     UNION ALL
 
-    {# Balancer V3: resolve wrappers to underlying for token metadata #}
     SELECT
         bf.date AS date,
         bf.protocol AS protocol,

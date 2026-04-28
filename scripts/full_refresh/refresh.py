@@ -434,21 +434,63 @@ def run_model_batched(
             print(f"    [{run_number}/{total_runs}] {batch_start} → {batch_end} | {vars_display}{refresh_flag}")
             
             if not dry_run:
-                try:
-                    run_dbt_command(cmd)
-                    # Update state after each successful run
-                    if state is not None:
-                        state["current_model"] = model
-                        state["current_batch"] = run_number
-                        save_state(state)
-                    # Delay between batches to let background merges drain
-                    if delay > 0 and run_number < total_runs:
-                        print(f"    Waiting {delay}s for background merges...")
-                        time.sleep(delay)
-                except subprocess.CalledProcessError as e:
-                    print(f"\n    ERROR: dbt run failed!")
-                    print(f"    Command: dbt {' '.join(cmd)}")
-                    return False
+                # Retry on transient ClickHouse errors. The cluster's
+                # OvercommitTracker can pick *our* query as the memory victim
+                # whenever any tenant pushes shared usage past the ceiling,
+                # even when our own query is bounded by max_memory_usage.
+                # When that happens, the failure is independent of our batch
+                # — wait briefly and retry.
+                TRANSIENT_PATTERNS = (
+                    "Code: 241",          # MEMORY_LIMIT_EXCEEDED / OvercommitTracker victim
+                    "Code: 159",          # SOCKET_TIMEOUT
+                    "Code: 209",          # NETWORK_ERROR
+                    "Code: 210",          # NETWORK_ERROR
+                    "TIMEOUT_EXCEEDED",
+                    "NETWORK_ERROR",
+                    "MEMORY_LIMIT_EXCEEDED",
+                    "OvercommitTracker",
+                )
+                MAX_TRANSIENT_RETRIES = 5
+                BACKOFF_SECONDS = (30, 60, 120, 240, 480)
+                for attempt in range(MAX_TRANSIENT_RETRIES + 1):
+                    try:
+                        # capture=True so we can inspect e.stdout / e.stderr to
+                        # classify the failure. We tee the captured output back
+                        # to stdout on every attempt to preserve live progress
+                        # visibility.
+                        proc = run_dbt_command(cmd, capture=True)
+                        if proc.stdout:
+                            print(proc.stdout, end="")
+                        if proc.stderr:
+                            print(proc.stderr, end="")
+                        if state is not None:
+                            state["current_model"] = model
+                            state["current_batch"] = run_number
+                            save_state(state)
+                        if delay > 0 and run_number < total_runs:
+                            print(f"    Waiting {delay}s for background merges...")
+                            time.sleep(delay)
+                        break  # success
+                    except subprocess.CalledProcessError as e:
+                        # With capture=True, the failed run's output is on e.
+                        if e.stdout:
+                            print(e.stdout, end="")
+                        if e.stderr:
+                            print(e.stderr, end="")
+                        err_blob = (e.stdout or "") + (e.stderr or "")
+                        is_transient = any(p in err_blob for p in TRANSIENT_PATTERNS)
+                        if is_transient and attempt < MAX_TRANSIENT_RETRIES:
+                            wait = BACKOFF_SECONDS[attempt]
+                            print(
+                                f"\n    [transient] dbt run hit ClickHouse "
+                                f"transient error; retry {attempt + 1}/"
+                                f"{MAX_TRANSIENT_RETRIES} after {wait}s"
+                            )
+                            time.sleep(wait)
+                            continue
+                        print(f"\n    ERROR: dbt run failed!")
+                        print(f"    Command: dbt {' '.join(cmd)}")
+                        return False
     
     return True
 

@@ -15,8 +15,6 @@
     post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-{# execution.traces stores addresses + calldata as lowercase hex WITHOUT a
-   '0x' prefix. Strip the prefix from the seed values when comparing. #}
 {% set traces_pre_filter %}
     action_call_type = 'delegate_call'
     AND result_gas_used > 10000

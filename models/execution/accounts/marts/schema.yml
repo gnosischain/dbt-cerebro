@@ -1,0 +1,338 @@
+version: 2
+
+models:
+- name: fct_execution_address_resolver
+  description: |
+    Per-(address × source) domain resolver rows. The cross-source merge
+    happens at query time inside `api_execution_address_resolver` (point
+    lookup with `WHERE address = '0x…'` + `GROUP BY address`) instead of
+    at build time, because a 5–10M-address outer GROUP BY OOMs the cluster
+    cap. AggregatingMergeTree on `address` lets background merges collapse
+    duplicate rows when address is in only one source; the api view handles
+    the rest.
+
+    Materialised as a table (not a view) so the Account Portfolio custom
+    view's per-request lookup is an O(log N) primary-index seek rather
+    than a 5-way UNION scan. Expected cardinality ~500k-1M on Gnosis Chain.
+
+    display_name precedence: Circles avatar name → role tag ("Validator
+    operator · N validators" / "Safe owner · N safes" / "Safe contract" /
+    "Gnosis Pay wallet" / "Circles avatar") → empty. LabelSelector filters
+    on substring match so both hex paste and name search resolve from the
+    same field.
+  columns:
+    - name: address
+      description: Lowercased 0x… address. Primary index. Multiple rows per address are expected (one per contributing source); the api view collapses them.
+      tests:
+        - not_null
+    - name: is_safe
+      description: True if the address is a deployed Gnosis Safe contract.
+    - name: is_safe_owner
+      description: True if the address is an owner of at least one Safe.
+    - name: is_circles_avatar
+      description: True if the address has a Circles v2 avatar registration.
+    - name: is_gpay_wallet
+      description: True if the address appears in Gnosis Pay user lifetime metrics.
+    - name: is_validator_withdrawal_address
+      description: True if the address is a withdrawal_address for at least one validator.
+    - name: connected_safe_count
+      description: Number of Safes this address currently owns (0 if not an owner).
+    - name: connected_validator_count
+      description: Number of validators whose withdrawal_address is this address (0 if none).
+    - name: circles_name
+      description: Circles avatar handle if any; NULL otherwise.
+    - name: circles_avatar_type
+      description: Circles avatar type (human / organization / group) if any.
+    - name: display_name
+      description: Composed label used by the Account Portfolio search dropdown.
+
+- name: api_execution_address_resolver
+  description: |
+    Per-address merge view over `fct_execution_address_resolver`. Collapses
+    the per-source rows into a single row per address using max() on every
+    flag/count column. Hit by the Account Portfolio custom view on every
+    address change. `require_any_of: [address]`.
+  columns:
+    - name: address
+      tests:
+        - not_null
+        - unique
+
+- name: api_execution_address_search
+  description: |
+    Lightweight dropdown source for the Account Portfolio tab's global
+    filter. Two columns (address + display_name), `allow_unfiltered: true`
+    so LabelSelector loads the full list in one request and substring-matches
+    client-side.
+  columns:
+    - name: address
+      tests:
+        - not_null
+    - name: display_name
+
+- name: fct_execution_account_balance_history_daily
+  description: Daily address-grain portfolio balance history from production token balances.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: date
+      tests: [not_null]
+    - name: total_balance_usd
+    - name: tokens_held
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [address, date]
+
+- name: api_execution_account_balance_history_daily
+  description: Simple API view for Account Portfolio balance history.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: date
+      tests: [not_null]
+
+- name: fct_execution_account_token_balances_latest
+  description: Latest non-zero token balances by address, optimized for account lookup.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: token_address
+      tests: [not_null]
+    - name: balance
+    - name: balance_usd
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [address, token_address]
+
+- name: api_execution_account_token_balances_latest
+  description: Simple API view for latest Account Portfolio token balances.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: token_address
+      tests: [not_null]
+
+- name: fct_execution_account_token_movements_daily
+  description: Daily token movement legs by address, counterparty, token, and direction from production whitelisted daily transfers.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+  columns:
+    - name: date
+      tests: [not_null]
+    - name: address
+      tests: [not_null]
+    - name: counterparty
+      tests: [not_null]
+    - name: direction
+      tests:
+        - accepted_values:
+            values: ['in', 'out']
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [date, address, counterparty, token_address, direction]
+
+- name: api_execution_account_token_movements_daily
+  description: Simple API view for Account Portfolio token movements.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: direction
+
+- name: fct_execution_account_counterparty_edges_daily
+  description: Daily directed account-counterparty graph edges from production movement and GPay activity facts.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+  columns:
+    - name: source
+      tests: [not_null]
+    - name: target
+      tests: [not_null]
+    - name: edge_type
+      tests:
+        - accepted_values:
+            values: ['token_transfer', 'gpay_activity']
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [date, source, target, edge_type]
+
+- name: fct_execution_account_counterparty_edges_latest
+  description: Latest bounded graph edge source for Account Portfolio interactions and relationships.
+  columns:
+    - name: source
+      tests: [not_null]
+    - name: target
+      tests: [not_null]
+    - name: edge_type
+      tests:
+        - accepted_values:
+            values: ['token_transfer', 'gpay_activity', 'safe_relation', 'circles_trust', 'validator_relation']
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [source, target, edge_type]
+
+- name: api_execution_account_counterparty_graph
+  description: Simple API view for Account Portfolio counterparty graph rows.
+  columns:
+    - name: source
+      tests: [not_null]
+    - name: target
+      tests: [not_null]
+
+- name: fct_execution_account_transaction_summary_latest
+  description: Latest address-grain activity summary derived from production token movement facts.
+  columns:
+    - name: address
+      tests:
+        - not_null
+        - unique
+
+- name: api_execution_account_transaction_summary_latest
+  description: Simple API view for Account Portfolio transaction/activity summary.
+  columns:
+    - name: address
+      tests: [not_null]
+
+- name: api_execution_account_recent_transactions
+  description: Recent production-backed token movement rows for Account Portfolio transaction tables.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: date
+      tests: [not_null]
+
+- name: fct_execution_account_linked_entities_latest
+  description: Direct entity links for selected and linked-group Account Portfolio navigation.
+  columns:
+    - name: root_address
+      tests: [not_null]
+    - name: relation
+      tests:
+        - accepted_values:
+            values: ['safe_owner_of', 'safe_owned_by', 'gnosis_app_controls_gpay_wallet', 'validator_withdrawal_credential']
+    - name: entity_id
+      tests: [not_null]
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [root_address, relation, entity_id]
+
+- name: api_execution_account_linked_entities_latest
+  description: Simple API view for direct linked entities.
+  columns:
+    - name: root_address
+      tests: [not_null]
+    - name: entity_id
+      tests: [not_null]
+
+- name: fct_execution_account_profile_latest
+  description: Complete latest account profile for the Account Portfolio hero and routing layer.
+  columns:
+    - name: address
+      tests:
+        - not_null
+        - unique
+    - name: display_name
+    - name: total_balance_usd
+    - name: tokens_held
+
+- name: api_execution_account_profile_latest
+  description: Simple API view over the latest Account Portfolio profile fact.
+  columns:
+    - name: address
+      tests: [not_null]
+
+- name: fct_execution_account_search_index
+  description: Search index for address, Circles, Safe, GPay, Gnosis App, validator, and withdrawal credential lookup.
+  columns:
+    - name: search_key
+      tests: [not_null]
+    - name: result_type
+      tests:
+        - accepted_values:
+            values: ['address', 'safe', 'gpay_wallet', 'gnosis_app_user', 'circles', 'validator', 'validator_credential']
+    - name: address
+
+- name: api_execution_account_search_index
+  description: Simple API view over Account Portfolio search index.
+  columns:
+    - name: search_key
+      tests: [not_null]
+    - name: result_type
+      tests: [not_null]
+
+- name: fct_execution_gnosis_app_user_profile_latest
+  description: Account-facing Gnosis App profile fact from production current-user and GPay wallet ownership models.
+  columns:
+    - name: address
+      tests: [not_null, unique]
+
+- name: api_execution_gnosis_app_user_profile_latest
+  description: Account-facing Gnosis App profile view from production current-user models.
+  columns:
+    - name: address
+      tests: [not_null]
+
+- name: api_execution_gnosis_app_user_activity_daily
+  description: Account-facing Gnosis App activity view.
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: date
+      tests: [not_null]
+
+- name: api_execution_account_validators_latest
+  description: Account-facing validator member view filterable by withdrawal address or credential.
+  columns:
+    - name: validator_index
+      tests: [not_null]
+    - name: withdrawal_address
+
+- name: fct_execution_network_retention_monthly
+  description: |
+    Per-cohort monthly network retention. A cohort is the set of addresses
+    whose first successful transaction landed in a given month; retention is
+    the share of that cohort with at least one further active day inside the
+    30/90/180-day window after first_seen_date. Fills the
+    new-vs-returning-wallet ambiguity that bare DAU/transaction-count charts
+    cannot resolve. The 180d column for the most recent cohorts continues to
+    refine as new daily activity lands.
+  meta:
+    full_refresh:
+      start_date: "2018-10-01"
+      batch_months: 3
+  columns:
+    - name: cohort_month
+      description: First-of-month for the cohort (toStartOfMonth(first_seen_date)).
+      data_type: Date
+      tests: [not_null]
+    - name: cohort_size
+      description: Distinct addresses whose first_seen_date falls in cohort_month.
+      data_type: UInt64
+    - name: retained_30d
+      description: Cohort members active in any month within 1 calendar month after cohort_month (~30-day cumulative retention; monthly-grain approximation matching the repo's other cohort retention marts).
+      data_type: UInt64
+    - name: retained_90d
+      description: Cohort members active in any month within 3 calendar months after cohort_month.
+      data_type: UInt64
+    - name: retained_180d
+      description: Cohort members active in any month within 6 calendar months after cohort_month.
+      data_type: UInt64
+    - name: retention_rate_30d
+      description: retained_30d / cohort_size.
+      data_type: Float64
+    - name: retention_rate_90d
+      description: retained_90d / cohort_size.
+      data_type: Float64
+    - name: retention_rate_180d
+      description: retained_180d / cohort_size.
+      data_type: Float64
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [cohort_month]

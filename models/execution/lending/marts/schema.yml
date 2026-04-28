@@ -46,3 +46,60 @@ models:
     data_type: String
   - name: value
     data_type: UInt64
+
+- name: fct_execution_lending_latest
+  description: |
+    Lender / borrower counts per (window, protocol, token) plus protocol-scoped
+    'ALL'-tokens rows and an all-protocols 'ALL' bucket for cross-protocol
+    totals. Built off the daily lender/borrower bitmap states from
+    int_execution_lending_aave_daily, merged via groupBitmapMerge over the
+    last 7 full days for the current window, and the prior 7 days for change_pct.
+
+    Widgets typically use `token = 'ALL'` rows and apply the optional
+    `protocol` filter (filterField3). `protocol = 'ALL'` rows are retained for
+    dashboards that intentionally aggregate across protocols (e.g. a "total
+    lenders on Gnosis" KPI).
+  columns:
+  - name: label
+    description: "'Lenders' or 'Borrowers'."
+    data_type: String
+  - name: window
+    description: "Rolling window label (e.g. '7D')."
+    data_type: String
+  - name: protocol
+    description: Lending protocol identifier or 'ALL' for the cross-protocol aggregate.
+    data_type: String
+  - name: token
+    description: Token symbol or 'ALL' for the all-tokens aggregate within the protocol.
+    data_type: String
+  - name: value
+    description: Distinct lender / borrower count for the current window.
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the prior equivalently-sized window (NULL when prior is zero or missing).
+    data_type: Nullable(Float64)
+
+- name: api_execution_lending_lenders_count_7d
+  description: |
+    KPI view of currently-active lenders on Gnosis (Aave V3, SparkLend).
+    "Active lenders" is a STOCK measure — unique wallets currently holding a
+    positive supply balance in a lending market on Gnosis (point-in-time count),
+    not a flow measure (users who supplied within a window).
+
+    One row per protocol plus an 'ALL'-protocols aggregate row (distinct
+    wallets across both markets). change_pct compares today's active count vs
+    the count from 7 days ago on the same balance snapshot (users whose
+    balance was positive then, regardless of whether they're still active now).
+  columns:
+  - name: token
+    description: Always 'ALL' (no per-token slice exposed in this view).
+    data_type: String
+  - name: protocol
+    description: Lending protocol identifier or 'ALL' for the cross-protocol aggregate.
+    data_type: String
+  - name: value
+    description: Distinct lender count with positive supply balance on the latest available date.
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the count 7 days earlier (NULL when the prior value is zero or missing).
+    data_type: Nullable(Float64)

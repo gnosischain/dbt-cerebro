@@ -2,12 +2,15 @@ version: 2
 
 models:
 - name: stg_pools__v3_pool_registry
-  description: >
+  description: |
     Complete registry of Uniswap V3 and Swapr V3 (Algebra) pools on Gnosis Chain.
-    Combines factory creation events with pool Initialize events to produce a single
-    source of truth for pool metadata. Includes fee tier (static for UniV3, NULL for
-    Swapr with dynamic fees), tick spacing, initialization price/tick, and creation
-    timestamp. Replaces the former int_execution_yields_v3_pool_meta view.
+    Combines factory creation events (PoolCreated for Uniswap V3, Pool for Swapr V3)
+    with pool Initialize events to produce a single source of truth for pool metadata.
+    Includes fee tier (static for UniV3, NULL for Swapr with dynamic fees), tick
+    spacing, initialization price/tick, and creation timestamp. Swapr V3 pools may
+    have their tick spacing updated via TickSpacing events; the latest value per pool
+    is used. Initialize events from pool contracts provide the initial price and tick.
+    Replaces the former int_execution_yields_v3_pool_meta view.
   columns:
   - name: protocol
     data_type: String
@@ -38,12 +41,12 @@ models:
     data_type: DateTime
 
 - name: stg_pools__balancer_v2_pool_registry
-  description: >
-    Mapping of Balancer V2 poolId (bytes32) → pool contract address, built from
-    PoolRegistered events on the Vault. Materialized as a small table so that
-    downstream views — especially the live-trades staging model queried on every
+  description: |
+    Mapping of Balancer V2 poolId (bytes32) to pool contract address, built from
+    PoolRegistered events emitted once per pool at creation on the Vault. Materialized
+    as a small table so that downstream views — especially live views queried on every
     dashboard poll — can join against it cheaply instead of re-scanning the full
-    historical Vault events table.
+    historical Vault events table on every query.
   columns:
   - name: pool_id
     description: Balancer V2 poolId (bytes32 hex string, lowercase).
@@ -260,6 +263,40 @@ models:
   - name: underlying_address
     description: Underlying token address that the wrapper resolves to.
     data_type: String
+
+- name: stg_pools__balancer_v2_events
+  description: |
+    Normalized signed token deltas for Balancer V2 pools, decoded from Vault events
+    (PoolBalanceChanged, PoolBalanceManaged, Swap, FlashLoan). PoolBalanceChanged rows
+    are unpacked from parallel JSON arrays of tokens and deltas; deltas are int256 but
+    sometimes serialized as their uint256 two's-complement representation, so negative
+    string values are parsed directly while unsigned values are reinterpreted via
+    reinterpretAsInt256(toUInt256OrNull(...)). PoolBalanceManaged rows sum cashDelta +
+    managedDelta with the same two's-complement decoding to give the net token delta.
+    Swap events emit two rows per swap: a positive delta_amount_raw for tokenIn
+    (amountIn) and a negative delta for tokenOut (-amountOut). Output is keyed by
+    pool_id, block_timestamp, transaction_hash, log_index, with token_address and a
+    signed delta_amount_raw (positive = tokens entering pool, negative = leaving),
+    filtered to non-null pool_id, token_address, and delta.
+  columns:
+  - name: pool_id
+    description: Balancer V2 poolId (bytes32 hex string, lowercase).
+    data_type: String
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: event_type
+    description: Source event name (PoolBalanceChanged, PoolBalanceManaged, or Swap).
+    data_type: String
+  - name: token_address
+    description: Token contract address (lowercase).
+    data_type: String
+  - name: delta_amount_raw
+    description: Signed raw token delta (positive = tokens entering pool, negative = leaving).
+    data_type: Int256
 
 - name: stg_pools__v3_current_tick
   description: >

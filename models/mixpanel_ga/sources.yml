@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: mixpanel_ga
+    schema: mixpanel_ga
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+    meta:
+      owner: analytics_team
+      authoritative: true
+    tables:
+      - name: mixpanel_raw_events
+        loaded_at_field: event_time
+        description: >
+          Raw Mixpanel events for the Gnosis App, ingested into ClickHouse.
+          Each row is one event with a JSON properties blob containing browser,
+          geo, referrer, page, and device metadata.  The distinct_id column
+          contains wallet addresses or device-scoped anonymous IDs and must
+          never be exposed raw in downstream models.
+        columns:
+          - name: event_name
+            description: Mixpanel event name (e.g. "$mp_web_page_view", "Login with Passkey", "Open Modal").
+          - name: distinct_id
+            description: >
+              User identifier assigned by Mixpanel. May be a wallet address
+              (0x...) or a device-scoped anonymous ID ($device:...).
+              SENSITIVE - must be hashed before exposure.
+          - name: event_time
+            description: UTC timestamp when the event occurred.
+          - name: insert_id
+            description: Mixpanel deduplication key for the event.
+          - name: project_id
+            description: Mixpanel project identifier.
+          - name: properties
+            description: JSON string containing all event properties (browser, OS, geo, referrer, page, etc.).

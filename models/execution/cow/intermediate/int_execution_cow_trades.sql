@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'trades', 'intermediate']
+        tags=['dev', 'execution', 'cow', 'trades', 'intermediate']
     )
 }}
 
@@ -59,6 +59,8 @@ swaps AS (
         {% if start_month and end_month %}
         WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+        {% elif is_incremental() %}
+        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
         {% endif %}
     ) st ON st.transaction_hash = t.transaction_hash
     WHERE t.amount_bought_raw > 0

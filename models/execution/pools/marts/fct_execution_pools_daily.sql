@@ -11,8 +11,6 @@
 
 WITH
 
-{# Balancer V3 pools where ALL tokens have metadata (symbol + price).
-   Pools with partial coverage are excluded to avoid misleading TVL/APR. #}
 balancer_v3_complete_pools AS (
     SELECT pool_address
     FROM (
@@ -27,10 +25,6 @@ balancer_v3_complete_pools AS (
     WHERE total_tokens = known_tokens
 ),
 
-{# Resolve token symbols from the pool registry without date_end filtering.
-   Covers V3 pools where migrated tokens (e.g. EURe, GBPe) have date_end in
-   the whitelist but still exist in active pools. Each address appears once
-   in the whitelist, so no duplication risk. #}
 registry_pool_tokens AS (
     SELECT protocol, pool_address, token_address, token
     FROM (
@@ -71,7 +65,6 @@ registry_pool_tokens AS (
       AND pool_address IN (SELECT pool_address FROM balancer_v3_complete_pools)
 ),
 
-{# Pool-level TVL from enriched (respects date_end for price safety). #}
 pool_tvl_daily AS (
     SELECT
         date,
@@ -196,8 +189,6 @@ pool_labels AS (
      AND sl.pool_address = p.pool_address
 ),
 
-{# Dates × pools from enriched, crossed with registry tokens so that
-   migrated tokens (e.g. old EURe) still appear as filter options. #}
 distinct_token_pool_dates AS (
     SELECT
         d.date AS date,
@@ -213,42 +204,66 @@ distinct_token_pool_dates AS (
     INNER JOIN registry_pool_tokens r
       ON r.protocol = d.protocol
      AND r.pool_address = d.pool_address
+),
+
+base AS (
+    SELECT
+        b.date AS date,
+        b.protocol AS protocol,
+        b.pool_address AS pool_address,
+        pl.pool AS pool,
+        b.token_address AS token_address,
+        b.token AS token,
+        pm.tvl_usd AS tvl_usd,
+        pm.fees_usd_daily AS fees_usd_daily,
+        pm.volume_usd_daily AS volume_usd_daily,
+        pm.swap_count AS swap_count,
+        pm.fee_apr_7d AS fee_apr_7d_raw,
+        il.lvr_apr_7d AS lvr_apr_7d_raw
+    FROM distinct_token_pool_dates b
+    INNER JOIN top_pools_by_token tp
+      ON tp.token = b.token
+     AND tp.protocol = b.protocol
+     AND tp.pool_address = b.pool_address
+     AND tp.token_address = b.token_address
+    LEFT JOIN pool_labels pl
+      ON pl.protocol = b.protocol
+     AND pl.pool_address = b.pool_address
+    LEFT JOIN {{ ref('int_execution_pools_metrics_daily') }} pm
+      ON pm.date = b.date
+     AND pm.protocol = b.protocol
+     AND pm.pool_address = b.pool_address
+    LEFT JOIN {{ ref('fct_execution_pools_il_daily') }} il
+      ON il.date = b.date
+     AND il.protocol = b.protocol
+     AND il.pool_address = b.pool_address
+    WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
+      AND b.date < today()
 )
 
 SELECT
-    b.date AS date,
-    b.protocol AS protocol,
-    b.pool_address AS pool_address,
-    pl.pool AS pool,
-    b.token_address AS token_address,
-    b.token AS token,
-    pm.tvl_usd AS tvl_usd,
-    pm.fees_usd_daily AS fees_usd_daily,
-    pm.volume_usd_daily AS volume_usd_daily,
-    pm.swap_count AS swap_count,
-    pm.fee_apr_7d AS fee_apr_7d,
-    il.lvr_apr_7d AS lvr_apr_7d,
-    CASE
-        WHEN pm.fee_apr_7d IS NOT NULL AND il.lvr_apr_7d IS NOT NULL
-        THEN pm.fee_apr_7d + il.lvr_apr_7d
-        ELSE NULL
-    END AS net_apr_7d
-FROM distinct_token_pool_dates b
-INNER JOIN top_pools_by_token tp
-  ON tp.token = b.token
- AND tp.protocol = b.protocol
- AND tp.pool_address = b.pool_address
- AND tp.token_address = b.token_address
-LEFT JOIN pool_labels pl
-  ON pl.protocol = b.protocol
- AND pl.pool_address = b.pool_address
-LEFT JOIN {{ ref('int_execution_pools_metrics_daily') }} pm
-  ON pm.date = b.date
- AND pm.protocol = b.protocol
- AND pm.pool_address = b.pool_address
-LEFT JOIN {{ ref('fct_execution_pools_il_daily') }} il
-  ON il.date = b.date
- AND il.protocol = b.protocol
- AND il.pool_address = b.pool_address
-WHERE b.protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')
-  AND b.date < today()
+    date,
+    protocol,
+    pool_address,
+    pool,
+    token_address,
+    token,
+    tvl_usd,
+    fees_usd_daily,
+    volume_usd_daily,
+    swap_count,
+    avg(fee_apr_7d_raw) OVER w AS fee_apr_7d,
+    avg(lvr_apr_7d_raw) OVER w AS lvr_apr_7d,
+    avg(
+        CASE
+            WHEN fee_apr_7d_raw IS NOT NULL AND lvr_apr_7d_raw IS NOT NULL
+            THEN fee_apr_7d_raw + lvr_apr_7d_raw
+            ELSE NULL
+        END
+    ) OVER w AS net_apr_7d
+FROM base
+WINDOW w AS (
+    PARTITION BY protocol, pool_address
+    ORDER BY date
+    RANGE BETWEEN 6 PRECEDING AND CURRENT ROW
+)

@@ -47,6 +47,7 @@ cometh_presignatures AS (
       AND tx.to_address = '{{ entrypoint }}'
       AND lower(tx.from_address) IN (SELECT addr FROM relayer_addrs)
       AND e.block_timestamp >= toDateTime('2025-11-12')
+      AND e.block_timestamp < today()
       AND tx.block_timestamp >= toDateTime('2025-11-12')
       AND lower(e.decoded_params['owner']) IN (SELECT address FROM ga_users)
       {% if start_month and end_month %}

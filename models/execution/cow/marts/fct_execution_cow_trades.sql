@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'trades']
+        tags=['dev', 'execution', 'cow', 'trades']
     )
 }}
 
@@ -33,6 +33,7 @@ api_fees AS (
         fee_token,
         fee_amount
     FROM {{ ref('stg_crawlers_data__cow_api_trade_fees') }}
+    WHERE order_uid IN (SELECT order_uid FROM trades)
 )
 
 SELECT

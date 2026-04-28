@@ -44,6 +44,7 @@ heuristic_rows AS (
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_user_events') }}
     WHERE block_timestamp IS NOT NULL
+      AND block_timestamp < today()
     {% if start_month and end_month %}
       AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
@@ -65,7 +66,8 @@ swap_signed_rows AS (
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
     {% else %}
-    WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    WHERE block_timestamp < today()
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
     {% endif %}
     GROUP BY toDate(block_timestamp), taker
 ),
@@ -84,6 +86,7 @@ swap_filled_rows AS (
     FROM {{ ref('int_execution_gnosis_app_swaps') }}
     WHERE was_filled = 1
       AND first_fill_at IS NOT NULL
+      AND first_fill_at < today()
     {% if start_month and end_month %}
       AND toStartOfMonth(first_fill_at) >= toDate('{{ start_month }}')
       AND toStartOfMonth(first_fill_at) <= toDate('{{ end_month }}')
@@ -122,7 +125,8 @@ marketplace_rows AS (
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
     {% else %}
-    WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    WHERE block_timestamp < today()
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
     {% endif %}
     GROUP BY toDate(block_timestamp), payer
 ),
@@ -139,7 +143,8 @@ token_offer_claim_rows AS (
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
     {% else %}
-    WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
+    WHERE block_timestamp < today()
+    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
     {% endif %}
     GROUP BY toDate(block_timestamp), ga_user
 )

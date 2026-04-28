@@ -1,4 +1,22 @@
 version: 2
+
+# =============================================================================
+# Staging conventions for consensus.* sources
+# =============================================================================
+# Every raw table under `consensus.*` uses ClickHouse engine SharedReplacingMergeTree.
+# That engine deduplicates rows with equal sort keys on background merges, but at
+# read time unmerged duplicates can still be returned — observed in practice: the
+# consensus.validators snapshot crawler occasionally retries an insert and leaves
+# 2x–3x duplicate rows for a given (slot, validator_index) until the next merge.
+# See tests/consensus_raw_validators_no_unmerged_dup.sql for the ops monitor.
+#
+# Convention: every stg_consensus__* view MUST apply `FINAL` when selecting from
+# the raw source. FINAL forces per-read dedup so every downstream int_* / fct_*
+# model sees exactly one row per natural key. Any new int_* model that reads raw
+# consensus.* sources directly (bypassing staging) is a dedup hazard — always go
+# through the staging view instead. If performance of FINAL becomes a concern on
+# a specific hot path, replace with an explicit argMax-over-insert_version pattern
+# rather than dropping the dedup altogether.
 models:
 
 - name: stg_consensus__attestations

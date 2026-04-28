@@ -1,0 +1,76 @@
+version: 2
+
+models:
+- name: int_execution_account_balance_history_daily
+  description: |
+    Address × date daily portfolio balance aggregate, checkpointed away from
+    fct_execution_account_balance_history_daily so the heavy GROUP BY over
+    int_execution_tokens_balances_daily lives in its own monthly-partitioned
+    table. The fct is a thin pass-through over this int.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+  columns:
+    - name: address
+      tests: [not_null]
+    - name: date
+      tests: [not_null]
+    - name: total_balance_usd
+    - name: tokens_held
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [address, date]
+
+- name: int_execution_account_token_movements_in_daily
+  description: |
+    Inbound leg of token movements (to_address = address) aggregated by
+    (date, token_address, address, counterparty). Split out from the daily
+    fct so the aggregating transform doesn't have both UNION halves resident.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+      incremental:
+        # Microbatch runner annotation. Daily delete+insert mutation was
+        # OOM-ing under CreatingSetsTransform (CH 341). Slicing into per-day
+        # appends eliminates the mutation.
+        enabled: true
+        date_column: date
+        batch_days: 1
+  columns:
+    - name: date
+      tests: [not_null]
+    - name: address
+      tests: [not_null]
+    - name: counterparty
+    - name: direction
+      tests:
+        - accepted_values:
+            values: ['in']
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [date, address, counterparty, token_address]
+
+- name: int_execution_account_token_movements_out_daily
+  description: |
+    Outbound leg of token movements (from_address = address) aggregated by
+    (date, token_address, address, counterparty). Split out from the daily
+    fct so the aggregating transform doesn't have both UNION halves resident.
+  meta:
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 1
+  columns:
+    - name: date
+      tests: [not_null]
+    - name: address
+      tests: [not_null]
+    - name: counterparty
+    - name: direction
+      tests:
+        - accepted_values:
+            values: ['out']
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [date, address, counterparty, token_address]

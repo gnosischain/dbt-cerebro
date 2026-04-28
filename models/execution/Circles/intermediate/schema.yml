@@ -817,7 +817,18 @@ models:
   meta: *id002
   tests: *id001
 - name: int_execution_circles_v2_avatar_metadata_targets
-  description: Deterministic queue of every (avatar, metadata_digest) pair announced by the Circles v2 NameRegistry. Drives both the one-time IPFS backfill script and the nightly fetch macro.
+  description: |
+    Deterministic queue of every (avatar, metadata_digest) pair the Circles v2
+    NameRegistry has ever announced. Built as a view over
+    contracts_circles_v2_NameRegistry_events filtered to UpdateMetadataDigest
+    rows with a non-empty digest, deduplicated to one row per (avatar, digest)
+    using the latest event for that pair. Each row carries the derived
+    metadata_digest_hex, ipfs_cid_v0, gateway_url, and an
+    is_current_avatar_metadata flag marking the most recent digest per avatar.
+    Drives both the one-time IPFS backfill script
+    (scripts/circles/backfill_avatar_metadata.py) and the nightly
+    fetch_and_insert_circles_metadata macro that knows which IPFS payloads
+    still need to be fetched.
   columns:
   - name: avatar
     description: Lowercase Circles avatar address.
@@ -859,7 +870,16 @@ models:
       - metadata_digest
   meta: *id002
 - name: int_execution_circles_v2_avatar_metadata
-  description: Current parsed IPFS metadata per Circles v2 avatar. Joins each avatar's most recent metadata digest to the latest fetched payload in `circles_avatar_metadata_raw`.
+  description: |
+    Current parsed IPFS metadata for every Circles v2 avatar. Joins each
+    avatar's latest (avatar, metadata_digest) pair from
+    int_execution_circles_v2_avatar_metadata_targets (filtered to
+    is_current_avatar_metadata) against the most recently fetched payload in
+    the auxiliary circles_avatar_metadata_raw source (HTTP 200, non-empty
+    body, ranked by fetched_at). Exposes a small set of typed fields parsed
+    from the JSON body — name, symbol, description, imageUrl,
+    previewImageUrl — alongside the raw body and fetch timestamp for
+    downstream models.
   columns:
   - name: avatar
     description: Lowercase Circles avatar address.
@@ -905,7 +925,25 @@ models:
     data_type: Nullable(DateTime)
   meta: *id002
 - name: int_execution_circles_v2_avatar_metadata_history
-  description: SCD-style historical view of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by the NameRegistry, in event order, with valid_from / valid_to / is_current columns so the dashboard can render the full timeline of name + image updates per avatar. Materialized incrementally; nightly runs recompute the full history only for avatars that received a new event since the previous build.
+  description: |
+    SCD-style historical view of every Circles v2 avatar metadata change.
+    One row per (avatar, metadata_digest) ever announced by the NameRegistry,
+    in event order, with valid_from / valid_to / is_current columns so the
+    dashboard can render the full timeline of name + image changes per avatar.
+    valid_to is computed via leadInFrame over (avatar) ordered by
+    (block_timestamp, log_index) and is NULL on the most recent row per
+    avatar. The parsed JSON fields (name, symbol, description, imageUrl,
+    previewImageUrl) are joined per (avatar, metadata_digest) from the most
+    recent successful fetch in circles_avatar_metadata_raw.
+
+    Incremental strategy: delete+insert keyed on (avatar, metadata_digest).
+    The affected_avatars CTE uses the standard apply_monthly_incremental_filter
+    macro (same as other Circles intermediates) to find any avatar that
+    received an UpdateMetadataDigest event in the incremental window, then
+    INNER JOINs the targets view to that set so the full history of every
+    affected avatar is recomputed in one shot — guaranteeing the leadInFrame
+    window function still sees every event for those avatars and valid_to
+    stays correct.
   columns:
   - name: avatar
     description: Lowercase Circles avatar address.
@@ -1028,3 +1066,58 @@ models:
       start_date: '2025-04-01'
       batch_months: 1
   tests: *id001
+- name: int_execution_circles_v2_tokens_supply_daily
+  description: >
+    Per-token Circles v2 daily supply derived from the zero-address balance
+    in `int_execution_circles_v2_balances_daily`. Built as an incremental
+    `int_` model so daily prod runs append a small slice rather than fully
+    rebuilding the historical mart. The legacy mart name is preserved as a
+    compatibility view (`fct_execution_circles_v2_tokens_supply_daily`).
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Address of the Circles v2 token contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: supply_raw
+    description: Raw supply in token base units (negated zero-address balance).
+    data_type: Int256
+  - name: supply
+    description: Supply in CRC (raw / 1e18).
+    data_type: Float64
+  - name: demurraged_supply
+    description: Demurrage-adjusted supply in CRC.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-08-01"
+      batch_months: 1
+      incremental:
+        # Microbatch runner annotation. Daily prod runs slice this model and
+        # resolve to incremental_strategy=append, replacing the previous
+        # full-table rebuild with a small per-day INSERT.
+        enabled: true
+        date_column: date
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_circles_v2_tokens_supply_no_negative
+      expression: "supply >= 0"
+      config:
+        severity: warn
+        where: "date >= today() - 7"

@@ -4,7 +4,7 @@
         engine='ReplacingMergeTree()',
         order_by='(date)',
         partition_by='toStartOfMonth(date)',
-        tags=['production', 'execution', 'cow', 'daily']
+        tags=['dev', 'execution', 'cow', 'daily']
     )
 }}
 

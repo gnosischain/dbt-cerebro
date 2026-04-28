@@ -1,0 +1,271 @@
+version: 2
+
+models:
+
+- name: int_revenue_holdings_fees_daily
+  description: |
+    Daily per-user imputed holdings fees for EURe, USDC.e, BRLA, ZCHF.
+    `fees = balance_usd * daily_rate_for_symbol`, where daily rates are
+    annualised APYs expressed per-day compounded ((1 + daily_rate)^365 - 1 ≈ APY)
+    and declared as Jinja constants at the top of the SQL (edit to retune).
+
+    Symbol buckets (sum-into-canonical symbol):
+      - EURe: native EURe + EURe held in Aave V3 (aGnoEURe)
+      - USDC.e: native USDC.e + USDC.e held in Aave V3 (aGnoUSDCe)
+      - BRLA: native only
+      - ZCHF: ZCHF + svZCHF (no lending market)
+
+    Sources:
+      - int_execution_tokens_balances_daily — native ERC20 balances
+      - int_execution_lending_aave_user_balances_daily — Aave V3 aToken
+        balances; rows already carry the underlying reserve symbol (e.g.
+        'EURe' for an aGnoEURe holder), not the aToken symbol. SparkLend is
+        excluded.
+  columns:
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: user
+    description: Address holding the token balance (lowercase).
+    data_type: Nullable(String)
+  - name: symbol
+    description: Canonical token symbol (EURe, USDC.e, BRLA, ZCHF).
+    data_type: String
+  - name: fees
+    description: USD-denominated imputed daily fee for this user-symbol.
+    data_type: Float64
+  - name: balance_usd_total
+    description: Sum of USD balances across contract variants contributing to this symbol.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-10-01"
+      batch_months: 3
+
+- name: int_revenue_sdai_fees_daily
+  description: |
+    Daily per-user sDAI revenue accruing to the DAO.
+    Methodology: `fees = balance_usd * sdai_daily_rate * dao_share_pct`,
+    where `sdai_daily_rate` comes from int_yields_sdai_rate_daily and
+    `dao_share_pct` (10%) is the share of the full rate assumed to accrue
+    to the DAO.
+
+    Tracks native sDAI balances (int_execution_tokens_balances_daily) plus
+    sDAI held in Aave V3 (aGnosDAI) from
+    int_execution_lending_aave_user_balances_daily — where `symbol = 'sDAI'`
+    represents the aGnosDAI aToken holder. SparkLend is excluded.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: user
+    description: Address holding the sDAI balance.
+    data_type: Nullable(String)
+  - name: symbol
+    description: Always 'sDAI'.
+    data_type: String
+  - name: fees
+    description: USD-denominated daily DAO share of sDAI interest.
+    data_type: Float64
+  - name: balance_usd_total
+    description: Total USD sDAI balance for this user on this date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-10-01"
+      batch_months: 3
+
+- name: int_revenue_gpay_fees_daily
+  description: |
+    Daily per-user Gnosis Pay fees. Each ERC20 transfer to the GP settlement
+    address is treated as a payment; the per-payment fee is
+    `amount_token * fee_bps / 10000` and is then priced to USD. Per-symbol
+    fee bps are declared as Jinja constants at the top of the SQL.
+
+    Transfers are already aggregated daily per (from, to, token) in
+    int_execution_transfers_whitelisted_daily, so we aggregate once more to
+    the (date, from, symbol) grain and apply the per-symbol fee rate.
+  columns:
+  - name: date
+    description: Calendar date of the payment.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: user
+    description: Paying address (lowercase, the `from` of the transfer).
+    data_type: String
+  - name: symbol
+    description: Payment token (EURe, GBPe, USDC.e).
+    data_type: String
+  - name: fees_native
+    description: Fee amount in native token units.
+    data_type: Float64
+  - name: fees
+    description: USD-denominated fee amount for this user-symbol-day.
+    data_type: Float64
+  - name: volume_usd
+    description: USD volume of payments that drove the fees.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-10-01"
+      batch_months: 3
+
+- name: int_revenue_fees_unified_daily
+  description: |
+    Unified daily per-user revenue fees across all streams.
+    UNION ALL of the three per-stream daily fee intermediates with a
+    stream_type label ('holdings'|'sdai'|'gpay'). Used by cross-stream
+    active-user cohort marts where a user must not be double-counted across
+    holdings / sDAI / gpay streams. Materialized as a view.
+  columns:
+  - name: stream_type
+    description: One of 'holdings', 'sdai', 'gpay'.
+    data_type: String
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: user
+    description: User address.
+    data_type: Nullable(String)
+  - name: symbol
+    description: Canonical token symbol for this stream.
+    data_type: String
+  - name: fees
+    description: USD-denominated fees for this user-stream-symbol-day.
+    data_type: Float64
+
+- name: int_revenue_fees_weekly_per_user
+  description: |
+    Weekly per-user fees per stream/symbol with trailing 52-calendar-week
+    rolling total (`annual_rolling_fees`). The weekly series is densified
+    per (stream, symbol, user) from the user's first observed week to the
+    last complete week in the write window, so
+    `ROWS BETWEEN 51 PRECEDING AND CURRENT ROW` represents a true
+    52-calendar-week trailing sum.
+
+    Week key convention: `toStartOfWeek(date, 1)` (Monday-start), matching
+    the weekly-mart convention used throughout the repo.
+
+    Memory strategy: the query is split per (stream_type, symbol) and
+    UNION ALL-ed so each aggregate / sort / window-function state is bounded
+    by a single stream-symbol's user population instead of the cross-product
+    of every symbol × every user at once. An optional `slice` var
+    (comma-separated `stream:SYMBOL` pairs, or a bare `SYMBOL`) selects
+    which slices to process per run; staged batches in schema.yml use it.
+
+    Incremental strategy:
+      - Plain incremental: recompute the trailing `lookback_weeks` weeks;
+        the upstream daily filter pulls `window_history_weeks` of prior
+        source data so the rolling window has its full 52-week history for
+        every rewritten week.
+      - Batch refresh (`start_month` / `end_month`, driven by
+        scripts/full_refresh/refresh.py): write only weeks whose
+        `toStartOfMonth(week)` falls in [start_month, end_month]. Daily
+        feed reaches `window_history_weeks` before `start_month` and
+        extends 6 days past the last day of `end_month` so any ISO week
+        that starts in `end_month` but finishes in the next calendar month
+        is summed from all 7 of its daily rows; the next batch's
+        start_month filter rejects that week's `toStartOfMonth`, preventing
+        double-write.
+  columns:
+  - name: week
+    description: ISO week start (Monday).
+    data_type: Date
+  - name: stream_type
+    description: One of 'holdings', 'sdai', 'gpay'.
+    data_type: String
+  - name: symbol
+    description: Canonical token symbol.
+    data_type: String
+  - name: user
+    description: User address.
+    data_type: Nullable(String)
+  - name: week_fees
+    description: Sum of fees in this ISO week.
+    data_type: Float64
+  - name: annual_rolling_fees
+    description: Trailing 52-week rolling sum of fees (inclusive of current week).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-10-01"
+      batch_months: 3
+      stages:
+        # Holdings EURe is the largest slice — keep batches small.
+      - name: holdings_eure
+        start_date: "2023-10-01"
+        batch_months: 3
+        vars:
+          slice: "holdings:EURe"
+      - name: holdings_usdce
+        start_date: "2023-10-01"
+        batch_months: 6
+        vars:
+          slice: "holdings:USDC.e"
+      - name: holdings_brla
+        start_date: "2024-06-01"
+        batch_months: 12
+        vars:
+          slice: "holdings:BRLA"
+      - name: holdings_zchf
+        start_date: "2025-06-01"
+        batch_months: 12
+        vars:
+          slice: "holdings:ZCHF"
+      - name: sdai
+        start_date: "2023-10-01"
+        batch_months: 6
+        vars:
+          slice: "sdai:sDAI"
+      - name: gpay
+        start_date: "2023-10-01"
+        batch_months: 6
+        vars:
+          slice: "gpay:EURe,gpay:GBPe,gpay:USDC.e"
+
+- name: int_revenue_fees_monthly_per_user
+  description: |
+    Monthly per-user fees per stream/symbol. Simple calendar-month
+    aggregation (no rolling window). The current (incomplete) month is
+    excluded.
+  columns:
+  - name: month
+    description: First day of the calendar month.
+    data_type: Date
+  - name: stream_type
+    description: One of 'holdings', 'sdai', 'gpay'.
+    data_type: String
+  - name: symbol
+    description: Canonical token symbol.
+    data_type: String
+  - name: user
+    description: User address.
+    data_type: Nullable(String)
+  - name: month_fees
+    description: Sum of fees in this calendar month.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-10-01"
+      batch_months: 3

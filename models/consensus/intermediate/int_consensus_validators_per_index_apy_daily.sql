@@ -1,18 +1,18 @@
-{{ 
+{% set start_month = var('start_month', none) %}
+{% set end_month = var('end_month', none) %}
+
+{{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if start_month else 'delete+insert'),
         engine='MergeTree()',
         order_by='(date, validator_index)',
         unique_key='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
         settings={ 'allow_nullable_key': 1 },
         tags=["production", "consensus", "validators_apy"]
-    ) 
+    )
 }}
-
-{% set start_month = var('start_month', none) %}
-{% set end_month = var('end_month', none) %}
 {% set validator_index_start = var('validator_index_start', none) %}
 {% set validator_index_end = var('validator_index_end', none) %}
 

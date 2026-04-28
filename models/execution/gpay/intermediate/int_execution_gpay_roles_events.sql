@@ -12,27 +12,6 @@
     post_hook=["SET allow_experimental_json_type = 0", "SET join_algorithm = 'default'"]
   )
 }}
-{#
-  CLICKHOUSE ALIAS-SHADOWING GOTCHA
-  --------------------------------
-  ClickHouse SELECT aliases SHADOW source columns in WHERE clauses. Writing
-      SELECT 'X' AS event_name FROM decoded WHERE event_name = 'X'
-  causes the WHERE to evaluate 'X' = 'X' (always TRUE) so every decoded row
-  passes through instead of only the rows with event_name='X'. Combined with
-  UNION ALL + ReplacingMergeTree in this model, it silently relabels every
-  row with the last-unioned CTEs literal event_name and drops AssignRoles
-  entirely.
-
-  Fix pattern: wrap the FROM in a pre-filter subquery so the WHERE runs in a
-  scope where nothing shadows `event_name`:
-      FROM (SELECT * FROM decoded WHERE event_name = 'X') d
-
-  All four CTEs below (assign_role_rows, set_allowance_rows,
-  consume_allowance_rows, setup_and_default_rows) must stay safe — the
-  first three use the subquery pattern, the fourth uses a pass-through
-  event_name so alias shadowing cannot occur there.
-#}
-
 WITH decoded AS (
     SELECT * FROM (
         {{ decode_logs(

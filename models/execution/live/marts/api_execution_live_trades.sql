@@ -38,7 +38,16 @@ tx_summary AS (
         min(block_timestamp)                                                AS block_timestamp,
         min(block_number)                                                   AS block_number,
         arrayStringConcat(
-            arrayFilter(x -> x != '', groupUniqArray(protocol)), ', '
+            arrayFilter(
+                x -> x != '',
+                arrayDistinct(
+                    arrayMap(
+                        t -> t.2,
+                        arraySort(groupArray(tuple(log_index, protocol)))
+                    )
+                )
+            ),
+            ' → '
         )                                                                   AS via,
         count()                                                             AS hops,
         argMin(token_sold_symbol,   log_index)                              AS token_sold,
@@ -46,6 +55,44 @@ tx_summary AS (
         argMax(token_bought_symbol, log_index)                              AS token_bought,
         argMax(amount_bought,       log_index)                              AS amount_bought,
         max(amount_usd)                                                     AS trade_usd
+    FROM recent
+    GROUP BY transaction_hash
+),
+
+-- Per-hop breakdown in its own CTE so the `amount_sold` / `amount_bought`
+-- source columns don't clash with the aliased aggregates in `tx_summary`
+-- (ClickHouse substitutes the alias and reports nested aggregates).
+-- Positional array; client knows the field order.
+-- Order: [log_index, protocol, pool, token_sold, amount_sold,
+--        token_bought, amount_bought, amount_usd]
+hops_per_tx AS (
+    SELECT
+        transaction_hash,
+        arrayMap(
+            h -> [
+                toString(h.1),
+                h.2,
+                h.3,
+                h.4,
+                toString(round(h.5, 6)),
+                h.6,
+                toString(round(h.7, 6)),
+                toString(round(coalesce(h.8, 0), 2))
+            ],
+            arraySort(
+                x -> x.1,
+                groupArray(tuple(
+                    log_index,
+                    protocol,
+                    pool_address,
+                    token_sold_symbol,
+                    amount_sold,
+                    token_bought_symbol,
+                    amount_bought,
+                    amount_usd
+                ))
+            )
+        )                                                                   AS hops_detail
     FROM recent
     GROUP BY transaction_hash
 )
@@ -61,13 +108,16 @@ SELECT
     round(s.trade_usd, 2)        AS trade_usd,
     s.via                        AS via,
     s.hops                       AS hops,
+    h.hops_detail                AS hops_detail,
     tx.from_address              AS trader,
     lbl.project                  AS aggregator
 FROM tx_summary s
+LEFT JOIN hops_per_tx h
+    ON h.transaction_hash = s.transaction_hash
 LEFT JOIN recent_tx tx
     ON tx.transaction_hash = s.transaction_hash
     AND tx.block_number    = s.block_number
-LEFT JOIN {{ ref('int_crawlers_data_labels') }} lbl
+LEFT JOIN {{ ref('int_crawlers_data_labels_dex') }} lbl
     ON lbl.address = concat('0x', lower(replaceAll(coalesce(tx.to_address, ''), '0x', '')))
 WHERE (s.token_sold != '' OR s.token_bought != '')
   AND (s.trade_usd IS NULL OR s.trade_usd >= {{ min_usd }})

@@ -82,9 +82,13 @@ lending_events AS (
     INNER JOIN {{ ref('lending_market_mapping') }} rm
         ON  rm.protocol             = e.protocol
        AND lower(rm.reserve_address) = lower(e.decoded_params['reserve'])
-    LEFT JOIN {{ ref('int_execution_token_prices_daily') }} pr
-        ON pr.symbol = rm.reserve_symbol
-       AND pr.date   = toDate(e.block_timestamp)
+    ASOF LEFT JOIN (
+        SELECT symbol, date, price
+        FROM {{ ref('int_execution_token_prices_daily') }}
+        ORDER BY symbol, date
+    ) pr
+        ON  pr.symbol                 = rm.reserve_symbol
+        AND toDate(e.block_timestamp) >= pr.date
     WHERE e.event_name IN ('Supply', 'Withdraw', 'Borrow', 'Repay')
       AND e.decoded_params['reserve'] IS NOT NULL
       AND e.decoded_params['amount'] IS NOT NULL

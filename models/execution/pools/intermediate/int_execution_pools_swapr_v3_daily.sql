@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, pool_address, token_address)',
         unique_key='(date, pool_address, token_address)',
@@ -52,14 +52,16 @@ first_fee AS (
     GROUP BY pool_address_no0x
 ),
 
-{#- ASOF join for dynamic fees, then fee split + daily aggregation.
-    The ASOF join requires a subquery with ORDER BY, so we nest it. -#}
 daily_deltas AS (
     SELECT
         date,
         pool_address,
         token_address,
-        sum(delta_amount_raw) AS daily_delta_raw,
+        sum(multiIf(
+            delta_category = 'liquidity' AND delta_amount_raw < toInt256(0),
+                toInt256(0),
+            delta_amount_raw
+        )) AS daily_delta_raw,
         sum(multiIf(
             delta_category = 'swap_in',
                 delta_amount_raw - intDiv(delta_amount_raw * toInt256(effective_fee_ppm), toInt256(1000000)),

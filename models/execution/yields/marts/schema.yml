@@ -2,13 +2,17 @@ version: 2
 models:
 
 - name: fct_yields_savings_xdai_apy_daily
-  description: >
+  description: |
     Canonical Savings xDAI APY mart. Long-format output with one row per
-    (date, label) where label ∈ {'Daily','7DMA','30DMA','7DMM','30DMM'}. APY is
-    compounded from the proper daily_rate in int_yields_savings_xdai_rate_daily.
-    Regime columns (canonical_label, legacy_symbol, backing_asset, yield_source)
-    propagate so consumers can distinguish pre/post-2025-11-07 rows without
-    joining again.
+    (date, label) where label ∈ {'Daily','7DMA','30DMA','7DMM','30DMM'}. APY
+    is compounded from the proper daily_rate in
+    int_yields_savings_xdai_rate_daily (a true ratio, not a diff). 7-day and
+    30-day moving averages and moving medians are computed via window
+    aggregates on the compounded annual rate.
+
+    Regime columns (canonical_label, legacy_symbol, backing_asset,
+    yield_source) propagate so consumers can distinguish pre/post-2025-11-07
+    rows (DAI/sDAI vs USDS/sUSDS backing) without joining again.
   columns:
   - name: date
     data_type: Date
@@ -32,7 +36,11 @@ models:
     data_type: String
 
 - name: fct_yields_sdai_apy_daily
-  description: Legacy compatibility wrapper over fct_yields_savings_xdai_apy_daily. Projects (date, apy, label) only; downstream `historical_yield_sdai` metric and overview snapshot read from here unchanged.
+  description: |
+    Legacy compatibility wrapper over fct_yields_savings_xdai_apy_daily.
+    Preserves the historical (date, apy, label) shape so existing dashboard
+    queries and the metrics-dashboard `historical_yield_sdai` metric keep
+    working unchanged.
   columns:
 
   - name: date

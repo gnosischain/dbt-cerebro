@@ -14,5 +14,6 @@ SELECT
     countDistinct(gp_wallet)                     AS n_gp_wallets,
     sum(amount_usd)                              AS volume_usd
 FROM {{ ref('int_execution_gnosis_app_gpay_topups') }}
+WHERE toStartOfWeek(block_timestamp, 1) < toStartOfWeek(today(), 1)
 GROUP BY week
 ORDER BY week

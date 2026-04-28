@@ -198,6 +198,13 @@ models:
       - name: all
         vars:
           symbol_exclude: "{{ var('symbol_exclude') }}"
+      incremental:
+        # Microbatch runner annotation. Daily delete+insert mutation was
+        # OOM-ing under CreatingSetsTransform (CH 341, ~10.83 GiB). Slicing
+        # into per-day appends eliminates the mutation.
+        enabled: true
+        date_column: date
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn

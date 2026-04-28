@@ -1342,3 +1342,134 @@ metrics:
         - active validators
         - validators active
         - validator activity
+- name: consensus_validators_performance_daily
+  model: ref('api_consensus_validators_performance_daily')
+  defaults:
+    agg_time_dimension: day
+  entities:
+  - name: validator_day
+    type: primary
+    expr: concat(toString(validator_index), '_', toString(date))
+  - name: validator
+    type: foreign
+    expr: toString(validator_index)
+  dimensions:
+  - name: day
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+  - name: status
+    type: categorical
+  - name: pubkey
+    type: categorical
+  - name: withdrawal_address
+    type: categorical
+  measures:
+  - name: consensus_income_amount_gno_value
+    agg: sum
+    expr: consensus_income_amount_gno
+  - name: deposits_amount_gno_value
+    agg: sum
+    expr: deposits_amount_gno
+  - name: withdrawals_amount_gno_value
+    agg: sum
+    expr: withdrawals_amount_gno
+  - name: proposer_reward_total_gno_value
+    agg: sum
+    expr: proposer_reward_total_gno
+  - name: proposed_blocks_count_value
+    agg: sum
+    expr: proposed_blocks_count
+  - name: apy_value
+    agg: average
+    expr: apy
+  config:
+    meta:
+      cerebro:
+        grain: day
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - validator performance daily
+        - validator income daily
+        - validator rewards daily
+- name: consensus_validators_performance_latest
+  model: ref('api_consensus_validators_performance_latest')
+  entities:
+  - name: validator
+    type: primary
+    expr: toString(validator_index)
+  dimensions:
+  - name: validator_index
+    type: categorical
+  - name: status
+    type: categorical
+  - name: pubkey
+    type: categorical
+  - name: withdrawal_address
+    type: categorical
+  measures:
+  - name: balance_gno_value
+    agg: sum
+    expr: balance_gno
+  - name: total_income_estimated_gno_value
+    agg: sum
+    expr: total_income_estimated_gno
+  - name: consensus_income_amount_30d_gno_value
+    agg: sum
+    expr: consensus_income_amount_30d_gno
+  - name: proposer_reward_total_30d_gno_value
+    agg: sum
+    expr: proposer_reward_total_30d_gno
+  - name: proposed_blocks_count_lifetime_value
+    agg: sum
+    expr: proposed_blocks_count_lifetime
+  config:
+    meta:
+      cerebro:
+        grain: validator
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - validator performance latest
+        - validator summary
+        - lifetime rewards
+- name: consensus_attestations_performance_daily
+  model: ref('api_consensus_attestations_performance_daily')
+  defaults:
+    agg_time_dimension: date
+  entities:
+  - name: attestation_day
+    type: primary
+    expr: toString(date)
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: attestations_total_value
+    agg: sum
+    expr: attestations_total
+  - name: avg_inclusion_delay_value
+    agg: average
+    expr: avg_inclusion_delay
+  - name: p50_inclusion_delay_value
+    agg: average
+    expr: p50_inclusion_delay
+  - name: pct_inclusion_distance_1_value
+    agg: average
+    expr: pct_inclusion_distance_1
+  config:
+    meta:
+      cerebro:
+        grain: day
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - attestation inclusion delay
+        - attestation kpis

@@ -1088,6 +1088,10 @@ models:
     description: Lowercased withdrawal credentials for exact-match API filtering.
     data_type: String
 
+  - name: withdrawal_address
+    description: 20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL for 0x00 BLS credentials.
+    data_type: Nullable(String)
+
   - name: effective_balance
     description: The effective validator balance used for consensus calculations.
     data_type: UInt64
@@ -1692,3 +1696,596 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: fct_consensus_attestations_performance_daily
+  description: Network-wide daily attestation KPI fact derived from int_consensus_attestations_daily. One row per day.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 12
+  columns:
+  - name: date
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+    - unique:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: attestations_total
+    description: Total attestations included on the date.
+    data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
+  - name: avg_inclusion_delay
+    description: Weighted mean inclusion delay (in slots).
+    data_type: Float64
+  - name: p50_inclusion_delay
+    description: Weighted median inclusion delay.
+    data_type: Float64
+  - name: pct_inclusion_distance_1
+    description: Share of attestations included with inclusion_delay = 1. Range [0, 1].
+    data_type: Float64
+  - name: pct_inclusion_distance_le_2
+    description: Share with inclusion_delay <= 2. Range [0, 1].
+    data_type: Float64
+  - name: pct_inclusion_distance_gt_1
+    description: Share with inclusion_delay > 1. Range [0, 1].
+    data_type: Float64
+
+- name: api_consensus_validators_performance_daily
+  description: Public API view joining daily income and proposer-reward facts at (date, validator_index). Filterable by validator_index, pubkey, withdrawal_credentials, withdrawal_address, date_from, date_to.
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: validator_index
+    data_type: UInt64
+  - name: status
+    data_type: String
+  - name: pubkey
+    data_type: String
+  - name: withdrawal_credentials
+    data_type: String
+  - name: withdrawal_address
+    data_type: Nullable(String)
+  - name: balance_gno
+    data_type: Float64
+  - name: consensus_income_amount_gno
+    data_type: Float64
+  - name: apy
+    data_type: Float64
+  - name: proposer_reward_total_gno
+    data_type: Float64
+  - name: proposed_blocks_count
+    data_type: UInt64
+
+- name: api_consensus_validators_performance_latest
+  description: Public API view — one row per validator with latest snapshot fields plus 30-day and lifetime aggregates.
+  columns:
+  - name: validator_index
+    data_type: UInt64
+  - name: latest_date
+    data_type: DateTime64
+  - name: balance_gno
+    data_type: Float64
+  - name: consensus_income_amount_30d_gno
+    data_type: Float64
+  - name: proposer_reward_total_30d_gno
+    data_type: Float64
+  - name: proposed_blocks_count_lifetime
+    data_type: UInt64
+  - name: total_income_estimated_gno
+    data_type: Float64
+
+- name: api_consensus_attestations_performance_daily
+  description: Public API view over fct_consensus_attestations_performance_daily. Network-wide daily attestation KPIs.
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: attestations_total
+    data_type: UInt64
+  - name: avg_inclusion_delay
+    data_type: Float64
+  - name: p50_inclusion_delay
+    data_type: Float64
+  - name: pct_inclusion_distance_1
+    data_type: Float64
+
+- name: fct_consensus_validators_income_total_daily
+  description: |
+    Network-wide daily consensus income in GNO, summed across every validator (including
+    exited / zero-balance). Derived from int_consensus_validators_income_daily, which
+    spec-bounds income per-validator (see the block comment at the top of that model
+    for the beacon reward-cap derivation), so no aggregate-level outlier filter is
+    required — the input is already clean.
+
+    Materialized as a physical table (not a view) so the dashboard API returns in
+    milliseconds: the source fact has 200M+ rows and running SUM GROUP BY on every
+    request would 30s-timeout Vercel functions. Rebuild cost is trivial (~1568 output
+    rows) and hooks into the dbt DAG so each upstream rebuild refreshes this table too.
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: income_gno
+    description: Sum of consensus_income_amount_gno across all validators on the date.
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - min
+        - max
+        - average
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        training_period:
+          period: day
+          count: 56
+        anomaly_sensitivity: 3
+        severity: warn
+        tags:
+        - elementary
+  - name: income_gno_rolling_7d_median
+    description: 7-day trailing median of income_gno. Advisory overlay for the dashboard chart.
+    data_type: Float64
+  - name: income_gno_rolling_30d_median
+    description: 30-day trailing median of income_gno.
+    data_type: Float64
+  - name: validators_snapshot_count
+    description: Count of validators snapshotted on the date from int_consensus_validators_snapshots_daily.
+    data_type: UInt64
+  - name: anomaly_flag
+    description: |
+      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 500 GNO.
+      Advisory only — raw income_gno remains visible. Surfaced in the dashboard tooltip.
+    data_type: UInt8
+  tests:
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+
+- name: fct_consensus_validators_apy_dist_income_daily
+  description: |
+    Physical materialisation of int_consensus_validators_apy_dist_income_daily — network-wide
+    daily APY quantile distribution (q05..q95) + balance-weighted mean, built on the
+    spec-bounded int_consensus_validators_income_daily. Feeds the Network Average APY band
+    chart on the Consensus tab via api_consensus_validators_apy_dist_income_daily.
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    description: Network median APY on the date.
+    data_type: Float64
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: avg_apy_weighted
+    data_type: Float64
+  - name: validators_included
+    data_type: UInt64
+
+- name: api_consensus_validators_apy_dist_income_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_apy_dist_income_daily. Filter/pagination metadata in model config.
+
+- name: fct_consensus_validators_explorer_apy_dist_daily
+  description: |
+    Per-(date, withdrawal_credentials) APY quantile distribution + rolling medians.
+    Physical materialisation of int_consensus_validators_explorer_apy_dist_daily; ordered
+    on (withdrawal_credentials, date) so the API's WHERE withdrawal_credentials filter
+    prunes via the primary index. Feeds the "Average APY" band chart on the Validator
+    Explorer tab.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+  columns:
+  - name: date
+    data_type: DateTime
+  - name: withdrawal_credentials
+    data_type: String
+  - name: q05_apy
+    data_type: Float64
+  - name: q10_apy
+    data_type: Float64
+  - name: q25_apy
+    data_type: Float64
+  - name: q50_apy
+    data_type: Float64
+  - name: q75_apy
+    data_type: Float64
+  - name: q90_apy
+    data_type: Float64
+  - name: q95_apy
+    data_type: Float64
+  - name: apy_weighted
+    data_type: Float64
+  - name: validator_count_active
+    data_type: UInt64
+  - name: apy_rolling_7d_median
+    data_type: Float64
+  - name: apy_rolling_30d_median
+    data_type: Float64
+
+- name: api_consensus_validators_explorer_apy_dist_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_apy_dist_daily. Requires withdrawal_credentials filter; see model config.
+
+- name: fct_consensus_validators_apy_mean_daily
+  description: |
+    Network-wide daily mean APY, balance-weighted by balance_prev_gno so exited / idle
+    / just-entered validators (apy=0 and/or tiny balance) don't drag the average down
+    to meaninglessly low values. Output aligns with the median of the APY Distribution
+    chart, which effectively filters those validators via its quantile window.
+
+        apy = SUMIf(apy * balance_prev_gno, 0 < apy < 200 AND balance_prev_gno > 0)
+              / NULLIF(SUMIf(balance_prev_gno, 0 < apy < 200 AND balance_prev_gno > 0), 0)
+
+    Outlier filter (apy in (0, 200)) matches int_consensus_validators_dists_daily.
+    Zero-APY rows are dropped — they include exited validators that contributed nothing
+    but were once active, plus validators still in the entry queue.
+
+    Materialized as a physical table so the dashboard API returns in milliseconds:
+    running balance-weighted SUMIf over the 200M-row income fact would 30s-timeout
+    Vercel functions. Output is ~1568 rows, trivial to rebuild whenever the upstream
+    int_consensus_validators_income_daily updates.
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: apy
+    description: Average APY (%) across all validators on the date, outliers filtered.
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - min
+        - max
+        - average
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        training_period:
+          period: day
+          count: 56
+        anomaly_sensitivity: 3
+        severity: warn
+        tags:
+        - elementary
+  - name: apy_rolling_7d_median
+    description: 7-day trailing median of apy. Smoothing overlay for the dashboard band chart.
+    data_type: Float64
+  - name: apy_rolling_30d_median
+    description: 30-day trailing median of apy.
+    data_type: Float64
+  tests:
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+
+- name: fct_consensus_consolidations_daily
+  description: |
+    Daily EIP-7251 consolidation event counts and transferred amounts stacked by role
+    ('self', 'source', 'target'). Materialized as a table so the dashboard API returns
+    fast; source is small (~5k rows) so rebuild is instant. See
+    int_consensus_validators_consolidations_daily for the application-day inference and
+    amount derivation (source's last non-zero effective balance before the application
+    day).
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: role
+    description: One of 'self' / 'source' / 'target'.
+    data_type: String
+  - name: cnt
+    data_type: UInt64
+  - name: transferred_amount_gno
+    description: 0 for 'self' rows; positive for source/target.
+    data_type: Float64
+
+- name: api_consensus_validators_search
+  description: |
+    Dropdown source for the Validator Explorer tab. Grain is one row per
+    WITHDRAWAL_CREDENTIALS (not per validator) — on Gnosis today this is ~3,400 rows
+    vs 558k at validator-grain, so the dashboard can load the full list in a single
+    request (a few hundred KB on the wire) without 30s timeouts.
+
+    Collapsing to credential-grain matches the Explorer tab's semantics: every chart
+    on that tab aggregates across all validators sharing the selected
+    withdrawal_credentials. A solo validator is just a "credential with
+    validator_count = 1"; an operator is "credential with validator_count = N".
+
+    display_name is shaped as
+        '<prefix-4>…<address-tail-10> · N validator(s) (v#<first-index>)'
+    using the tail of the credential (the actual execution address) so operators with
+    the same 0x01 type-byte prefix remain visually distinguishable.
+
+    LabelSelector filters client-side on substring match against every column the API
+    returns, so pasting a withdrawal_credentials string from a block explorer or wallet
+    finds the exact row. Pasting a validator_index or pubkey not in this column won't
+    match here — those lookups need /api/validators_performance_latest, which stays at
+    per-validator grain.
+  columns:
+  - name: validator_index
+    data_type: UInt64
+  - name: pubkey
+    data_type: String
+  - name: withdrawal_credentials
+    data_type: String
+  - name: withdrawal_address
+    data_type: Nullable(String)
+  - name: display_name
+    description: "'<validator_index> · wc <prefix>… (N validators)' — used by LabelSelector."
+    data_type: String
+
+- name: fct_consensus_validators_explorer_latest
+  description: |
+    Per-operator (withdrawal_credentials) latest-snapshot roll-up. Feeds the KPI cards on
+    the Validator Explorer tab. Reads the int tables directly (not the composite
+    api_consensus_validators_performance_latest view) so the outer GROUP BY across ~558k
+    validators stays under the cluster's memory cap.
+
+    v3 additions: lifecycle counts (active_count / exited_count / pending_count /
+    slashed_count) classified from validator status (active_ongoing/active_exiting/
+    active_slashed -> active; withdrawal_done/withdrawal_possible/exited_* -> exited;
+    pending_* -> pending; slashed flag -> slashed); balance-weighted credential-level
+    30-day APY computed once per credential as
+    apy_30d = SUM(income_30d) / AVG(effective_balance_30d) * 365 * 100, with rows where
+    effective_balance = 0 excluded so idle slots don't drag the mean down. Driver is
+    fct_consensus_validators_status_latest via LEFT JOIN so freshly-activated or
+    never-activated validators with no income rows still count toward validator_count
+    and populate status fields. Defensively accepts both Gnosis-style status values and
+    Ethereum-mainnet-style (active_exiting, active_slashed, exited_*) in case the
+    upstream crawler starts emitting them.
+  columns:
+  - name: withdrawal_credentials
+    data_type: String
+  - name: validator_count
+    description: Number of validators sharing this withdrawal_credentials.
+    data_type: UInt64
+  - name: active_count
+    description: Validators with status in (active_ongoing, active_exiting, active_slashed).
+    data_type: UInt64
+  - name: exited_count
+    description: Validators with status starting exited_*.
+    data_type: UInt64
+  - name: pending_count
+    description: Validators with status starting pending_*.
+    data_type: UInt64
+  - name: slashed_count
+    description: Validators flagged slashed=true on the latest snapshot (active_slashed + exited_slashed).
+    data_type: UInt64
+  - name: balance_gno
+    data_type: Float64
+  - name: effective_balance_gno
+    data_type: Float64
+  - name: cumulative_deposits_gno
+    data_type: Float64
+  - name: cumulative_withdrawals_gno
+    data_type: Float64
+  - name: total_income_estimated_gno
+    data_type: Float64
+  - name: consensus_income_amount_30d_gno
+    data_type: Float64
+  - name: proposer_reward_total_30d_gno
+    data_type: Float64
+  - name: proposed_blocks_count_lifetime
+    data_type: UInt64
+  - name: proposer_reward_total_lifetime_gno
+    data_type: Float64
+  - name: apy_30d
+    description: Balance-weighted 30-day APY = SUM(consensus_income) / AVG(effective_balance) * 365 * 100. Excludes zero-balance rows.
+    data_type: Float64
+
+- name: fct_consensus_validators_explorer_daily
+  description: |
+    Per-operator (withdrawal_credentials) daily roll-up feeding the five daily charts on
+    the Validator Explorer tab. Materialized as a physical table sorted on
+    withdrawal_credentials so the API's `WHERE withdrawal_credentials = 'x'` filter
+    prunes at read time via the primary index. Rebuilt incrementally month-by-month to
+    stay under the cluster's 10.8 GiB memory cap during backfill.
+
+    APY is balance-weighted (drops apy=0 idle validators):
+        apy = SUMIf(apy * balance_prev_gno, 0 < apy < 200 AND balance_prev_gno > 0)
+              / SUMIf(balance_prev_gno,        0 < apy < 200 AND balance_prev_gno > 0)
+    falling back to 0 when no validators qualify. See
+    api_consensus_validators_apy_mean_daily for the rationale.
+
+    v3: drops post-exit rows. Without this, an exited validator keeps emitting
+    zero-income / zero-balance rows from int_consensus_validators_income_daily forever,
+    which the UI renders as a flat tail on the credential's balance line. Joining
+    stg_consensus__time_helpers + status_latest and filtering
+    `date <= genesis + exit_epoch * slots_per_epoch * seconds_per_slot` (or exit_epoch
+    is FAR_FUTURE_EPOCH = 2^64-1, meaning "not exited") makes every chart downstream
+    stop at the validator's actual exit.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 1
+  columns:
+  - name: date
+    data_type: DateTime64
+  - name: withdrawal_credentials
+    data_type: String
+  - name: balance_gno
+    data_type: Float64
+  - name: effective_balance_gno
+    data_type: Float64
+  - name: consensus_income_amount_gno
+    data_type: Float64
+  - name: apy
+    description: Mean APY across validators sharing this credential on the date, outliers filtered.
+    data_type: Float64
+  - name: proposer_reward_total_gno
+    data_type: Float64
+  - name: proposed_blocks_count
+    data_type: UInt64
+  - name: deposits_amount_gno
+    data_type: Float64
+  - name: withdrawals_amount_gno
+    data_type: Float64
+  - name: consolidation_inflow_gno
+    data_type: Float64
+  - name: consolidation_outflow_gno
+    data_type: Float64
+  - name: validator_count_active
+    description: |
+      Count of distinct validator_index rows included in this (date, credential)
+      aggregation. v2 (2026-04). Dashboard uses this to decide between quantile bands
+      (N>1) and a clean rolling-median line (N=1 → solo credential) on the APY chart.
+    data_type: UInt64
+
+- name: fct_consensus_validators_explorer_members_table
+  description: |
+    Members table for the Validator Explorer tab: one row per validator under the
+    selected withdrawal credential. Reads int tables directly (cheap: ~558k status
+    rows + ~558k latest-day income rows) rather than routing through
+    api_consensus_validators_performance_latest.
+
+    v3 additions:
+      * Lifecycle columns: activation_eligibility_epoch, activation_epoch, exit_epoch,
+        withdrawable_epoch, slashed, plus derived activation_date / exit_date /
+        withdrawable_date.
+      * Per-validator balance-weighted 30-day APY:
+            apy_30d = SUMIf(income, eff_balance > 0)
+                      / NULLIF(AVGIf(eff_balance, eff_balance > 0), 0) * 365 * 100
+        with zero-effective-balance rows excluded so idle slots don't pull the mean.
+      * Driver is fct_consensus_validators_status_latest with LEFT JOIN into
+        income/rewards so a validator still pending activation (no income rows) still
+        appears as a row with status='pending_*' and zeros elsewhere — no silent
+        row-drops on the join.
+
+    FAR_FUTURE_EPOCH sentinel (2^64 - 1 = 18446744073709551615) is emitted by the beacon
+    state for epochs that have not happened yet; these are NULLed out before converting
+    to dates so the UI renders a blank instead of a year in 292 billion AD. Otherwise,
+    derived dates are toDate(genesis_time_unix + epoch * slots_per_epoch * seconds_per_slot).
+  columns:
+  - name: withdrawal_credentials
+    data_type: String
+  - name: validator_index
+    data_type: UInt64
+  - name: pubkey
+    data_type: String
+  - name: withdrawal_address
+    data_type: Nullable(String)
+  - name: status
+    data_type: String
+  - name: slashed
+    data_type: Bool
+  - name: activation_eligibility_epoch
+    data_type: UInt64
+  - name: activation_epoch
+    data_type: UInt64
+  - name: exit_epoch
+    data_type: UInt64
+  - name: withdrawable_epoch
+    data_type: UInt64
+  - name: activation_date
+    description: Date the validator activated (NULL if activation_epoch is FAR_FUTURE_EPOCH).
+    data_type: Nullable(Date)
+  - name: exit_date
+    description: Date the validator exited (NULL if still active).
+    data_type: Nullable(Date)
+  - name: withdrawable_date
+    description: Date the validator's balance becomes withdrawable (NULL if not scheduled).
+    data_type: Nullable(Date)
+  - name: balance_gno
+    data_type: Float64
+  - name: effective_balance_gno
+    data_type: Float64
+  - name: apy_30d
+    description: Per-validator balance-weighted 30d APY (%).
+    data_type: Float64
+  - name: consensus_income_amount_30d_gno
+    data_type: Float64
+  - name: proposer_reward_total_30d_gno
+    data_type: Float64
+  - name: proposed_blocks_count_lifetime
+    data_type: UInt64
+  - name: proposer_reward_total_lifetime_gno
+    data_type: Float64
+  - name: total_income_estimated_gno
+    data_type: Float64
+  - name: latest_date
+    data_type: Nullable(DateTime64)
+
+- name: api_consensus_validators_income_total_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_income_total_daily. Filter/pagination metadata in model config.
+
+- name: api_consensus_validators_apy_mean_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_apy_mean_daily. Filter/pagination metadata in model config.
+
+- name: api_consensus_consolidations_daily
+  description: Public API view — SELECT * FROM fct_consensus_consolidations_daily. Filter/pagination metadata in model config.
+
+- name: api_consensus_validators_explorer_latest
+  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_latest. Requires withdrawal_credentials filter; see model config.
+
+- name: api_consensus_validators_explorer_daily
+  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_daily. Requires withdrawal_credentials filter; see model config.
+
+- name: api_consensus_validators_explorer_members_table
+  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_members_table. Requires withdrawal_credentials filter; see model config.
+
+- name: api_consensus_validators_explorer_balance_dist
+  description: |
+    Balance-distribution histogram across co-validators sharing a withdrawal credential.
+    Light view over fct_consensus_validators_status_latest (~558k rows); the API prunes
+    by withdrawal_credentials before the bucketing runs so the query is cheap even
+    without a physical index on credentials.
+
+    Bucket edges (<1, 1-16, 16-32, 32-48, 48-64, 64-128, 128-256, >=256 GNO) are chosen
+    to span the two MaxEB regimes: 0x00 / 0x01 credentials cap at 32 GNO effective
+    balance (pre-Pectra), while 0x02 compounders + EIP-7251 go up to 2048 GNO
+    post-Pectra. The 16 / 32 / 64 / 128 / 256 edges surface clusters at both caps plus
+    any partial-balance validators (withdrawing or slashed). bucket_order (0-7) is
+    emitted to keep the API sort stable in ascending balance order.
+  columns:
+  - name: withdrawal_credentials
+    data_type: String
+  - name: bucket
+    description: Label for the balance bucket ('<1', '1-16', '16-32', '32-48', '48-64', '64-128', '128-256', '>=256').
+    data_type: String
+  - name: bucket_order
+    description: Integer ordering key for the bucket (0-7) so downstream charts keep bars in ascending balance order.
+    data_type: UInt8
+  - name: validator_count
+    data_type: UInt64
+  - name: balance_gno_total
+    data_type: Float64

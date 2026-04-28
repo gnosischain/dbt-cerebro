@@ -2,7 +2,7 @@
     config(
         materialized='table',
         engine='ReplacingMergeTree()',
-        order_by='(date, protocol, pool_address, token_address)',
+        order_by='(date, protocol, pool_address, ref_token, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'pools', 'daily']

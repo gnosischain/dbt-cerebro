@@ -57,7 +57,24 @@ models:
     data_type: Float64
 
 - name: int_execution_lending_aave_utilization_daily
-  description: Daily utilization rate per (protocol, reserve) across Aave V3 and SparkLend. Computes cumulative scaled supply/borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256 WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs each pool action with the ReserveDataUpdated snapshot at the same log_index position within its transaction. End-of-day indices sourced directly from raw events so the final utilization ratio is computed in exact arithmetic end-to-end.
+  description: |
+    Daily utilization rate per (protocol, reserve) across Aave V3 and SparkLend.
+    Computes cumulative scaled supply/borrow positions from Pool events
+    (Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256
+    WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs
+    each pool action with the ReserveDataUpdated snapshot at the same
+    log_index position within its transaction. End-of-day indices are sourced
+    directly from raw events so the final utilization ratio is computed in
+    exact arithmetic end-to-end.
+
+    cumulative_scaled_supply / cumulative_scaled_borrow are Int256 for exact
+    WadRayMath; a --full-refresh is required when migrating from the previous
+    Float64 schema so the column types are recreated.
+
+    Per-day deltas are built via UNION ALL + a single GROUP BY rather than a
+    FULL OUTER JOIN, which had protocol-dimension correctness issues for Spark
+    on ClickHouse (rows where only supply or only borrow existed on a day
+    diluted the cumulative).
   columns:
   - name: date
     data_type: Date
@@ -77,7 +94,27 @@ models:
     data_type: Nullable(Float64)
 
 - name: int_execution_lending_aave_diffs_daily
-  description: Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3 and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, protocol, user, reserve). Scaled math uses exact UInt256 WadRayMath and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its (protocol, transaction). LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -> liquidator) event.
+  description: |
+    Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3
+    and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw,
+    Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken
+    BalanceTransfer events, aggregated per (date, protocol, user, reserve).
+
+    Scaled math uses exact UInt256 WadRayMath and each pool action is paired
+    with the ReserveDataUpdated snapshot at the same log_index position within
+    its (protocol, transaction). The pairing uses an ASOF join keyed on
+    log_index < the action's log_index — NOT a rank-based pairing. This is
+    required for Spark, where FlashLoan-emitted RDUs interleave with user
+    action RDUs and rank-based pairing would misalign (e.g. pair the user's
+    Supply with the FlashLoan's RDU).
+
+    LiquidationCall rows where receiveAToken=true are intentionally excluded
+    because the collateral movement is already captured by the
+    BalanceTransfer(borrower -> liquidator) event.
+
+    diff_scaled is Int256 for exact scaled-balance arithmetic (no Float64
+    precision loss on amounts above 2^53 wei); a --full-refresh is required
+    when migrating from the previous Float64 schema.
   columns:
   - name: date
     data_type: Date
@@ -95,7 +132,22 @@ models:
     data_type: Int256
 
 - name: int_execution_lending_aave_user_balances_daily
-  description: Daily per-user aToken balances across Gnosis lending markets (Aave V3 and SparkLend). Reads scaled deltas from int_execution_lending_aave_diffs_daily, builds a calendar of active (protocol, user, reserve) triples, computes running cumulative scaled balances in Int256, then converts to underlying amounts using the end-of-day liquidityIndex. Scoped to reserves in lending_market_mapping.
+  description: |
+    Daily per-user aToken balances across Gnosis lending markets (Aave V3 and
+    SparkLend). Reads scaled deltas from int_execution_lending_aave_diffs_daily,
+    builds a calendar of active (protocol, user, reserve) triples, computes
+    running cumulative scaled balances in Int256, then converts to underlying
+    amounts using the end-of-day liquidityIndex. Scoped to reserves in
+    lending_market_mapping.
+
+    Incremental seeding: on incremental runs the model carries forward the
+    previous max-date balances from {{ this }} as a synthetic delta on
+    max_date+1, so the cumulative running sum stays correct without rescanning
+    history. Full-refresh recomputes from the entire diffs history.
+
+    scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
+    (mirrors Aave's on-chain WadRayMath); a --full-refresh is required when
+    migrating from the previous Float64 schema so the column types are recreated.
   columns:
   - name: date
     data_type: Date

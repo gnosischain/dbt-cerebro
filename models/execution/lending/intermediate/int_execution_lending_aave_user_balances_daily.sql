@@ -1,14 +1,14 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
         on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, reserve_address, user_address)',
         unique_key='(date, protocol, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','lending','aave','spark','user_balances'],
+        tags=['production','execution','lending','aave','spark','user_balances','refill_append'],
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"]
     )

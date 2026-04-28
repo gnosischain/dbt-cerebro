@@ -1,0 +1,481 @@
+version: 2
+
+models:
+  - name: fct_mixpanel_ga_overview_daily
+    description: >
+      Daily KPI summary for Gnosis App (app.gnosis.io) web analytics from
+      Mixpanel: total events, DAU, unique devices, new/cumulative users,
+      event type counts, geographic and referrer diversity, autocapture
+      vs custom split.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: total_events
+        description: Total Mixpanel events on this date.
+        data_type: UInt64
+      - name: dau
+        description: Daily active users (exact distinct user_id_hash count).
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count.
+        data_type: UInt64
+      - name: new_users
+        description: Users whose first-ever event was on this date.
+        data_type: UInt64
+      - name: cumulative_users
+        description: Running total of new_users.
+        data_type: UInt64
+      - name: distinct_event_types
+        description: Number of distinct event names seen on this date.
+        data_type: UInt64
+      - name: distinct_countries
+        description: Number of distinct countries with events on this date.
+        data_type: UInt64
+      - name: distinct_referrers
+        description: Number of distinct non-direct referrer domains.
+        data_type: UInt64
+      - name: autocapture_events
+        description: Estimated count of autocaptured events.
+        data_type: Float64
+      - name: custom_events
+        description: Estimated count of custom (non-autocapture) events.
+        data_type: Float64
+      - name: avg_events_per_user
+        description: Average events per active user.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+      - elementary.volume_anomalies:
+          timestamp_column: date
+          sensitivity: 3
+          tags: [elementary]
+
+  - name: fct_mixpanel_ga_gpay_crossdomain_daily
+    description: |
+      Daily rollup of Gnosis Pay ↔ Mixpanel matching with role-bucket and
+      activity dimensions.
+
+      Privacy boundary: every cross-domain join uses the keyed pseudonym
+      from the pseudonymize_address macro, applied identically on both
+      sides. Raw EOAs and Safe addresses never appear in this output.
+
+      Methodology: a per-user identity bridge (matched_pairs) reads the
+      precomputed (user_id_hash, gp_safe, matched_roles) tuples directly
+      from fct_mixpanel_ga_gpay_users so the JOIN is not recomputed here.
+      Same gp_safe → activity flags (delay_active_safes_7d,
+      allowance_changed_safes_30d) are computed once and joined into both
+      rollups. mp_user_flags rolls up role flags and activity flags to one
+      row per Mixpanel user; mp_daily then computes per-day matched-user
+      counts sliced by role bucket and activity flag, and gpay_daily
+      contributes the on-chain DAU comparison.
+
+      Implementation note: explicit AS aliases on the mp.* columns in the
+      final SELECT are required. Both mp_daily and gpay_daily expose a
+      `date` column, so ClickHouse keeps the qualified name `mp.date` in
+      the output projection and the config's order_by=(date) would
+      otherwise fail to resolve. The non-ambiguous columns get explicit
+      aliases too as a defensive consistency pass.
+
+      Headline metrics:
+        mp_dau                — Mixpanel daily active users (production,
+                                all identification states; anonymous
+                                device users are counted but never match
+                                the GP side).
+        onchain_active_users  — distinct GP wallets with on-chain
+                                activity that day, from
+                                fct_execution_gpay_activity_daily.
+        matched_users_any     — DAU users matched on ANY identity role
+                                (initial_owner ∪ delegate ∪ safe_self).
+        matched_by_*          — same DAU users sliced by which role
+                                matched.
+        users_with_delay_activity_7d
+                              — matched users whose gp_safe queued at
+                                least one TransactionAdded event in the
+                                last 7 days.
+        users_with_allowance_changes_30d
+                              — matched users whose gp_safe had a
+                                SetAllowance event in the last 30 days.
+
+      Backwards-compat: the original `matched_users` and `match_rate_pct`
+      columns are preserved (now equal to matched_users_any and the
+      corresponding rate) so existing dashboards keep working.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: mp_dau
+        description: Mixpanel daily active users.
+        data_type: UInt64
+      - name: onchain_active_users
+        description: On-chain GPay active users (from fct_execution_gpay_activity_daily).
+        data_type: UInt64
+      - name: matched_users
+        description: Backwards-compat alias for matched_users_any. Mixpanel users matched to a GP Safe via any of the three identity roles.
+        data_type: UInt64
+      - name: matched_users_any
+        description: Mixpanel users matched to at least one GP Safe via any role (initial_owner ∪ delegate ∪ safe_self).
+        data_type: UInt64
+      - name: matched_by_initial_owner_users
+        description: Mixpanel users matched via the SafeSetup initial owner identity (the EOA that owned the Safe before ownership was transferred to 0x...0002).
+        data_type: UInt64
+      - name: matched_by_delegate_users
+        description: Mixpanel users matched via a Roles v2 spender delegate identity.
+        data_type: UInt64
+      - name: matched_by_safe_self_users
+        description: Mixpanel users matched via the Safe address itself (smart-account identifier).
+        data_type: UInt64
+      - name: users_with_delay_activity_7d
+        description: Matched users whose gp_safe queued at least one TransactionAdded event in the last 7 days.
+        data_type: UInt64
+      - name: users_with_allowance_changes_30d
+        description: Matched users whose gp_safe had a SetAllowance event in the last 30 days.
+        data_type: UInt64
+      - name: match_rate_pct
+        description: Percentage of Mixpanel DAU that are matched to GPay Safes via any role.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: fct_mixpanel_ga_gnosis_app_users
+    description: |
+      Per-user fact for the Gnosis App sector with Mixpanel as a CHECK,
+      not as a source of truth.
+
+      Every row from int_execution_gnosis_app_user_identities appears
+      here. matched_mp is a column that flags whether Mixpanel has at
+      least one identified production event from the same pseudonym — it
+      is NOT a join filter. The heuristic set is authoritative; Mixpanel
+      coverage is diagnostic.
+
+      This is the opposite of fct_mixpanel_ga_gpay_users (which uses
+      INNER JOIN against the GP identity model because GP has a clean
+      upstream membership label list). Both bridge patterns coexist by
+      design.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: user_pseudonym
+        description: Gnosis App user pseudonym (UInt64). Same hash space as user_id_hash.
+        data_type: UInt64
+      - name: matched_mp
+        description: 1 if Mixpanel has at least one identified production event from this pseudonym, 0 otherwise.
+        data_type: UInt8
+      - name: mp_user_id_hash
+        description: Equal to user_pseudonym when matched_mp=1, NULL otherwise.
+        data_type: Nullable(UInt64)
+      - name: first_seen_at
+        description: Earliest heuristic hit for this user.
+        data_type: DateTime64(0, 'UTC')
+      - name: last_seen_at
+        description: Most recent heuristic hit for this user.
+        data_type: DateTime64(0, 'UTC')
+      - name: heuristic_kinds
+        description: Distinct heuristic rule names this user has triggered.
+        data_type: Array(String)
+      - name: heuristic_hits
+        description: Total heuristic events for this user.
+        data_type: UInt64
+      - name: n_distinct_heuristics
+        description: Confidence proxy — number of distinct rules fired.
+        data_type: UInt8
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: fct_mixpanel_ga_gnosis_app_daily
+    description: |
+      Daily-cumulative view of the Gnosis App sector.
+
+      cumulative_users counts distinct addresses first-seen on or before
+      each date. cumulative_mp_matched counts the subset of those that
+      are also visible in Mixpanel. The coverage gap is
+      (cumulative_users - cumulative_mp_matched) / cumulative_users.
+
+      Per-heuristic daily address counts give visibility into which flow
+      is driving sector growth on any given day.
+
+      Implementation note: explicit AS aliases are required on the d.*
+      columns in the final SELECT. Both daily_new and daily_kinds_pivot
+      expose a `date` column, so ClickHouse keeps the qualified name
+      `d.date` in the output projection and the config's order_by=(date)
+      would otherwise fail to resolve. Same class of aliasing quirk as
+      fct_mixpanel_ga_gpay_crossdomain_daily.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: new_users
+        description: Distinct addresses first-seen on this date.
+        data_type: UInt64
+      - name: cumulative_users
+        description: Running total of distinct addresses since 2025-11-12.
+        data_type: UInt64
+      - name: cumulative_mp_matched
+        description: Cumulative number of sector members visible in Mixpanel as of this date.
+        data_type: UInt64
+      - name: h_safe_invitation
+        description: Daily count of addresses triggering the safe_invitation_module rule.
+        data_type: UInt64
+      - name: h_metri_fee
+        description: Daily count of addresses triggering the circles_metri_fee rule.
+        data_type: UInt64
+      - name: h_register_human
+        description: Daily count of addresses triggering the circles_register_human rule.
+        data_type: UInt64
+      - name: h_invite_human
+        description: Daily count of addresses triggering the circles_invite_human rule.
+        data_type: UInt64
+      - name: h_trust
+        description: Daily count of addresses triggering the circles_trust rule.
+        data_type: UInt64
+      - name: h_profile_update
+        description: Daily count of addresses triggering the circles_profile_update rule.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: fct_mixpanel_ga_gpay_users
+    description: |
+      Per-user fact joining Mixpanel identified users to Gnosis Pay Safes
+      through the keyed-pseudonym identity bridge.
+
+      One row per (user_id_hash, gp_safe) pair where the user matched on
+      at least one of the three identity roles (initial_owner, delegate,
+      safe_self). Denormalizes the per-Safe module topology, current daily
+      limit, and recent delay activity onto each row so downstream segment
+      queries don't need extra joins.
+
+      Privacy invariant: every column representing a person is either
+      user_id_hash (already pseudonymized in stg_mixpanel_ga__events) or a
+      Safe address (smart account, treated as non-PII). No raw EOA appears.
+
+      Implementation note: explicit AS aliases on the m.* columns in the
+      final SELECT are required. ClickHouse keeps the qualified name
+      `m.gp_safe` in the output projection whenever the bare name `gp_safe`
+      is ambiguous across joined relations (modules_per_safe,
+      allowance_per_safe, delay_30d, spends_30d all expose a `gp_safe`
+      column), and the config's order_by=(user_id_hash, gp_safe) would
+      then fail to resolve.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: user_id_hash
+        description: Mixpanel user pseudonym (UInt64). Same hash space as int_execution_gpay_safe_identities.user_pseudonym.
+        data_type: UInt64
+      - name: gp_safe
+        description: The Gnosis Pay Safe this user matched against.
+        data_type: String
+      - name: matched_roles
+        description: Array of identity roles that matched (subset of [initial_owner, delegate, safe_self]).
+        data_type: Array(String)
+      - name: enabled_modules
+        description: Array of module types currently enabled on this Safe (typically [DelayModule, RolesModule, SpenderModule]).
+        data_type: Array(String)
+      - name: daily_limit
+        description: Current Roles v2 allowance refill amount (the canonical daily limit). String to preserve uint128 precision.
+        data_type: Nullable(String)
+      - name: allowance_period_seconds
+        description: Roles v2 allowance refill period in seconds (typically 86400).
+        data_type: Nullable(String)
+      - name: delay_txs_last_30d
+        description: Number of TransactionAdded events queued by this Safe's Delay module in the trailing 30 days.
+        data_type: UInt64
+      - name: spends_last_30d
+        description: Number of card-spend events (Spender module Spend events) for this Safe in the trailing 30 days.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_overview_daily
+    description: >
+      API view (tier3, internal) wrapping fct_mixpanel_ga_overview_daily.
+      Gnosis App web analytics KPIs with date range filters.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_events_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App event counts by event_name.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_users_daily
+    description: >
+      API view (tier3, internal) for per-user daily Gnosis App activity (hashed user IDs).
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_traffic_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App traffic by referring domain.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_pages_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App page-path analytics.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_geo_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App geography (country-level only for privacy).
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_tech_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App browser/OS/device breakdown.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_usage_patterns_daily
+    description: >
+      API view (tier3, internal) for Gnosis App hourly and day-of-week usage patterns.
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_gpay_crossdomain_daily
+    description: >
+      API view (tier3, internal) for Gnosis App Mixpanel to Gnosis Pay cross-domain daily metrics.
+    meta:
+      owner: analytics_team
+
+  - name: fct_mixpanel_ga_funnel_daily
+    description: |
+      Day-scoped funnel conversion metrics for Gnosis App (app.gnosis.io).
+      Three funnels are computed per day using uniqExact(user_id_hash) as
+      the unit of measurement, giving DAU-based conversion rates.
+
+      Onboarding funnel:
+        welcome_visitors      users on /welcome (entry point for new users)
+        join_modal_opens      users who opened ModalJoin (next step)
+        passkey_logins        users who completed Login with Passkey
+        identified_users      users with a wallet-identified session (is_identified)
+
+      Swap funnel:
+        swap_page_visitors    users on any /swap/* page
+        swap_asset_selectors  users who opened SelectSwapAsset modal
+        swap_completions      users who clicked the Swap button (ariaLabel = 'Swap')
+
+      Circles funnel:
+        circles_visitors      users on /circles
+        circles_mint_visitors users on /circles/mint
+        circles_mints         users who triggered 'Success - Circles mint'
+
+      All metrics are production-only (app.gnosis.io). Deploy previews and
+      localhost traffic are excluded.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: welcome_visitors
+        description: Distinct users who visited /welcome on this date.
+        data_type: UInt64
+      - name: join_modal_opens
+        description: Distinct users who opened the ModalJoin bottom sheet.
+        data_type: UInt64
+      - name: passkey_logins
+        description: Distinct users who completed Login with Passkey.
+        data_type: UInt64
+      - name: identified_users
+        description: Distinct users with a wallet-identified session (is_identified=1).
+        data_type: UInt64
+      - name: onboarding_conversion_rate
+        description: passkey_logins / greatest(welcome_visitors, 1).
+        data_type: Float64
+      - name: swap_page_visitors
+        description: Distinct users on any /swap/* page.
+        data_type: UInt64
+      - name: swap_asset_selectors
+        description: Distinct users who opened the SelectSwapAsset modal.
+        data_type: UInt64
+      - name: swap_completions
+        description: Distinct users who clicked the Swap button (autocaptured ariaLabel).
+        data_type: UInt64
+      - name: swap_conversion_rate
+        description: swap_completions / greatest(swap_page_visitors, 1).
+        data_type: Float64
+      - name: circles_visitors
+        description: Distinct users on /circles.
+        data_type: UInt64
+      - name: circles_mint_visitors
+        description: Distinct users on /circles/mint.
+        data_type: UInt64
+      - name: circles_mints
+        description: Distinct users who triggered the Success - Circles mint event.
+        data_type: UInt64
+      - name: circles_conversion_rate
+        description: circles_mints / greatest(circles_visitors, 1).
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+      - elementary.volume_anomalies:
+          timestamp_column: date
+          sensitivity: 3
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_modals_daily
+    description: >
+      API view (tier3, internal) for daily Gnosis App modal/bottom-sheet open counts.
+      Filter by bottom_sheet component name (e.g. PasskeyStepsModal, ModalJoin,
+      SelectSwapAsset, ModalReceive, ModalSend).
+    meta:
+      owner: analytics_team
+
+  - name: api_mixpanel_ga_funnel_daily
+    description: >
+      API view (tier3, internal) for Gnosis App daily funnel conversion metrics
+      across onboarding, swap, and Circles flows.
+    meta:
+      owner: analytics_team

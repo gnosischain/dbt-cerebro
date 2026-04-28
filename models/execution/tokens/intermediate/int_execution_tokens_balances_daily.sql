@@ -1,21 +1,47 @@
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
+{% set symbol = var('symbol', none) %}
+{% set symbol_exclude = var('symbol_exclude', none) %}
+
+{#
+  incremental_strategy resolves to `append` when either start_month
+  (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
+  The macros no-overlap branch caps the slice; ReplacingMergeTree dedups
+  on (date, token_address, address). Eliminates the ALTER ... DELETE
+  mutation that was OOM-ing under CreatingSetsTransform (CH 341).
+#}
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
     engine='ReplacingMergeTree()',
     order_by='(date, token_address, address)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','tokens','balances_daily']
+    pre_hook=[
+      "SET max_memory_usage = 6000000000",
+      "SET max_bytes_before_external_group_by = 2000000000",
+      "SET max_bytes_before_external_sort = 2000000000",
+      "SET join_algorithm = 'grace_hash'"
+    ],
+    post_hook=[
+      "SET max_memory_usage = 0",
+      "SET max_bytes_before_external_group_by = 0",
+      "SET max_bytes_before_external_sort = 0",
+      "SET join_algorithm = 'default'"
+    ],
+    tags=['production','execution','tokens','balances_daily','microbatch','refill_append']
   )
 }}
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
-{% set symbol = var('symbol', none) %}
-{% set symbol_exclude = var('symbol_exclude', none) %}
-{% set price_lookback_days = var('price_lookback_days', 3) %}
+{#
+  Recovery after a prices-source gap is *not* via `price_lookback_days` on
+  this model — the delete+insert branch with a wide window OOMs (CH 341).
+  Instead the refill script does a per-month append rewrite + OPTIMIZE
+  PARTITION FINAL DEDUPLICATE (Phase 1 of refill_after_price_gap.sh).
+#}
 
 {% set symbol_sql %}
   {{ symbol_filter('symbol', symbol, 'include') }}
@@ -37,7 +63,7 @@ WITH balances AS (
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true', lookback_days=price_lookback_days, filters_sql=symbol_sql) }}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true', filters_sql=symbol_sql) }}
       {% endif %}
       {{ symbol_filter('symbol', symbol, 'include') }}
       {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
@@ -54,7 +80,7 @@ prices AS (
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true', lookback_days=price_lookback_days, filters_sql=symbol_sql) }}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true', filters_sql=symbol_sql) }}
       {% endif %}
       {{ symbol_filter('symbol', symbol, 'include') }}
       {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}

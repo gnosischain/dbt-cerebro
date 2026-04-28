@@ -1,0 +1,167 @@
+version: 2
+
+models:
+  - name: stg_mixpanel_ga__events
+    description: |
+      Incremental staging table over raw Mixpanel events tracking Gnosis App
+      (app.gnosis.io) user interactions. Extracts all useful JSON properties
+      into typed columns with privacy transformations applied: distinct_id
+      and device_id are replaced with keyed pseudonyms via
+      macros/pseudonymize_address.sql (salted with env_var CEREBRO_PII_SALT,
+      so the hash is not reversible via rainbow tables against the public
+      on-chain address space), city-level geo is excluded, and full URLs are
+      reduced to path-only. Materialized as a table (not a view) so
+      downstream intermediate models read lightweight typed columns instead
+      of re-parsing the heavy JSON properties blob on every query.
+
+      Structure: a `raw` CTE extracts all JSON properties and computes
+      boolean flags. event_category is computed in the outer SELECT so it
+      can reference is_autocapture (a derived column) without a self-join.
+      To change classifications, edit macros/mixpanel_ga_event_category.sql.
+
+      Privacy notes: the keyed pseudonym macro is salted so hashes cannot
+      be reversed via rainbow tables against the public on-chain address
+      space. The same macro must be used on on-chain addresses for any
+      cross-domain join. The is_production flag identifies events from
+      app.gnosis.io (~89% of traffic; the remainder is deploy previews
+      and localhost).
+
+      New columns added for domain context:
+        is_identified  — 1 if the user connected a wallet (distinct_id != '$device:*')
+        is_production  — 1 if the event originated from app.gnosis.io (not preview/localhost)
+        event_category — derived classification via macros/mixpanel_ga_event_category.sql
+        event_amount, event_sku, event_seller, event_value, event_asset_id
+                       — feature-specific custom properties for Circles/Marketplace/Swap events
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 3
+    columns:
+      - name: event_time
+        description: UTC timestamp of the event.
+        data_type: DateTime
+      - name: event_date
+        description: Date portion of event_time.
+        data_type: Date
+      - name: hour_of_day
+        description: Hour of day (0-23 UTC).
+        data_type: UInt8
+      - name: day_of_week
+        description: ISO day of week (1=Mon, 7=Sun).
+        data_type: UInt8
+      - name: event_name
+        description: Mixpanel event name.
+        data_type: String
+      - name: project_id
+        description: Mixpanel project identifier.
+        data_type: String
+      - name: insert_id
+        description: Mixpanel deduplication key.
+        data_type: String
+      - name: user_id_hash
+        description: >
+          Keyed pseudonym of distinct_id (sipHash64 over a salted + lowercased
+          input; salt from env_var CEREBRO_PII_SALT).  Non-reversible without
+          the salt.  Safe to join with pseudonyms of on-chain wallet addresses
+          produced by the same macros/pseudonymize_address.sql macro, which
+          enables cross-sector metrics without exposing raw addresses.
+        data_type: UInt64
+      - name: device_id_hash
+        description: >
+          Keyed pseudonym of $device_id (sipHash64 over a salted + lowercased
+          input; salt from env_var CEREBRO_PII_SALT).  Non-reversible without
+          the salt.
+        data_type: UInt64
+      - name: page_path
+        description: URL path without domain or query params (e.g. "/welcome").
+        data_type: String
+      - name: current_domain
+        description: Domain serving the page (e.g. "app.gnosis.io").
+        data_type: String
+      - name: page_title
+        description: HTML page title.
+        data_type: String
+      - name: referrer_domain
+        description: Referring domain for this event, "direct" if none.
+        data_type: String
+      - name: initial_referrer_domain
+        description: First-touch referring domain for the user session, "direct" if none.
+        data_type: String
+      - name: country_code
+        description: ISO 2-letter country code from Mixpanel geo-IP.
+        data_type: String
+      - name: region
+        description: Region / state from Mixpanel geo-IP.
+        data_type: String
+      - name: browser
+        description: Browser name (e.g. "Chrome", "Mobile Safari").
+        data_type: String
+      - name: browser_version
+        description: Browser version string.
+        data_type: String
+      - name: os
+        description: Operating system (e.g. "Windows", "iOS").
+        data_type: String
+      - name: device_type
+        description: Device type (e.g. "iPhone", "Desktop").
+        data_type: String
+      - name: screen_width
+        description: Screen width in pixels.
+        data_type: UInt16
+      - name: screen_height
+        description: Screen height in pixels.
+        data_type: UInt16
+      - name: lib_version
+        description: Mixpanel JS SDK version.
+        data_type: String
+      - name: mp_lib
+        description: Mixpanel library platform (e.g. "web").
+        data_type: String
+      - name: is_autocapture
+        description: 1 if auto-captured by Mixpanel, 0 if custom event.
+        data_type: UInt8
+      - name: bottom_sheet
+        description: >
+          Modal or bottom-sheet component name.  Populated on Open Modal and
+          Open Bottom Sheet events.  Known values: PasskeyStepsModal,
+          ModalJoin (Circles onboarding), SelectSwapAsset (swap token picker),
+          ModalReceive, ModalSend, CardActivationStepsModal.
+        data_type: String
+      - name: is_identified
+        description: >
+          1 if the user has a wallet-identified session; 0 if anonymous.
+          Wallet-identified sessions have a distinct_id that is a wallet address
+          (set via mixpanel.identify(walletAddress)).  Anonymous sessions use a
+          '$device:uuid' distinct_id injected by the Mixpanel SDK.
+        data_type: UInt8
+      - name: is_production
+        description: >
+          1 if the event originated from app.gnosis.io; 0 for deploy previews
+          (deploy-preview-*.app.gnosis.io), localhost, or
+          kitchen.app.gnosis.io.  Approximately 11% of raw traffic is
+          non-production.  All intermediate models filter to is_production = 1.
+        data_type: UInt8
+      - name: event_category
+        description: >
+          Derived event classification.  Values: pageview, modal, login,
+          feature, navigation, system, action, other.  Classification logic
+          lives in macros/mixpanel_ga_event_category.sql — edit that file
+          to add new event names or categories.
+        data_type: String
+      - name: event_amount
+        description: Custom property 'amount' for Circles/Marketplace events.
+        data_type: String
+      - name: event_sku
+        description: Custom property 'sku' for Marketplace Purchase events.
+        data_type: String
+      - name: event_seller
+        description: Custom property 'seller' for Marketplace Purchase events.
+        data_type: String
+      - name: event_value
+        description: Custom property 'value' for feature events.
+        data_type: String
+      - name: event_asset_id
+        description: Custom property 'assetId' for swap/token events.
+        data_type: String

@@ -23,6 +23,7 @@
         WHERE is_active = 1
     )
     AND tx.block_timestamp >= toDateTime('2025-11-12')
+    AND tx.block_timestamp < today()
     {% if start_month and end_month %}
       AND toStartOfMonth(toDate(tx.block_timestamp)) >= toDate('{{ start_month }}')
       AND toStartOfMonth(toDate(tx.block_timestamp)) <= toDate('{{ end_month }}')

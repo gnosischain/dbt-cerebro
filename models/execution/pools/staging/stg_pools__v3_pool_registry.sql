@@ -50,8 +50,6 @@ all_pools AS (
     SELECT * FROM swapr_v3_created
 ),
 
-{#- Swapr V3 pools can have their tick spacing changed via TickSpacing events.
-    Take the latest tick spacing per pool. -#}
 swapr_v3_tick_spacing AS (
     SELECT
         replaceAll(lower(contract_address), '0x', '') AS pool_address_no0x,
@@ -62,7 +60,6 @@ swapr_v3_tick_spacing AS (
     GROUP BY pool_address_no0x
 ),
 
-{#- Initialize events from pool contracts give the initial price and tick. -#}
 uniswap_v3_init AS (
     SELECT
         replaceAll(lower(contract_address), '0x', '') AS pool_address_no0x,

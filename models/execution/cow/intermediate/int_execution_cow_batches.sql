@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'batches', 'intermediate']
+        tags=['dev', 'execution', 'cow', 'batches', 'intermediate']
     )
 }}
 
@@ -39,6 +39,8 @@ interactions AS (
     {% if start_month and end_month %}
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+    {% elif is_incremental() %}
+    WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
     {% endif %}
     GROUP BY transaction_hash
 ),

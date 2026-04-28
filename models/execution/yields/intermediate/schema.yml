@@ -91,15 +91,39 @@ models:
     data_type: String
 
 - name: int_yields_savings_xdai_rate_daily
-  description: >
+  description: |
     Canonical daily Savings xDAI vault rate for the Gnosis Savings xDAI vault
-    (0xaf204776c7245bF4147c2612BF6e5972Ee483701). Reconstructs end-of-day share
-    price from ERC4626 Deposit + Withdraw events and derives a proper daily rate
-    as `share_price_t / share_price_t_minus_1 - 1` (ratio, not diff). Regime
-    columns (canonical_label, legacy_symbol, backing_asset, yield_source) are
-    joined from the savings_xdai_regimes seed so each date carries the correct
-    pre/post-2025-11-07 metadata (DAI/sDAI before the bridge upgrade,
-    USDS/sUSDS after).
+    (0xaf204776c7245bF4147c2612BF6e5972Ee483701). Reconstructs end-of-day
+    share price from ERC4626 Deposit + Withdraw events on the vault, forward-
+    fills across event-less days, and derives a daily rate that is robust to
+    the vault's lump-sum yield distribution.
+
+    Why not a simple day-over-day ratio: on Gnosis, vault yield is NOT paid
+    continuously per block. The xDAI bridge on Mainnet accrues DSR interest
+    in the sDAI vault there, then periodically (every 1-2 days) calls
+    `relayInterest()` which pushes the accumulated xDAI/WXDAI through the
+    InterestReceiver, which in turn calls `payInterest()` to deposit the
+    batch into the Gnosis Savings xDAI vault, stepping up its `totalAssets()`
+    (and thus share_price) in a single tx. Between relays the share_price
+    observed at Deposit/Withdraw events is effectively flat; on a relay day
+    it jumps. A naive same-day ratio turns the ~7-day launch warmup
+    (single 1.3% jump on 2023-10-05) into a headline "11,000% APY" spike
+    even though the real yield over that period was ~60% annualized.
+
+    Fix: compute daily_rate as the GEOMETRIC SLOPE of share_price over a
+    7-day window:
+
+        daily_rate = (share_price_today / share_price_7d_ago) ** (1/7) - 1
+
+    This naturally spreads a single lump-sum jump across the preceding week,
+    matching the protocol's accrual window. At steady state (no lumpiness)
+    it equals the true per-day rate. fct_yields_savings_xdai_apy_daily
+    annualizes this and layers 7DMA / 30DMA / 7DMM / 30DMM smoothing.
+
+    Regime columns (canonical_label, legacy_symbol, backing_asset,
+    yield_source) are joined from the savings_xdai_regimes seed so each date
+    carries the correct pre/post-2025-11-07 metadata (DAI/sDAI before the
+    bridge upgrade, USDS/sUSDS after, at the same vault address).
   columns:
   - name: date
     data_type: Date
@@ -123,11 +147,13 @@ models:
     data_type: String
 
 - name: int_yields_sdai_rate_daily
-  description: >
-    Legacy compatibility wrapper over int_yields_savings_xdai_rate_daily. Preserves
-    the historical (date, sdai_conversion, rate) shape so downstream consumers
-    (overview snapshot, legacy APY mart, semantic layer) keep working. New work
-    should read the canonical model directly to also get regime columns.
+  description: |
+    Legacy compatibility wrapper over int_yields_savings_xdai_rate_daily.
+    Preserves the historical (date, sdai_conversion, rate) shape so downstream
+    consumers (fct_yields_sdai_apy_daily, overview snapshot, semantic layer)
+    keep working without a ref() churn. New work should read the canonical
+    model directly to also get regime columns (canonical_label, backing_asset,
+    yield_source).
   columns:
   - name: date
     data_type: Date

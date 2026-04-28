@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, pool_address, token_address)',
         unique_key='(date, pool_address, token_address)',
@@ -331,8 +331,6 @@ balances AS (
     {% endif %}
 ),
 
-{#- Resolve ERC4626 wrappers (waGno*) to underlying for decimals and price lookup.
-    Wrapper ≈ 1:1 with underlying. -#}
 enriched AS (
     SELECT
         b.date AS date,
