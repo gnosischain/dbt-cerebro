@@ -204,9 +204,24 @@ then
     IFS=$'\t' read -r batch_id batch_count chain_count batch_selector <<< "${run_batches[$batch_index]}"
     echo "[$(date -u)] dbt-run batch ${batch_id} (${batch_count} model(s), ${chain_count} chain(s)): ${batch_selector}"
 
+    # Microbatch runner is a strict superset of `dbt run`: for plain models in
+    # the selector it issues a single passthrough invocation, and for models
+    # annotated with meta.full_refresh.incremental.enabled it slices the load
+    # into bounded per-day windows that resolve to `incremental_strategy=append`
+    # — eliminating ALTER ... DELETE mutations on the daily path. See
+    # scripts/refresh/dbt_incremental_runner.py.
+    microbatch_extra_args=()
+    if [ -n "${MICROBATCH_BOOTSTRAP_LOOKBACK_DAYS:-}" ]; then
+      microbatch_extra_args+=(--bootstrap-lookback-days "$MICROBATCH_BOOTSTRAP_LOOKBACK_DAYS")
+    fi
+    if [ -n "${MICROBATCH_MAX_END_DATE:-}" ]; then
+      microbatch_extra_args+=(--max-end-date "$MICROBATCH_MAX_END_DATE")
+    fi
     run_step "dbt-run:${batch_id}" \
-      dbt run --select "$batch_selector" \
-      --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+      python "$PROJECT_DIR/scripts/refresh/dbt_incremental_runner.py" \
+        --select "$batch_selector" \
+        --project-dir "$PROJECT_DIR" --profiles-dir "$PROFILES_DIR" \
+        "${microbatch_extra_args[@]}" \
       || true
 
     # Stash per-batch run_results.json before the next batch overwrites it.

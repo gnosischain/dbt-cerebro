@@ -497,6 +497,14 @@ models:
     full_refresh:
       start_date: "2022-04-01"
       batch_months: 3
+      incremental:
+        # Microbatch runner annotation. Daily prod runs slice this model into
+        # 1-day windows and resolve to incremental_strategy=append, avoiding
+        # the per-day ALTER ... DELETE mutation that previously caused
+        # MEMORY_LIMIT_EXCEEDED on the full-window GROUP BY.
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   columns:
   - name: date
     description: Day of the transaction (UTC, derived from block_timestamp).

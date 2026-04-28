@@ -1,18 +1,39 @@
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
+{% set incr_end = var('incremental_end_date', none) %}
 {% set validator_index_start = var('validator_index_start', none) %}
 {% set validator_index_end = var('validator_index_end', none) %}
 
+{#
+  incremental_strategy resolves to `append` when either start_month
+  (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
+  Both paths bound the slice via WHERE clauses below, and
+  ReplacingMergeTree dedups on (date, validator_index). This eliminates
+  ALTER ... DELETE mutations on the daily path.
+#}
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if start_month else 'delete+insert'),
+        incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, validator_index)',
         unique_key='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=["production", "consensus", "validators_income"]
+        pre_hook=[
+            "SET max_bytes_before_external_group_by = 2000000000",
+            "SET max_bytes_before_external_sort = 2000000000",
+            "SET max_memory_usage = 4000000000",
+            "SET join_algorithm = 'grace_hash'",
+            "SET grace_hash_join_initial_buckets = 16"
+        ],
+        post_hook=[
+            "SET max_bytes_before_external_group_by = 0",
+            "SET max_bytes_before_external_sort = 0",
+            "SET max_memory_usage = 0",
+            "SET join_algorithm = 'default'"
+        ],
+        tags=["production", "consensus", "validators_income", "microbatch"]
     )
 }}
 
@@ -305,11 +326,30 @@ daily_raw AS (
 ),
 
 {% if is_incremental() %}
+{#
+  FINAL is enabled ONLY on the microbatch path (incr_end set). On the
+  full_refresh and plain-incremental paths it forces a partition-wide
+  merge-read that scales with the accumulated table size, blowing past the
+  10.8 GiB cluster memory limit (ClickHouse 241) once enough months are
+  populated. On the microbatch path the slice is tiny (one day per range)
+  so FINAL is cheap and protects against duplicate-amplification through
+  the prev_state JOIN.
+#}
+{% set use_final = (incr_end is not none) %}
+
 current_partition AS (
+    -- max(date) is idempotent under RMT dedup, so FINAL is only useful on
+    -- the microbatch path where pathological dupes might already exist.
+    -- Upper-bounded by incremental_end_date when running under the microbatch
+    -- runner so cumulatives picked up from {{ this }} never come from a row
+    -- "ahead" of the current slice.
     SELECT max(toDate(date)) AS max_date
-    FROM {{ this }}
+    FROM {{ this }} {% if use_final %}FINAL{% endif %}
     WHERE 1=1
     {{ range_sql }}
+    {% if incr_end is not none %}
+      AND toDate(date) <= toDate('{{ incr_end }}')
+    {% endif %}
 ),
 
 prev_state AS (
@@ -317,6 +357,11 @@ prev_state AS (
     -- Used to (a) seed balance_prev_gno for the first window-day of each validator and
     -- (b) add to the windowed cumulative sums so lifetime totals stay correct across
     -- incremental runs.
+    -- On the full_refresh path (no incr_end) the table is being rebuilt from
+    -- scratch so duplicates cannot exist; we plain-SELECT to avoid the FINAL
+    -- merge cost. On the microbatch path FINAL guarantees one row per
+    -- validator_index even if RMT hasn't merged yet, preventing JOIN
+    -- amplification.
     SELECT
         t1.validator_index AS validator_index
         ,t1.balance_gno AS balance_prev_from_this
@@ -325,7 +370,7 @@ prev_state AS (
         ,t1.cumulative_withdrawals_gno AS prev_cumulative_withdrawals_gno
         ,t1.cumulative_consolidation_inflow_gno AS prev_cumulative_consolidation_inflow_gno
         ,t1.cumulative_consolidation_outflow_gno AS prev_cumulative_consolidation_outflow_gno
-    FROM {{ this }} t1
+    FROM {{ this }} AS t1 {% if use_final %}FINAL{% endif %}
     CROSS JOIN current_partition cp
     WHERE toDate(t1.date) = cp.max_date
     {{ range_sql }}

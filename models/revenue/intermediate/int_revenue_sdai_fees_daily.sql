@@ -12,7 +12,7 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, symbol, user)',
     settings={'allow_nullable_key': 1},
-    tags=['production','revenue','revenue_sdai']
+    tags=['production','revenue','revenue_sdai','refill_append']
   )
 }}
 

@@ -1,13 +1,13 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
     engine='ReplacingMergeTree()',
     order_by='(date, protocol, reserve_address, cohort_unit, balance_bucket)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, protocol, reserve_address, cohort_unit, balance_bucket)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','lending','aave','spark','balance_cohorts_daily']
+    tags=['production','execution','lending','aave','spark','balance_cohorts_daily','refill_append']
   )
 }}
 

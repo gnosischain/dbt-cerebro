@@ -490,3 +490,31 @@ dbt ls --select tag:your_tag --resource-type model
 1. Check the specific error in dbt output
 2. Fix the underlying issue
 3. Resume: `python refresh.py --select <selector> --resume`
+
+### Transient cluster errors (CH 241 / OvercommitTracker / network timeouts)
+
+The orchestrator auto-retries any batch whose error message contains one of:
+`Code: 241`, `Code: 159`, `Code: 209`, `Code: 210`, `MEMORY_LIMIT_EXCEEDED`, `OvercommitTracker`, `TIMEOUT_EXCEEDED`, or `NETWORK_ERROR`.
+
+**Backoff schedule** (per failed batch): 30 s → 60 s → 120 s → 240 s → 480 s, up to 5 retries. If all retries fail, the orchestrator saves state and exits non-zero — re-run with `--resume` once the underlying pressure clears.
+
+This is why the script captures dbt output (`run_dbt_command(cmd, capture=True)`) instead of streaming it: the captured `e.stderr` is what the transient classifier inspects. Live progress is preserved by tee-ing the captured output back to stdout per batch.
+
+If you need live, byte-streamed output for debugging, run dbt directly:
+
+```bash
+dbt run --select <model> --vars '{"start_month":"2024-01-01","end_month":"2024-01-01", ...}' --full-refresh
+```
+
+That bypasses both the orchestration and the retry, so use it only for one-off triage.
+
+### Daily catch-up — use the microbatch runner instead
+
+`refresh.py` is intended for **multi-month historical backfill**. For daily-cadence catch-up, use [`scripts/refresh/dbt_incremental_runner.py`](../refresh/dbt_incremental_runner.py) — it slices into per-day windows and avoids the `delete+insert` mutation entirely. See [`scripts/refresh/README.md`](../refresh/README.md) for the full reference.
+
+The orchestration boundary between the two:
+
+- **Microbatch runner** — daily increments, ≤ 30 days catch-up by default. Refuses larger gaps with a pointer to `refresh.py`.
+- **`refresh.py`** — anything bigger. Drops or appends in monthly batches per stage.
+
+After a `refresh.py` run completes, the microbatch runner's daily cron picks up automatically.

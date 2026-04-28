@@ -1,13 +1,25 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
     engine='ReplacingMergeTree()',
     order_by='(date, token_address)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','tokens','supply_holders_daily']
+    pre_hook=[
+      "SET max_memory_usage = 8000000000",
+      "SET max_bytes_before_external_group_by = 2000000000",
+      "SET max_bytes_before_external_sort = 2000000000",
+      "SET join_algorithm = 'grace_hash'"
+    ],
+    post_hook=[
+      "SET max_memory_usage = 0",
+      "SET max_bytes_before_external_group_by = 0",
+      "SET max_bytes_before_external_sort = 0",
+      "SET join_algorithm = 'default'"
+    ],
+    tags=['production','execution','tokens','supply_holders_daily','refill_append']
   )
 }}
 

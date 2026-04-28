@@ -21,6 +21,6 @@ SELECT
     ,SUM(amount) AS amount
     ,SUM(amount_usd) AS amount_usd
     ,COUNT() AS activity_count
-FROM {{ ref('int_execution_gpay_activity') }} 
+FROM {{ ref('int_execution_gpay_activity') }}
 {{ apply_monthly_incremental_filter('date', 'date', false) }}
 GROUP BY date, wallet_address, action, direction, symbol

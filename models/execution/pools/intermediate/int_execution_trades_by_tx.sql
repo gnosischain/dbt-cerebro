@@ -1,13 +1,20 @@
+{#
+  incremental_strategy resolves to `append` when either start_month
+  (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
+  Both bound the slice via WHERE clauses; ReplacingMergeTree dedups on
+  (block_timestamp, transaction_hash). Eliminates ALTER ... DELETE mutations
+  on the daily path.
+#}
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash)',
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'pools', 'trades', 'intermediate']
+        tags=['dev', 'execution', 'pools', 'trades', 'intermediate', 'microbatch']
     )
 }}
 

@@ -2,9 +2,194 @@
 
 This folder contains helpers for running large dbt refreshes in ways that are easier on ClickHouse while still letting dbt's graph stay the source of truth.
 
+For an operator-level overview of the three execution modes (microbatch runner, full-refresh orchestrator, plain `dbt run`), see the [Running Models](../../README.md#running-models) section in the top-level README. The full-refresh orchestrator lives in [`scripts/full_refresh/`](../full_refresh/) with its own [README](../full_refresh/README.md).
+
 ## Files
 
-- `dbt_run_batches.py`: splits a normal incremental `dbt run --select ...` into ordered batches measured in lineage chains
+- `dbt_incremental_runner.py`: the **microbatch runner** — drop-in replacement for `dbt run --select ...` that slices annotated incremental models into per-day windows and preserves plain-passthrough behaviour for everything else
+- `dbt_run_batches.py`: splits a normal `dbt run --select ...` into ordered lineage-chain batches; used by `run_dbt_observability.sh` to emit per-batch selectors that the microbatch runner consumes
+- `classify_failed_nodes.py`: post-batch classifier that reads `target/failed_batches/*.json` and partitions failed nodes into transient (CH 241/159/209/210, MEMORY_LIMIT_EXCEEDED) vs permanent buckets so the orchestrator can retry only what's worth retrying
+
+---
+
+# `dbt_incremental_runner.py` — microbatch runner
+
+The microbatch runner is the daily-cadence runner. `run_dbt_observability.sh` invokes it for every per-batch step. **Always prefer this over plain `dbt run` for any selector that includes incremental models.**
+
+## What it does, in two lines
+
+For a selector containing both ordinary models and microbatch-annotated models:
+
+1. Walk the topo-sorted selector. Group consecutive plain models into a buffer; flush the buffer (one passthrough `dbt run`) at every microbatch boundary so dependencies between plain and microbatch models execute in the right order.
+2. For each microbatch model, slice the catch-up window into per-day `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'` invocations. The model's strategy expression resolves to `incremental_strategy=append`, eliminating the `ALTER … DELETE` mutation that delete+insert would issue.
+
+Per-day slicing has three big payoffs: (a) no mutations on the daily path → no CH 341 OOM under shared-cluster pressure, (b) bounded per-query memory → multi-GB JOINs and window functions stay in their lane, (c) atomic per-day state → an interrupted run resumes at the last successful slice.
+
+## Quick reference
+
+```bash
+# Drop-in for `dbt run --select tag:production`
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production \
+  --project-dir /app --profiles-dir /app
+
+# Plan-only
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production --dry-run \
+  --project-dir /app --profiles-dir /app
+
+# Catch up one model with a fixed end date
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select int_consensus_validators_income_daily \
+  --max-end-date 2026-04-25 \
+  --project-dir /app --profiles-dir /app
+
+# Restrict to specific stages
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select int_consensus_validators_income_daily \
+  --stage validators_0_100k --stage validators_100k_200k \
+  --project-dir /app --profiles-dir /app
+
+# Resume after an interruption
+python /app/scripts/refresh/dbt_incremental_runner.py \
+  --select tag:production --resume \
+  --project-dir /app --profiles-dir /app
+```
+
+Full flag reference: `--help`.
+
+## Annotating a model as microbatch
+
+In the model's `schema.yml`, add an `incremental:` block under the existing `meta.full_refresh` (no new top-level meta key):
+
+```yaml
+- name: int_consensus_validators_income_daily
+  meta:
+    full_refresh:
+      start_date: "2021-12-01"          # used by full_refresh.py
+      batch_months: 1                   # used by full_refresh.py
+      stages:                           # used by both — non-time slicing
+        - name: validators_0_100k
+          start_date: "2021-12-01"
+          vars:
+            validator_index_start: 0
+            validator_index_end: 100000
+        - name: validators_100k_200k
+          start_date: "2022-06-01"
+          vars:
+            validator_index_start: 100000
+            validator_index_end: 200000
+        # ...
+      incremental:                      # ← microbatch annotation
+        enabled: true
+        date_column: date               # column the runner reads max() from
+        batch_days: 1                   # window per slice; 1 = daily catch-up
+```
+
+In the model's SQL:
+
+```sql
+{% set start_month = var('start_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
+
+{{ config(
+    materialized='incremental',
+    incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+    engine='ReplacingMergeTree()',
+    unique_key='(date, validator_index)',
+    partition_by='toStartOfMonth(date)',
+    -- ...
+    tags=[..., 'microbatch']
+) }}
+
+-- Source filter: existing `apply_monthly_incremental_filter()` macro automatically
+-- picks up `incremental_end_date` and emits a strict no-overlap upper bound when
+-- it is set. No SQL change needed if the model already uses that macro.
+```
+
+## Auto-extending stages (`range_template`)
+
+For models whose stages cover an open-ended dimension (validator index, token id, chain id, …), declare a **template** rather than enumerating every bucket. The runner extends `stages` at runtime by querying the upstream:
+
+```yaml
+meta:
+  full_refresh:
+    stages: [...]                       # human-curated buckets
+    range_template:                     # ← rule for synthesizing new buckets
+      key_column: validator_index
+      step: 100000
+      discovery_source: int_consensus_validators_snapshots_daily
+      auto_start_policy: first_seen     # or "today" or a fixed YYYY-MM-DD
+      name_template: "validators_{start_k}k_{end_k}k_auto"
+    incremental:
+      enabled: true
+      date_column: date
+      batch_days: 1
+```
+
+When `max(validator_index)` upstream exceeds the largest declared `validator_index_end`, the runner appends `validators_{N}k_{N+100}k_auto` stages with `start_date` derived per `auto_start_policy`:
+
+- `first_seen` — query upstream for the first date the new bucket appeared (cheapest historical anchor).
+- `today` — start tracking from the current run.
+- `YYYY-MM-DD` — literal anchor.
+
+Three template kinds are supported:
+
+| Kind | Trigger | Example use |
+|---|---|---|
+| Integer range | `step:` set | Validator-index buckets, token-id ranges, block-number windows |
+| Enum | `enum_source:` set | One stage per chain id, per token symbol, per project label |
+| Composite | `range_template:` is a list of templates | Cartesian product (e.g. chain × token bucket) |
+
+Synthesized stages flow through the same `--max-slices-per-stage` cap as declared ones, so a far-past `first_seen` cannot trigger a runaway backfill.
+
+## Safety guarantees
+
+| Guarantee | Mechanism |
+|---|---|
+| Daily path issues no `ALTER … DELETE` mutations | Three-branch strategy expression resolves to `append` whenever `incremental_end_date` is set |
+| No duplicate rows produced by the runner | Macro's no-overlap branch: strict `> max(date)` lower bound, `<= incremental_end_date` upper bound |
+| Multi-month gaps are refused, not silently chewed | `--max-slices-per-stage` cap with a clear error pointing at `full_refresh.py` |
+| Plain models that depend on a microbatch model see it built first | Topo-interleaved buffer-flush in `main()` |
+| Plain models that a microbatch model depends on are built first | Same — flush happens at every microbatch boundary |
+| Empty target tables don't try to backfill from `meta.start_date` | Bootstrap uses `today − --bootstrap-lookback-days` (default 7) |
+| Failed plain passthrough propagates to runner exit code | Each flush adds to a shared `failures` list |
+| Concurrent / repeated failures don't clobber each other in `failed_batches/` | Each stash filename includes `<invocation_id>-<flush_counter>` |
+| Self-heal poisoned mutations from previous crashes | `dbt run-operation kill_failed_mutations` invoked on startup unless `--no-kill-failed-mutations` |
+
+## State and resume
+
+`target/incremental_microbatch_state.json`:
+
+```json
+{
+  "completed": {
+    "int_consensus_validators_income_daily::validators_0_100k": {
+      "last_completed_end_date": "2026-04-27"
+    },
+    "int_consensus_validators_income_daily::validators_100k_200k": {
+      "last_completed_end_date": "2026-04-27"
+    }
+  }
+}
+```
+
+Each `(model, stage)` pair tracks its last successfully-completed slice end date. `--resume` reads this and skips slices whose end date is `<= last_completed_end_date`. The file is rewritten atomically (write to `.tmp`, rename) so an interrupted run never sees a corrupted state.
+
+## Failure stashing & classification
+
+When any plain flush or microbatch slice fails, the runner copies the active `target/run_results.json` to `target/failed_batches/microbatch-<model>-<stage>-<end_date>-<invocation_id>.json` (microbatch slices) or `microbatch-_plain-_passthrough_<flush_n>-<today>-<invocation_id>.json` (plain flushes).
+
+The cron orchestrator runs `classify_failed_nodes.py` against this directory and partitions failed unique_ids into:
+
+- **TRANSIENT** — CH codes 241/159/209/210 or text `MEMORY_LIMIT_EXCEEDED`. Retried with `--threads 1` after the rest of the batch graph completes.
+- **PERMANENT** — everything else. Surfaced in the cron summary; needs a human.
+
+This is why the orchestrator's `dbt-run:<batch_id>` step always uses `|| true` in the wrapper — failures are routed to the classifier rather than killing the whole pipeline.
+
+---
+
+# `dbt_run_batches.py` — lineage-chain batch planner
 
 ## Why This Exists
 

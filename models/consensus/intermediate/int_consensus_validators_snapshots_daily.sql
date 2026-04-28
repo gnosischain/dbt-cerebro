@@ -1,17 +1,25 @@
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
+{% set incr_end = var('incremental_end_date', none) %}
 {% set validator_index_start = var('validator_index_start', none) %}
 {% set validator_index_end = var('validator_index_end', none) %}
 
+{#
+  incremental_strategy resolves to `append` when either start_month
+  (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
+  Both paths bound the slice via WHERE clauses below; ReplacingMergeTree
+  dedups on (date, validator_index). This eliminates the ALTER ... DELETE
+  mutation that produced ClickHouse code 341 / OOM at 451M rows.
+#}
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if start_month else 'delete+insert'),
+        incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date, validator_index)',
         unique_key='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
-        tags=["production", "consensus", "validators_snapshots"]
+        tags=["production", "consensus", "validators_snapshots", "microbatch"]
     )
 }}
 

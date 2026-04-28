@@ -1066,3 +1066,58 @@ models:
       start_date: '2025-04-01'
       batch_months: 1
   tests: *id001
+- name: int_execution_circles_v2_tokens_supply_daily
+  description: >
+    Per-token Circles v2 daily supply derived from the zero-address balance
+    in `int_execution_circles_v2_balances_daily`. Built as an incremental
+    `int_` model so daily prod runs append a small slice rather than fully
+    rebuilding the historical mart. The legacy mart name is preserved as a
+    compatibility view (`fct_execution_circles_v2_tokens_supply_daily`).
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Address of the Circles v2 token contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: supply_raw
+    description: Raw supply in token base units (negated zero-address balance).
+    data_type: Int256
+  - name: supply
+    description: Supply in CRC (raw / 1e18).
+    data_type: Float64
+  - name: demurraged_supply
+    description: Demurrage-adjusted supply in CRC.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-08-01"
+      batch_months: 1
+      incremental:
+        # Microbatch runner annotation. Daily prod runs slice this model and
+        # resolve to incremental_strategy=append, replacing the previous
+        # full-table rebuild with a small per-day INSERT.
+        enabled: true
+        date_column: date
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_circles_v2_tokens_supply_no_negative
+      expression: "supply >= 0"
+      config:
+        severity: warn
+        where: "date >= today() - 7"

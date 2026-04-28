@@ -1,0 +1,429 @@
+version: 2
+
+models:
+  - name: int_mixpanel_ga_events_daily
+    description: >
+      Daily event counts by event_name and event_category for Gnosis App
+      (app.gnosis.io) production traffic only.  Tracks total events, unique
+      users, unique devices, and autocapture ratio per event type per day.
+
+      event_category groups events into: pageview (automatic $mp_web_page_view),
+      modal (Open Modal / Open Bottom Sheet), login (Login with Passkey),
+      feature (Success - Circles mint, Marketplace Purchase, QR Scanner events),
+      navigation (back/Back/Close ariaLabel clicks), system ($ prefix events),
+      action (other autocaptured interactions), other.
+
+      Deploy previews, localhost, and kitchen.app.gnosis.io are excluded.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: event_name
+        description: Mixpanel event name (e.g. $mp_web_page_view, Login with Passkey, Swap).
+        data_type: String
+      - name: event_category
+        description: >
+          Derived category for the event name. One of: pageview, modal, login,
+          feature, navigation, system, action, other.
+          Defined in macros/mixpanel_ga_event_category.sql.
+        data_type: String
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count.
+        data_type: UInt64
+      - name: autocapture_ratio
+        description: Fraction of events that are autocaptured (0.0-1.0).
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+      - elementary.volume_anomalies:
+          timestamp_column: date
+          sensitivity: 3
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_users_daily
+    description: >
+      Per-user daily activity summary for Gnosis App (app.gnosis.io) production
+      traffic.  One row per (date, user_id_hash).  Enables exact DAU computation,
+      new-user detection, and wallet identification rate tracking.
+
+      is_identified=1 means the user connected a wallet address in that session
+      (distinct_id does NOT start with '$device:').  Anonymous users browse via
+      injected device IDs.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: user_id_hash
+        description: Privacy-safe sipHash64 of Mixpanel distinct_id.
+        data_type: UInt64
+      - name: event_count
+        description: Events fired by this user on this date.
+        data_type: UInt64
+      - name: distinct_event_types
+        description: Distinct event names for this user on this date.
+        data_type: UInt64
+      - name: distinct_pages
+        description: Distinct page paths visited by this user on this date.
+        data_type: UInt64
+      - name: first_event_time
+        description: Earliest event timestamp on this date for this user.
+        data_type: DateTime
+      - name: last_event_time
+        description: Latest event timestamp on this date for this user.
+        data_type: DateTime
+      - name: is_identified
+        description: >
+          1 if the user had at least one event with a wallet-identified session
+          (distinct_id does not start with '$device:'); 0 if fully anonymous.
+        data_type: UInt8
+      - name: unique_devices
+        description: Distinct device_id_hash count for this user on this date.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_traffic_daily
+    description: >
+      Daily event counts by referring domain.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: referrer_domain
+        description: Referring domain ("direct" if none).
+        data_type: String
+      - name: initial_referrer_domain
+        description: The first-ever referring domain for events in this daily grain.
+        data_type: String
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_pages_daily
+    description: >
+      Daily event counts by page path and domain.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: current_domain
+        description: Domain serving the page.
+        data_type: String
+      - name: page_path
+        description: URL path (no query params).
+        data_type: String
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_geo_daily
+    description: >
+      Daily event counts by country and region.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: country_code
+        description: ISO 2-letter country code.
+        data_type: String
+      - name: region
+        description: Region / state.
+        data_type: String
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_tech_daily
+    description: >
+      Daily event counts by browser, OS, and device type.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: browser
+        description: Browser name.
+        data_type: String
+      - name: os
+        description: Operating system.
+        data_type: String
+      - name: device_type
+        description: Device type.
+        data_type: String
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+      - elementary.volume_anomalies:
+          timestamp_column: date
+          sensitivity: 3
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_usage_patterns_daily
+    description: >
+      Daily event counts by hour of day and day of week (UTC).
+      Enables temporal usage-pattern analysis.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: hour_of_day
+        description: Hour of day (0-23 UTC).
+        data_type: UInt8
+      - name: day_of_week
+        description: ISO day of week (1=Mon, 7=Sun).
+        data_type: UInt8
+      - name: event_count
+        description: Number of events.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_modals_daily
+    description: >
+      Daily open counts for each modal/bottom-sheet component in Gnosis App.
+      Sourced from events where event_category = 'modal' (Open Modal or
+      Open Bottom Sheet) with a non-empty bottom_sheet property.
+
+      Known bottom_sheet values: PasskeyStepsModal (passkey onboarding steps),
+      ModalJoin (join Circles), SelectSwapAsset (swap token picker),
+      ModalReceive (receive funds QR), ModalSend (send funds flow),
+      CardActivationStepsModal (Gnosis Pay card activation).
+
+      Production-only (app.gnosis.io).
+    meta:
+      owner: analytics_team
+      authoritative: false
+      full_refresh:
+        start_date: "2025-10-01"
+        batch_months: 1
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+        tests:
+          - not_null:
+              config:
+                where: >
+                  {% if var('test_full_refresh', false) %}1=1
+                  {% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}
+      - name: bottom_sheet
+        description: Modal or bottom-sheet component name from the Gnosis App front-end.
+        data_type: String
+      - name: open_count
+        description: Number of times this modal was opened on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count that opened this modal.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count that opened this modal.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: int_mixpanel_ga_user_lifecycle
+    description: |
+      All-time per-user lifecycle metrics for Gnosis App (app.gnosis.io)
+      production traffic. One row per user_id_hash. Full rebuild on every
+      run (materialized=table); lifetime aggregates cannot be computed
+      incrementally without reading all history anyway.
+
+      Captures: identification status (wallet vs anonymous), active
+      lifespan, feature engagement (passkey logins, Circles mints,
+      marketplace purchases, swap actions), and event category breakdowns.
+
+      is_identified=1 means the user connected a wallet at least once
+      (Mixpanel distinct_id is a wallet address, not a $device:uuid).
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: user_id_hash
+        description: Privacy-safe sipHash64 of Mixpanel distinct_id.
+        data_type: UInt64
+      - name: is_identified
+        description: 1 if user ever connected a wallet (distinct_id not starting with '$device:').
+        data_type: UInt8
+      - name: first_seen_date
+        description: Date of the user's first recorded event.
+        data_type: Date
+      - name: last_seen_date
+        description: Date of the user's most recent recorded event.
+        data_type: Date
+      - name: lifespan_days
+        description: Days between first_seen_date and last_seen_date.
+        data_type: UInt32
+      - name: days_active
+        description: Distinct days with at least one event.
+        data_type: UInt64
+      - name: total_events
+        description: Total event count across all time.
+        data_type: UInt64
+      - name: distinct_event_types
+        description: Number of distinct event names ever triggered.
+        data_type: UInt64
+      - name: distinct_pages_visited
+        description: Number of distinct page paths ever visited.
+        data_type: UInt64
+      - name: passkey_login_count
+        description: Number of Login with Passkey events.
+        data_type: UInt64
+      - name: circles_mint_count
+        description: Number of Success - Circles mint events.
+        data_type: UInt64
+      - name: marketplace_purchase_count
+        description: Number of Marketplace Purchase events.
+        data_type: UInt64
+      - name: modal_open_count
+        description: Number of modal open events (Open Modal or Open Bottom Sheet).
+        data_type: UInt64
+      - name: swap_action_count
+        description: Number of autocaptured Swap button clicks.
+        data_type: UInt64
+      - name: pageview_count
+        description: Number of $mp_web_page_view events.
+        data_type: UInt64
+      - name: action_count
+        description: Number of autocaptured action events.
+        data_type: UInt64
+      - name: feature_count
+        description: Number of explicit feature events (Circles, Marketplace, QR).
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]

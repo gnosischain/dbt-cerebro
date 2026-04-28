@@ -1,13 +1,13 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
     engine='ReplacingMergeTree()',
     order_by='(date, token_address, sector, token_class)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, sector, token_class)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','tokens','balances_by_sector_daily']
+    tags=['production','execution','tokens','balances_by_sector_daily','refill_append']
   )
 }}
 

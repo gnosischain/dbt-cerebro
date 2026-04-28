@@ -1122,6 +1122,14 @@ models:
         vars:
           validator_index_start: 500000
           validator_index_end: 600000
+      incremental:
+        # Microbatch runner annotation. Largest table in the project (~450M
+        # rows). Daily delete+insert with monthly partition was OOM-ing on
+        # the mutation step (CH code 341). Microbatch slices into per-day
+        # appends, avoiding the mutation entirely.
+        enabled: true
+        date_column: date
+        batch_days: 1
   columns:
   - name: date
     description: Start-of-day UTC timestamp for the snapshot.
@@ -1638,6 +1646,13 @@ models:
         vars:
           validator_index_start: 500000
           validator_index_end: 600000
+      incremental:
+        # Microbatch runner annotation. When daily prod runs hit this model
+        # the runner injects `incremental_end_date` per stage+slice; the model
+        # then resolves to incremental_strategy=append (no ALTER ... DELETE).
+        enabled: true
+        date_column: date
+        batch_days: 1
   columns:
   - name: date
     data_type: DateTime64

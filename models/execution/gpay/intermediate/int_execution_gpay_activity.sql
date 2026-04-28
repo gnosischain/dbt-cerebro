@@ -1,13 +1,13 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
     engine='ReplacingMergeTree()',
     order_by='(wallet_address, block_timestamp, transaction_hash, token_address, counterparty, direction)',
     partition_by='toStartOfMonth(toDate(block_timestamp))',
     unique_key='(wallet_address, block_timestamp, transaction_hash, token_address, counterparty, direction)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','gpay','activity']
+    tags=['production','execution','gpay','activity','refill_append']
   )
 }}
 

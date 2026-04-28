@@ -7,7 +7,7 @@
         unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate'],
+        tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate', 'refill_append'],
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"]
     )
