@@ -91,4 +91,5 @@ LEFT JOIN new_weekly nw         ON nw.week = cal.week
 LEFT JOIN active_weekly aw      ON aw.week = cal.week
 LEFT JOIN returning_weekly rw   ON rw.week = cal.week
 LEFT JOIN reactivated_weekly rxw ON rxw.week = cal.week
+WHERE cal.week < toStartOfWeek(today(), 1)
 ORDER BY cal.week

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_consensus_validators_income_total_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_consensus_validators_income_total_daily</h1>
+    <p>Network-wide daily consensus income in GNO, summed across every validator (including
+exited / zero-balance). Derived from int_consensus_validators_income_daily, which
+spec-bounds income per-validator (see the block comment at the top of that model
+for the beacon reward-cap derivation), so no aggregate-level outlier filter is
+required — the input is already clean.
+
+Materialized as a physical table (not a view) so the dashboard API returns in
+milliseconds: the source fact has 200M+ rows and running SUM GROUP BY on every
+request would 30s-timeout Vercel functions. Rebuild cost is trivial (~1568 output
+rows) and hooks into the dbt DAG so each upstream rebuild refreshes this table too.
+</p>
+    <p><strong>Module:</strong> consensus</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/consensus/marts/fct_consensus_validators_income_total_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>fct:validators_income</span> <span class='pill'>granularity:daily</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>anomaly_flag</code></td><td>UInt8</td><td>1 when abs(income_gno) &gt; 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) &gt; 500 GNO.
+Advisory only — raw income_gno remains visible. Surfaced in the dashboard tooltip.
+</td></tr><tr><td><code>date</code></td><td>DateTime64</td><td></td></tr><tr><td><code>income_gno</code></td><td>Float64</td><td>Sum of consensus_income_amount_gno across all validators on the date.</td></tr><tr><td><code>income_gno_rolling_30d_median</code></td><td>Float64</td><td>30-day trailing median of income_gno.</td></tr><tr><td><code>income_gno_rolling_7d_median</code></td><td>Float64</td><td>7-day trailing median of income_gno. Advisory overlay for the dashboard chart.</td></tr><tr><td><code>validators_snapshot_count</code></td><td>UInt64</td><td>Count of validators snapshotted on the date from int_consensus_validators_snapshots_daily.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_consensus_validators_income_daily</code></li><li><code>int_consensus_validators_snapshots_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_consensus_validators_income_total_daily</code></li></ul>
+    
+  </body>
+</html>

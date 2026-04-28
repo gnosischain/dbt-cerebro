@@ -37,12 +37,18 @@ first_fee AS (
     FROM fee_events
     WHERE fee_ppm IS NOT NULL
     GROUP BY pool_address_no0x
-),daily_deltas AS (
+),
+
+daily_deltas AS (
     SELECT
         date,
         pool_address,
         token_address,
-        sum(delta_amount_raw) AS daily_delta_raw,
+        sum(multiIf(
+            delta_category = 'liquidity' AND delta_amount_raw < toInt256(0),
+                toInt256(0),
+            delta_amount_raw
+        )) AS daily_delta_raw,
         sum(multiIf(
             delta_category = 'swap_in',
                 delta_amount_raw - intDiv(delta_amount_raw * toInt256(effective_fee_ppm), toInt256(1000000)),
@@ -92,22 +98,28 @@ first_fee AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(e.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_pools_swapr_v3_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(e.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(e.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_pools_swapr_v3_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(e.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_pools_swapr_v3_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_pools_swapr_v3_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
               

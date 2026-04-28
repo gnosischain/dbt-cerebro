@@ -30,6 +30,20 @@ Safes. Includes the events Gnosis Pay actually mutates:
 decode_logs returns decoded_params as a Map(String, String). Array
 params are stored as JSON array strings (toJSONString of the decoded
 array). ClickHouse JSONExtract* functions are 1-indexed.
+
+ClickHouse alias-shadowing gotcha: SELECT aliases shadow source columns
+in WHERE clauses, so writing `SELECT &#x27;X&#x27; AS event_name FROM decoded WHERE
+event_name = &#x27;X&#x27;` evaluates the WHERE against the alias literal (always
+TRUE). Combined with UNION ALL + ReplacingMergeTree, this would silently
+relabel every row with the last-unioned CTE&#x27;s literal event_name and drop
+AssignRoles entirely. The AssignRoles, SetAllowance and ConsumeAllowance
+CTEs all wrap their FROM in a pre-filter subquery (`FROM (SELECT * FROM
+decoded WHERE event_name = &#x27;X&#x27;) d`) so the WHERE runs in a scope where
+nothing shadows event_name. The pre-filter subquery is also required for
+AssignRoles&#x27; ARRAY JOIN — ClickHouse evaluates the range() expression
+before the outer WHERE, so without the subquery non-AssignRoles rows
+reach the ARRAY JOIN with NULL roleKeys and `range(1, JSONLength(NULL)+1)`
+fails with `Illegal (null) value`.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
@@ -41,7 +55,7 @@ array). ClickHouse JSONExtract* functions are 1-indexed.
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>contracts_gpay_modules_registry</code></li><li><code>logs</code></li></ul>
-    <h2>Downstream</h2><ul><li><code>int_execution_gpay_allowances_current</code></li><li><code>int_execution_gpay_spender_delegates_current</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_mixpanel_ga_gpay_crossdomain_daily</code></li><li><code>int_execution_gpay_allowances_current</code></li><li><code>int_execution_gpay_spender_delegates_current</code></li></ul>
     
   </body>
 </html>

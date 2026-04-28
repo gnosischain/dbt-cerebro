@@ -8,6 +8,9 @@
 
 
 
+
+
+
 WITH balances AS (
     SELECT
         date,
@@ -24,12 +27,17 @@ WITH balances AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(date)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
-      FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
-      WHERE 1=1 
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+        WHERE 1=1 
   
   
 
@@ -74,15 +82,15 @@ WITH balances AS (
   
 
 
-    )
-    AND toDate(date) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -2)
-        
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
-      WHERE 1=1 
+        FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+        WHERE 1=1 
   
   
 
@@ -127,7 +135,8 @@ WITH balances AS (
   
 
 
-    )
+      )
+    
   
 
       
@@ -188,12 +197,17 @@ prices AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(date)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
-      FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
-      WHERE 1=1 
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
+        WHERE 1=1 
   
   
 
@@ -238,15 +252,15 @@ prices AS (
   
 
 
-    )
-    AND toDate(date) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -2)
-        
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
-      WHERE 1=1 
+        FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
+        WHERE 1=1 
   
   
 
@@ -291,7 +305,8 @@ prices AS (
   
 
 
-    )
+      )
+    
   
 
       

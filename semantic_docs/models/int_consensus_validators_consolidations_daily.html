@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_consensus_validators_consolidations_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_consensus_validators_consolidations_daily</h1>
+    <p>EIP-7251 (MaxEB) consolidation events at per-(date, validator_index, role) grain. See
+https://notes.ethereum.org/@fradamt/maxeb-consolidation for the spec. Materialized as a
+table because consolidations are rare and the application day can lag the request by
+weeks, breaking monthly-partitioned incremental assumptions.
+
+Two flavours emitted:
+  * Self-consolidation (source_pubkey == target_pubkey): a credential switch
+    0x01 -&gt; 0x02 with no balance transfer. Emitted on the request day with
+    role=&#x27;self&#x27;, transferred_amount_gno = 0.
+  * Cross-consolidation (source != target): processed at the source&#x27;s withdrawable
+    epoch — the source&#x27;s full effective balance transfers to the target and the
+    source exits. Emitted on the inferred APPLICATION day for both source
+    (role=&#x27;source&#x27;) and target (role=&#x27;target&#x27;); if application has not yet occurred
+    no row is emitted (a later run will pick it up).
+
+Application day is inferred as the first day at/after the request where the source
+validator&#x27;s effective_balance_gwei first reaches 0. transferred_amount_gno is taken
+as the source&#x27;s last non-zero effective balance, observed regardless of whether that
+day is before or after the request day — Gnosis&#x27;s high churn limit means a
+consolidation can apply in the same slot as the request, leaving no post-request
+eb&gt;0 row to capture.
+
+Pubkey -&gt; validator_index resolution reads fct_consensus_validators_status_latest
+(not int_consensus_validators_labels) so exited source validators — by definition
+every successful consolidation source — remain resolvable. JOINs are pre-filtered
+to only the pubkeys appearing in the current batch&#x27;s requests, and the source
+snapshot lookup is bounded to a tight window (-7d/+30d around request_date) so
+the build doesn&#x27;t OOM on busy months.
+
+v4 (2026-04): final aggregation grain matches the ReplacingMergeTree unique_key
+(date, validator_index, role). When N sources consolidate into the same target
+on the same application day the per-counterparty fidelity is collapsed — the
+target row carries transferred_amount_gno = SUM(incoming), cnt = N, and
+counterparty_validator_index = any() representative. Before this fix, emitting
+one row per (date, validator_index, role, counterparty) made all but one of the
+N target rows get silently dropped by ReplacingMergeTree dedup, under-crediting
+the target by (N-1)*32 GNO and corrupting per-validator income in
+int_consensus_validators_income_daily. Mass-balance invariant
+SUMIf(transferred_amount_gno, role=&#x27;source&#x27;) = SUMIf(transferred_amount_gno, role=&#x27;target&#x27;)
+per date is enforced by tests/consensus_consolidations_mass_balance.sql.
+
+v5 (2026-04): transferred_amount_gno is the source&#x27;s last-observed REAL balance
+(balance_gwei / 1e9), not its effective balance. Effective balance is a 32-GNO-step
+function that over-reports the actual mass moved when a source has accrued inactivity
+penalties; using real balance makes the target&#x27;s consolidation_inflow_gno match the
+target&#x27;s actual balance delta, eliminating the ~10-120 GNO per-target &quot;loss&quot; days
+seen under v4 on heavy-consolidation events. After this change, the target&#x27;s
+consensus_income_amount_gno on the application day is ~0 (pure reward) rather than
+slightly negative. The sweep still uses effective_balance_gwei=0 as the
+application-day indicator.
+</p>
+    <p><strong>Module:</strong> consensus</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/consensus/intermediate/int_consensus_validators_consolidations_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>validators_consolidations</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>cnt</code></td><td>UInt64</td><td></td></tr><tr><td><code>counterparty_validator_index</code></td><td>Nullable(UInt64)</td><td>NULL for self; target index for source rows; source index for target rows.</td></tr><tr><td><code>date</code></td><td>DateTime64</td><td>Application date (request date for &#x27;self&#x27;; inferred application day for &#x27;source&#x27;/&#x27;target&#x27;).</td></tr><tr><td><code>role</code></td><td>String</td><td>One of &#x27;self&#x27;, &#x27;source&#x27;, &#x27;target&#x27;.</td></tr><tr><td><code>transferred_amount_gno</code></td><td>Float64</td><td>0 for self rows; positive for source/target rows.</td></tr><tr><td><code>validator_index</code></td><td>UInt64</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_consensus_validators_status_latest</code></li><li><code>int_consensus_validators_consolidation_requests</code></li><li><code>int_consensus_validators_snapshots_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_consensus_consolidations_daily</code></li></ul>
+    
+  </body>
+</html>

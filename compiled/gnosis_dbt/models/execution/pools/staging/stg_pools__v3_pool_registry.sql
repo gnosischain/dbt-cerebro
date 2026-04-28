@@ -40,7 +40,9 @@ all_pools AS (
     SELECT * FROM uniswap_v3_created
     UNION ALL
     SELECT * FROM swapr_v3_created
-),swapr_v3_tick_spacing AS (
+),
+
+swapr_v3_tick_spacing AS (
     SELECT
         replaceAll(lower(contract_address), '0x', '') AS pool_address_no0x,
         argMax(toInt32OrNull(decoded_params['newTickSpacing']), block_timestamp) AS tick_spacing
@@ -48,7 +50,9 @@ all_pools AS (
     WHERE event_name = 'TickSpacing'
       AND decoded_params['newTickSpacing'] IS NOT NULL
     GROUP BY pool_address_no0x
-),uniswap_v3_init AS (
+),
+
+uniswap_v3_init AS (
     SELECT
         replaceAll(lower(contract_address), '0x', '') AS pool_address_no0x,
         decoded_params['sqrtPriceX96'] AS init_sqrt_price_x96,

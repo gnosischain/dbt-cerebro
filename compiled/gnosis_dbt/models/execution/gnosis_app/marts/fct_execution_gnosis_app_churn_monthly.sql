@@ -74,6 +74,7 @@ any_result AS (
         ) * 100, 1)                                                                   AS retention_rate
     FROM any_segments s
     LEFT JOIN any_churned c ON c.month = s.month
+    WHERE s.month < toStartOfMonth(today())
 ),
 
 -- ── Scope: Swap ────────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ swap_result AS (
         ) * 100, 1)                                                                   AS retention_rate
     FROM swap_segments s
     LEFT JOIN swap_churned c ON c.month = s.month
+    WHERE s.month < toStartOfMonth(today())
 )
 
 SELECT * FROM any_result

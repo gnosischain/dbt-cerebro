@@ -1,7 +1,7 @@
 
 
 SELECT
-    slot
+    slot,
     proposer_index,
     total,
     attestations,

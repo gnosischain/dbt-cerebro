@@ -15,7 +15,25 @@
   <body>
     
     <h1>api_execution_circles_v2_avatar_trust_network</h1>
-    <p>Trust-network edge list per Circles v2 avatar. One row per active trust relation, with source/target endpoints, display names, IPFS preview images for both endpoints, and a `direction` column (&quot;Mutual&quot;, &quot;Trust given&quot;, &quot;Trust received&quot;) that drives the dashboard graph panel&#x27;s edge colouring. Backs the &quot;Trust Network&quot; panel on the Circles Avatar tab.</p>
+    <p>Trust-network edge list for the Circles v2 Avatar Trust Network panel.
+
+One row per directed trust edge from the perspective of the focal
+avatar. For mutual relationships TWO rows are emitted (avatar →
+counterparty AND counterparty → avatar) so the chart renders both
+arrows. The dashboard&#x27;s avatar global filter scopes rows to one focal
+avatar — ClickHouse pushes that filter down into each UNION branch, so
+per-request cost stays small despite the apparent size of the query.
+Materialising this globally would produce ~millions of rows × long IPFS
+strings and blow the memory budget, so this stays a view on purpose.
+
+Each row carries display name and IPFS preview image for both
+endpoints (joined from api_execution_circles_v2_avatar_metadata). The
+dashboard graph chart consumes these via sourceImageField /
+targetImageField to render avatar thumbnails on the nodes. The
+target_layer / source_layer columns drive the chart&#x27;s concentric
+layout: &quot;Focal avatar&quot; lives at the centre, &quot;Mutual&quot; forms the inner
+ring, &quot;Trust given&quot; the middle ring, &quot;Trust received&quot; the outer ring.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> analytics_team</p>

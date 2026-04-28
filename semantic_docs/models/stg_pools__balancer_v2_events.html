@@ -15,14 +15,26 @@
   <body>
     
     <h1>stg_pools__balancer_v2_events</h1>
-    <p></p>
+    <p>Normalized signed token deltas for Balancer V2 pools, decoded from Vault events
+(PoolBalanceChanged, PoolBalanceManaged, Swap, FlashLoan). PoolBalanceChanged rows
+are unpacked from parallel JSON arrays of tokens and deltas; deltas are int256 but
+sometimes serialized as their uint256 two&#x27;s-complement representation, so negative
+string values are parsed directly while unsigned values are reinterpreted via
+reinterpretAsInt256(toUInt256OrNull(...)). PoolBalanceManaged rows sum cashDelta +
+managedDelta with the same two&#x27;s-complement decoding to give the net token delta.
+Swap events emit two rows per swap: a positive delta_amount_raw for tokenIn
+(amountIn) and a negative delta for tokenOut (-amountOut). Output is keyed by
+pool_id, block_timestamp, transaction_hash, log_index, with token_address and a
+signed delta_amount_raw (positive = tokens entering pool, negative = leaving),
+filtered to non-null pool_id, token_address, and delta.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> </p>
     <p><strong>Path:</strong> <code>models/execution/pools/staging/stg_pools__balancer_v2_events.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>balancer_v2</span> <span class='pill'>staging</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>delta_amount_raw</code></td><td>Int256</td><td>Signed raw token delta (positive = tokens entering pool, negative = leaving).</td></tr><tr><td><code>event_type</code></td><td>String</td><td>Source event name (PoolBalanceChanged, PoolBalanceManaged, or Swap).</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td></td></tr><tr><td><code>pool_id</code></td><td>String</td><td>Balancer V2 poolId (bytes32 hex string, lowercase).</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Token contract address (lowercase).</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td></td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>contracts_BalancerV2_Vault_events</code></li></ul>

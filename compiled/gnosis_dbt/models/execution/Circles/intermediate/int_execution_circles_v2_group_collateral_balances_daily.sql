@@ -15,22 +15,28 @@ WITH deltas AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_balances_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -1)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_balances_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -1)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_balances_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_balances_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     

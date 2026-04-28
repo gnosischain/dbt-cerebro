@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>stg_mixpanel_ga__events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>stg_mixpanel_ga__events</h1>
+    <p>Incremental staging table over raw Mixpanel events tracking Gnosis App
+(app.gnosis.io) user interactions. Extracts all useful JSON properties
+into typed columns with privacy transformations applied: distinct_id
+and device_id are replaced with keyed pseudonyms via
+macros/pseudonymize_address.sql (salted with env_var CEREBRO_PII_SALT,
+so the hash is not reversible via rainbow tables against the public
+on-chain address space), city-level geo is excluded, and full URLs are
+reduced to path-only. Materialized as a table (not a view) so
+downstream intermediate models read lightweight typed columns instead
+of re-parsing the heavy JSON properties blob on every query.
+
+Structure: a `raw` CTE extracts all JSON properties and computes
+boolean flags. event_category is computed in the outer SELECT so it
+can reference is_autocapture (a derived column) without a self-join.
+To change classifications, edit macros/mixpanel_ga_event_category.sql.
+
+Privacy notes: the keyed pseudonym macro is salted so hashes cannot
+be reversed via rainbow tables against the public on-chain address
+space. The same macro must be used on on-chain addresses for any
+cross-domain join. The is_production flag identifies events from
+app.gnosis.io (~89% of traffic; the remainder is deploy previews
+and localhost).
+
+New columns added for domain context:
+  is_identified  — 1 if the user connected a wallet (distinct_id != &#x27;$device:*&#x27;)
+  is_production  — 1 if the event originated from app.gnosis.io (not preview/localhost)
+  event_category — derived classification via macros/mixpanel_ga_event_category.sql
+  event_amount, event_sku, event_seller, event_value, event_asset_id
+                 — feature-specific custom properties for Circles/Marketplace/Swap events
+</p>
+    <p><strong>Module:</strong> mixpanel_ga</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/mixpanel_ga/staging/stg_mixpanel_ga__events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>staging</span> <span class='pill'>mixpanel_ga</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>bottom_sheet</code></td><td>String</td><td>Modal or bottom-sheet component name.  Populated on Open Modal and Open Bottom Sheet events.  Known values: PasskeyStepsModal, ModalJoin (Circles onboarding), SelectSwapAsset (swap token picker), ModalReceive, ModalSend, CardActivationStepsModal.
+</td></tr><tr><td><code>browser</code></td><td>String</td><td>Browser name (e.g. &quot;Chrome&quot;, &quot;Mobile Safari&quot;).</td></tr><tr><td><code>browser_version</code></td><td>String</td><td>Browser version string.</td></tr><tr><td><code>country_code</code></td><td>String</td><td>ISO 2-letter country code from Mixpanel geo-IP.</td></tr><tr><td><code>current_domain</code></td><td>String</td><td>Domain serving the page (e.g. &quot;app.gnosis.io&quot;).</td></tr><tr><td><code>day_of_week</code></td><td>UInt8</td><td>ISO day of week (1=Mon, 7=Sun).</td></tr><tr><td><code>device_id_hash</code></td><td>UInt64</td><td>Keyed pseudonym of $device_id (sipHash64 over a salted + lowercased input; salt from env_var CEREBRO_PII_SALT).  Non-reversible without the salt.
+</td></tr><tr><td><code>device_type</code></td><td>String</td><td>Device type (e.g. &quot;iPhone&quot;, &quot;Desktop&quot;).</td></tr><tr><td><code>event_amount</code></td><td>String</td><td>Custom property &#x27;amount&#x27; for Circles/Marketplace events.</td></tr><tr><td><code>event_asset_id</code></td><td>String</td><td>Custom property &#x27;assetId&#x27; for swap/token events.</td></tr><tr><td><code>event_category</code></td><td>String</td><td>Derived event classification.  Values: pageview, modal, login, feature, navigation, system, action, other.  Classification logic lives in macros/mixpanel_ga_event_category.sql — edit that file to add new event names or categories.
+</td></tr><tr><td><code>event_date</code></td><td>Date</td><td>Date portion of event_time.</td></tr><tr><td><code>event_name</code></td><td>String</td><td>Mixpanel event name.</td></tr><tr><td><code>event_seller</code></td><td>String</td><td>Custom property &#x27;seller&#x27; for Marketplace Purchase events.</td></tr><tr><td><code>event_sku</code></td><td>String</td><td>Custom property &#x27;sku&#x27; for Marketplace Purchase events.</td></tr><tr><td><code>event_time</code></td><td>DateTime</td><td>UTC timestamp of the event.</td></tr><tr><td><code>event_value</code></td><td>String</td><td>Custom property &#x27;value&#x27; for feature events.</td></tr><tr><td><code>hour_of_day</code></td><td>UInt8</td><td>Hour of day (0-23 UTC).</td></tr><tr><td><code>initial_referrer_domain</code></td><td>String</td><td>First-touch referring domain for the user session, &quot;direct&quot; if none.</td></tr><tr><td><code>insert_id</code></td><td>String</td><td>Mixpanel deduplication key.</td></tr><tr><td><code>is_autocapture</code></td><td>UInt8</td><td>1 if auto-captured by Mixpanel, 0 if custom event.</td></tr><tr><td><code>is_identified</code></td><td>UInt8</td><td>1 if the user has a wallet-identified session; 0 if anonymous. Wallet-identified sessions have a distinct_id that is a wallet address (set via mixpanel.identify(walletAddress)).  Anonymous sessions use a &#x27;$device:uuid&#x27; distinct_id injected by the Mixpanel SDK.
+</td></tr><tr><td><code>is_production</code></td><td>UInt8</td><td>1 if the event originated from app.gnosis.io; 0 for deploy previews (deploy-preview-*.app.gnosis.io), localhost, or kitchen.app.gnosis.io.  Approximately 11% of raw traffic is non-production.  All intermediate models filter to is_production = 1.
+</td></tr><tr><td><code>lib_version</code></td><td>String</td><td>Mixpanel JS SDK version.</td></tr><tr><td><code>mp_lib</code></td><td>String</td><td>Mixpanel library platform (e.g. &quot;web&quot;).</td></tr><tr><td><code>os</code></td><td>String</td><td>Operating system (e.g. &quot;Windows&quot;, &quot;iOS&quot;).</td></tr><tr><td><code>page_path</code></td><td>String</td><td>URL path without domain or query params (e.g. &quot;/welcome&quot;).</td></tr><tr><td><code>page_title</code></td><td>String</td><td>HTML page title.</td></tr><tr><td><code>project_id</code></td><td>String</td><td>Mixpanel project identifier.</td></tr><tr><td><code>referrer_domain</code></td><td>String</td><td>Referring domain for this event, &quot;direct&quot; if none.</td></tr><tr><td><code>region</code></td><td>String</td><td>Region / state from Mixpanel geo-IP.</td></tr><tr><td><code>screen_height</code></td><td>UInt16</td><td>Screen height in pixels.</td></tr><tr><td><code>screen_width</code></td><td>UInt16</td><td>Screen width in pixels.</td></tr><tr><td><code>user_id_hash</code></td><td>UInt64</td><td>Keyed pseudonym of distinct_id (sipHash64 over a salted + lowercased input; salt from env_var CEREBRO_PII_SALT).  Non-reversible without the salt.  Safe to join with pseudonyms of on-chain wallet addresses produced by the same macros/pseudonymize_address.sql macro, which enables cross-sector metrics without exposing raw addresses.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>mixpanel_raw_events</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_mixpanel_ga_funnel_daily</code></li><li><code>fct_mixpanel_ga_gnosis_app_users</code></li><li><code>fct_mixpanel_ga_gpay_crossdomain_daily</code></li><li><code>fct_mixpanel_ga_gpay_users</code></li><li><code>int_mixpanel_ga_events_daily</code></li><li><code>int_mixpanel_ga_geo_daily</code></li><li><code>int_mixpanel_ga_modals_daily</code></li><li><code>int_mixpanel_ga_pages_daily</code></li><li><code>int_mixpanel_ga_tech_daily</code></li><li><code>int_mixpanel_ga_traffic_daily</code></li><li><code>int_mixpanel_ga_usage_patterns_daily</code></li><li><code>int_mixpanel_ga_user_lifecycle</code></li><li><code>int_mixpanel_ga_users_daily</code></li></ul>
+    
+  </body>
+</html>

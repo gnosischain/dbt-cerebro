@@ -90,4 +90,5 @@ LEFT JOIN new_monthly nm        ON nm.month = cal.month
 LEFT JOIN active_monthly am     ON am.month = cal.month
 LEFT JOIN returning_monthly rm  ON rm.month = cal.month
 LEFT JOIN reactivated_monthly rxm ON rxm.month = cal.month
+WHERE cal.month < toStartOfMonth(today())
 ORDER BY cal.month

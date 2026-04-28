@@ -34,7 +34,14 @@ IMPORTANT — incremental filtering:
 Decoded array shape:
   decode_logs emits arrays as toJSONString([...]) under the param name,
   so decoded_params[&#x27;owners&#x27;] is a JSON array string like
-  &#x27;[&quot;0xabc&quot;,&quot;0xdef&quot;]&#x27;. ClickHouse JSONExtract* functions are 1-indexed.</p>
+  &#x27;[&quot;0xabc&quot;,&quot;0xdef&quot;]&#x27;. ClickHouse JSONExtract* functions are 1-indexed.
+
+SafeSetup unrolling uses a pre-filter subquery before the ARRAY JOIN
+because ClickHouse evaluates ARRAY JOIN&#x27;s range() expression before the
+outer WHERE. Without the subquery, non-SafeSetup rows would reach the
+ARRAY JOIN with NULL `owners` and `range(1, JSONLength(NULL)+1)` would
+fail with `Illegal (null) value` — same fix pattern as
+int_execution_gpay_roles_events.assign_role_rows.</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> analytics_team</p>

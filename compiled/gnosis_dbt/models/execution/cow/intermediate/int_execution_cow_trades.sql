@@ -34,22 +34,28 @@ swaps AS (
   
     
     
+    
+    
+    
 
-   WHERE 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_cow_trades` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_cow_trades` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_cow_trades` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_cow_trades` AS x2
+        WHERE 1=1 
+      )
+    
   
 
         
@@ -63,6 +69,8 @@ swaps AS (
     LEFT JOIN (
         SELECT transaction_hash, solver
         FROM `dbt`.`stg_cow__settlements`
+        
+        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM `dbt`.`int_execution_cow_trades`)
         
     ) st ON st.transaction_hash = t.transaction_hash
     WHERE t.amount_bought_raw > 0

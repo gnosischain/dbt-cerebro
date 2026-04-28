@@ -34,6 +34,7 @@ cometh_presignatures AS (
       AND tx.to_address = '0000000071727de22e5e9d8baf0edac6f37da032'
       AND lower(tx.from_address) IN (SELECT addr FROM relayer_addrs)
       AND e.block_timestamp >= toDateTime('2025-11-12')
+      AND e.block_timestamp < today()
       AND tx.block_timestamp >= toDateTime('2025-11-12')
       AND lower(e.decoded_params['owner']) IN (SELECT address FROM ga_users)
       
@@ -41,22 +42,28 @@ cometh_presignatures AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(e.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_gnosis_app_swaps` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(e.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(e.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_gnosis_app_swaps` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(e.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_gnosis_app_swaps` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gnosis_app_swaps` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

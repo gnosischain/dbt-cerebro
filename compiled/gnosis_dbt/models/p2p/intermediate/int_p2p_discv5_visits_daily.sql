@@ -37,22 +37,28 @@ visits_info AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(visit_ended_at)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
-      FROM `dbt`.`int_p2p_discv5_visits_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(visit_ended_at) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -2)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(visit_ended_at)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
+        FROM `dbt`.`int_p2p_discv5_visits_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(visit_ended_at) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -2)
+          
 
-      FROM `dbt`.`int_p2p_discv5_visits_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_p2p_discv5_visits_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     GROUP BY 1

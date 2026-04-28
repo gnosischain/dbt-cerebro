@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_mixpanel_ga_gpay_crossdomain_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_mixpanel_ga_gpay_crossdomain_daily</h1>
+    <p>Daily rollup of Gnosis Pay ↔ Mixpanel matching with role-bucket and
+activity dimensions.
+
+Privacy boundary: every cross-domain join uses the keyed pseudonym
+from the pseudonymize_address macro, applied identically on both
+sides. Raw EOAs and Safe addresses never appear in this output.
+
+Methodology: a per-user identity bridge (matched_pairs) reads the
+precomputed (user_id_hash, gp_safe, matched_roles) tuples directly
+from fct_mixpanel_ga_gpay_users so the JOIN is not recomputed here.
+Same gp_safe → activity flags (delay_active_safes_7d,
+allowance_changed_safes_30d) are computed once and joined into both
+rollups. mp_user_flags rolls up role flags and activity flags to one
+row per Mixpanel user; mp_daily then computes per-day matched-user
+counts sliced by role bucket and activity flag, and gpay_daily
+contributes the on-chain DAU comparison.
+
+Implementation note: explicit AS aliases on the mp.* columns in the
+final SELECT are required. Both mp_daily and gpay_daily expose a
+`date` column, so ClickHouse keeps the qualified name `mp.date` in
+the output projection and the config&#x27;s order_by=(date) would
+otherwise fail to resolve. The non-ambiguous columns get explicit
+aliases too as a defensive consistency pass.
+
+Headline metrics:
+  mp_dau                — Mixpanel daily active users (production,
+                          all identification states; anonymous
+                          device users are counted but never match
+                          the GP side).
+  onchain_active_users  — distinct GP wallets with on-chain
+                          activity that day, from
+                          fct_execution_gpay_activity_daily.
+  matched_users_any     — DAU users matched on ANY identity role
+                          (initial_owner ∪ delegate ∪ safe_self).
+  matched_by_*          — same DAU users sliced by which role
+                          matched.
+  users_with_delay_activity_7d
+                        — matched users whose gp_safe queued at
+                          least one TransactionAdded event in the
+                          last 7 days.
+  users_with_allowance_changes_30d
+                        — matched users whose gp_safe had a
+                          SetAllowance event in the last 30 days.
+
+Backwards-compat: the original `matched_users` and `match_rate_pct`
+columns are preserved (now equal to matched_users_any and the
+corresponding rate) so existing dashboards keep working.
+</p>
+    <p><strong>Module:</strong> mixpanel_ga</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/mixpanel_ga/marts/fct_mixpanel_ga_gpay_crossdomain_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mixpanel_ga</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Calendar date (UTC).</td></tr><tr><td><code>match_rate_pct</code></td><td>Float64</td><td>Percentage of Mixpanel DAU that are matched to GPay Safes via any role.</td></tr><tr><td><code>matched_by_delegate_users</code></td><td>UInt64</td><td>Mixpanel users matched via a Roles v2 spender delegate identity.</td></tr><tr><td><code>matched_by_initial_owner_users</code></td><td>UInt64</td><td>Mixpanel users matched via the SafeSetup initial owner identity (the EOA that owned the Safe before ownership was transferred to 0x...0002).</td></tr><tr><td><code>matched_by_safe_self_users</code></td><td>UInt64</td><td>Mixpanel users matched via the Safe address itself (smart-account identifier).</td></tr><tr><td><code>matched_users</code></td><td>UInt64</td><td>Backwards-compat alias for matched_users_any. Mixpanel users matched to a GP Safe via any of the three identity roles.</td></tr><tr><td><code>matched_users_any</code></td><td>UInt64</td><td>Mixpanel users matched to at least one GP Safe via any role (initial_owner ∪ delegate ∪ safe_self).</td></tr><tr><td><code>mp_dau</code></td><td>UInt64</td><td>Mixpanel daily active users.</td></tr><tr><td><code>onchain_active_users</code></td><td>UInt64</td><td>On-chain GPay active users (from fct_execution_gpay_activity_daily).</td></tr><tr><td><code>users_with_allowance_changes_30d</code></td><td>UInt64</td><td>Matched users whose gp_safe had a SetAllowance event in the last 30 days.</td></tr><tr><td><code>users_with_delay_activity_7d</code></td><td>UInt64</td><td>Matched users whose gp_safe queued at least one TransactionAdded event in the last 7 days.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_execution_gpay_activity_daily</code></li><li><code>fct_mixpanel_ga_gpay_users</code></li><li><code>int_execution_gpay_delay_activity_daily</code></li><li><code>int_execution_gpay_roles_events</code></li><li><code>int_execution_gpay_safe_modules</code></li><li><code>stg_mixpanel_ga__events</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_mixpanel_ga_gpay_crossdomain_daily</code></li></ul>
+    
+  </body>
+</html>

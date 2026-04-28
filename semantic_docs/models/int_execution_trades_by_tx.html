@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_trades_by_tx</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_trades_by_tx</h1>
+    <p>Transaction-grain collapse of `int_execution_pools_dex_trades` — one row per (date, transaction_hash). Runs the expensive tx-level GROUP BY and `int_crawlers_data_labels` JOIN exactly once, so downstream facts and api views operate on a small pre-shaped table instead of scanning the 31M+ swap rows. `aggregator_label` uses the 3-bucket Option-2 heuristic: labeled → project name; unlabeled + multi-hop → &quot;Other Router&quot;; unlabeled + 1-hop → &quot;Direct&quot;. `hop_bucket` and `size_bucket` are pre-computed so api views can group by string columns directly.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/execution/pools/intermediate/int_execution_trades_by_tx.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>dev</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>trades</span> <span class='pill'>intermediate</span> <span class='pill'>microbatch</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>aggregator_label</code></td><td>String</td><td>Named project from `int_crawlers_data_labels` if matched; otherwise &quot;Other Router&quot; when `hop_count &gt;= 2` (clearly routed) or &quot;Direct&quot; when `hop_count = 1` (conservative — may be a direct pool swap or a simple single-hop router).
+</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>date</code></td><td>Date</td><td>Day of the transaction (UTC, derived from block_timestamp).</td></tr><tr><td><code>hop_bucket</code></td><td>String</td><td>Pre-bucketed hop count — &quot;1 hop&quot;, &quot;2 hops&quot;, &quot;3 hops&quot;, &quot;4+ hops&quot;.</td></tr><tr><td><code>hop_count</code></td><td>UInt64</td><td>Number of swap events in the transaction.</td></tr><tr><td><code>protocols_used</code></td><td>Array(String)</td><td>Array of protocols touched by the transaction, in hop order, deduplicated.</td></tr><tr><td><code>size_bucket</code></td><td>String</td><td>Pre-bucketed trade size — &quot;&lt; $100&quot;, &quot;$100 – $1K&quot;, &quot;$1K – $10K&quot;, &quot;$10K – $100K&quot;, &quot;$100K+&quot;, &quot;unknown&quot;.</td></tr><tr><td><code>token_bought_last</code></td><td>String</td><td>Symbol of the token bought on the last hop (highest log_index).</td></tr><tr><td><code>token_sold_first</code></td><td>String</td><td>Symbol of the token sold on the first hop (lowest log_index).</td></tr><tr><td><code>trade_usd</code></td><td>Nullable(Float64)</td><td>Max of per-hop amount_usd across the transaction (matches the live-feed convention).</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td></td></tr><tr><td><code>tx_from</code></td><td>String</td><td>Transaction origin address (the EOA / account that initiated the swap).</td></tr><tr><td><code>tx_to</code></td><td>String</td><td>Contract the transaction called (aggregator / router / pool).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_crawlers_data_labels</code></li><li><code>int_execution_pools_dex_trades</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_trades_stats_hop_distribution</code></li><li><code>api_execution_trades_stats_size_distribution</code></li><li><code>fct_execution_trades_by_aggregator_daily</code></li><li><code>fct_execution_trades_lifetime</code></li></ul>
+    
+  </body>
+</html>

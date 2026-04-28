@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_consensus_validators_explorer_members_table</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_consensus_validators_explorer_members_table</h1>
+    <p>Members table for the Validator Explorer tab: one row per validator under the
+selected withdrawal credential. Reads int tables directly (cheap: ~558k status
+rows + ~558k latest-day income rows) rather than routing through
+api_consensus_validators_performance_latest.
+
+v3 additions:
+  * Lifecycle columns: activation_eligibility_epoch, activation_epoch, exit_epoch,
+    withdrawable_epoch, slashed, plus derived activation_date / exit_date /
+    withdrawable_date.
+  * Per-validator balance-weighted 30-day APY:
+        apy_30d = SUMIf(income, eff_balance &gt; 0)
+                  / NULLIF(AVGIf(eff_balance, eff_balance &gt; 0), 0) * 365 * 100
+    with zero-effective-balance rows excluded so idle slots don&#x27;t pull the mean.
+  * Driver is fct_consensus_validators_status_latest with LEFT JOIN into
+    income/rewards so a validator still pending activation (no income rows) still
+    appears as a row with status=&#x27;pending_*&#x27; and zeros elsewhere — no silent
+    row-drops on the join.
+
+FAR_FUTURE_EPOCH sentinel (2^64 - 1 = 18446744073709551615) is emitted by the beacon
+state for epochs that have not happened yet; these are NULLed out before converting
+to dates so the UI renders a blank instead of a year in 292 billion AD. Otherwise,
+derived dates are toDate(genesis_time_unix + epoch * slots_per_epoch * seconds_per_slot).
+</p>
+    <p><strong>Module:</strong> consensus</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/consensus/marts/fct_consensus_validators_explorer_members_table.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>fct:validators_explorer</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activation_date</code></td><td>Nullable(Date)</td><td>Date the validator activated (NULL if activation_epoch is FAR_FUTURE_EPOCH).</td></tr><tr><td><code>activation_eligibility_epoch</code></td><td>UInt64</td><td></td></tr><tr><td><code>activation_epoch</code></td><td>UInt64</td><td></td></tr><tr><td><code>apy_30d</code></td><td>Float64</td><td>Per-validator balance-weighted 30d APY (%).</td></tr><tr><td><code>balance_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>consensus_income_amount_30d_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>effective_balance_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>exit_date</code></td><td>Nullable(Date)</td><td>Date the validator exited (NULL if still active).</td></tr><tr><td><code>exit_epoch</code></td><td>UInt64</td><td></td></tr><tr><td><code>latest_date</code></td><td>Nullable(DateTime64)</td><td></td></tr><tr><td><code>proposed_blocks_count_lifetime</code></td><td>UInt64</td><td></td></tr><tr><td><code>proposer_reward_total_30d_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>proposer_reward_total_lifetime_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>pubkey</code></td><td>String</td><td></td></tr><tr><td><code>slashed</code></td><td>Bool</td><td></td></tr><tr><td><code>status</code></td><td>String</td><td></td></tr><tr><td><code>total_income_estimated_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>validator_index</code></td><td>UInt64</td><td></td></tr><tr><td><code>withdrawable_date</code></td><td>Nullable(Date)</td><td>Date the validator&#x27;s balance becomes withdrawable (NULL if not scheduled).</td></tr><tr><td><code>withdrawable_epoch</code></td><td>UInt64</td><td></td></tr><tr><td><code>withdrawal_address</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>withdrawal_credentials</code></td><td>String</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_consensus_validators_status_latest</code></li><li><code>int_consensus_validators_income_daily</code></li><li><code>int_consensus_validators_proposer_rewards_daily</code></li><li><code>stg_consensus__time_helpers</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_consensus_validators_explorer_members_table</code></li><li><code>api_execution_account_validators_latest</code></li><li><code>fct_execution_account_search_index</code></li></ul>
+    
+  </body>
+</html>

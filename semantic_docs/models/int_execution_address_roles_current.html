@@ -20,6 +20,16 @@ for every role it plays across the sectors we track (Safe, GPay,
 Circles, DeFi pools/lending, validator withdrawal, Dune labels).
 Powers the Graph Explorer&#x27;s node-kind badges and auto-discovery of
 applicable graph profiles when a user seeds from a bare address.
+
+Implementation: each per-source CTE first aggregates to ONE ROW PER
+UNIQUE ADDRESS with its flag and any metadata already collapsed via
+any() / max(). This compresses huge upstreams (dex_liquidity_events
+at billions of rows, transfers at hundreds of millions) down to
+millions of unique addresses BEFORE the UNION ALL. A single final
+GROUP BY address then coalesces flags across sources. Memory stays
+bounded by |unique addresses| x |source blocks|, not by upstream row
+counts. The DEX scan emits both lp-provider and pool rows in one pass
+via arrayJoin to halve memory + IO.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> approved</p>

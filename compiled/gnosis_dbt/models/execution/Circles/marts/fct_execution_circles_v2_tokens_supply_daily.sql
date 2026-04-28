@@ -1,11 +1,11 @@
 
 
+-- Compatibility view over int_execution_circles_v2_tokens_supply_daily.
+-- The historical `table` materialization fully rebuilt every prod run from
+-- ~170k-rows-per-day source; the int_ model is now incremental and the mart
+-- exposes the same shape with no rebuild cost. Downstream consumers (Cerebro
+-- dashboards, the `fct_execution_circles_v2_total_supply_daily` mart, etc.)
+-- continue to ref this name.
 
-SELECT
-    date,
-    token_address,
-    -balance_raw AS supply_raw,
-    -balance_raw/POWER(10,18) AS supply,
-    -demurraged_balance_raw/POWER(10,18) AS demurraged_supply
-FROM `dbt`.`int_execution_circles_v2_balances_daily`
-WHERE account = '0x0000000000000000000000000000000000000000'
+SELECT date, token_address, supply_raw, supply, demurraged_supply
+FROM `dbt`.`int_execution_circles_v2_tokens_supply_daily`

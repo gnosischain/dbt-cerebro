@@ -1,3 +1,5 @@
+
+
 SELECT DISTINCT
     lower(decoded_params['poolId'])                                          AS pool_id,
     concat('0x', replaceAll(lower(decoded_params['poolAddress']), '0x', '')) AS pool_address

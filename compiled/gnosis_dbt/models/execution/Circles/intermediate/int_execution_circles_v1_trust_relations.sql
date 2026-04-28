@@ -58,22 +58,28 @@ WHERE valid_to IS NULL OR valid_to > valid_from
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(valid_from)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.valid_from)), -0))
-      FROM `dbt`.`int_execution_circles_v1_trust_relations` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(valid_from) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.valid_from)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(valid_from)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.valid_from)), -0))
+        FROM `dbt`.`int_execution_circles_v1_trust_relations` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(valid_from) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.valid_from)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v1_trust_relations` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v1_trust_relations` AS x2
+        WHERE 1=1 
+      )
+    
   
 
   

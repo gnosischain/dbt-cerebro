@@ -15,7 +15,27 @@
   <body>
     
     <h1>int_execution_lending_aave_diffs_daily</h1>
-    <p>Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3 and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw, Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken BalanceTransfer events, aggregated per (date, protocol, user, reserve). Scaled math uses exact UInt256 WadRayMath and each pool action is paired with the ReserveDataUpdated snapshot at the same log_index position within its (protocol, transaction). LiquidationCall rows where receiveAToken=true are intentionally excluded because the collateral movement is already captured by the BalanceTransfer(borrower -&gt; liquidator) event.</p>
+    <p>Daily per-user scaled balance deltas for Gnosis lending markets (Aave V3
+and SparkLend). Computes scaled deltas from Pool events (Supply, Withdraw,
+Repay with aTokens, LiquidationCall where receiveAToken=false) and aToken
+BalanceTransfer events, aggregated per (date, protocol, user, reserve).
+
+Scaled math uses exact UInt256 WadRayMath and each pool action is paired
+with the ReserveDataUpdated snapshot at the same log_index position within
+its (protocol, transaction). The pairing uses an ASOF join keyed on
+log_index &lt; the action&#x27;s log_index — NOT a rank-based pairing. This is
+required for Spark, where FlashLoan-emitted RDUs interleave with user
+action RDUs and rank-based pairing would misalign (e.g. pair the user&#x27;s
+Supply with the FlashLoan&#x27;s RDU).
+
+LiquidationCall rows where receiveAToken=true are intentionally excluded
+because the collateral movement is already captured by the
+BalanceTransfer(borrower -&gt; liquidator) event.
+
+diff_scaled is Int256 for exact scaled-balance arithmetic (no Float64
+precision loss on amounts above 2^53 wei); a --full-refresh is required
+when migrating from the previous Float64 schema.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> </p>

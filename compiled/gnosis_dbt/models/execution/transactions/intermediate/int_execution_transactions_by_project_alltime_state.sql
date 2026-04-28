@@ -17,22 +17,28 @@ WITH src AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(date)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.month)), -0))
-      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(date) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.month)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.month)), -0))
+        FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.month)), -0)
+          
 
-      FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     

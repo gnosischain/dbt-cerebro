@@ -29,7 +29,11 @@ daily_deltas AS (
             e.token_position = 'token1', p.token1_address,
             NULL
         ) AS token_address,
-        sum(e.delta_amount_raw) AS daily_delta_raw,
+        sum(multiIf(
+            e.delta_category = 'liquidity' AND e.delta_amount_raw < toInt256(0),
+                toInt256(0),
+            e.delta_amount_raw
+        )) AS daily_delta_raw,
         sum(multiIf(
             e.delta_category = 'swap_in',
                 e.delta_amount_raw - intDiv(e.delta_amount_raw * toInt256(p.fee_tier_ppm), toInt256(1000000)),
@@ -58,22 +62,28 @@ daily_deltas AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(e.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_pools_uniswap_v3_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(e.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(e.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_pools_uniswap_v3_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(e.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_pools_uniswap_v3_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_pools_uniswap_v3_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

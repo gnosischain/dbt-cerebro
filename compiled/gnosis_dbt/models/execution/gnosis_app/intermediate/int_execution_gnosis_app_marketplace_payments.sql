@@ -33,27 +33,34 @@ payment_events AS (
     FROM `dbt`.`contracts_circles_v2_PaymentGatewayFactory_events` e
     WHERE e.event_name = 'PaymentReceived'
       AND e.block_timestamp >= toDateTime('2025-11-12')
+      AND e.block_timestamp < today()
       
         
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(e.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(e.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(e.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(e.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       
@@ -72,22 +79,28 @@ cometh_txs AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(tx.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(tx.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(tx.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(tx.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

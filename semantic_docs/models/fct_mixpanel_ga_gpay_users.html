@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_mixpanel_ga_gpay_users</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_mixpanel_ga_gpay_users</h1>
+    <p>Per-user fact joining Mixpanel identified users to Gnosis Pay Safes
+through the keyed-pseudonym identity bridge.
+
+One row per (user_id_hash, gp_safe) pair where the user matched on
+at least one of the three identity roles (initial_owner, delegate,
+safe_self). Denormalizes the per-Safe module topology, current daily
+limit, and recent delay activity onto each row so downstream segment
+queries don&#x27;t need extra joins.
+
+Privacy invariant: every column representing a person is either
+user_id_hash (already pseudonymized in stg_mixpanel_ga__events) or a
+Safe address (smart account, treated as non-PII). No raw EOA appears.
+
+Implementation note: explicit AS aliases on the m.* columns in the
+final SELECT are required. ClickHouse keeps the qualified name
+`m.gp_safe` in the output projection whenever the bare name `gp_safe`
+is ambiguous across joined relations (modules_per_safe,
+allowance_per_safe, delay_30d, spends_30d all expose a `gp_safe`
+column), and the config&#x27;s order_by=(user_id_hash, gp_safe) would
+then fail to resolve.
+</p>
+    <p><strong>Module:</strong> mixpanel_ga</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/mixpanel_ga/marts/fct_mixpanel_ga_gpay_users.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mixpanel_ga</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>allowance_period_seconds</code></td><td>Nullable(String)</td><td>Roles v2 allowance refill period in seconds (typically 86400).</td></tr><tr><td><code>daily_limit</code></td><td>Nullable(String)</td><td>Current Roles v2 allowance refill amount (the canonical daily limit). String to preserve uint128 precision.</td></tr><tr><td><code>delay_txs_last_30d</code></td><td>UInt64</td><td>Number of TransactionAdded events queued by this Safe&#x27;s Delay module in the trailing 30 days.</td></tr><tr><td><code>enabled_modules</code></td><td>Array(String)</td><td>Array of module types currently enabled on this Safe (typically [DelayModule, RolesModule, SpenderModule]).</td></tr><tr><td><code>gp_safe</code></td><td>String</td><td>The Gnosis Pay Safe this user matched against.</td></tr><tr><td><code>matched_roles</code></td><td>Array(String)</td><td>Array of identity roles that matched (subset of [initial_owner, delegate, safe_self]).</td></tr><tr><td><code>spends_last_30d</code></td><td>UInt64</td><td>Number of card-spend events (Spender module Spend events) for this Safe in the trailing 30 days.</td></tr><tr><td><code>user_id_hash</code></td><td>UInt64</td><td>Mixpanel user pseudonym (UInt64). Same hash space as int_execution_gpay_safe_identities.user_pseudonym.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_allowances_current</code></li><li><code>int_execution_gpay_delay_activity_daily</code></li><li><code>int_execution_gpay_safe_identities</code></li><li><code>int_execution_gpay_safe_modules</code></li><li><code>int_execution_gpay_spend_activity_daily</code></li><li><code>stg_mixpanel_ga__events</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_mixpanel_ga_gpay_crossdomain_daily</code></li></ul>
+    
+  </body>
+</html>

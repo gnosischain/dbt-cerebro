@@ -9,5 +9,6 @@ SELECT
     countDistinct(order_uid)                     AS n_orders,
     sum(amount_usd)                              AS volume_usd_filled
 FROM `dbt`.`int_execution_gnosis_app_swaps`
+WHERE toStartOfMonth(block_timestamp) < toStartOfMonth(today())
 GROUP BY month
 ORDER BY month

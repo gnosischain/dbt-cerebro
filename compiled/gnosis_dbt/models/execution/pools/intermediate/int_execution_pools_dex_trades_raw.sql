@@ -44,22 +44,28 @@ WHERE s.amount_bought_raw > 0
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(s.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_pools_dex_trades_raw` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(s.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(s.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_pools_dex_trades_raw` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(s.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_pools_dex_trades_raw` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_pools_dex_trades_raw` AS x2
+        WHERE 1=1 
+      )
+    
   
 
   

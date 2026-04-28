@@ -13,22 +13,28 @@ trades AS (
   
     
     
+    
+    
+    
 
-   WHERE 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`fct_execution_cow_trades` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`fct_execution_cow_trades` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`fct_execution_cow_trades` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`fct_execution_cow_trades` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     
@@ -40,6 +46,7 @@ api_fees AS (
         fee_token,
         fee_amount
     FROM `dbt`.`stg_crawlers_data__cow_api_trade_fees`
+    WHERE order_uid IN (SELECT order_uid FROM trades)
 )
 
 SELECT

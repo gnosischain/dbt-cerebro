@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_address_resolver</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_address_resolver</h1>
+    <p>Per-(address × source) domain resolver rows. The cross-source merge
+happens at query time inside `api_execution_address_resolver` (point
+lookup with `WHERE address = &#x27;0x…&#x27;` + `GROUP BY address`) instead of
+at build time, because a 5–10M-address outer GROUP BY OOMs the cluster
+cap. AggregatingMergeTree on `address` lets background merges collapse
+duplicate rows when address is in only one source; the api view handles
+the rest.
+
+Materialised as a table (not a view) so the Account Portfolio custom
+view&#x27;s per-request lookup is an O(log N) primary-index seek rather
+than a 5-way UNION scan. Expected cardinality ~500k-1M on Gnosis Chain.
+
+display_name precedence: Circles avatar name → role tag (&quot;Validator
+operator · N validators&quot; / &quot;Safe owner · N safes&quot; / &quot;Safe contract&quot; /
+&quot;Gnosis Pay wallet&quot; / &quot;Circles avatar&quot;) → empty. LabelSelector filters
+on substring match so both hex paste and name search resolve from the
+same field.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> </p>
+    <p><strong>Path:</strong> <code>models/execution/accounts/marts/fct_execution_address_resolver.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>accounts</span> <span class='pill'>fct:address_resolver</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td></td><td>Lowercased 0x… address. Primary index. Multiple rows per address are expected (one per contributing source); the api view collapses them.</td></tr><tr><td><code>circles_avatar_type</code></td><td></td><td>Circles avatar type (human / organization / group) if any.</td></tr><tr><td><code>circles_name</code></td><td></td><td>Circles avatar handle if any; NULL otherwise.</td></tr><tr><td><code>connected_safe_count</code></td><td></td><td>Number of Safes this address currently owns (0 if not an owner).</td></tr><tr><td><code>connected_validator_count</code></td><td></td><td>Number of validators whose withdrawal_address is this address (0 if none).</td></tr><tr><td><code>display_name</code></td><td></td><td>Composed label used by the Account Portfolio search dropdown.</td></tr><tr><td><code>is_circles_avatar</code></td><td></td><td>True if the address has a Circles v2 avatar registration.</td></tr><tr><td><code>is_gpay_wallet</code></td><td></td><td>True if the address appears in Gnosis Pay user lifetime metrics.</td></tr><tr><td><code>is_safe</code></td><td></td><td>True if the address is a deployed Gnosis Safe contract.</td></tr><tr><td><code>is_safe_owner</code></td><td></td><td>True if the address is an owner of at least one Safe.</td></tr><tr><td><code>is_validator_withdrawal_address</code></td><td></td><td>True if the address is a withdrawal_address for at least one validator.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_consensus_validators_status_latest</code></li><li><code>fct_execution_gpay_user_lifetime_metrics</code></li><li><code>int_execution_circles_v2_avatars</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_current_owners</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_address_resolver</code></li><li><code>api_execution_address_search</code></li><li><code>fct_execution_account_profile_latest</code></li></ul>
+    
+  </body>
+</html>

@@ -9,5 +9,6 @@ SELECT
     countDistinct(order_uid)                     AS n_orders,
     sum(amount_usd)                              AS volume_usd_filled
 FROM `dbt`.`int_execution_gnosis_app_swaps`
+WHERE toStartOfWeek(block_timestamp, 1) < toStartOfWeek(today(), 1)
 GROUP BY week
 ORDER BY week

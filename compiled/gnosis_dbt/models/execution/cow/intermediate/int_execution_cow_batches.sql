@@ -17,22 +17,28 @@ trades AS (
   
     
     
+    
+    
+    
 
-   WHERE 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_cow_batches` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_cow_batches` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_cow_batches` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_cow_batches` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     
@@ -43,6 +49,8 @@ interactions AS (
         transaction_hash,
         count(*) AS num_interactions
     FROM `dbt`.`stg_cow__interactions`
+    
+    WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM `dbt`.`int_execution_cow_batches`)
     
     GROUP BY transaction_hash
 ),

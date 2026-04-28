@@ -15,7 +15,25 @@
   <body>
     
     <h1>int_execution_circles_v2_avatar_metadata_history</h1>
-    <p>SCD-style historical view of every Circles v2 avatar metadata change. One row per (avatar, metadata_digest) ever announced by the NameRegistry, in event order, with valid_from / valid_to / is_current columns so the dashboard can render the full timeline of name + image updates per avatar. Materialized incrementally; nightly runs recompute the full history only for avatars that received a new event since the previous build.</p>
+    <p>SCD-style historical view of every Circles v2 avatar metadata change.
+One row per (avatar, metadata_digest) ever announced by the NameRegistry,
+in event order, with valid_from / valid_to / is_current columns so the
+dashboard can render the full timeline of name + image changes per avatar.
+valid_to is computed via leadInFrame over (avatar) ordered by
+(block_timestamp, log_index) and is NULL on the most recent row per
+avatar. The parsed JSON fields (name, symbol, description, imageUrl,
+previewImageUrl) are joined per (avatar, metadata_digest) from the most
+recent successful fetch in circles_avatar_metadata_raw.
+
+Incremental strategy: delete+insert keyed on (avatar, metadata_digest).
+The affected_avatars CTE uses the standard apply_monthly_incremental_filter
+macro (same as other Circles intermediates) to find any avatar that
+received an UpdateMetadataDigest event in the incremental window, then
+INNER JOINs the targets view to that set so the full history of every
+affected avatar is recomputed in one shot — guaranteeing the leadInFrame
+window function still sees every event for those avatars and valid_to
+stays correct.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> analytics_team</p>

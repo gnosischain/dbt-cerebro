@@ -15,7 +15,24 @@
   <body>
     
     <h1>int_execution_lending_aave_utilization_daily</h1>
-    <p>Daily utilization rate per (protocol, reserve) across Aave V3 and SparkLend. Computes cumulative scaled supply/borrow positions from Pool events (Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256 WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs each pool action with the ReserveDataUpdated snapshot at the same log_index position within its transaction. End-of-day indices sourced directly from raw events so the final utilization ratio is computed in exact arithmetic end-to-end.</p>
+    <p>Daily utilization rate per (protocol, reserve) across Aave V3 and SparkLend.
+Computes cumulative scaled supply/borrow positions from Pool events
+(Supply/Withdraw/Borrow/Repay/LiquidationCall) using exact UInt256
+WadRayMath (rayDivFloor for inflows, rayDivCeil for outflows) and pairs
+each pool action with the ReserveDataUpdated snapshot at the same
+log_index position within its transaction. End-of-day indices are sourced
+directly from raw events so the final utilization ratio is computed in
+exact arithmetic end-to-end.
+
+cumulative_scaled_supply / cumulative_scaled_borrow are Int256 for exact
+WadRayMath; a --full-refresh is required when migrating from the previous
+Float64 schema so the column types are recreated.
+
+Per-day deltas are built via UNION ALL + a single GROUP BY rather than a
+FULL OUTER JOIN, which had protocol-dimension correctness issues for Spark
+on ClickHouse (rows where only supply or only borrow existed on a day
+diluted the cumulative).
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> </p>

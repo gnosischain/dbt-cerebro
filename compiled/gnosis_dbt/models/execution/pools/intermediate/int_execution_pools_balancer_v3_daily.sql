@@ -156,22 +156,28 @@ daily_deltas AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       
@@ -290,7 +296,9 @@ balances AS (
         ON p.pool_address = c.pool_address
        AND p.token_address = c.token_address
     
-),enriched AS (
+),
+
+enriched AS (
     SELECT
         b.date AS date,
         'Balancer V3' AS protocol,

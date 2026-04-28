@@ -18,22 +18,28 @@ events_filtered AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(s.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_gpay_spend_activity_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(s.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(s.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_gpay_spend_activity_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(s.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_gpay_spend_activity_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gpay_spend_activity_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 )

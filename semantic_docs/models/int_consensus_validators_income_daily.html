@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_consensus_validators_income_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_consensus_validators_income_daily</h1>
+    <p>Daily per-(date, validator_index) consensus income fact, including exited and
+zero-balance validators. Amount columns in GNO. Identifier columns (pubkey,
+withdrawal_credentials, withdrawal_address, status) are joined at the API layer from
+int_consensus_validators_snapshots_daily to keep this table memory-efficient.
+
+Two deposit numbers are emitted because of the post-Pectra accounting problem:
+pre-Pectra, beacon-chain deposits credited the same day they were requested. Post
+EIP-7002 / EIP-7251 (MaxEB) a single execution-request can ask for up to 2048 GNO
+for one validator, but the beacon chain credits it gradually through the
+pending_deposits queue (churn-bounded), so a 1767-GNO request can land as ~0.01 GNO
+on the request day and ~1 GNO/day for weeks afterward. The naive
+income = balance_delta - reported_deposit + withdrawals - cons_net then produces
+catastrophic per-day errors (~-1767 GNO on request day, large false positives on
+drain days).
+
+Fix: spec-bounded effective-credit. The consensus spec gives a closed-form maximum
+reward per epoch per validator,
+    base_reward_per_epoch = effective_balance_gwei * BASE_REWARD_FACTOR
+                          / sqrt(total_active_effective_balance_gwei)
+With Gnosis constants BASE_REWARD_FACTOR=25, SLOTS_PER_EPOCH=16, SECONDS_PER_SLOT=5
+(so EPOCHS_PER_DAY = 86400 / (5*16) = 1080) and a 3x safety multiplier for
+attestation + proposer + sync duties, we get
+    expected_reward_cap = 3 * effective_balance_gwei * 25 * 1080
+                        / sqrt(network_active_effective_balance_gwei)        (in gwei)
+    effective_deposits_credited = GREATEST(
+        0,
+        balance_delta + withdrawals - cons_net - expected_reward_cap
+    )
+    consensus_income_amount_gno = balance_delta
+                                - effective_deposits_credited
+                                + withdrawals - cons_net
+This caps daily income at the spec maximum, keeps cumulative balance-flow exact,
+leaves queued-but-not-yet-credited deposits in reported_deposit until the balance
+actually moves, and scales with both validator size and total network stake.
+Same base_reward * sqrt(total_stake)^-1 relation used by beaconcha.in&#x27;s calculator,
+applied here as a validity bound on observed income rather than a forward projection.
+
+NOT additionally capped at reported_deposit: post-Pectra, on a queue-drain day the
+reported amount is 0 but the balance jumps by hundreds of GNO; capping at reported
+would falsely attribute the jump to income. The spec cap alone is sufficient.
+Edge cases handled: pure reward day, reported-but-not-credited, queue-drain, slashing,
+and consolidation source/target all reconcile correctly.
+
+Cumulatives use effective credits (cumulative_deposits_gno) for total_income_estimated_gno;
+cumulative_reported_deposits_gno is kept alongside for audit. Incremental strategy
+follows int_execution_tokens_balances_native_daily — daily deltas + balance reads
+are pulled only from the incremental window, with prior-state (last balance and
+cumulatives at the previous partition boundary) loaded from  so lifetime
+cumulatives stay correct without scanning history. balance_prev_gno uses lagInFrame
+within the window, falling back to prev_state at the partition boundary.
+
+Known upstream limitation: consensus.validators crawler outages (observed
+2025-12-10 .. 2025-12-28, 20 fully-empty days) cause withdrawals/deposits/
+consolidations during the gap to have no matching snapshot, producing a large
+one-day negative income on the resume day for affected validators. Documented
+here so consumers know those single-day outliers are upstream-data, not formula.</p>
+    <p><strong>Module:</strong> consensus</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/consensus/intermediate/int_consensus_validators_income_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>validators_income</span> <span class='pill'>microbatch</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>apy</code></td><td>Float64</td><td>Annualized percent yield computed from daily_rate.</td></tr><tr><td><code>balance_gno</code></td><td>Float64</td><td>End-of-day validator balance in GNO.</td></tr><tr><td><code>balance_prev_gno</code></td><td>Float64</td><td>Previous-day balance in GNO (lagInFrame by 1 within validator_index).</td></tr><tr><td><code>consensus_income_amount_gno</code></td><td>Float64</td><td>Consensus income on the date, in GNO. Computed as
+balance_delta − effective_deposits_credited_gno + withdrawals_amount_gno
+− consolidation_inflow_gno + consolidation_outflow_gno.
+Capped above by the consensus-spec expected_reward_cap_gno (plus 3× safety for
+attestation + proposer + sync duties); can be negative on slashing events.
+</td></tr><tr><td><code>consolidation_inflow_gno</code></td><td>Float64</td><td>Consolidation amount received (target role) on the date, in GNO.</td></tr><tr><td><code>consolidation_outflow_gno</code></td><td>Float64</td><td>Consolidation amount transferred out (source role) on the date, in GNO.</td></tr><tr><td><code>cumulative_consolidation_inflow_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>cumulative_consolidation_outflow_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>cumulative_deposits_gno</code></td><td>Float64</td><td>Running sum of effective_deposits_credited_gno for this validator. Used by
+total_income_estimated_gno and by the Validator Explorer&#x27;s cumulative-flow charts.
+</td></tr><tr><td><code>cumulative_reported_deposits_gno</code></td><td>Float64</td><td>Running sum of raw deposits_amount_gno (REPORTED requests) for this validator —
+may exceed cumulative_deposits_gno while queued requests are still draining.
+Kept for audit / display; NOT used in total_income_estimated_gno.
+</td></tr><tr><td><code>cumulative_withdrawals_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>daily_rate</code></td><td>Nullable(Float64)</td><td>consensus_income_amount_gno / NULLIF(balance_prev_gno + effective_deposits_credited_gno + consolidation_inflow_gno, 0).</td></tr><tr><td><code>date</code></td><td>DateTime64</td><td></td></tr><tr><td><code>deposits_amount_gno</code></td><td>Float64</td><td>RAW reported deposit amount for the date (execution_request and beacon deposit
+amounts summed per validator). Post-Pectra this is a REQUEST amount — the beacon
+chain credits it gradually via the churn-limited queue, so this column may be
+far larger than what actually hit the validator&#x27;s balance that day. Use
+effective_deposits_credited_gno for income-accounting purposes; use this column
+for &quot;when was a deposit requested&quot; audit/display.
+</td></tr><tr><td><code>deposits_count</code></td><td>UInt64</td><td></td></tr><tr><td><code>effective_balance_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>effective_deposits_credited_gno</code></td><td>Float64</td><td>Spec-bounded actual deposit credit for the date (in GNO). Computed as
+GREATEST(0, balance_delta + withdrawals - cons_net - expected_reward_cap) so
+that it captures queue-drain days (balance jumps without a same-day request)
+while ignoring request-but-not-yet-credited days. Sum over time equals the
+true cumulative deposit principal for the validator.
+</td></tr><tr><td><code>expected_reward_cap_gno</code></td><td>Float64</td><td>Consensus-spec upper bound on this validator&#x27;s possible daily reward, in GNO.
+3 × effective_balance_gwei × BASE_REWARD_FACTOR (25) × EPOCHS_PER_DAY (1080)
+÷ √(network_effective_balance_gwei) ÷ 1e9. Anything above this in daily balance
+growth is attributed to effective_deposits_credited_gno, not income. Useful for
+debugging and for constructing validator-balance-weighted APY.
+</td></tr><tr><td><code>total_income_estimated_gno</code></td><td>Float64</td><td>balance_gno + cumulative_withdrawals_gno − cumulative_deposits_gno (effective) − cumulative_consolidation_inflow_gno + cumulative_consolidation_outflow_gno. In GNO.</td></tr><tr><td><code>validator_index</code></td><td>UInt64</td><td></td></tr><tr><td><code>withdrawals_amount_gno</code></td><td>Float64</td><td></td></tr><tr><td><code>withdrawals_count</code></td><td>UInt64</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_consensus_validators_balances_daily</code></li><li><code>int_consensus_validators_consolidation_flags</code></li><li><code>int_consensus_validators_deposits_daily</code></li><li><code>int_consensus_validators_snapshots_daily</code></li><li><code>int_consensus_validators_withdrawals_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_consensus_validators_performance_daily</code></li><li><code>api_consensus_validators_performance_latest</code></li><li><code>fct_consensus_validators_apy_mean_daily</code></li><li><code>fct_consensus_validators_explorer_daily</code></li><li><code>fct_consensus_validators_explorer_latest</code></li><li><code>fct_consensus_validators_explorer_members_table</code></li><li><code>fct_consensus_validators_income_total_daily</code></li><li><code>int_consensus_validators_apy_dist_income_daily</code></li><li><code>int_consensus_validators_explorer_apy_dist_daily</code></li></ul>
+    
+  </body>
+</html>

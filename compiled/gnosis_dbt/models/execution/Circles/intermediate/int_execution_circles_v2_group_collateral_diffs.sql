@@ -22,22 +22,28 @@ WITH single_locks AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       
@@ -80,22 +86,28 @@ batch_locks AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
+        WHERE 1=1 
+      )
+    
   
 
           
@@ -139,22 +151,28 @@ batch_burns AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
+        WHERE 1=1 
+      )
+    
   
 
           
@@ -198,22 +216,28 @@ batch_returns AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x2
+        WHERE 1=1 
+      )
+    
   
 
           

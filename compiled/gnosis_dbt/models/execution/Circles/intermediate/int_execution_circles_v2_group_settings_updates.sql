@@ -23,22 +23,28 @@ WHERE event_name = 'BaseGroupCreated'
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
+        WHERE 1=1 
+      )
+    
   
 
   
@@ -66,22 +72,28 @@ WHERE event_name = 'CMGroupCreated'
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
+        WHERE 1=1 
+      )
+    
   
 
   
@@ -109,22 +121,28 @@ WHERE event_name IN ('OwnerSet', 'ServiceUpdated', 'FeeCollectionUpdated', 'Mint
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x2
+        WHERE 1=1 
+      )
+    
   
 
   

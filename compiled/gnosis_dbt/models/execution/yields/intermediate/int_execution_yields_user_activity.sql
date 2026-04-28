@@ -31,22 +31,28 @@ lp_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_yields_user_activity` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_yields_user_activity` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_yields_user_activity` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_yields_user_activity` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       
@@ -92,9 +98,13 @@ lending_events AS (
     INNER JOIN `dbt`.`lending_market_mapping` rm
         ON  rm.protocol             = e.protocol
        AND lower(rm.reserve_address) = lower(e.decoded_params['reserve'])
-    LEFT JOIN `dbt`.`int_execution_token_prices_daily` pr
-        ON pr.symbol = rm.reserve_symbol
-       AND pr.date   = toDate(e.block_timestamp)
+    ASOF LEFT JOIN (
+        SELECT symbol, date, price
+        FROM `dbt`.`int_execution_token_prices_daily`
+        ORDER BY symbol, date
+    ) pr
+        ON  pr.symbol                 = rm.reserve_symbol
+        AND toDate(e.block_timestamp) >= pr.date
     WHERE e.event_name IN ('Supply', 'Withdraw', 'Borrow', 'Repay')
       AND e.decoded_params['reserve'] IS NOT NULL
       AND e.decoded_params['amount'] IS NOT NULL
@@ -104,22 +114,28 @@ lending_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(e.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
-      FROM `dbt`.`int_execution_yields_user_activity` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(e.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.block_timestamp)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(e.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_yields_user_activity` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(e.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.block_timestamp)), -0)
+          
 
-      FROM `dbt`.`int_execution_yields_user_activity` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_yields_user_activity` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

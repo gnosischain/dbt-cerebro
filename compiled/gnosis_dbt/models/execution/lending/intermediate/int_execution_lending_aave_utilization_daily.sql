@@ -30,22 +30,28 @@ reserve_index_by_tx AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 ),
@@ -68,22 +74,28 @@ supply_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 
@@ -106,22 +118,28 @@ supply_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 ),
@@ -144,22 +162,28 @@ borrow_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 
@@ -182,22 +206,28 @@ borrow_events AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 ),
@@ -365,22 +395,28 @@ daily_index AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
 
-      FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_lending_aave_utilization_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     GROUP BY protocol, date, token_address

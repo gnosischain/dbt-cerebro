@@ -29,22 +29,28 @@ WITH affected_avatars AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.valid_from)), -0))
-      FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.valid_from)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.valid_from)), -0))
+        FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.valid_from)), -0)
+          
 
-      FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

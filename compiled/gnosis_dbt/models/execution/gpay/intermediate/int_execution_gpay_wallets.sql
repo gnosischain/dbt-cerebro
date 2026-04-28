@@ -22,22 +22,28 @@ activated_wallets AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(date)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.activation_date)), -0))
-      FROM `dbt`.`int_execution_gpay_wallets` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(date) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.activation_date)), -0)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.activation_date)), -0))
+        FROM `dbt`.`int_execution_gpay_wallets` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.activation_date)), -0)
+          
 
-      FROM `dbt`.`int_execution_gpay_wallets` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gpay_wallets` AS x2
+        WHERE 1=1 
+      )
+    
   
 
       

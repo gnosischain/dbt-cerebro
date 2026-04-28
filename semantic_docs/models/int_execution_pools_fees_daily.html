@@ -15,13 +15,26 @@
   <body>
     
     <h1>int_execution_pools_fees_daily</h1>
-    <p>Daily accrued pool fees and trading volume at pool×token grain for Uniswap V3 and Swapr V3 pools, computed from Swap + Flash events (gross fees; independent of Collect/claims). V3 swap/flash deltas are sourced from staging models (stg_pools__uniswap_v3_events, stg_pools__swapr_v3_events) which handle int256 two&#x27;s-complement decoding. Fees are applied in ppm (1e6 denominator). Volume = gross incoming token amount per swap; flash loans contribute 0 volume. Swapr V3 (Algebra) fees are dynamic via Fee events — the latest fee is applied as-of each swap, with swaps before the first Fee event backfilled using the pool&#x27;s first observed fee.
+    <p>Daily accrued pool fees and trading volume at pool x token grain for Uniswap V3,
+Swapr V3, and Balancer V3 pools, computed from Swap + Flash events (gross fees;
+independent of Collect/claims). V3 swap/flash deltas are sourced from staging
+models (stg_pools__uniswap_v3_events, stg_pools__swapr_v3_events) which handle
+int256 two&#x27;s-complement decoding. Uniswap V3 uses a static fee tier per pool
+from PoolCreated; fees are applied in ppm (1e6 denominator) as
+fee = swap_in_delta * fee_ppm / 1e6. Volume = gross incoming token amount per
+swap; flash loans contribute 0 volume. Swapr V3 (Algebra) fees are dynamic via
+Fee events — the latest fee as-of each swap is applied via ASOF join on
+event_order (unix_ts * 2^32 + log_index), with swaps before the first Fee event
+backfilled using the pool&#x27;s first observed fee. Balancer V3 takes explicit
+swapFeeAmount and amountIn fields directly from Swap events and resolves ERC4626
+wrappers to underlying for token metadata. V3 token positions are mapped to
+addresses via stg_pools__v3_pool_registry.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> </p>
     <p><strong>Path:</strong> <code>models/execution/pools/intermediate/int_execution_pools_fees_daily.sql</code></p>
-    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>fees</span> <span class='pill'>accrued</span> <span class='pill'>intermediate</span></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>fees</span> <span class='pill'>accrued</span> <span class='pill'>intermediate</span> <span class='pill'>refill_append</span></p>
     <h2>Columns</h2>
     <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td></td></tr><tr><td><code>fee_amount</code></td><td>Float64</td><td></td></tr><tr><td><code>fees_usd</code></td><td>Float64</td><td></td></tr><tr><td><code>pool_address</code></td><td>String</td><td></td></tr><tr><td><code>protocol</code></td><td>String</td><td></td></tr><tr><td><code>token</code></td><td>String</td><td></td></tr><tr><td><code>token_address</code></td><td>String</td><td></td></tr><tr><td><code>volume_amount</code></td><td>Float64</td><td>Daily trading volume in token units (gross incoming amount from Swap events).</td></tr><tr><td><code>volume_usd</code></td><td>Float64</td><td>Daily trading volume in USD.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>protocol</code> (categorical)</li><li><code>pool_address</code> (categorical)</li><li><code>token_address</code> (categorical)</li><li><code>token</code> (categorical)</li></ul>

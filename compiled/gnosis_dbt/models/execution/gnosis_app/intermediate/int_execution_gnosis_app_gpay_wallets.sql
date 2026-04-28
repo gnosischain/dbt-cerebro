@@ -29,22 +29,28 @@ changed_delay_modules AS (
   
     
     
+    
+    
+    
 
-   AND 
-    toStartOfMonth(toDate(l.block_timestamp)) >= (
-      SELECT toStartOfMonth(addDays(max(toDate(x1.last_event_at)), -1))
-      FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x1
-      WHERE 1=1 
-    )
-    AND toDate(l.block_timestamp) >= (
-      SELECT 
-        
-          addDays(max(toDate(x2.last_event_at)), -1)
-        
+    AND 
+    
+      
+      toStartOfMonth(toDate(l.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.last_event_at)), -1))
+        FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(l.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.last_event_at)), -1)
+          
 
-      FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x2
-      WHERE 1=1 
-    )
+        FROM `dbt`.`int_execution_gnosis_app_gpay_wallets` AS x2
+        WHERE 1=1 
+      )
+    
   
 
     

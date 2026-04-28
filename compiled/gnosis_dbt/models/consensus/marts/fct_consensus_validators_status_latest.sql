@@ -7,6 +7,12 @@ SELECT
     status,
     lower(pubkey) AS pubkey,
     lower(withdrawal_credentials) AS withdrawal_credentials,
+    if(
+        startsWith(lower(withdrawal_credentials), '0x01')
+        OR startsWith(lower(withdrawal_credentials), '0x02'),
+        concat('0x', substring(lower(withdrawal_credentials), 27, 40)),
+        NULL
+    ) AS withdrawal_address,
     effective_balance,
     slashed,
     activation_eligibility_epoch,
