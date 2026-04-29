@@ -880,6 +880,19 @@ models:
     from the JSON body — name, symbol, description, imageUrl,
     previewImageUrl — alongside the raw body and fetch timestamp for
     downstream models.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      # Circles v2 launched 2024-10. Each month-batch processes only
+      # avatars registered in that month (filter on
+      # int_execution_circles_v2_avatars.block_timestamp), keeping the
+      # JSON-body sort small enough to fit the cluster's 7.2 GiB cap.
+      # When start_month/end_month are set the model uses append; RMT
+      # dedups on unique_key=avatar so successive month-batches converge
+      # to one row per avatar.
+      start_date: "2024-10-01"
+      batch_months: 1
   columns:
   - name: avatar
     description: Lowercase Circles avatar address.
@@ -923,7 +936,6 @@ models:
   - name: metadata_fetched_at
     description: Timestamp the current payload was fetched.
     data_type: Nullable(DateTime)
-  meta: *id002
 - name: int_execution_circles_v2_avatar_metadata_history
   description: |
     SCD-style historical view of every Circles v2 avatar metadata change.
