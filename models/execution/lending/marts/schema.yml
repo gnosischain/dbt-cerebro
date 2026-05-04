@@ -47,6 +47,7 @@ models:
   - name: value
     data_type: UInt64
 
+<<<<<<< HEAD
 - name: fct_execution_lending_latest
   description: |
     Lender / borrower counts per (window, protocol, token) plus protocol-scoped
@@ -103,3 +104,109 @@ models:
   - name: change_pct
     description: Percent change vs the count 7 days earlier (NULL when the prior value is zero or missing).
     data_type: Nullable(Float64)
+=======
+- name: fct_execution_lending_top_lenders_ranked
+  description: >
+    Latest-day snapshot of lending suppliers ranked by USD balance within each
+    (protocol, symbol) pair. Top 500 per pair. No joins — only window functions
+    on int_execution_lending_aave_user_balances_daily. Materialized as a table
+    to decouple the heavy scan from the lightweight joins in
+    fct_execution_lending_top_lenders_latest.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: protocol
+    description: Lending protocol (Aave V3 or SparkLend).
+    data_type: String
+  - name: reserve_address
+    description: Reserve token contract address.
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: user_address
+    description: Lender wallet address.
+    data_type: String
+  - name: balance
+    description: Supply balance in native units.
+    data_type: Float64
+  - name: balance_usd
+    description: Supply balance in USD.
+    data_type: Float64
+  - name: pct_of_total
+    description: Lender's share of total supply for this (protocol, symbol) as percentage.
+    data_type: Float64
+  - name: rank
+    description: Lender rank within (protocol, symbol), ordered by balance_usd descending.
+    data_type: UInt64
+
+- name: fct_execution_lending_top_lenders_latest
+  description: >
+    Latest-day snapshot of top lending suppliers with concentration metrics,
+    7-day balance change, and address labels. One row per (protocol, symbol,
+    user_address). Joins the ranked table with prev_balances and crawlers labels.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: rank
+    data_type: UInt64
+  - name: protocol
+    data_type: String
+  - name: reserve_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: user_address
+    data_type: String
+  - name: label
+    description: Project label from crawlers_data_labels. NULL if unlabeled.
+    data_type: String
+  - name: balance
+    data_type: Float64
+  - name: balance_usd
+    data_type: Float64
+  - name: pct_of_total
+    data_type: Float64
+  - name: cumulative_pct
+    description: Running cumulative share of supply from rank 1 downward.
+    data_type: Float64
+  - name: change_usd_7d
+    description: USD balance change vs 7 days ago.
+    data_type: Float64
+
+- name: api_execution_lending_top_lenders_latest
+  description: >
+    Thin API view over fct_execution_lending_top_lenders_latest. Dashboard applies
+    token and protocol filters as needed.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: rank
+    data_type: UInt64
+  - name: protocol
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: user_address
+    data_type: String
+  - name: label
+    data_type: String
+  - name: balance
+    data_type: Float64
+  - name: balance_usd
+    data_type: Float64
+  - name: pct_of_total
+    data_type: Float64
+  - name: cumulative_pct
+    data_type: Float64
+  - name: change_usd_7d
+    data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
+>>>>>>> ca797b9e (add top lenders)
