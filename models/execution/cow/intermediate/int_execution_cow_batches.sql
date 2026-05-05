@@ -88,6 +88,6 @@ SELECT
     toFloat64(tx.gas_used) * toFloat64(tx.gas_price) / 1e18                          AS tx_cost_native
 FROM batch_trades bt
 LEFT JOIN interactions i
-    ON i.transaction_hash = bt.transaction_hash
+    ON concat('0x', i.transaction_hash) = bt.transaction_hash
 LEFT JOIN tx_context tx
     ON tx.transaction_hash = bt.transaction_hash

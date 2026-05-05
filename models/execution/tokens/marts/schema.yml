@@ -475,3 +475,136 @@ models:
       severity: error
       tags:
       - elementary
+
+- name: fct_execution_tokens_top_holders_ranked
+  description: >
+    Latest-day snapshot of token holders ranked by USD balance with pct_of_total,
+    filtered to top 500 per token. No joins — only window functions on
+    int_execution_tokens_balances_daily. Materialized as a table to decouple the
+    heavy scan from the lightweight joins in fct_execution_tokens_top_holders_latest.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: token_address
+    description: Contract address of the token.
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: address
+    description: Holder wallet or contract address.
+    data_type: String
+  - name: balance
+    description: Token balance in native units.
+    data_type: Float64
+  - name: balance_usd
+    description: Token balance in USD.
+    data_type: Float64
+  - name: pct_of_total
+    description: Holder's balance as percentage of total token supply by USD.
+    data_type: Float64
+  - name: rank
+    description: Holder rank within token, ordered by balance_usd descending (1 = largest).
+    data_type: UInt64
+
+- name: fct_execution_tokens_top_holders_latest
+  description: >
+    Latest-day snapshot of token holders ranked by USD balance, with concentration
+    metrics (pct_of_total, cumulative_pct), 7-day balance change, and address labels
+    from the crawlers pipeline. One row per (token_address, address). Used by the
+    api view for the top holders table on the Tokens and Revenue dashboard sections.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: rank
+    description: Holder rank within token, ordered by balance_usd descending.
+    data_type: UInt64
+  - name: token_address
+    description: Contract address of the token (lowercase).
+    data_type: String
+  - name: symbol
+    description: Token symbol (e.g. sDAI, WETH, GNO).
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS).
+    data_type: String
+  - name: address
+    description: Holder wallet or contract address.
+    data_type: String
+  - name: label
+    description: Project label from crawlers_data_labels (e.g. Safe, Balancer, EOA). NULL if unlabeled.
+    data_type: String
+  - name: label_sector
+    description: Sector from crawlers_data_labels (e.g. Wallets & AA, DEX, EOAs). NULL if unlabeled.
+    data_type: String
+  - name: balance
+    description: Token balance in native units.
+    data_type: Float64
+  - name: balance_usd
+    description: Token balance in USD.
+    data_type: Float64
+  - name: pct_of_total
+    description: Holder's balance as a percentage of total token supply (by USD), rounded to 4 decimals.
+    data_type: Float64
+  - name: cumulative_pct
+    description: Running sum of pct_of_total from rank 1 downward — shows what share the top N holders control.
+    data_type: Float64
+  - name: change_usd_7d
+    description: USD balance change vs 7 days ago. Positive = accumulating, negative = exiting.
+    data_type: Float64
+
+- name: api_execution_tokens_top_holders_latest
+  description: >
+    Thin API view over fct_execution_tokens_top_holders_latest. Returns all holders
+    ranked by balance, with concentration and label columns. Dashboard applies
+    WHERE symbol = {filter} and LIMIT as needed.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: rank
+    description: Holder rank within token, ordered by balance_usd descending.
+    data_type: UInt64
+  - name: token_address
+    description: Contract address of the token (lowercase).
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: address
+    description: Holder wallet or contract address.
+    data_type: String
+  - name: label
+    description: Project label from crawlers_data_labels. NULL if unlabeled.
+    data_type: String
+  - name: label_sector
+    description: Sector from crawlers_data_labels. NULL if unlabeled.
+    data_type: String
+  - name: balance
+    description: Token balance in native units.
+    data_type: Float64
+  - name: balance_usd
+    description: Token balance in USD.
+    data_type: Float64
+  - name: pct_of_total
+    description: Holder's share of total token supply as percentage.
+    data_type: Float64
+  - name: cumulative_pct
+    description: Running cumulative share of supply from rank 1 downward.
+    data_type: Float64
+  - name: change_usd_7d
+    description: USD balance change vs 7 days ago.
+    data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
