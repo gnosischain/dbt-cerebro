@@ -11,7 +11,7 @@
 
   Strategy:
   - For dates covered by the fact table → use production values directly
-  - For dates after the fact table's last date → recompute from:
+  - For dates after the fact tables last date → recompute from:
       * Node distribution (still flowing from P2P crawlers)
       * Client efficiency (still flowing from P2P crawlers)
       * Forward-filled carbon intensity (last known Ember values)
