@@ -1,0 +1,44 @@
+version: 2
+models:
+
+- name: int_quarterly_esg_carbon_intensity_with_fallback
+  description: >
+    Forward-fills Ember carbon intensity data for periods where values are missing (Jan 2026+).
+    Carries the last known carbon intensity per country for up to 12 months.
+    UNIONs real data from int_esg_carbon_intensity_ensemble with estimated rows.
+  columns:
+  - name: month_date
+    description: Month start date for the carbon intensity measurement or estimate.
+    data_type: Date
+  - name: country_code
+    description: ISO 3-letter country code or 'WORLD' for global average.
+    data_type: String
+  - name: carbon_intensity_mean
+    description: Point estimate of carbon intensity in gCO2/kWh, seasonally adjusted.
+    data_type: Float64
+  - name: carbon_intensity_std
+    description: Standard deviation of carbon intensity estimate.
+    data_type: Float64
+  - name: is_estimated
+    description: True if the value is forward-filled from the last known Ember data rather than a real measurement.
+    data_type: Bool
+
+- name: int_quarterly_esg_carbon_footprint_with_fallback
+  description: >
+    Extends fct_esg_carbon_footprint_uncertainty with estimated daily CO2 and energy values
+    for periods where Ember carbon intensity data is missing. Uses production fact table values
+    for historical dates and recomputes estimates from node distribution, client efficiency, and
+    forward-filled carbon intensity for the gap period.
+  columns:
+  - name: date
+    description: Observation date for the carbon footprint data point.
+    data_type: Date
+  - name: annual_co2_tonnes_projected
+    description: Annualised CO2 emissions in tonnes, projected from the daily value (daily × 365 / 1000).
+    data_type: Float64
+  - name: annual_energy_Mwh_projected
+    description: Annualised energy consumption in MWh, projected from the daily value (daily × 365 / 1000).
+    data_type: Float64
+  - name: is_estimated
+    description: True if the value is computed using forward-filled carbon intensity rather than real Ember data.
+    data_type: Bool
