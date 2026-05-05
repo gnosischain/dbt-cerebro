@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','dao_treasury','kpi','tier1',
+    tags=['dev','execution','dao_treasury','kpi','tier1',
           'api:dao_treasury_kpi_total_holdings','granularity:latest']
   )
 }}

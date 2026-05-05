@@ -7,7 +7,7 @@
     partition_by='toStartOfMonth(date)',
     unique_key='(date, wallet_address, position_type, protocol, symbol)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','dao_treasury','holdings_daily']
+    tags=['dev','execution','dao_treasury','holdings_daily']
   )
 }}
 
