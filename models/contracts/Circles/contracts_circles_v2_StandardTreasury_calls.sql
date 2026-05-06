@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'contracts', 'circles_v2', 'calls'],
+        tags=['production', 'contracts', 'circles_v2', 'calls'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )
