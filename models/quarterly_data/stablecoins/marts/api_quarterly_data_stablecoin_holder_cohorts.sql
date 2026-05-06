@@ -18,44 +18,18 @@
     )
 }}
 
-WITH eoq_cohorts AS (
-    SELECT
-        toStartOfQuarter(date) AS quarter,
-        CASE
-            WHEN symbol IN ('WxDAI', 'sDAI', 'USDC', 'USDC.e', 'USDT')
-            THEN 'USD-pegged'
-            ELSE 'non-USD'
-        END AS peg_class,
-        balance_bucket,
-        sum(holders_in_bucket)       AS holders,
-        sum(value_usd_in_bucket)     AS value_usd
-    FROM {{ ref('int_execution_tokens_balance_cohorts_daily') }}
-    WHERE token_class = 'STABLECOIN'
-      AND cohort_unit = 'usd'
-      AND date = toDate(subtractDays(addQuarters(toStartOfQuarter(date), 1), 1))
-    GROUP BY quarter, peg_class, balance_bucket
-)
-
 SELECT
     quarter,
     peg_class,
     balance_bucket,
-    holders,
-    value_usd,
-    value_usd / nullIf(holders, 0) AS avg_balance_usd
-FROM eoq_cohorts
-ORDER BY
-    quarter,
-    peg_class,
-    multiIf(
-        balance_bucket = '0-0.01',    1,
-        balance_bucket = '0.01-0.1',  2,
-        balance_bucket = '0.1-1',     3,
-        balance_bucket = '1-10',      4,
-        balance_bucket = '10-100',    5,
-        balance_bucket = '100-1k',    6,
-        balance_bucket = '1k-10k',    7,
-        balance_bucket = '10k-100k',  8,
-        balance_bucket = '100k-1M',   9,
-        10
-    )
+    holders_min,
+    holders_max,
+    holders_avg,
+    holders_median,
+    value_min,
+    value_max,
+    value_avg,
+    value_median,
+    value_median / nullIf(holders_median, 0) AS avg_balance_usd
+FROM {{ ref('int_quarterly_stablecoin_cohorts_stats') }}
+ORDER BY quarter, peg_class, bucket_order

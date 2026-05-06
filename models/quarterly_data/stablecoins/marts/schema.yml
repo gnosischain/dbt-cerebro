@@ -3,52 +3,89 @@ models:
 
 - name: api_quarterly_data_stablecoin_supply
   description: >
-    End-of-quarter total stablecoin supply (USD) and holder count on Gnosis Chain.
-    Includes all stablecoins classified in tokens_whitelist.
+    Quarterly stablecoin supply statistics on Gnosis Chain, split by peg class
+    (USD-pegged vs non-USD). Shows median, max, and average of daily supply
+    across all days in the quarter. Excludes BRZ.
   columns:
   - name: quarter
     description: Quarter start date.
     data_type: Date
-  - name: supply_usd
-    description: Total stablecoin supply in USD at end of quarter.
+  - name: peg_class
+    description: "Stablecoin peg classification: 'USD-pegged' or 'non-USD'."
+    data_type: String
+  - name: supply_min
+    description: Minimum daily total supply (USD) observed in the quarter.
     data_type: Float64
-  - name: holders_total
-    description: Total number of stablecoin holders at end of quarter.
-    data_type: UInt64
+  - name: supply_max
+    description: Maximum daily total supply (USD) observed in the quarter.
+    data_type: Float64
+  - name: supply_avg
+    description: Average daily total supply (USD) across all days in the quarter.
+    data_type: Float64
+  - name: supply_median
+    description: Median daily total supply (USD) across all days in the quarter.
+    data_type: Float64
+  - name: tokens_included
+    description: Comma-separated list of tokens in this peg class.
+    data_type: String
 
 - name: api_quarterly_data_stablecoin_holders
   description: >
-    End-of-quarter stablecoin holder count on Gnosis Chain.
-    Includes all stablecoins classified in tokens_whitelist.
+    Quarterly stablecoin holder statistics on Gnosis Chain, split by peg class.
+    Shows median, max, and average of daily holder count across all days in the
+    quarter. Note: holders are summed across tokens so an address holding
+    multiple stablecoins is counted once per token. Excludes BRZ.
   columns:
   - name: quarter
     description: Quarter start date.
     data_type: Date
-  - name: holders
-    description: Total number of unique stablecoin holders at end of quarter.
+  - name: peg_class
+    description: "Stablecoin peg classification: 'USD-pegged' or 'non-USD'."
+    data_type: String
+  - name: holders_min
+    description: Minimum daily holder count observed in the quarter.
     data_type: UInt64
+  - name: holders_max
+    description: Maximum daily holder count observed in the quarter.
+    data_type: UInt64
+  - name: holders_avg
+    description: Average daily holder count across all days in the quarter.
+    data_type: Float64
+  - name: holders_median
+    description: Median daily holder count across all days in the quarter.
+    data_type: Float64
+  - name: tokens_included
+    description: Comma-separated list of tokens in this peg class.
+    data_type: String
 
 - name: api_quarterly_data_stablecoin_transfers
   description: >
-    Quarterly stablecoin transfer count and volume on Gnosis Chain.
-    Includes all stablecoins classified in tokens_whitelist.
+    Quarterly stablecoin transfer count and volume on Gnosis Chain,
+    split by peg class (USD-pegged vs non-USD). Excludes BRZ.
   columns:
   - name: quarter
     description: Quarter start date.
     data_type: Date
+  - name: peg_class
+    description: "Stablecoin peg classification: 'USD-pegged' or 'non-USD'."
+    data_type: String
   - name: transfers
     description: Total number of stablecoin transfers in the quarter.
     data_type: UInt64
   - name: volume_usd
     description: Total stablecoin transfer volume in USD for the quarter.
     data_type: Float64
+  - name: tokens_included
+    description: Comma-separated list of tokens in this peg class.
+    data_type: String
 
 - name: api_quarterly_data_stablecoin_holder_cohorts
   description: >
     End-of-quarter stablecoin holder distribution by USD balance bucket,
     split into USD-pegged (WxDAI, sDAI, USDC, USDC.e, USDT) and non-USD
-    (EURe, GBPe, BRZ, BRLA, ZCHF, etc.).
-    Shows holders count, total value, and average balance per cohort.
+    (EURe, GBPe, BRLA, ZCHF, etc.). Excludes BRZ.
+    Shows min/max/avg/median statistics for both holders and value across
+    all days in the quarter. Reads from pre-materialized intermediate table.
   columns:
   - name: quarter
     description: Quarter start date.
@@ -59,12 +96,30 @@ models:
   - name: balance_bucket
     description: "USD balance range bucket (e.g. '0-0.01', '1-10', '100-1k', '1M+')."
     data_type: String
-  - name: holders
-    description: Number of holders in this bucket at end of quarter.
+  - name: holders_min
+    description: Minimum daily holder count in this bucket across the quarter.
     data_type: UInt64
-  - name: value_usd
-    description: Total USD value held by addresses in this bucket.
+  - name: holders_max
+    description: Maximum daily holder count in this bucket across the quarter.
+    data_type: UInt64
+  - name: holders_avg
+    description: Average daily holder count in this bucket across the quarter.
+    data_type: Float64
+  - name: holders_median
+    description: Median daily holder count in this bucket across the quarter.
+    data_type: Float64
+  - name: value_min
+    description: Minimum daily total USD value in this bucket across the quarter.
+    data_type: Float64
+  - name: value_max
+    description: Maximum daily total USD value in this bucket across the quarter.
+    data_type: Float64
+  - name: value_avg
+    description: Average daily total USD value in this bucket across the quarter.
+    data_type: Float64
+  - name: value_median
+    description: Median daily total USD value in this bucket across the quarter.
     data_type: Float64
   - name: avg_balance_usd
-    description: Average USD balance per holder in this bucket.
+    description: Average USD balance per holder (value_median / holders_median).
     data_type: Float64
