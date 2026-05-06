@@ -29,7 +29,28 @@ clean-targets:
   - "logs"
 
 models:
-  gnosis_dbt: {}
+  gnosis_dbt:
+    execution:
+      gnosis_app:
+        intermediate:
+          int_execution_gnosis_app_user_identity_bridge:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+      gpay:
+        intermediate:
+          int_execution_gpay_user_identity_bridge:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+      mmm:
+        +tags: ["mmm", "execution"]
+        intermediate:
+          +materialized: incremental
+        marts:
+          +materialized: table
   elementary:
     +schema: "elementary"
 
@@ -199,3 +220,108 @@ seeds:
         child_abi_source_address: "String"
         protocol: "String"
         start_blocktime: "String"
+
+    # ── MTA / MMM registries ──────────────────────────────────────────────
+    mta_event_kinds:
+      +engine: MergeTree()
+      +order_by: [event_kind]
+      +column_types:
+        event_kind: "LowCardinality(String)"
+        domain: "LowCardinality(String)"
+        description: "String"
+
+    mta_conversion_kinds:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_conversion_to_event_kind:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        event_kind: "LowCardinality(String)"
+
+    mta_funnels:
+      +engine: MergeTree()
+      +order_by: [funnel_name]
+      +column_types:
+        funnel_name: "LowCardinality(String)"
+        step_1_event_kind: "LowCardinality(String)"
+        step_2_event_kind: "LowCardinality(String)"
+        step_3_event_kind: "Nullable(String)"
+        window_seconds: "UInt32"
+
+    mta_gp_event_kinds:
+      +engine: MergeTree()
+      +order_by: [event_kind]
+      +column_types:
+        event_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_gp_conversion_kinds:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_gp_conversion_to_event_kind:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        event_kind: "LowCardinality(String)"
+
+    mta_gp_identity_roles:
+      +engine: MergeTree()
+      +order_by: [identity_role]
+      +column_types:
+        identity_role: "LowCardinality(String)"
+        description: "String"
+
+    mmm_kpi_registry:
+      +engine: MergeTree()
+      +order_by: [kpi_name]
+      +column_types:
+        kpi_name: "LowCardinality(String)"
+        kpi_value_method: "LowCardinality(String)"
+        units: "LowCardinality(String)"
+        source_model: "String"
+        is_dedup_safe: "UInt8"
+
+    mmm_media_registry:
+      +engine: MergeTree()
+      +order_by: [media_name]
+      +column_types:
+        media_name: "LowCardinality(String)"
+        media_value_method: "LowCardinality(String)"
+        media_units: "LowCardinality(String)"
+        is_outlay: "UInt8"
+        source_model: "String"
+
+    mmm_control_registry:
+      +engine: MergeTree()
+      +order_by: [control_name]
+      +column_types:
+        control_name: "LowCardinality(String)"
+        control_value_method: "LowCardinality(String)"
+        source_model: "String"
+
+    mmm_holiday_weeks:
+      +engine: MergeTree()
+      +order_by: [week]
+      +column_types:
+        week: "Date"
+        is_holiday_week: "UInt8"
+        region: "LowCardinality(String)"
+
+    mmm_hardfork_steps:
+      +engine: MergeTree()
+      +order_by: [fork_date]
+      +column_types:
+        fork_date: "Date"
+        fork_name: "String"
+        sectors_affected: "String"

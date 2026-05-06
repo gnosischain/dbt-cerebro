@@ -919,3 +919,71 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_execution_gpay_user_identity_bridge
+  description: |
+    INTERNAL ONLY — GP-side analogue of the GA identity bridge. Holds raw
+    GP addresses (Safe contracts, owner EOAs, delegate EOAs) paired with
+    their `user_pseudonym` and `identity_role`. Used by GP-side downstream
+    models to pseudonymize raw addresses at build time without recomputing
+    the hash.
+
+    Privacy posture: same as the GA bridge (`internal_only` tag,
+    `expose_to_mcp = false`, no `api:<resource>` tag).
+
+    `pseudonymize_address` is deterministic with the same salt as the GA
+    bridge, so a user_pseudonym from this table joins on equality with a
+    user_pseudonym from the GA bridge (or stg_mixpanel_ga__events.user_id_hash)
+    when the underlying EOA is the same. This is the cross-domain join
+    that unified MMM+MTA reports use.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: address
+    description: Raw GP address, lowercase 0x-prefixed.
+    data_type: String
+    tests:
+    - not_null:
+        severity: error
+  - name: user_pseudonym
+    description: |
+      Keyed pseudonym of address. Joinable to GA-side user_pseudonym on
+      equality (same hash space).
+    data_type: UInt64
+    tests:
+    - not_null:
+        severity: error
+  - name: identity_role
+    description: |
+      Role this address plays for the associated GP Safe.
+      One of: 'safe_self' | 'initial_owner' | 'delegate'.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null:
+        severity: error
+    - relationships:
+        to: ref('mta_gp_identity_roles')
+        field: identity_role
+        severity: error
+  - name: gp_safe
+    description: Raw GP Safe address this identity is associated with.
+    data_type: Nullable(String)
+  - name: first_seen_at
+    description: Earliest heuristic hit (NULL for delegate/safe_self rows).
+    data_type: Nullable(DateTime64(0, 'UTC'))
+  - name: last_seen_at
+    description: Most recent heuristic hit (NULL for delegate/safe_self rows).
+    data_type: Nullable(DateTime64(0, 'UTC'))
+  meta:
+    owner: analytics_team
+    expose_to_mcp: false
+    privacy_tier: internal
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [address, identity_role]
+      severity: error

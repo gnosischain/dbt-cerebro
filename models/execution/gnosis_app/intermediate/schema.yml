@@ -759,3 +759,67 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_execution_gnosis_app_user_identity_bridge
+  description: |
+    INTERNAL ONLY — holds raw `address` and `user_pseudonym` together for
+    every Gnosis App user. The only place in the warehouse where the
+    pairing exists. Used by other dbt models that need to pseudonymize a
+    raw address column at build time without recomputing the hash.
+
+    Privacy posture:
+    - Tagged `internal_only` + `privacy:tier_internal`.
+    - `meta.expose_to_mcp = false` so cerebro-mcp's discover_models filter
+      hides it.
+    - Has no `api:<resource>` tag, so cerebro-api's _build_routes never
+      registers it as an endpoint.
+
+    Pseudonym output is identical to int_execution_gnosis_app_user_identities
+    because both apply the same `pseudonymize_address` macro to the same
+    input rows (deterministic).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: address
+    description: Raw GA user address, lowercase 0x-prefixed.
+    data_type: String
+    tests:
+    - not_null:
+        severity: error
+    - unique:
+        severity: error
+  - name: user_pseudonym
+    description: |
+      Keyed pseudonym (sipHash64 of salted lowercased address). Joinable to
+      stg_mixpanel_ga__events.user_id_hash on equality.
+    data_type: UInt64
+    tests:
+    - not_null:
+        severity: error
+    - unique:
+        severity: error
+  - name: first_seen_at
+    description: Earliest heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+  - name: last_seen_at
+    description: Most recent heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+  - name: heuristic_kinds
+    description: Distinct heuristic rule names triggered by this user.
+    data_type: Array(String)
+  - name: heuristic_hits
+    description: Total heuristic events for this user.
+    data_type: UInt64
+  - name: n_distinct_heuristics
+    description: Confidence proxy — number of distinct rules fired.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    expose_to_mcp: false
+    privacy_tier: internal
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
