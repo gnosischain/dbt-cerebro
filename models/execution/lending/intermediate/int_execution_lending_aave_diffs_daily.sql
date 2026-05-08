@@ -224,7 +224,7 @@ transfer_deltas AS (
     FROM atoken_events_raw t
     INNER JOIN reserve_map rm
         ON rm.protocol       = t.protocol
-       AND rm.atoken_address = lower(t.contract_address)
+       AND rm.atoken_address = concat('0x', lower(t.contract_address))
     WHERE t.event_name = 'BalanceTransfer'
       AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
       AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
@@ -247,7 +247,7 @@ transfer_deltas AS (
     FROM atoken_events_raw t
     INNER JOIN reserve_map rm
         ON rm.protocol       = t.protocol
-       AND rm.atoken_address = lower(t.contract_address)
+       AND rm.atoken_address = concat('0x', lower(t.contract_address))
     WHERE t.event_name = 'BalanceTransfer'
       AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
       AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
