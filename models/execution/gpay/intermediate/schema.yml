@@ -922,20 +922,42 @@ models:
 
 - name: int_execution_gpay_user_identity_bridge
   description: |
-    INTERNAL ONLY — GP-side analogue of the GA identity bridge. Holds raw
-    GP addresses (Safe contracts, owner EOAs, delegate EOAs) paired with
-    their `user_pseudonym` and `identity_role`. Used by GP-side downstream
-    models to pseudonymize raw addresses at build time without recomputing
-    the hash.
+    INTERNAL ONLY — GP-side analogue of `int_execution_gnosis_app_user_identity_bridge`.
+    Holds raw GP addresses (Safe contracts, initial-owner EOAs, delegate
+    EOAs) paired with their `user_pseudonym` and `identity_role`. The
+    only place in the warehouse where GP raw addresses live alongside
+    pseudonyms — downstream GP models read from this bridge and never
+    recompute the hash.
 
-    Privacy posture: same as the GA bridge (`internal_only` tag,
-    `expose_to_mcp = false`, no `api:<resource>` tag).
+    Three identity roles are emitted per Safe (UNION ALL of three CTEs):
 
-    `pseudonymize_address` is deterministic with the same salt as the GA
-    bridge, so a user_pseudonym from this table joins on equality with a
-    user_pseudonym from the GA bridge (or stg_mixpanel_ga__events.user_id_hash)
-    when the underlying EOA is the same. This is the cross-domain join
-    that unified MMM+MTA reports use.
+      initial_owner — the EOA that signed the Safe setup (event_kind
+                      = `safe_setup` in `int_execution_safes_owner_events`).
+                      The most likely value the GP frontend passes to
+                      `mixpanel.identify(...)` after onboarding even
+                      though the Safe ownership transfers to the
+                      sentinel address afterwards.
+      delegate      — a spender delegate EOA from
+                      `int_execution_gpay_spender_delegates_current`.
+                      Usually a backend card-flow key; some flows still
+                      identify with it.
+      safe_self     — the Safe smart-account address itself, hashed
+                      with the same macro. Some GP frontend flows call
+                      `mixpanel.identify(safeAddress)` instead of the
+                      EOA, so this row is needed to land those events.
+
+    A 2-owner Safe with 1 delegate produces 4 rows (2 initial_owner,
+    1 delegate, 1 safe_self).
+
+    Privacy posture: same as the GA bridge — `internal_only` tag,
+    `expose_to_mcp = false`, no `api:<resource>` tag,
+    `INTERNAL_ONLY_TABLES` denied at MCP runtime.
+
+    `pseudonymize_address` is deterministic with the same salt
+    (`CEREBRO_PII_SALT`) as the GA bridge and `stg_mixpanel_ga__events`,
+    so when the underlying EOA is the same, the `user_pseudonym` joins
+    on equality across all three sources. This equality is the
+    cross-domain join key for unified MMM + MTA reports.
   config:
     contract:
       enforced: false
@@ -986,4 +1008,233 @@ models:
       - elementary
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns: [address, identity_role]
+      severity: error
+
+- name: int_execution_gpay_user_events_unified
+  description: |
+    Long-form GP-side chain event log keyed by
+    (`user_pseudonym`, `identity_role`). Source:
+    `int_execution_gpay_activity` joined to the GP identity bridge on
+    the lowercased Safe address — every chain event on a GP Safe
+    fan-outs to all (pseudonym, role) pairs tied to that Safe. A
+    payment from a 2-owner Safe yields 3 rows: `safe_self` + two
+    `initial_owner`s.
+
+    `event_kind` is derived from `int_execution_gpay_activity.action`
+    via a `multiIf`:
+      Payment            → gp.payment
+      Cashback           → gp.cashback_claim
+      Fiat Top Up        → gp.deposit
+      Crypto Deposit     → gp.deposit
+      Fiat Off-ramp      → gp.withdrawal
+      Crypto Withdrawal  → gp.withdrawal
+      Reversal           → gp.payment
+      <anything else>    → gp.action_other
+
+    v1 is chain-only. Cross-domain Mixpanel touchpoints on a GP Safe's
+    owner are reached by joining this table to
+    `int_execution_gnosis_app_user_events_unified` on `user_pseudonym`
+    — same hash space across sectors.
+
+    `event_dedup_key` excludes `log_index` because
+    `int_execution_gpay_activity` doesn't carry one; the dedup tuple is
+    (transaction_hash, token_address, counterparty, direction,
+    identity_role).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: event_ts
+    description: UTC timestamp of the GP card / safe activity.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_date
+    description: Calendar date partition key.
+    data_type: Date
+    tests: [not_null]
+  - name: user_pseudonym
+    description: Keyed pseudonym. Same hash space as GA + Mixpanel.
+    data_type: UInt64
+    tests: [not_null]
+  - name: identity_role
+    description: One of `safe_self`, `initial_owner`, `delegate`. Different research grain — see model description.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - relationships:
+        to: ref('mta_gp_identity_roles')
+        field: identity_role
+  - name: event_source
+    description: Always `'chain'` in v1.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: One of `gp.payment`, `gp.cashback_claim`, `gp.deposit`, `gp.withdrawal`, `gp.action_other`.
+    data_type: LowCardinality(String)
+    tests:
+    - relationships:
+        to: ref('mta_gp_event_kinds')
+        field: event_kind
+        severity: warn
+  - name: event_subkind
+    description: Raw `action` string from `int_execution_gpay_activity` (e.g. `Payment`, `Fiat Top Up`).
+    data_type: String
+  - name: amount_usd
+    description: USD amount of the activity.
+    data_type: Nullable(Float64)
+  - name: event_dedup_key
+    description: cityHash64 of (transaction_hash, token_address, counterparty, direction, identity_role).
+    data_type: UInt64
+  - name: provenance_model
+    description: Always `int_execution_gpay_activity` in v1.
+    data_type: LowCardinality(String)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [event_ts, event_kind, user_pseudonym, identity_role, event_dedup_key]
+      severity: warn
+
+- name: int_execution_gpay_conversions
+  description: |
+    GP conversion registry. One row per (conversion event, identity_role)
+    pair via the bridge fan-out — every chain conversion on a GP Safe
+    produces one row per pseudonym × role tied to that Safe. Persona
+    picks the analytical grain at query time:
+
+      WHERE conversion_kind='gpay_payment' AND identity_role='initial_owner'
+        → owner grain (one human → one row per payment from any owned Safe)
+      WHERE conversion_kind='gpay_payment' AND identity_role='safe_self'
+        → treasury grain (one Safe → one row per payment)
+      WHERE conversion_kind='gpay_payment' AND identity_role='delegate'
+        → operator grain (rarely useful; delegates are usually backend keys)
+
+    v1 conversion sources:
+      gpay_payment        — int_execution_gpay_activity WHERE action='Payment'
+      gpay_cashback_claim — int_execution_gpay_activity WHERE action='Cashback'
+      gpay_funded         — first inflow (`Fiat Top Up` or `Crypto Deposit`)
+                            into a Safe across the FULL history. Computed
+                            via per-Safe `argMin`/`min` over all-time activity
+                            (not microbatch-bounded — "first" is global) and
+                            then filtered to rows whose first_inflow_ts falls
+                            in the target window.
+
+    `int_execution_gpay_activity` has no `log_index`, so
+    `conversion_dedup_key` is built from (transaction_hash, token_address,
+    counterparty, direction, identity_role) — the activity table's
+    natural unique tuple plus the role fan-out.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date partition key.
+    data_type: Date
+    tests: [not_null]
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting identity.
+    data_type: UInt64
+    tests: [not_null]
+  - name: identity_role
+    description: One of `safe_self`, `initial_owner`, `delegate`.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - relationships:
+        to: ref('mta_gp_identity_roles')
+        field: identity_role
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - relationships:
+        to: ref('mta_gp_conversion_kinds')
+        field: conversion_kind
+  - name: conversion_amount_usd
+    description: USD amount carried from `int_execution_gpay_activity.amount_usd`.
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol of the converted asset.
+    data_type: Nullable(String)
+  - name: conversion_dedup_key
+    description: cityHash64 of (kind, transaction_hash, token_address, counterparty, direction, identity_role).
+    data_type: UInt64
+  - name: provenance_model
+    description: Always `int_execution_gpay_activity` in v1.
+    data_type: LowCardinality(String)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_ts, conversion_kind, user_pseudonym, identity_role, conversion_dedup_key]
+      severity: error
+
+- name: int_execution_gpay_coverage_daily
+  description: |
+    Per-day, per-(`conversion_kind`, `identity_role`) tracked-coverage
+    stats. Same shape as `int_execution_gnosis_app_coverage_daily` with
+    the GP role dimension added so persona can compare owner-grain
+    coverage against treasury-grain coverage for the same conversion
+    kind.
+
+    "Tracked": ≥1 row in `int_execution_gpay_user_events_unified` where
+    `event_ts < conversion_ts`, `event_ts >= conversion_ts - 30d`,
+    `identity_role` matches the conversion's role, and `event_kind` is
+    not the conversion's own mapped event_kind (leakage guard via
+    `conversion_kind_to_event_kind`).
+
+    Incremental, monthly partition on `conversion_date`. Uses
+    `grace_hash` join algorithm in pre-hook.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_date
+    description: Calendar date of the conversions being summarised.
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: identity_role
+    description: '`safe_self` / `initial_owner` / `delegate` — coverage is computed within-role.'
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: total_conversions
+    description: Number of conversions on (date, kind, role).
+    data_type: UInt64
+  - name: tracked_conversions
+    description: Subset with ≥1 prior-30d non-self touch in the same role.
+    data_type: UInt64
+  - name: total_users
+    description: Distinct converting users on (date, kind, role).
+    data_type: UInt64
+  - name: tracked_users
+    description: Distinct converting users with ≥1 prior-30d non-self touch.
+    data_type: UInt64
+  - name: tracked_conversion_coverage
+    description: '`tracked_conversions / total_conversions`.'
+    data_type: Nullable(Float64)
+  - name: tracked_user_coverage
+    description: '`tracked_users / total_users`.'
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_date, conversion_kind, identity_role]
       severity: error

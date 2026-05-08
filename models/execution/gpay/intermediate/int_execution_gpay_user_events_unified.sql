@@ -33,13 +33,16 @@ WITH bridge AS (
 ),
 
 activity AS (
+    -- int_execution_gpay_activity has no log_index; its unique key is
+    -- (wallet_address, block_timestamp, transaction_hash, token_address,
+    -- counterparty, direction). Use those for dedup_key.
     SELECT
         toDateTime(a.block_timestamp)                            AS event_ts,
         toDate(a.block_timestamp)                                AS event_date,
         lower(a.wallet_address)                                  AS gp_safe,
         a.transaction_hash,
-        a.log_index,
         a.token_address,
+        a.counterparty,
         a.symbol,
         a.action,
         a.direction,
@@ -73,7 +76,7 @@ SELECT
     )                                                            AS event_kind,
     a.action                                                     AS event_subkind,
     toFloat64OrNull(toString(a.amount_usd))                      AS amount_usd,
-    cityHash64(a.transaction_hash, toString(a.log_index), b.identity_role) AS event_dedup_key,
+    cityHash64(a.transaction_hash, a.token_address, a.counterparty, a.direction, b.identity_role) AS event_dedup_key,
     'int_execution_gpay_activity'                                AS provenance_model
 FROM activity a
 INNER JOIN bridge b ON b.gp_safe = a.gp_safe

@@ -740,3 +740,630 @@ models:
 - {name: api_execution_gnosis_app_kpi_repeat_purchase_rate_latest,    description: "KPI: share of last-30d active users with ≥2 swap_filled or marketplace_buy events.",                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_retention_pct_latest,           description: "KPI: latest-cohort M1 retention %.",                                                                  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_kpi_churn_rate_latest,              description: "KPI: latest-month 'Any'-scope churn rate.",                                                           meta: {owner: analytics_team, authoritative: false}}
+
+- name: fct_execution_gnosis_app_journeys_30d
+  description: |
+    Pre-joined GA-side journey spine with a 30-day lookback. One row per
+    (conversion, prior-30d touchpoint) pair with the conversion's own
+    event kind excluded from touches. Built via
+    `build_journey_lookback(30, 'gnosis_app')` so the leakage guards
+    (`event_ts < conversion_ts` and
+    `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
+    applied at materialisation, not at query time.
+
+    The MTA persona reads this directly to score first/last/linear/
+    time-decay credit per touch without re-running the conversions ×
+    events self-join. The 7d / 14d / 60d sensitivity-sweep variants
+    (deferred) reuse the same macro with a different `lookback_days`
+    argument.
+
+    Incremental, monthly partition on `conversion_date`. Uses
+    `grace_hash` join algorithm to keep memory bounded across the
+    explicit lookback window.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion (carried from the conversions registry).
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol or offer name associated with the conversion.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: '`chain` or `mixpanel` — provenance of the touchpoint.'
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Provenance subtype of the touchpoint.
+    data_type: LowCardinality(String)
+  - name: event_dedup_key
+    description: Carried from upstream events table for downstream dedup if needed.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
+    data_type: Int64
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: "lag_seconds > 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
+    data_type: Int64
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns test over the full 12M-row
+  # journey set OOMs at the 10 GiB cluster cap.
+
+- name: fct_execution_gnosis_app_attribution_30d
+  description: |
+    Pre-computed first / last / linear / time-decay (half-life = 7d)
+    attribution per (`conversion_kind`, `event_kind`) over the last 180
+    days of conversions. The MTA persona reads this as the
+    attribution-comparison table; a single
+    `WHERE conversion_kind = '<kind>'` filter swaps in the desired
+    conversion target.
+
+    Implementation: pre-aggregate per conversion → tie-counts → per-touch
+    score → group by `event_kind`. Pure GROUP BY + LEFT JOIN; no
+    `groupArray + ARRAY JOIN` and no window functions. The pattern
+    survived three rewrites — v1 arrays and v2 windows both OOM'd at
+    the cluster's 10 GiB per-query cap on the 12 M-row journey set; v3
+    drops sort space from 12 M down to ~22 k per-conversion rows.
+
+    Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+    normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+    credit splits across ties so `Σ first_touch_credit_per_conv = 1.0`
+    and `Σ last_touch_credit_per_conv = 1.0` exactly.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversions_with_touch
+    description: Distinct (user, conversion_ts) pairs where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits across all conversions of this kind. Conversion-equivalent units (a value of 100 = "100 conversions' worth of first-touch credit accrued to this event kind").
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this `conversion_kind` in the 180-day window (denominator for share metrics).
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time — surfaces freshness in the API view.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, event_kind]
+      severity: error
+
+- name: fct_execution_gnosis_app_funnel_daily
+  description: |
+    Per-day funnel diagnostics over `int_execution_gnosis_app_user_events_unified`
+    using ClickHouse `windowFunnel`. Funnel definitions live in seed
+    `mta_funnels.csv` (funnel_name + step_1/2/3 event_kinds + window_seconds).
+
+    The model materialises one SELECT block per funnel via a Jinja loop
+    over `run_query(seed)` and UNION ALLs the results — required because
+    `windowFunnel(window_seconds)` needs `window_seconds` as a
+    compile-time literal (a CROSS JOIN against the seed with the column
+    is rejected by ClickHouse with BAD_ARGUMENTS at runtime).
+
+    Each output row is one (date, funnel_name, user) triple with `level`
+    = the max step reached by that user within `window_seconds` of their
+    first matching event. `level=0` rows are emitted for users who hit
+    step 1's event but not step 2 within the window.
+
+    Adding a funnel: append a row to `mta_funnels.csv`, run
+    `dbt seed --select mta_funnels`, then `dbt run` regenerates the model
+    automatically.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: date
+    description: Calendar date of the user's first matching event.
+    data_type: Date
+    tests: [not_null]
+  - name: funnel_name
+    description: Funnel identifier from `mta_funnels.csv`.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - relationships:
+        to: ref('mta_funnels')
+        field: funnel_name
+  - name: user_pseudonym
+    description: Keyed pseudonym of the user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: level
+    description: Max funnel step reached within `window_seconds` (0 = step 1 hit but no step 2; up to step count).
+    data_type: UInt8
+  - name: first_event_ts
+    description: Timestamp of the user's first event matching any funnel step on this date.
+    data_type: DateTime
+  - name: last_event_ts
+    description: Timestamp of the user's latest matching event on this date.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, funnel_name, user_pseudonym]
+      severity: error
+
+- name: api_execution_gnosis_app_attribution_30d
+  description: |
+    API view passthrough over `fct_execution_gnosis_app_attribution_30d`.
+    Tier1 endpoint (`api:gnosis_app_attribution_30d`), requires
+    `X-API-Key`. Granularity tag `granularity:rolling_180d` documents
+    that the underlying mart aggregates over the trailing 180 days of
+    conversions.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this kind in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+
+- name: fct_execution_gnosis_app_journeys_7d
+  description: |
+    Pre-joined GA-side journey spine with a 7-day lookback. One row per
+    (conversion, prior-7d touchpoint) pair with the conversion's own
+    event kind excluded from touches. Built via
+    `build_journey_lookback(7, 'gnosis_app')` so the leakage guards
+    (`event_ts < conversion_ts` and
+    `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
+    applied at materialisation, not at query time.
+
+    The MTA persona reads this directly to score first/last/linear/
+    time-decay credit per touch without re-running the conversions ×
+    events self-join. The 7d / 14d / 60d sensitivity-sweep variants
+    (deferred) reuse the same macro with a different `lookback_days`
+    argument.
+
+    Incremental, monthly partition on `conversion_date`. Uses
+    `grace_hash` join algorithm to keep memory bounded across the
+    explicit lookback window.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion (carried from the conversions registry).
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol or offer name associated with the conversion.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: '`chain` or `mixpanel` — provenance of the touchpoint.'
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Provenance subtype of the touchpoint.
+    data_type: LowCardinality(String)
+  - name: event_dedup_key
+    description: Carried from upstream events table for downstream dedup if needed.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
+    data_type: Int64
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: "lag_seconds > 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
+    data_type: Int64
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns test over the full 12M-row
+  # journey set OOMs at the 10 GiB cluster cap.
+
+
+- name: fct_execution_gnosis_app_attribution_7d
+  description: |
+    Pre-computed first / last / linear / time-decay (half-life = 7d)
+    attribution per (`conversion_kind`, `event_kind`) over the last 180
+    days of conversions. The MTA persona reads this as the
+    attribution-comparison table; a single
+    `WHERE conversion_kind = '<kind>'` filter swaps in the desired
+    conversion target.
+
+    Implementation: pre-aggregate per conversion → tie-counts → per-touch
+    score → group by `event_kind`. Pure GROUP BY + LEFT JOIN; no
+    `groupArray + ARRAY JOIN` and no window functions. The pattern
+    survived three rewrites — v1 arrays and v2 windows both OOM'd at
+    the cluster's 10 GiB per-query cap on the 12 M-row journey set; v3
+    drops sort space from 12 M down to ~22 k per-conversion rows.
+
+    Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+    normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+    credit splits across ties so `Σ first_touch_credit_per_conv = 1.0`
+    and `Σ last_touch_credit_per_conv = 1.0` exactly.
+    Note: the time-decay half-life is fixed at 7 days regardless of
+    the lookback window — this is a per-conversation customer-decay
+    parameter, not a window-length parameter.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversions_with_touch
+    description: Distinct (user, conversion_ts) pairs where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits across all conversions of this kind. Conversion-equivalent units (a value of 100 = "100 conversions' worth of first-touch credit accrued to this event kind").
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this `conversion_kind` in the 180-day window (denominator for share metrics).
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time — surfaces freshness in the API view.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, event_kind]
+      severity: error
+
+
+- name: api_execution_gnosis_app_attribution_7d
+  description: |
+    API view passthrough over `fct_execution_gnosis_app_attribution_7d`.
+    Tier1 endpoint (`api:gnosis_app_attribution_7d`), requires
+    `X-API-Key`. Granularity tag `granularity:rolling_180d` documents
+    that the underlying mart aggregates over the trailing 180 days of
+    conversions.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this kind in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+
+- name: fct_execution_gnosis_app_journeys_60d
+  description: |
+    Pre-joined GA-side journey spine with a 60-day lookback. One row per
+    (conversion, prior-60d touchpoint) pair with the conversion's own
+    event kind excluded from touches. Built via
+    `build_journey_lookback(60, 'gnosis_app')` so the leakage guards
+    (`event_ts < conversion_ts` and
+    `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
+    applied at materialisation, not at query time.
+
+    The MTA persona reads this directly to score first/last/linear/
+    time-decay credit per touch without re-running the conversions ×
+    events self-join. The 7d / 14d / 60d sensitivity-sweep variants
+    (deferred) reuse the same macro with a different `lookback_days`
+    argument.
+
+    Incremental, monthly partition on `conversion_date`. Uses
+    `grace_hash` join algorithm to keep memory bounded across the
+    explicit lookback window.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion (carried from the conversions registry).
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol or offer name associated with the conversion.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: '`chain` or `mixpanel` — provenance of the touchpoint.'
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Provenance subtype of the touchpoint.
+    data_type: LowCardinality(String)
+  - name: event_dedup_key
+    description: Carried from upstream events table for downstream dedup if needed.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
+    data_type: Int64
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: "lag_seconds > 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
+    data_type: Int64
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns test over the full 12M-row
+  # journey set OOMs at the 10 GiB cluster cap.
+
+
+- name: fct_execution_gnosis_app_attribution_60d
+  description: |
+    Pre-computed first / last / linear / time-decay (half-life = 7d)
+    attribution per (`conversion_kind`, `event_kind`) over the last 180
+    days of conversions. The MTA persona reads this as the
+    attribution-comparison table; a single
+    `WHERE conversion_kind = '<kind>'` filter swaps in the desired
+    conversion target.
+
+    Implementation: pre-aggregate per conversion → tie-counts → per-touch
+    score → group by `event_kind`. Pure GROUP BY + LEFT JOIN; no
+    `groupArray + ARRAY JOIN` and no window functions. The pattern
+    survived three rewrites — v1 arrays and v2 windows both OOM'd at
+    the cluster's 10 GiB per-query cap on the 12 M-row journey set; v3
+    drops sort space from 12 M down to ~22 k per-conversion rows.
+
+    Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+    normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+    credit splits across ties so `Σ first_touch_credit_per_conv = 1.0`
+    and `Σ last_touch_credit_per_conv = 1.0` exactly.
+    Note: the time-decay half-life is fixed at 7 days regardless of
+    the lookback window — this is a per-conversation customer-decay
+    parameter, not a window-length parameter.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversions_with_touch
+    description: Distinct (user, conversion_ts) pairs where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits across all conversions of this kind. Conversion-equivalent units (a value of 100 = "100 conversions' worth of first-touch credit accrued to this event kind").
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this `conversion_kind` in the 180-day window (denominator for share metrics).
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time — surfaces freshness in the API view.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, event_kind]
+      severity: error
+
+
+- name: api_execution_gnosis_app_attribution_60d
+  description: |
+    API view passthrough over `fct_execution_gnosis_app_attribution_60d`.
+    Tier1 endpoint (`api:gnosis_app_attribution_60d`), requires
+    `X-API-Key`. Granularity tag `granularity:rolling_180d` documents
+    that the underlying mart aggregates over the trailing 180 days of
+    conversions.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this kind in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team

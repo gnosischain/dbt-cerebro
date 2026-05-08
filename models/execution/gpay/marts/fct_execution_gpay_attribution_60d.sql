@@ -10,10 +10,10 @@
   )
 }}
 
--- GP attribution mart: pre-aggregate then JOIN pattern (memory-safe).
--- Same shape as the GA mart with identity_role added. See the GA mart
--- header for the full implementation history (v1 arrays → v2 windows
--- → v3 GROUP BY + JOIN, ~570× sort-space reduction).
+-- GP attribution mart, 60-day lookback variant. Same pre-aggregate-then-JOIN
+-- shape as the 30d mart. The time-decay half-life remains 7d (a per-customer
+-- decay parameter, not a window parameter), so longer-lookback touches
+-- contribute exponentially less credit but still appear in first/last/linear.
 
 WITH journeys AS (
   SELECT
@@ -25,7 +25,7 @@ WITH journeys AS (
     event_kind,
     event_dedup_key,
     exp(-1.0 * dateDiff('day', toDate(touch_ts), toDate(conversion_ts)) / 7.0) AS td_raw
-  FROM {{ ref('fct_execution_gpay_journeys_30d') }}
+  FROM {{ ref('fct_execution_gpay_journeys_60d') }}
   WHERE conversion_date >= today() - INTERVAL 180 DAY
 ),
 

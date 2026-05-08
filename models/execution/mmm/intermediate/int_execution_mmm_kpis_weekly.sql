@@ -32,7 +32,7 @@ kpi_pools_tvl_usd AS (
   SELECT
     toStartOfWeek(date, 1)               AS week,
     'pools_tvl_usd'                      AS kpi_name,
-    argMax(tvl_usd, date)                AS kpi_value,
+    toFloat64(argMax(tvl_usd, date))     AS kpi_value,
     'last'                               AS kpi_value_method,
     'fct_execution_pools_daily'          AS source_model
   FROM {{ ref('fct_execution_pools_daily') }}
@@ -43,7 +43,7 @@ kpi_pools_volume_usd AS (
   SELECT
     toStartOfWeek(date, 1)               AS week,
     'pools_volume_usd'                   AS kpi_name,
-    sum(volume_usd)                      AS kpi_value,
+    toFloat64(sum(volume_usd_daily))     AS kpi_value,
     'sum'                                AS kpi_value_method,
     'fct_execution_pools_daily'          AS source_model
   FROM {{ ref('fct_execution_pools_daily') }}
@@ -51,18 +51,18 @@ kpi_pools_volume_usd AS (
 ),
 
 kpi_dex_volume_usd_dedup AS (
-  -- First-hop only to avoid double-counting multi-hop trades. The
-  -- fct_execution_trades_by_protocol_daily table records each hop
-  -- separately, so we deduplicate by transaction_hash + tx-position
-  -- on the underlying trades view in a CTE below.
+  -- First-hop-only acknowledgment: the upstream fct aggregates each
+  -- swap-log row separately, so multi-hop trades are double-counted.
+  -- A per-tx dedup CTE on int_execution_pools_dex_trades OOMs at the
+  -- 10 GiB cluster cap, so we accept the known multi-hop overcount
+  -- here and document it in mmm_kpi_registry.is_dedup_safe = false.
   SELECT
     toStartOfWeek(date, 1)                                                AS week,
     'dex_volume_usd_dedup'                                                AS kpi_name,
-    sum(volume_usd)                                                       AS kpi_value,
+    toFloat64(sum(volume_usd))                                            AS kpi_value,
     'sum'                                                                 AS kpi_value_method,
     'fct_execution_trades_by_protocol_daily'                              AS source_model
   FROM {{ ref('fct_execution_trades_by_protocol_daily') }}
-  WHERE hop_index = 1
   GROUP BY week
 ),
 
@@ -70,7 +70,7 @@ kpi_ga_active_users AS (
   SELECT
     toStartOfWeek(date, 1)               AS week,
     'ga_active_users'                    AS kpi_name,
-    argMax(active_users, date)           AS kpi_value,
+    toFloat64(argMax(active_users, date)) AS kpi_value,
     'last'                               AS kpi_value_method,
     'fct_execution_gnosis_app_users_daily' AS source_model
   FROM {{ ref('fct_execution_gnosis_app_users_daily') }}
@@ -81,7 +81,7 @@ kpi_ga_new_users AS (
   SELECT
     toStartOfWeek(date, 1)               AS week,
     'ga_new_users'                       AS kpi_name,
-    sum(new_users)                       AS kpi_value,
+    toFloat64(sum(new_users))            AS kpi_value,
     'sum'                                AS kpi_value_method,
     'fct_execution_gnosis_app_users_daily' AS source_model
   FROM {{ ref('fct_execution_gnosis_app_users_daily') }}
@@ -93,7 +93,7 @@ kpi_gpay_topups AS (
   SELECT
     week,
     'gpay_topups_count'                  AS kpi_name,
-    n_topups                             AS kpi_value,
+    toFloat64(n_topups)                  AS kpi_value,
     'sum'                                AS kpi_value_method,
     'fct_execution_gnosis_app_gpay_topups_weekly' AS source_model
   FROM {{ ref('fct_execution_gnosis_app_gpay_topups_weekly') }}
@@ -103,7 +103,7 @@ kpi_gpay_topups_volume AS (
   SELECT
     week,
     'gpay_topups_volume_usd'             AS kpi_name,
-    volume_usd                           AS kpi_value,
+    toFloat64(volume_usd)                AS kpi_value,
     'sum'                                AS kpi_value_method,
     'fct_execution_gnosis_app_gpay_topups_weekly' AS source_model
   FROM {{ ref('fct_execution_gnosis_app_gpay_topups_weekly') }}

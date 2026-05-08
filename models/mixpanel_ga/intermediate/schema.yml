@@ -427,3 +427,42 @@ models:
       - elementary.schema_changes:
           severity: warn
           tags: [elementary]
+
+  - name: int_execution_gnosis_app_events_mixpanel_unified
+    description: |
+      Long-form Mixpanel event log filtered to identified, production
+      traffic and inner-joined to int_execution_gnosis_app_user_identity_bridge.
+      Only events from users in the GA cohort flow through; anonymous
+      Mixpanel visitors and non-GA identified users are excluded.
+      user_id_hash from Mixpanel is renamed to user_pseudonym; the join on
+      equality works because both sides use the same pseudonymize_address
+      macro and salt.
+    config:
+      contract:
+        enforced: false
+    columns:
+    - name: event_ts
+      data_type: DateTime
+      tests: [not_null]
+    - name: event_date
+      data_type: Date
+      tests: [not_null]
+    - name: user_pseudonym
+      data_type: UInt64
+      tests: [not_null]
+    - name: event_source
+      data_type: LowCardinality(String)
+    - name: event_kind
+      data_type: LowCardinality(String)
+    - name: event_subkind
+      data_type: LowCardinality(String)
+    - name: page_path
+      data_type: Nullable(String)
+    - name: bottom_sheet
+      data_type: Nullable(String)
+    meta:
+      owner: analytics_team
+    tests:
+    - elementary.schema_changes:
+        severity: warn
+        tags: [elementary]

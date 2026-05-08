@@ -763,26 +763,31 @@ models:
 - name: int_execution_gnosis_app_user_identity_bridge
   description: |
     INTERNAL ONLY — holds raw `address` and `user_pseudonym` together for
-    every Gnosis App user. The only place in the warehouse where the
-    pairing exists. Used by other dbt models that need to pseudonymize a
-    raw address column at build time without recomputing the hash.
+    every known Gnosis App user. The only place in the warehouse where
+    the (raw address, pseudonym) pairing exists. Other GA-side models
+    that need to pseudonymize a raw address column at build time read
+    from this bridge instead of recomputing the keyed hash.
 
     Privacy posture:
     - Tagged `internal_only` + `privacy:tier_internal`.
     - `meta.expose_to_mcp = false` so cerebro-mcp's discover_models filter
-      hides it.
-    - Has no `api:<resource>` tag, so cerebro-api's _build_routes never
+      hides the model entirely.
+    - Has no `api:<resource>` tag, so cerebro-api's `_build_routes` never
       registers it as an endpoint.
+    - cerebro-mcp also denies the bare table name from `execute_query` via
+      the `INTERNAL_ONLY_TABLES` runtime guard.
 
-    Pseudonym output is identical to int_execution_gnosis_app_user_identities
-    because both apply the same `pseudonymize_address` macro to the same
-    input rows (deterministic).
+    `pseudonymize_address` is deterministic with the same salt
+    (`CEREBRO_PII_SALT`) used by `stg_mixpanel_ga__events`, so the
+    `user_pseudonym` written here joins on equality to the
+    `user_id_hash` column emitted at Mixpanel ingestion. One row per
+    GA user (same row count as `int_execution_gnosis_app_users_current`).
   config:
     contract:
       enforced: false
   columns:
   - name: address
-    description: Raw GA user address, lowercase 0x-prefixed.
+    description: Raw GA user address, lowercase, 0x-prefixed.
     data_type: String
     tests:
     - not_null:
@@ -791,8 +796,10 @@ models:
         severity: error
   - name: user_pseudonym
     description: |
-      Keyed pseudonym (sipHash64 of salted lowercased address). Joinable to
-      stg_mixpanel_ga__events.user_id_hash on equality.
+      Keyed pseudonym (sipHash64 of salted lowercased address) of the GA
+      user. Joinable to `stg_mixpanel_ga__events.user_id_hash` and to GP
+      `int_execution_gpay_user_identity_bridge.user_pseudonym` on equality
+      because all three apply the same macro with the same salt.
     data_type: UInt64
     tests:
     - not_null:
@@ -800,7 +807,7 @@ models:
     - unique:
         severity: error
   - name: first_seen_at
-    description: Earliest heuristic hit for this user.
+    description: Earliest heuristic hit for this user (carried from `int_execution_gnosis_app_users_current`).
     data_type: DateTime64(0, 'UTC')
   - name: last_seen_at
     description: Most recent heuristic hit for this user.
@@ -809,10 +816,10 @@ models:
     description: Distinct heuristic rule names triggered by this user.
     data_type: Array(String)
   - name: heuristic_hits
-    description: Total heuristic events for this user.
+    description: Total number of heuristic events for this user.
     data_type: UInt64
   - name: n_distinct_heuristics
-    description: Confidence proxy — number of distinct rules fired.
+    description: Confidence proxy — number of distinct rules fired (≥3 = high-confidence GA user).
     data_type: UInt8
   meta:
     owner: analytics_team
@@ -823,3 +830,289 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [address, user_pseudonym]
+      severity: error
+
+- name: int_execution_gnosis_app_events_chain_unified
+  description: |
+    Long-form on-chain GA event log at full timestamp grain, keyed by
+    `user_pseudonym` (no raw address ever leaves the bridge). Single
+    source of chain-side touchpoints for MTA.
+
+    UNION ALL of seven CTEs, each tagged with a distinct `event_kind`
+    starting with `chain.`:
+
+      chain.onboard               — first-ever heuristic hit per user
+                                    (from int_execution_gnosis_app_users_current)
+      chain.<heuristic_kind>      — six heuristic rules from
+                                    int_execution_gnosis_app_user_events
+                                    (circles_register_human, circles_invite_human,
+                                    circles_trust, circles_profile_update,
+                                    circles_metri_fee, safe_invitation_module)
+      chain.swap_signed           — every PreSignature event in
+                                    int_execution_gnosis_app_swaps
+      chain.swap_filled           — was_filled subset, ts = first_fill_at
+      chain.topup                 — int_execution_gnosis_app_gpay_topups
+      chain.marketplace_buy       — int_execution_gnosis_app_marketplace_payments
+      chain.token_offer_claim     — int_execution_gnosis_app_token_offer_claims
+
+    Incremental (monthly partition on `event_date`); reads
+    user_pseudonym from `int_execution_gnosis_app_user_identity_bridge`.
+    Use `grace_hash` join algorithm (set in pre-hook) to keep memory
+    bounded across the seven UNIONs.
+
+    `event_kind` is LowCardinality and validated against seed
+    `mta_event_kinds.csv` (relationship test, severity warn).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: event_ts
+    description: UTC timestamp of the action.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_date
+    description: Calendar date partition key (`toDate(event_ts)`).
+    data_type: Date
+    tests: [not_null]
+  - name: user_pseudonym
+    description: Keyed pseudonym of the acting GA user. Joinable to GP and Mixpanel.
+    data_type: UInt64
+    tests: [not_null]
+  - name: event_source
+    description: Always `'chain'` in this model. Distinguishes from `'mixpanel'` rows in the unified UNION downstream.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: |
+      Canonical event kind (e.g. `chain.swap_signed`, `chain.topup`).
+      Validated against the seed registry at warn severity so new event
+      kinds emitted by the SQL but not declared in the seed surface as
+      Elementary warnings instead of breaking the build.
+    data_type: LowCardinality(String)
+    tests:
+    - relationships:
+        to: ref('mta_event_kinds')
+        field: event_kind
+        severity: warn
+  - name: event_subkind
+    description: |
+      Provenance subtype (e.g. `swap_signed`, `topup`, `circles_trust`).
+      Lets downstream code group across `chain.X` and `mp.X` versions of
+      the same conceptual action.
+    data_type: LowCardinality(String)
+  - name: amount_usd
+    description: USD value of the action where one applies (swap_filled, topup, token_offer_claim). NULL for events without a natural USD amount.
+    data_type: Nullable(Float64)
+  - name: event_dedup_key
+    description: cityHash64 of (kind, transaction_hash, log_index | order_uid | user_pseudonym). Combined with (event_ts, event_kind, user_pseudonym) gives the unique key for the ReplacingMergeTree.
+    data_type: UInt64
+  - name: provenance_model
+    description: Name of the upstream model that produced the row (e.g. `int_execution_gnosis_app_swaps`). Survives the UNION ALL so analysts can audit which feed contributed which event.
+    data_type: LowCardinality(String)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [event_ts, event_kind, user_pseudonym, event_dedup_key]
+      severity: warn
+
+- name: int_execution_gnosis_app_user_events_unified
+  description: |
+    Thin UNION ALL of `int_execution_gnosis_app_events_chain_unified` +
+    `int_execution_gnosis_app_events_mixpanel_unified`. The single
+    touchpoint table the MTA persona's runtime mapping points at as
+    `touchpoint_model`.
+
+    Mixpanel rows are pseudonymized at ingestion using the same salt as
+    the bridge — equality on `user_pseudonym` joins chain-side actions
+    to in-app sessions for the same human without ever materializing a
+    raw address.
+
+    Chain rows have NULL for Mixpanel-only columns
+    (`device_type`, `country_code`, `page_path`, `bottom_sheet`);
+    Mixpanel rows have NULL for `amount_usd`. Otherwise the schemas
+    match column-for-column.
+
+    Incremental, partitioned by month on `event_date`. Low cost — the
+    upstreams already enforce incremental boundaries.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: event_ts
+    description: UTC timestamp of the action.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_date
+    description: Calendar date partition key.
+    data_type: Date
+    tests: [not_null]
+  - name: user_pseudonym
+    description: Keyed pseudonym of the acting GA user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: event_source
+    description: '`chain` or `mixpanel` — distinguishes the two halves of the UNION.'
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Canonical event kind. `chain.*` for on-chain actions, `mp.*` for Mixpanel events.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Provenance subtype, lets downstream code group across `chain.X` and `mp.X`.
+    data_type: LowCardinality(String)
+  - name: amount_usd
+    description: USD value where applicable (chain-side only). NULL for Mixpanel rows and chain rows without a natural amount.
+    data_type: Nullable(Float64)
+  - name: event_dedup_key
+    description: Carried from the upstream (chain or mixpanel) for ReplacingMergeTree dedup.
+    data_type: UInt64
+  - name: provenance_model
+    description: Upstream dbt model that produced the row.
+    data_type: LowCardinality(String)
+  - name: device_type
+    description: Mixpanel device type (mobile / desktop / etc.). NULL on chain rows.
+    data_type: Nullable(String)
+  - name: country_code
+    description: Mixpanel country code. NULL on chain rows.
+    data_type: Nullable(String)
+  - name: page_path
+    description: Mixpanel page path / route. NULL on chain rows.
+    data_type: Nullable(String)
+  - name: bottom_sheet
+    description: Mixpanel in-app bottom-sheet identifier. NULL on chain rows.
+    data_type: Nullable(String)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: int_execution_gnosis_app_conversions
+  description: |
+    GA conversion registry — one row per observed conversion event,
+    with `conversion_kind` carried as a column rather than a separate
+    table per kind. The MTA persona filters with
+    `WHERE conversion_kind = '<kind>'` to swap conversion targets
+    without changing SQL shape.
+
+    Sources (UNION ALL):
+      topup              ← int_execution_gnosis_app_gpay_topups
+      swap_filled        ← int_execution_gnosis_app_swaps WHERE was_filled
+      token_offer_claim  ← int_execution_gnosis_app_token_offer_claims
+      marketplace_buy    ← int_execution_gnosis_app_marketplace_payments
+
+    Each source INNER JOINs the identity bridge on lower(raw address) →
+    `user_pseudonym`, so this model never holds a raw address.
+
+    Incremental on `conversion_date` (monthly partition). The dedup key
+    `conversion_dedup_key` is a cityHash64 of the kind + the smallest
+    natural unique key per source (transaction_hash + log_index for
+    most; order_uid for swaps).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_ts
+    description: UTC timestamp of the conversion event.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date partition key.
+    data_type: Date
+    tests: [not_null]
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting user.
+    data_type: UInt64
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `topup`, `swap_filled`, `token_offer_claim`, `marketplace_buy`. Validated against the seed registry.
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - relationships:
+        to: ref('mta_conversion_kinds')
+        field: conversion_kind
+        severity: error
+  - name: conversion_amount_usd
+    description: USD amount where the source carries one (topup / swap_filled / token_offer_claim). NULL for `marketplace_buy` until the CRC price feed lands.
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol (or offer name for marketplace_buy). NULL where not applicable.
+    data_type: Nullable(String)
+  - name: conversion_dedup_key
+    description: cityHash64 of the kind + natural unique key of the source row. Drives ReplacingMergeTree dedup.
+    data_type: UInt64
+  - name: provenance_model
+    description: Upstream dbt model that produced the row.
+    data_type: LowCardinality(String)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_ts, conversion_kind, user_pseudonym, conversion_dedup_key]
+      severity: error
+
+- name: int_execution_gnosis_app_coverage_daily
+  description: |
+    Per-day, per-conversion-kind tracked-coverage stats. The MTA
+    persona reads this to print the coverage block ("X% of topups on
+    date D had ≥1 touchpoint in the prior 30 days") without re-running
+    the conversion × events self-join.
+
+    "Tracked" definition: a conversion has at least one row in
+    `int_execution_gnosis_app_user_events_unified` whose `event_ts`
+    falls in `[conversion_ts - 30d, conversion_ts)` AND whose
+    `event_kind` is not the conversion's own mapped event_kind
+    (leakage guard via the `conversion_kind_to_event_kind` macro — a
+    `topup` conversion can't be tracked by its own `chain.topup` event).
+
+    Incremental, partitioned by month on `conversion_date`. Uses
+    `grace_hash` join algorithm in pre-hook because the events scan can
+    span the full 30-day lookback per conversion-month batch.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_date
+    description: Calendar date of the conversions being summarised.
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of the conversion kinds in `int_execution_gnosis_app_conversions`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: total_conversions
+    description: Number of conversions on this (date, kind).
+    data_type: UInt64
+  - name: tracked_conversions
+    description: Subset with ≥1 prior-30d non-self touch in the unified events table.
+    data_type: UInt64
+  - name: total_users
+    description: Distinct converting users on this (date, kind).
+    data_type: UInt64
+  - name: tracked_users
+    description: Distinct converting users with ≥1 prior-30d non-self touch.
+    data_type: UInt64
+  - name: tracked_conversion_coverage
+    description: '`tracked_conversions / total_conversions` (NULL if total = 0).'
+    data_type: Nullable(Float64)
+  - name: tracked_user_coverage
+    description: '`tracked_users / total_users`.'
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_date, conversion_kind]
+      severity: error

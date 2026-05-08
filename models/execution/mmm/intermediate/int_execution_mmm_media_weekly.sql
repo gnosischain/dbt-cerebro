@@ -31,7 +31,7 @@ media_validator_proposer_rewards AS (
   SELECT
     toStartOfWeek(date, 1)                                              AS week,
     'validator_proposer_rewards_gno'                                    AS media_name,
-    sum(proposer_reward_gno)                                            AS media_value,
+    toFloat64(sum(proposer_reward_total_gno))                           AS media_value,
     'sum'                                                               AS media_value_method,
     'int_consensus_validators_proposer_rewards_daily'                   AS source_model
   FROM {{ ref('int_consensus_validators_proposer_rewards_daily') }}

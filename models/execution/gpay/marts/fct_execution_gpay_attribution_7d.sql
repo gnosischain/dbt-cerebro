@@ -25,7 +25,7 @@ WITH journeys AS (
     event_kind,
     event_dedup_key,
     exp(-1.0 * dateDiff('day', toDate(touch_ts), toDate(conversion_ts)) / 7.0) AS td_raw
-  FROM {{ ref('fct_execution_gpay_journeys_30d') }}
+  FROM {{ ref('fct_execution_gpay_journeys_7d') }}
   WHERE conversion_date >= today() - INTERVAL 180 DAY
 ),
 

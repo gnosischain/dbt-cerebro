@@ -69,8 +69,8 @@ ctrl_wxdai_price AS (
 ctrl_chain_metrics AS (
   SELECT
     toStartOfWeek(date, 1)                                              AS week,
-    avg(median_gas_price_gwei)                                          AS gas_avg,
-    sum(transaction_count)                                              AS block_count
+    avg(gas_price_median)                                               AS gas_avg,
+    sum(n_txs)                                                          AS block_count
   FROM {{ ref('int_execution_transactions_info_daily') }}
   WHERE date < today()
   GROUP BY week
@@ -90,7 +90,7 @@ ctrl_blocks AS (
   SELECT
     week,
     'chain_block_count'                  AS control_name,
-    block_count                          AS control_value,
+    toFloat64(block_count)               AS control_value,
     'sum'                                AS control_value_method,
     'int_execution_transactions_info_daily' AS source_model
   FROM ctrl_chain_metrics
@@ -146,10 +146,16 @@ computed_rows AS (
   SELECT
     s.week,
     'hardfork_step'                      AS control_name,
-    toFloat64(if(exists(SELECT 1 FROM hardforks hf WHERE hf.fork_week <= s.week), 1, 0)) AS control_value,
+    toFloat64(if(hf_count.n > 0, 1, 0)) AS control_value,
     'computed'                           AS control_value_method,
     'mmm_hardfork_steps'                 AS source_model
   FROM spine s
+  LEFT JOIN (
+    SELECT s2.week AS week, count() AS n
+    FROM spine s2
+    INNER JOIN hardforks hf ON hf.fork_week <= s2.week
+    GROUP BY s2.week
+  ) hf_count ON hf_count.week = s.week
 ),
 
 all_feeds AS (

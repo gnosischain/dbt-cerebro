@@ -35,12 +35,18 @@ WITH bridge AS (
 ),
 
 activity AS (
+    -- int_execution_gpay_activity has no log_index column; its unique
+    -- key is (wallet_address, block_timestamp, transaction_hash,
+    -- token_address, counterparty, direction). Build dedup_key from
+    -- those columns instead.
     SELECT
         toDateTime(a.block_timestamp)             AS conversion_ts,
         toDate(a.block_timestamp)                 AS conversion_date,
         lower(a.wallet_address)                   AS gp_safe,
         a.transaction_hash,
-        a.log_index,
+        a.token_address,
+        a.counterparty,
+        a.direction,
         a.action,
         a.symbol,
         a.amount_usd
@@ -63,7 +69,7 @@ payments AS (
         'gpay_payment'                                                AS conversion_kind,
         toFloat64OrNull(toString(a.amount_usd))                       AS conversion_amount_usd,
         a.symbol                                                      AS conversion_token,
-        cityHash64('gpay_payment', a.transaction_hash, toString(a.log_index), b.identity_role) AS conversion_dedup_key,
+        cityHash64('gpay_payment', a.transaction_hash, a.token_address, a.counterparty, a.direction, b.identity_role) AS conversion_dedup_key,
         'int_execution_gpay_activity'                                 AS provenance_model
     FROM activity a
     INNER JOIN bridge b ON b.gp_safe = a.gp_safe
@@ -79,7 +85,7 @@ cashback_claims AS (
         'gpay_cashback_claim'                                         AS conversion_kind,
         toFloat64OrNull(toString(a.amount_usd))                       AS conversion_amount_usd,
         a.symbol                                                      AS conversion_token,
-        cityHash64('gpay_cashback_claim', a.transaction_hash, toString(a.log_index), b.identity_role) AS conversion_dedup_key,
+        cityHash64('gpay_cashback_claim', a.transaction_hash, a.token_address, a.counterparty, a.direction, b.identity_role) AS conversion_dedup_key,
         'int_execution_gpay_activity'                                 AS provenance_model
     FROM activity a
     INNER JOIN bridge b ON b.gp_safe = a.gp_safe
@@ -92,12 +98,14 @@ cashback_claims AS (
 -- then filter to rows whose first_inflow_ts falls in the target window.
 first_inflow AS (
     SELECT
-        lower(wallet_address)                 AS gp_safe,
-        min(block_timestamp)                  AS first_inflow_ts,
-        argMin(transaction_hash, block_timestamp) AS first_inflow_tx_hash,
-        argMin(log_index,        block_timestamp) AS first_inflow_log_index,
-        argMin(symbol,           block_timestamp) AS first_inflow_symbol,
-        argMin(amount_usd,       block_timestamp) AS first_inflow_amount_usd
+        lower(wallet_address)                       AS gp_safe,
+        min(block_timestamp)                        AS first_inflow_ts,
+        argMin(transaction_hash, block_timestamp)   AS first_inflow_tx_hash,
+        argMin(token_address,    block_timestamp)   AS first_inflow_token_address,
+        argMin(counterparty,     block_timestamp)   AS first_inflow_counterparty,
+        argMin(direction,        block_timestamp)   AS first_inflow_direction,
+        argMin(symbol,           block_timestamp)   AS first_inflow_symbol,
+        argMin(amount_usd,       block_timestamp)   AS first_inflow_amount_usd
     FROM {{ ref('int_execution_gpay_activity') }}
     WHERE action IN ('Fiat Top Up', 'Crypto Deposit')
     GROUP BY lower(wallet_address)
@@ -112,7 +120,7 @@ funded AS (
         'gpay_funded'                                                 AS conversion_kind,
         toFloat64OrNull(toString(fi.first_inflow_amount_usd))         AS conversion_amount_usd,
         fi.first_inflow_symbol                                        AS conversion_token,
-        cityHash64('gpay_funded', fi.first_inflow_tx_hash, toString(fi.first_inflow_log_index), b.identity_role) AS conversion_dedup_key,
+        cityHash64('gpay_funded', fi.first_inflow_tx_hash, fi.first_inflow_token_address, fi.first_inflow_counterparty, fi.first_inflow_direction, b.identity_role) AS conversion_dedup_key,
         'int_execution_gpay_activity'                                 AS provenance_model
     FROM first_inflow fi
     INNER JOIN bridge b ON b.gp_safe = fi.gp_safe
@@ -120,7 +128,10 @@ funded AS (
     {% if start_month and end_month %}
       AND toStartOfMonth(fi.first_inflow_ts) >= toDate('{{ start_month }}')
       AND toStartOfMonth(fi.first_inflow_ts) <= toDate('{{ end_month }}')
-    {% else %}
+    {% elif is_incremental() %}
+      -- Incremental run: pull only new "first_inflow" rows since last run.
+      -- {{ this }} doesn't exist on the initial full-refresh build, so the
+      -- whole condition is gated by is_incremental().
       AND toStartOfMonth(fi.first_inflow_ts) >= (
         SELECT coalesce(toStartOfMonth(max(toDate(conversion_date)) - INTERVAL 1 MONTH),
                         toDate('1970-01-01'))
