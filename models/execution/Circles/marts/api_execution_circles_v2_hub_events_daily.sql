@@ -11,6 +11,6 @@ SELECT
     n_events,
     n_tx,
     n_distinct_addresses
-FROM {{ ref('fct_execution_circles_v2_hub_events_daily') }}
+FROM {{ ref('int_execution_circles_v2_hub_events_daily') }}
 WHERE date < today()
 ORDER BY date DESC, event_name

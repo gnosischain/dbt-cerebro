@@ -1213,3 +1213,87 @@ models:
       config:
         severity: warn
         where: "date >= today() - 7"
+
+- name: int_execution_circles_v2_hub_events_daily
+  description: >
+    Daily count of every Circles v2 Hub event, broken down by event_name.
+    Per (date, event_name): n_events, n_tx, n_distinct_addresses across all
+    event-specific participant fields (avatar / inviter / group / org /
+    truster / trustee / operator / from / to / human / account / backer /
+    holder). The 0x00..00 sentinel is excluded. Incremental, monthly
+    partitioned on date.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: event_name
+    description: Hub event name (RegisterHuman, Trust, TransferSingle, …).
+    data_type: String
+  - name: n_events
+    description: Number of events of this kind on this day.
+    data_type: UInt64
+  - name: n_tx
+    description: Number of distinct transactions emitting this event on this day.
+    data_type: UInt64
+  - name: n_distinct_addresses
+    description: Distinct participant addresses across all event-specific fields.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, event_name]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_mints_daily
+  description: >
+    Network-level daily personal-mint summary: total mint events,
+    distinct minters, and total CRC minted (raw / 1e18). Incremental,
+    monthly partitioned on date.
+  columns:
+  - {name: date, description: Calendar day (UTC).,                                                          data_type: Date}
+  - {name: n_mint_events, description: Number of mint TransferSingle events.,                               data_type: UInt64}
+  - {name: n_minters, description: Distinct minting avatars (to_address).,                                  data_type: UInt64}
+  - {name: amount_minted, description: Total CRC minted on this day (sum of amount / 1e18).,                data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_trusts_daily
+  description: >
+    Event-grain daily trust activity: total trust events, new trusts
+    (expiry > block_timestamp), revoked trusts (expiry <= block_timestamp),
+    distinct trusters, distinct trustees. Complements
+    fct_execution_circles_v2_active_trusts_daily, which carries the
+    SCD2-derived active stock. Incremental, monthly partitioned on date.
+  columns:
+  - {name: date, description: Calendar day (UTC).,                                                          data_type: Date}
+  - {name: n_trust_events, description: Total Trust events on this day.,                                    data_type: UInt64}
+  - {name: n_new_trusts, description: Events granting or extending trust (expiry > now).,                   data_type: UInt64}
+  - {name: n_revoked_trusts, description: Events setting expiry <= now (revoke).,                           data_type: UInt64}
+  - {name: n_distinct_trusters, description: Distinct truster addresses active that day.,                   data_type: UInt64}
+  - {name: n_distinct_trustees, description: Distinct trustee addresses active that day.,                   data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config:
+        severity: warn

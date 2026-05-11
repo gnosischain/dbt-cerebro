@@ -12,6 +12,6 @@ SELECT
     n_revoked_trusts,
     n_distinct_trusters,
     n_distinct_trustees
-FROM {{ ref('fct_execution_circles_v2_trusts_daily') }}
+FROM {{ ref('int_execution_circles_v2_trusts_daily') }}
 WHERE date < today()
 ORDER BY date DESC
