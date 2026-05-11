@@ -4,7 +4,9 @@
     engine='MergeTree()',
     order_by='(week, is_blacklisted)',
     settings={'allow_nullable_key': 1},
-    tags=['production','execution','gnosis_app','weau','mart']
+    tags=['production','execution','gnosis_app','weau','mart'],
+    pre_hook=["SET join_use_nulls = 1"],
+    post_hook=["SET join_use_nulls = 0"]
   )
 }}
 

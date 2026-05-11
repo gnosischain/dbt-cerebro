@@ -5,7 +5,9 @@
         order_by='(date, cohort_order)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'circles_v2', 'minters', 'cohort']
+        tags=['production', 'execution', 'circles_v2', 'minters', 'cohort'],
+        pre_hook=["SET join_use_nulls = 1"],
+        post_hook=["SET join_use_nulls = 0"]
     )
 }}
 
