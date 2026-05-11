@@ -224,7 +224,7 @@ transfer_deltas AS (
     FROM atoken_events_raw t
     INNER JOIN reserve_map rm
         ON rm.protocol       = t.protocol
-       AND rm.atoken_address = lower(t.contract_address)
+       AND rm.atoken_address = concat('0x', lower(t.contract_address))
     WHERE t.event_name = 'BalanceTransfer'
       AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
       AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
@@ -247,10 +247,54 @@ transfer_deltas AS (
     FROM atoken_events_raw t
     INNER JOIN reserve_map rm
         ON rm.protocol       = t.protocol
-       AND rm.atoken_address = lower(t.contract_address)
+       AND rm.atoken_address = concat('0x', lower(t.contract_address))
     WHERE t.event_name = 'BalanceTransfer'
       AND t.decoded_params['from'] != '0x0000000000000000000000000000000000000000'
       AND t.decoded_params['to']   != '0x0000000000000000000000000000000000000000'
+      AND t.block_timestamp < today()
+      {% if start_month and end_month %}
+        AND toStartOfMonth(t.block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(t.block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('t.block_timestamp', 'date', 'true') }}
+      {% endif %}
+),
+
+-- aToken.mintToTreasury credits reserve fees to the treasury. It emits an
+-- aToken Mint event with caller = Pool address and no corresponding Pool.Supply,
+-- so it is invisible to pool_deltas and transfer_deltas (Transfer.from = 0x0).
+-- Mint.value = amount + balanceIncrease (underlying); the scaled delta added by
+-- _mint() is rayDiv(amount, index) = rayDiv(value - balanceIncrease, index).
+treasury_mint_deltas AS (
+    SELECT
+        t.protocol                             AS protocol,
+        toDate(t.block_timestamp)              AS date,
+        lower(t.decoded_params['onBehalfOf'])  AS user_address,
+        rm.reserve_address                     AS reserve_address,
+        toInt256(
+            intDiv(
+                (toUInt256OrZero(t.decoded_params['value']) - toUInt256OrZero(t.decoded_params['balanceIncrease']))
+                    * toUInt256OrZero('1000000000000000000000000000')
+                    + intDiv(toUInt256OrZero(t.decoded_params['index']), 2),
+                toUInt256OrZero(t.decoded_params['index'])
+            )
+        ) AS scaled_delta
+    FROM atoken_events_raw t
+    INNER JOIN reserve_map rm
+        ON  rm.protocol       = t.protocol
+       AND  rm.atoken_address = concat('0x', lower(t.contract_address))
+    INNER JOIN (
+        SELECT DISTINCT protocol AS pool_protocol, lower(pool_address) AS pool_address
+        FROM {{ ref('lending_market_mapping') }}
+    ) pools
+        ON  pools.pool_protocol = t.protocol
+       AND  pools.pool_address  = lower(t.decoded_params['caller'])
+    WHERE t.event_name = 'Mint'
+      AND t.decoded_params['onBehalfOf']      IS NOT NULL
+      AND t.decoded_params['value']           IS NOT NULL
+      AND t.decoded_params['balanceIncrease'] IS NOT NULL
+      AND t.decoded_params['index']           IS NOT NULL
+      AND toUInt256OrZero(t.decoded_params['index']) > toUInt256OrZero('0')
       AND t.block_timestamp < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(t.block_timestamp) >= toDate('{{ start_month }}')
@@ -266,6 +310,9 @@ all_deltas AS (
     UNION ALL
     SELECT protocol, date, user_address, reserve_address, scaled_delta
     FROM transfer_deltas
+    UNION ALL
+    SELECT protocol, date, user_address, reserve_address, scaled_delta
+    FROM treasury_mint_deltas
 ),
 
 agg AS (
