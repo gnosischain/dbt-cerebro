@@ -79,23 +79,50 @@ affected_avatars AS (
     FROM mint_events
 ),
 
+-- Per-avatar earliest historical mint, pre-aggregated to avoid the
+-- correlated-subquery pattern (unsupported on ClickHouse without
+-- allow_experimental_correlated_subqueries). Source-of-truth for
+-- first-time / full-refresh runs.
+mint_events_min_per_avatar AS (
+    SELECT
+        to_address                                  AS avatar,
+        min(toDate(block_timestamp))                AS min_date
+    FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
+    WHERE from_address = '0x0000000000000000000000000000000000000000'
+      AND to_address  != '0x0000000000000000000000000000000000000000'
+      AND to_address IN (SELECT avatar FROM affected_avatars)
+    GROUP BY to_address
+),
+
+{% if is_incremental() and not (start_month and end_month) %}
+-- On incremental runs the persisted table already covers each avatar's
+-- pre-lookback history; use its earliest stored date as the lower bound
+-- so we never re-densify dates that already exist in the table.
+existing_min_per_avatar AS (
+    SELECT
+        avatar,
+        min(toDate(date))                           AS min_date
+    FROM {{ this }}
+    WHERE avatar IN (SELECT avatar FROM affected_avatars)
+    GROUP BY avatar
+),
+{% endif %}
+
 avatar_first_mint AS (
     -- Earliest mint per affected avatar, used as the calendar lower bound
     -- so we never emit pre-history rows.
     SELECT
         a.avatar,
-        coalesce(
-          {% if is_incremental() and not (start_month and end_month) %}
-            (SELECT min(toDate(t.date))
-               FROM {{ this }} t
-              WHERE t.avatar = a.avatar),
-          {% endif %}
-          (SELECT min(toDate(block_timestamp))
-             FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
-            WHERE from_address = '0x0000000000000000000000000000000000000000'
-              AND to_address = a.avatar)
-        ) AS min_date
+        {% if is_incremental() and not (start_month and end_month) %}
+        coalesce(e.min_date, m.min_date)            AS min_date
+        {% else %}
+        m.min_date                                  AS min_date
+        {% endif %}
     FROM affected_avatars a
+    LEFT JOIN mint_events_min_per_avatar m ON m.avatar = a.avatar
+    {% if is_incremental() and not (start_month and end_month) %}
+    LEFT JOIN existing_min_per_avatar  e ON e.avatar = a.avatar
+    {% endif %}
 ),
 
 calendar_bounds AS (
