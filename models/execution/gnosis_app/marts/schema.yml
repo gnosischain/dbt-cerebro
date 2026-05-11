@@ -1367,3 +1367,63 @@ models:
     data_type: DateTime
   meta:
     owner: analytics_team
+
+- name: fct_execution_gnosis_app_weekly_active_users
+  description: >
+    Weekly Active Users for the Gnosis App, broken down by is_blacklisted.
+    Mirrors the Dune circles-v2-kpis WAU output. Full-rebuild so the
+    blacklist join always picks up the latest crawlers_data.circles_blacklisted
+    snapshot.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: is_blacklisted
+    description: True if the address appears in stg_crawlers_data__circles_blacklisted.
+    data_type: Bool
+  - name: cnt
+    description: Distinct active addresses in this week × blacklist bucket.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, is_blacklisted]
+      config:
+        severity: warn
+
+- name: fct_execution_gnosis_app_weekly_economically_active_users
+  description: >
+    Weekly Economically Active Users — intersection of weekly active users
+    and weekly Circles reward earners (cashback ≥1 gCRC or inviter fee ≥1 CRC),
+    broken down by is_blacklisted.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: is_blacklisted
+    description: True if the address appears in stg_crawlers_data__circles_blacklisted.
+    data_type: Bool
+  - name: cnt
+    description: Distinct economically active addresses in this week × blacklist bucket.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, is_blacklisted]
+      config:
+        severity: warn
+
+- {name: api_execution_gnosis_app_weekly_active_users,                                  description: "Time-series view over fct_execution_gnosis_app_weekly_active_users (latest week excluded).",                               meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_weekly_economically_active_users,                     description: "Time-series view over fct_execution_gnosis_app_weekly_economically_active_users (latest week excluded).",                  meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_weekly_active_users_latest,                       description: "KPI: latest complete week's WAU (non-blacklisted only) with WoW pct change.",                                              meta: {owner: analytics_team, authoritative: false}}
+- {name: api_execution_gnosis_app_kpi_weekly_economically_active_users_latest,          description: "KPI: latest complete week's WEAU (non-blacklisted only) with WoW pct change.",                                             meta: {owner: analytics_team, authoritative: false}}

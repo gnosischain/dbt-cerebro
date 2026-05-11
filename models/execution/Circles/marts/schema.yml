@@ -901,3 +901,62 @@ models:
     data_type: Float64
   meta: *meta_fct
   tests: *elementary_warn
+
+- name: fct_execution_circles_v2_active_minters_daily
+  description: >
+    Per-day count of Circles v2 "Active Minters" — avatars that minted on
+    each of the last 14 days AND whose 14-day mint sum is >= 80% of the
+    336 CRC theoretical maximum. Canonical KPI from the Dune circles-v2-kpis
+    dashboard. Blacklisted avatars are NOT excluded here; the cohort
+    distribution mart does the exclusion.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: active_minters
+    description: Distinct avatars meeting the active-minter criteria on this day.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+
+- name: api_execution_circles_v2_active_minters_daily
+  description: Time-series view over fct_execution_circles_v2_active_minters_daily; latest day excluded.
+  columns:
+  - name: date
+    data_type: Date
+  - name: active_minters
+    data_type: UInt64
+
+- name: fct_execution_circles_v2_minter_cohort_daily
+  description: >
+    Daily cohort distribution of Circles v2 minters bucketed by 14-day mint
+    coverage (mint_14dw / 336). Six buckets: <1%, [1-20%[, [20-40%[, [40-60%[,
+    [60-80%[, +80%. Blacklisted avatars are excluded via LEFT JOIN to
+    stg_crawlers_data__circles_blacklisted, matching the Dune circles-v2-kpis chart.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: cohort_order
+    description: 1..6 ordering for stable stacking (low → high coverage).
+    data_type: UInt8
+  - name: cohort
+    description: Human-readable bucket label.
+    data_type: String
+  - name: cnt
+    description: Distinct avatars in this bucket on this day.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+
+- name: api_execution_circles_v2_minter_cohort_daily
+  description: Time-series view over fct_execution_circles_v2_minter_cohort_daily; latest day excluded.
+  columns:
+  - name: date
+    data_type: Date
+  - name: cohort
+    data_type: String
+  - name: cohort_order
+    data_type: UInt8
+  - name: cnt
+    data_type: UInt64

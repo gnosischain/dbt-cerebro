@@ -1116,3 +1116,54 @@ models:
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns: [conversion_date, conversion_kind]
       severity: error
+
+- name: int_execution_gnosis_app_weekly_signals
+  description: >
+    Composite weekly activity for the Gnosis App WAU metric. UNION of
+    Circles v2 active avatars (humans/trusts/mints), filled Cometh-routed
+    CoW swaps, and Gnosis App user activity (topup / marketplace / token
+    offer claim / swap). Floor date = `var('gnosis_app_wau_floor_date')`.
+    Full-rebuild table.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: address
+    description: Lowercase user address.
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, address]
+      config:
+        severity: warn
+
+- name: int_execution_gnosis_app_weekly_earners
+  description: >
+    Weekly "economic earners" set for the WEAU metric: addresses that
+    earned >= 1 gCRC cashback OR >= 1 CRC inviter fee in a given week.
+    UNION of int_execution_circles_v2_gcrc_cashback_recipients_weekly and
+    aggregated int_execution_circles_v2_inviter_fees. Full-rebuild table.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: address
+    description: Lowercase earner address.
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, address]
+      config:
+        severity: warn

@@ -34,3 +34,23 @@ sources:
           Ingested by click-runner (cow ingestor). Keyed by order_uid.
           Covers 2023+ where CoW switched to surplus-based fees not visible in events.
         loaded_at_field: ingested_at
+
+      - name: circles_blacklisted
+        description: >
+          Current Circles v2 bot/sybil blacklist. Ingested daily by click-runner
+          (queries/circles/blacklist) from the aboutcircles bot-analytics API.
+          The table is fully replaced on every run — there is no snapshot
+          history; consumers that need point-in-time correctness should keep
+          their blacklist join in a non-incremental downstream model so the
+          latest state always re-applies.
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: address
+            description: Lowercase blacklisted avatar address.
+          - name: reason
+            description: Free-text reason from the upstream API (e.g. `repeated_username`, `duplicate_avatar`).
+          - name: ingested_at
+            description: Wall-clock timestamp of the row insert.
