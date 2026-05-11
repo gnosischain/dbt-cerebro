@@ -22,6 +22,31 @@ token_holdings AS (
       AND b.balance > 0
       
   
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(b.date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_dao_treasury_holdings_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(b.date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`int_dao_treasury_holdings_daily` AS x2
+        WHERE 1=1 
+      )
+    
+  
 
 ),
 
@@ -41,6 +66,31 @@ lending_holdings AS (
     WHERE l.date < today()
       AND l.balance > 0
       
+  
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(l.date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_dao_treasury_holdings_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(l.date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`int_dao_treasury_holdings_daily` AS x2
+        WHERE 1=1 
+      )
+    
   
 
 )
