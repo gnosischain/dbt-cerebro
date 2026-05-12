@@ -5,13 +5,16 @@
   )
 }}
 
--- Leaderboard of top inviters by number of human avatars invited. Thin
--- passthrough over fct_execution_circles_v2_inviters_ranking; ordering
--- preserves the fact's pre-computed `rank` column.
+-- Leaderboard of top inviters by humans invited. Passthrough over
+-- fct_execution_circles_v2_inviters_ranking, which pre-joins the inviter's
+-- display name, preview image URL, and current blacklist flag.
 
 SELECT
     rank,
-    invited_by         AS inviter,
+    inviter,
+    display_name,
+    preview_image_url,
+    is_blacklisted,
     invite_count,
     first_invite_ts,
     last_invite_ts

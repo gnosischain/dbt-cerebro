@@ -1425,13 +1425,22 @@ models:
       config: {severity: warn}
 
 - name: int_execution_circles_v2_invite_funnel
-  description: One row per invitee with their first-mint timestamp (NULL if never minted).
+  description: >
+    One row per invited human, carrying the mint-cadence signals for the
+    five-stage funnel (Invited → ≥2 days → ≥7 days → ≥14 days → Active Minter).
+    Skips the trivial acceptance mint by tracking days actually minted in
+    the first 30 / 60 days post-invite and the date the avatar first reached
+    canonical Active Minter status.
   columns:
   - {name: avatar, data_type: String}
   - {name: inviter, data_type: String}
   - {name: invited_at, data_type: DateTime}
-  - {name: first_mint_at, data_type: Nullable(DateTime)}
-  - {name: days_to_first_mint, data_type: Nullable(Int64)}
+  - {name: first_mint_at, description: "First mint event timestamp (typically equals the acceptance mint).", data_type: Nullable(DateTime)}
+  - {name: second_mint_date, description: "First calendar day with a mint that is NOT the invited_at day. NULL = invitee never came back.", data_type: Nullable(Date)}
+  - {name: days_to_second_mint, description: "Days from invited_at date to second_mint_date. NULL when no second mint.", data_type: Nullable(Int64)}
+  - {name: n_mint_days_first_30d, description: "Distinct mint days in [invited_at, invited_at + 30).", data_type: UInt16}
+  - {name: n_mint_days_first_60d, description: "Distinct mint days in [invited_at, invited_at + 60).", data_type: UInt16}
+  - {name: became_active_minter_at, description: "Earliest date the avatar hit mint_days_14dw = 14 AND mint_14dw >= 0.8 * 336. NULL if never reached.", data_type: Nullable(Date)}
   meta:
     owner: analytics_team
     authoritative: false

@@ -989,13 +989,19 @@ models:
   - {name: n_distinct_trustees, data_type: UInt64}
 
 - name: api_execution_circles_v2_inviters_ranking
-  description: Top-N inviters leaderboard ordered by number of human avatars invited.
+  description: >
+    Top-N inviters leaderboard ordered by number of human avatars invited.
+    Pre-joins the inviter's display name, preview image URL (IPFS profile),
+    and current blacklist flag so the dashboard renders the table directly.
   columns:
   - {name: rank, data_type: UInt64}
-  - {name: inviter, description: Lowercase inviter avatar address. ,                                 data_type: String}
-  - {name: invite_count, description: Total humans invited. ,                                        data_type: UInt64}
-  - {name: first_invite_ts, description: Timestamp of the first invite. ,                            data_type: DateTime}
-  - {name: last_invite_ts, description: Timestamp of the most recent invite. ,                       data_type: DateTime}
+  - {name: inviter, description: Lowercase inviter avatar address.,                                  data_type: String}
+  - {name: display_name, description: IPFS profile display name (empty string when unset).,         data_type: String}
+  - {name: preview_image_url, description: IPFS profile previewImageUrl (empty string when unset)., data_type: String}
+  - {name: is_blacklisted, description: True iff the address appears in stg_crawlers_data__circles_blacklisted at build time., data_type: Bool}
+  - {name: invite_count, description: Total humans invited.,                                         data_type: UInt64}
+  - {name: first_invite_ts, description: Timestamp of the first invite.,                             data_type: DateTime}
+  - {name: last_invite_ts, description: Timestamp of the most recent invite.,                        data_type: DateTime}
 
 - name: api_execution_circles_v2_trusts_distribution
   description: >
@@ -1105,12 +1111,22 @@ models:
   - {name: wrapped_pct, data_type: Nullable(Float64)}
 
 - name: api_execution_circles_v2_invite_funnel_cohort_monthly
-  description: "Invitee cohort by month: conversion rate to first mint + percentile latency."
+  description: >
+    Invitee cohort by month, with the five-stage mint-cadence funnel
+    (Invited → ≥2 days → ≥7 days → ≥14 days → Active Minter) and the
+    percentile latency to "came back" (second mint on a different day).
+    Skips the trivial acceptance mint, which always fires.
   columns:
   - {name: cohort_month, data_type: Date}
-  - {name: n_invited, data_type: UInt64}
-  - {name: n_minted_at_least_once, data_type: UInt64}
-  - {name: pct_converted, data_type: Float64}
-  - {name: median_days_to_first_mint, data_type: Nullable(Int64)}
-  - {name: p25_days_to_first_mint, data_type: Nullable(Int64)}
-  - {name: p75_days_to_first_mint, data_type: Nullable(Int64)}
+  - {name: n_invited, description: "Total invitees in this cohort.", data_type: UInt64}
+  - {name: n_minted_2_days, description: "Invitees with >= 2 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_minted_7_days, description: "Invitees with >= 7 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_minted_14_days, description: "Invitees with >= 14 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_active_minter, description: "Invitees that ever reached canonical Active Minter status (mint_days_14dw = 14 AND mint_14dw >= 80% of 336).", data_type: UInt64}
+  - {name: pct_minted_2_days, data_type: Float64}
+  - {name: pct_minted_7_days, data_type: Float64}
+  - {name: pct_minted_14_days, data_type: Float64}
+  - {name: pct_active_minter, data_type: Float64}
+  - {name: median_days_to_second_mint, description: "Median days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
+  - {name: p25_days_to_second_mint, data_type: Nullable(Int64)}
+  - {name: p75_days_to_second_mint, data_type: Nullable(Int64)}
