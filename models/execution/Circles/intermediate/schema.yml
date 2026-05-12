@@ -1297,3 +1297,149 @@ models:
       combination_of_columns: [date]
       config:
         severity: warn
+
+- name: int_execution_circles_v2_backing_events_daily
+  description: >
+    Daily Circles v2 backing-lifecycle event counts. Tracks the "depositors"
+    set — addresses that emit a backing event. NOT the trust-defined
+    "backers" set (which awaits the backers-group address).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: lifecycle_stage, description: "initiated / deployed / lbp_deployed / completed / released / asset_status_updated / global_release_updated.", data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_distinct_backers, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, lifecycle_stage]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_backing_depositors_current
+  description: Current snapshot of distinct depositor addresses with lifecycle counts.
+  columns:
+  - {name: backer, data_type: String}
+  - {name: first_initiated_at, data_type: DateTime}
+  - {name: last_event_at, data_type: DateTime}
+  - {name: n_initiated, data_type: UInt64}
+  - {name: n_completed, data_type: UInt64}
+  - {name: n_released, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: int_execution_circles_v2_groups_overview_daily
+  description: Network-level daily group metrics — new groups + collateral activity.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_new_groups, data_type: UInt64}
+  - {name: n_collateral_events, data_type: UInt64}
+  - {name: n_distinct_groups_acting, data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_transfers_categorised
+  description: >
+    Per-transfer categorisation of int_execution_circles_v2_transfers into
+    one of mint / burn / wrap / unwrap / p2p. (Matrix-routed p2p subdivision
+    deferred — see model header.)
+  columns:
+  - {name: block_number, data_type: UInt64}
+  - {name: block_timestamp, data_type: DateTime64}
+  - {name: transaction_hash, data_type: String}
+  - {name: transaction_index, data_type: UInt64}
+  - {name: log_index, data_type: UInt64}
+  - {name: batch_index, data_type: UInt64}
+  - {name: transfer_type, data_type: String}
+  - {name: from_address, data_type: String}
+  - {name: to_address, data_type: String}
+  - {name: token_address, data_type: String}
+  - {name: amount_raw, data_type: UInt256}
+  - {name: amount_demurraged_raw, data_type: UInt256}
+  - {name: transfer_category, description: "mint / burn / wrap / unwrap / p2p.", data_type: String}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 1
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: int_execution_circles_v2_transfers_daily
+  description: Daily transfer counts + volume per category.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: transfer_category, data_type: String}
+  - {name: n_transfers, data_type: UInt64}
+  - {name: n_senders, data_type: UInt64}
+  - {name: n_receivers, data_type: UInt64}
+  - {name: amount, description: "Sum of native amount (raw / 1e18).", data_type: Float64}
+  - {name: amount_demurraged, description: "Sum of demurrage-adjusted amount.", data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, transfer_category]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_wrapper_supply_daily
+  description: Daily wrapped-supply delta per ERC-20 wrapper token.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: wrapper_address, data_type: String}
+  - {name: wrap_amount, data_type: Float64}
+  - {name: unwrap_amount, data_type: Float64}
+  - {name: supply_delta, data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, wrapper_address]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_invite_funnel
+  description: One row per invitee with their first-mint timestamp (NULL if never minted).
+  columns:
+  - {name: avatar, data_type: String}
+  - {name: inviter, data_type: String}
+  - {name: invited_at, data_type: DateTime}
+  - {name: first_mint_at, data_type: Nullable(DateTime)}
+  - {name: days_to_first_mint, data_type: Nullable(Int64)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [avatar]
+      config: {severity: warn}
