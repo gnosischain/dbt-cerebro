@@ -1167,3 +1167,112 @@ models:
       combination_of_columns: [week, address]
       config:
         severity: warn
+
+- name: int_execution_gnosis_app_swap_fees_daily
+  description: >
+    Daily aggregated CoW protocol fee revenue from Gnosis App swaps.
+    `fee_usd` is derived from `fee_amount` (sold-token native units)
+    pro-rated against trade USD value:
+       fee_usd = fee_amount / amount_sold * amount_usd
+    Restricted to filled trades (was_filled = 1).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_filled_swaps, data_type: UInt64}
+  - {name: n_distinct_takers, data_type: UInt64}
+  - {name: volume_usd, data_type: Nullable(Float64)}
+  - {name: fee_native_total, description: "Sum of fee_amount in sold-token native units.", data_type: Nullable(Float64)}
+  - {name: fee_usd_total, description: "Pro-rated fee in USD.", data_type: Nullable(Float64)}
+  - {name: fee_pct_of_volume, description: "fee_usd_total / volume_usd × 100.", data_type: Nullable(Float64)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config: {severity: warn}
+
+- name: int_execution_gnosis_app_swap_fees_weekly
+  description: Weekly rollup of swap_fees_daily.
+  columns:
+  - {name: week, data_type: Date}
+  - {name: n_filled_swaps, data_type: UInt64}
+  - {name: n_distinct_takers_sum_of_daily, description: "Sum of daily-distinct-takers (not week-distinct).", data_type: UInt64}
+  - {name: volume_usd, data_type: Nullable(Float64)}
+  - {name: fee_native_total, data_type: Nullable(Float64)}
+  - {name: fee_usd_total, data_type: Nullable(Float64)}
+  - {name: fee_pct_of_volume, data_type: Nullable(Float64)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_execution_gnosis_app_swap_fees_monthly
+  description: Monthly rollup of swap_fees_daily.
+  columns:
+  - {name: month, data_type: Date}
+  - {name: n_filled_swaps, data_type: UInt64}
+  - {name: volume_usd, data_type: Nullable(Float64)}
+  - {name: fee_native_total, data_type: Nullable(Float64)}
+  - {name: fee_usd_total, data_type: Nullable(Float64)}
+  - {name: fee_pct_of_volume, data_type: Nullable(Float64)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_execution_gnosis_app_user_purchase_freq_30d
+  description: >
+    Rolling 30-day per-user purchase-event count (swap_filled + marketplace_buy).
+    Full rebuild on every run; size bounded by ~last-30d active GA buyers.
+  columns:
+  - {name: address, data_type: String}
+  - {name: n_purchases, data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [address]
+      config: {severity: warn}
+
+- name: int_execution_gnosis_app_first_conversion
+  description: One row per GA user with first-event-per-conversion-kind timestamps.
+  columns:
+  - {name: address, data_type: String}
+  - {name: first_seen_at, data_type: Date}
+  - {name: first_topup_at, data_type: Nullable(Date)}
+  - {name: first_swap_filled_at, data_type: Nullable(Date)}
+  - {name: first_marketplace_buy_at, data_type: Nullable(Date)}
+  - {name: first_token_offer_claim_at, data_type: Nullable(Date)}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [address]
+      config: {severity: warn}
+
+- name: int_execution_gnosis_app_token_offer_claim_funnel_daily
+  description: >
+    Daily per-offer token-offer claim conversion. Eligible-pool denominator
+    is the rolling 30-day active GA users (proxy — a strict eligibility set
+    would need to know who holds the source token at each moment).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: offer_address, data_type: String}
+  - {name: n_claims, data_type: UInt64}
+  - {name: n_claimers, data_type: UInt64}
+  - {name: amount_received_usd, data_type: Float64}
+  - {name: n_active_pool_30d, description: "Rolling 30d active GA users (proxy eligible pool).", data_type: UInt64}
+  - {name: claim_rate_pct, data_type: Nullable(Float64)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, offer_address]
+      config: {severity: warn}
