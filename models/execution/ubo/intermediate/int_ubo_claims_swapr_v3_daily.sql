@@ -2,7 +2,6 @@
     config(
         materialized='incremental',
         incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
-        on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, container_address, ubo_address, token_address)',
         unique_key='(date, container_address, ubo_address, token_address)',
@@ -162,6 +161,13 @@ npm_daily_deltas AS (
         ON  lower(tw.address)  = lower(pt.token0_address)
         AND d.date             >= tw.date_start
         AND (tw.date_end IS NULL OR d.date < tw.date_end)
+    WHERE 1=1
+      {% if start_month and end_month %}
+        AND toStartOfMonth(d.date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(d.date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('d.date', 'date', 'true') }}
+      {% endif %}
     GROUP BY d.date, d.ubo_address, d.pool_address, pt.token0_address, tw.symbol
     HAVING daily_delta_raw != 0
 
@@ -182,6 +188,13 @@ npm_daily_deltas AS (
         ON  lower(tw.address)  = lower(pt.token1_address)
         AND d.date             >= tw.date_start
         AND (tw.date_end IS NULL OR d.date < tw.date_end)
+    WHERE 1=1
+      {% if start_month and end_month %}
+        AND toStartOfMonth(d.date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(d.date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('d.date', 'date', 'true') }}
+      {% endif %}
     GROUP BY d.date, d.ubo_address, d.pool_address, pt.token1_address, tw.symbol
     HAVING daily_delta_raw != 0
 ),
@@ -205,29 +218,17 @@ direct_daily_deltas AS (
     WHERE liq.event_type IN ('mint', 'burn')
       AND lower(liq.provider) != lower('{{ npm_address }}')
       AND liq.block_timestamp < today()
+      {% if start_month and end_month %}
+        AND toStartOfMonth(liq.block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(liq.block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('liq.block_timestamp', 'date', 'true') }}
+      {% endif %}
     GROUP BY date, ubo_address, container_address, token_address, tw.symbol
     HAVING daily_delta_raw != 0
 ),
 
 -- ─── MERGE BOTH TRACKS ─────────────────────────────────────────────────
-daily_deltas AS (
-    SELECT date, ubo_address, container_address, token_address, symbol, daily_delta_raw
-    FROM npm_daily_deltas
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(date) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-    {% endif %}
-
-    UNION ALL
-
-    SELECT date, ubo_address, container_address, token_address, symbol, daily_delta_raw
-    FROM direct_daily_deltas
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(date) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-    {% endif %}
-),
-
 daily_deltas_agg AS (
     SELECT
         date,
@@ -235,11 +236,15 @@ daily_deltas_agg AS (
         container_address,
         symbol,
         sum(daily_delta_raw) AS daily_delta_raw
-    FROM daily_deltas
-    WHERE 1=1
-      {% if not (start_month and end_month) %}
-        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
-      {% endif %}
+    FROM (
+        SELECT date, ubo_address, container_address, token_address, symbol, daily_delta_raw
+        FROM npm_daily_deltas
+
+        UNION ALL
+
+        SELECT date, ubo_address, container_address, token_address, symbol, daily_delta_raw
+        FROM direct_daily_deltas
+    )
     GROUP BY date, ubo_address, container_address, symbol
 ),
 
@@ -252,18 +257,18 @@ overall_max_date AS (
         {% endif %} AS max_date
 ),
 
-{% if start_month and end_month %}
+{% if start_month and end_month and is_incremental() %}
 prev_balances AS (
     SELECT
         t1.ubo_address,
         tw.symbol,
         t1.container_address,
         t1.balance_raw
-    FROM {{ this }} FINAL t1
+    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }}) t1
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
     WHERE t1.date = (
-        SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')
+        SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')
     )
 ),
 {% elif is_incremental() %}
@@ -303,7 +308,7 @@ calendar AS (
         k.container_address,
         {% if start_month and end_month %}
             addDays(
-                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
                 offset + 1
             ) AS date
         {% else %}
@@ -317,7 +322,7 @@ calendar AS (
     ARRAY JOIN range(
         toUInt32(dateDiff('day',
             {% if start_month and end_month %}
-                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
             {% else %}
                 cp.max_date,
             {% endif %}

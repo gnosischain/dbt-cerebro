@@ -2,7 +2,6 @@
     config(
         materialized='incremental',
         incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
-        on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, container_address, token_address)',
         unique_key='(date, container_address, token_address)',
