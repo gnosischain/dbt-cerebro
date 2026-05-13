@@ -216,6 +216,106 @@ models:
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
+- name: int_ubo_claims_swapr_v3_daily
+  description: >
+    Per-user UBO supply claims for Swapr V3 (Algebra). Standardized shape: one
+    row per (date, container_address, ubo_address, token_address) capturing each
+    LP's net withdrawable token balance in a Swapr V3 pool.
+
+    Same two-track approach as Uniswap V3, but simpler because Swapr's
+    IncreaseLiquidity event includes the pool address directly (no
+    transaction_hash join needed). Each Swapr V3 pool is its own token
+    custodian so container_address is the individual pool address.
+
+    Track A (direct LPs): the pool Mint/Burn owner field is the real LP.
+    Track B (via NPM): the owner is the NonfungiblePositionManager
+    (0x91fd...). The real LP is resolved from NPM Transfer events.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Swapr V3'.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: >
+      Lowercase pool address. Each Swapr V3 pool custodies its own tokens.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: >
+      Canonical token address per tokens_whitelist (symbol + date range).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol from tokens_whitelist.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.) from tokens_whitelist.
+    data_type: String
+  - name: ubo_address
+    description: >
+      Lowercase address of the LP. For Track A this is the pool event owner;
+      for Track B it is the current NFT owner from NPM Transfer events.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Cumulative raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-03-01"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, container_address, ubo_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_swapr_v3_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_swapr_v3_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
 - name: int_ubo_claims_aave_daily
   description: >
     Per-protocol UBO supply claims for Aave V3 + SparkLend. Standardized
