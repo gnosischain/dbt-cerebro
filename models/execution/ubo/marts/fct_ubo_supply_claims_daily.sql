@@ -22,7 +22,8 @@
 --
 -- Phase 1: Aave V3 + SparkLend.
 -- Phase 2: Balancer V2.
--- Phase 3+: add UNION ALL branches for Balancer V3, Curve, V2-style AMMs.
+-- Phase 3: Uniswap V3.
+-- Phase 4+: add UNION ALL branches for Balancer V3, Curve, V2-style AMMs.
 -- Consumers downstream do not change — they pick up new protocols automatically.
 
 {% set start_month = var('start_month', none) %}
@@ -62,6 +63,28 @@ SELECT
     balance,
     balance_usd
 FROM {{ ref('int_ubo_claims_balancer_v2_daily') }}
+WHERE date < today()
+  {% if start_month and end_month %}
+    AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+  {% else %}
+    {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+  {% endif %}
+
+UNION ALL
+
+SELECT
+    date,
+    protocol,
+    container_address,
+    token_address,
+    symbol,
+    token_class,
+    ubo_address,
+    balance_raw,
+    balance,
+    balance_usd
+FROM {{ ref('int_ubo_claims_uniswap_v3_daily') }}
 WHERE date < today()
   {% if start_month and end_month %}
     AND toStartOfMonth(date) >= toDate('{{ start_month }}')
