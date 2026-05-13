@@ -1,6 +1,192 @@
 version: 2
 models:
 
+- name: fct_execution_tokens_metrics_daily
+  description: |
+    Daily per-token fact joining supply/holders (from
+    int_execution_tokens_supply_holders_daily), transfer volume/counts/active
+    addresses (from int_execution_tokens_transfers_daily), and USD prices
+    (from int_execution_token_prices_daily). Keyed on (date, token_address).
+    Excludes the current day (today is incomplete). Materialized as a table
+    partitioned by month for fast time-range scans.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: token_class
+    description: Token classification (e.g. stable, governance, native, project).
+    data_type: String
+  - name: supply
+    description: Circulating supply in native units on this date.
+    data_type: Nullable(Float64)
+  - name: supply_usd
+    description: Circulating supply in USD (supply × daily price).
+    data_type: Nullable(Float64)
+  - name: holders
+    description: Distinct holders with positive balance on this date.
+    data_type: Nullable(UInt64)
+  - name: volume_token
+    description: Total transfer volume in native units on this date.
+    data_type: Nullable(Float64)
+  - name: volume_usd
+    description: Total transfer volume in USD (volume_token × daily price).
+    data_type: Nullable(Float64)
+  - name: transfer_count
+    description: Number of transfer events on this date.
+    data_type: Nullable(UInt64)
+  - name: ua_bitmap_state
+    description: AggregateFunction holding the set of unique active addresses (senders ∪ receivers) for groupBitmap merges.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: active_senders
+    description: Distinct sender count on this date.
+    data_type: Nullable(UInt64)
+  - name: unique_receivers
+    description: Distinct receiver count on this date.
+    data_type: Nullable(UInt64)
+
+- name: fct_execution_tokens_overview_by_class_latest
+  description: |
+    Token-class-level overview KPIs (supply_total, holders_total) on the
+    latest available date with 7-day change percent. One row per
+    (token_class, label) pair. Sourced from fct_execution_tokens_metrics_daily
+    and int_execution_tokens_balances_daily.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: token_class
+    data_type: String
+  - name: label
+    description: KPI label — 'supply_total' or 'holders_total'.
+    data_type: String
+  - name: value
+    description: Latest-day metric value (units depend on label).
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the value 7 days earlier.
+    data_type: Float64
+
+- name: fct_execution_tokens_supply_by_sector_latest
+  description: |
+    Latest-day supply breakdown per (token_class, sector). Sector classification
+    comes from int_execution_tokens_balances_by_sector_daily. percentage is the
+    sector's USD share within its token_class.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: token_class
+    data_type: String
+  - name: sector
+    description: Holder sector (e.g. CEX, DEX, lending, EOA, contracts).
+    data_type: String
+  - name: value
+    description: Supply held by the sector in native units.
+    data_type: Float64
+  - name: value_usd
+    description: Supply held by the sector in USD.
+    data_type: Float64
+  - name: percentage
+    description: Sector's percentage of total USD supply within its token_class.
+    data_type: Float64
+
+- name: fct_execution_tokens_supply_distribution_latest
+  description: |
+    Latest-day supply distribution per (token_class, token symbol). Each row
+    is a token's share within its class. Sourced from
+    fct_execution_tokens_metrics_daily.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: token_class
+    data_type: String
+  - name: token
+    description: Token symbol.
+    data_type: String
+  - name: value
+    description: Token supply in native units.
+    data_type: Float64
+  - name: value_usd
+    description: Token supply in USD.
+    data_type: Float64
+  - name: percentage
+    description: Token's percentage of total USD supply within its class.
+    data_type: Float64
+
+- name: api_execution_tokens_balances_daily
+  description: |
+    Daily per-wallet token balance feed for downstream API consumers.
+    Sourced from int_execution_tokens_balances_daily. The view is wired
+    to the API metadata layer with REQUIRED filters (symbol OR address) and
+    optional date-range filters to prevent unbounded scans.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: date
+    data_type: Date
+  - name: token_address
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: address
+    description: Holder wallet address (lowercase).
+    data_type: String
+  - name: balance
+    description: Balance in native units.
+    data_type: Float64
+  - name: balance_usd
+    description: Balance in USD.
+    data_type: Float64
+
+- name: api_execution_tokens_overview_latest
+  description: Thin API view over fct_execution_tokens_overview_by_class_latest — supply/holders KPI cards per token class with 7-day change.
+  columns:
+  - name: token_class
+    data_type: String
+  - name: label
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: change_pct
+    data_type: Float64
+
+- name: api_execution_tokens_supply_by_sector_latest
+  description: Thin API view over fct_execution_tokens_supply_by_sector_latest — supply distribution by holder sector for the latest day, per token class.
+  columns:
+  - name: token_class
+    data_type: String
+  - name: label
+    description: Sector name (renamed from sector).
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: value_usd
+    data_type: Float64
+  - name: percentage
+    data_type: Float64
+
+- name: api_execution_tokens_supply_distribution_latest
+  description: Thin API view over fct_execution_tokens_supply_distribution_latest — per-token share of supply within token class on the latest day.
+  columns:
+  - name: token_class
+    data_type: String
+  - name: token
+    data_type: String
+  - name: value
+    data_type: Float64
+  - name: value_usd
+    data_type: Float64
+  - name: percentage
+    data_type: Float64
+
 - name: api_execution_tokens_active_senders_daily
   description: This view provides daily counts of active senders per API token, enabling analysis of token engagement over time.
   meta:

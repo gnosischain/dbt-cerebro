@@ -325,60 +325,370 @@ models:
           severity: warn
           tags: [elementary]
 
+  # Mixpanel privacy policy (two tiers):
+  #   cerebro-api : NONE of these api_mixpanel_ga_* views are exposed.
+  #                 The `api_` prefix is a legacy naming convention.
+  #                 Enforced via meta.api.exclude_from_api: true here
+  #                 AND at dbt_project.yml level. Both must stay true.
+  #   MCP / semantic layer : aggregate views are accessible. The only
+  #                 model that exposes per-user identifiers is
+  #                 api_mixpanel_ga_users_daily — it carries
+  #                 user_id_hash per row and is marked
+  #                 `expose_to_mcp: false` below. The cross-domain view
+  #                 api_mixpanel_ga_gpay_crossdomain_daily looks
+  #                 sensitive but exposes only aggregate counts (no
+  #                 user_id_hash, no Safe address) and is MCP-safe.
   - name: api_mixpanel_ga_overview_daily
-    description: >
-      API view (tier3, internal) wrapping fct_mixpanel_ga_overview_daily.
-      Gnosis App web analytics KPIs with date range filters.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Pass-through view over
+      fct_mixpanel_ga_overview_daily. One row per UTC calendar date with a
+      headline KPI summary of Gnosis App (app.gnosis.io) web analytics
+      sourced from Mixpanel: total events, DAU, unique devices, new/cumulative
+      users, distinct event types, geographic and referrer diversity, the
+      autocapture vs. custom event split, and average events per active user.
+      Deploy previews, localhost, and kitchen.app.gnosis.io are filtered out
+      upstream so this only reflects production traffic.
+
+      Use case: drives the Gnosis App "overview" tab on the internal
+      analytics dashboard. Date range filters apply.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: total_events
+        description: Total Mixpanel events on this date (production traffic only).
+        data_type: UInt64
+      - name: dau
+        description: Daily active users (exact distinct user_id_hash count).
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count.
+        data_type: UInt64
+      - name: new_users
+        description: Users whose first-ever event was on this date.
+        data_type: UInt64
+      - name: cumulative_users
+        description: Running total of new_users since the cohort start.
+        data_type: UInt64
+      - name: distinct_event_types
+        description: Number of distinct event names seen on this date.
+        data_type: UInt64
+      - name: distinct_countries
+        description: Number of distinct countries with events on this date.
+        data_type: UInt64
+      - name: distinct_referrers
+        description: Number of distinct non-direct referrer domains.
+        data_type: UInt64
+      - name: autocapture_events
+        description: Estimated count of autocaptured events (clicks/page views).
+        data_type: Float64
+      - name: custom_events
+        description: Estimated count of explicit custom events (non-autocapture).
+        data_type: Float64
+      - name: avg_events_per_user
+        description: Average events per active user (total_events / dau).
+        data_type: Float64
 
   - name: api_mixpanel_ga_events_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App event counts by event_name.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily event counts by
+      Mixpanel event_name and derived event_category for Gnosis App
+      production traffic. Sourced from int_mixpanel_ga_events_daily.
+
+      event_category is derived in macros/mixpanel_ga_event_category.sql
+      and is one of: pageview (automatic $mp_web_page_view), modal (Open
+      Modal / Open Bottom Sheet), login (Login with Passkey), feature
+      (Success - Circles mint, Marketplace Purchase, QR Scanner), navigation
+      (back/Close ariaLabel clicks), system ($ prefix events), action (other
+      autocaptured interactions), other.
+
+      Use case: per-event-type trend charts in the internal dashboard.
+      Supports filters on event_name, event_category, and a date range.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: event_name
+        description: Mixpanel event name (e.g. $mp_web_page_view, Login with Passkey, Swap).
+        data_type: String
+      - name: event_category
+        description: Derived category — one of pageview, modal, login, feature, navigation, system, action, other.
+        data_type: String
+      - name: event_count
+        description: Number of events of this name on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count for this event on this date.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count for this event on this date.
+        data_type: UInt64
+      - name: autocapture_ratio
+        description: Fraction of events that are autocaptured (0.0-1.0).
+        data_type: Float64
 
   - name: api_mixpanel_ga_users_daily
-    description: >
-      API view (tier3, internal) for per-user daily Gnosis App activity (hashed user IDs).
+    description: |
+      INTERNAL ONLY — blocked from BOTH cerebro-api AND MCP. Per-user daily
+      activity summary for Gnosis App production traffic, keyed on
+      (date, user_id_hash). Sourced from int_mixpanel_ga_users_daily.
+
+      Privacy boundary: user_id_hash is a sipHash64 pseudonym of the
+      Mixpanel distinct_id, so no raw wallet addresses appear. But the
+      grain is per-user, which makes the view useful for re-identification
+      attacks given even modest auxiliary information. Excluded from MCP
+      via `meta.expose_to_mcp: false` and intentionally not registered in
+      semantic/authoring/mixpanel_ga/semantic_models.yml.
+
+      Sibling aggregate views (overview, events, traffic, geo, tech,
+      usage_patterns, pages, modals, funnel) expose only counts per
+      categorical dimension and are MCP-accessible.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      expose_to_mcp: false
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: user_id_hash
+        description: Privacy-safe sipHash64 of Mixpanel distinct_id (UInt64).
+        data_type: UInt64
+      - name: event_count
+        description: Events fired by this user on this date.
+        data_type: UInt64
+      - name: distinct_event_types
+        description: Distinct event names for this user on this date.
+        data_type: UInt64
+      - name: distinct_pages
+        description: Distinct page paths visited by this user on this date.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_traffic_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App traffic by referring domain.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily Gnosis App traffic
+      breakdown by HTTP referring domain. Sourced from
+      int_mixpanel_ga_traffic_daily. referrer_domain is 'direct' when the
+      Referer header is absent; initial_referrer_domain captures the
+      first-ever referrer a user came from (Mixpanel super-property).
+
+      Use case: marketing channel attribution and growth funnel inputs.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: referrer_domain
+        description: Referring domain ('direct' if none).
+        data_type: String
+      - name: initial_referrer_domain
+        description: The first-ever referring domain for events at this grain.
+        data_type: String
+      - name: event_count
+        description: Number of events from this referrer on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_pages_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App page-path analytics.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily Gnosis App page-path
+      analytics. One row per (date, current_domain, page_path) with event
+      and unique-user counts. Sourced from int_mixpanel_ga_pages_daily.
+
+      Use case: per-page traffic analysis and top-pages widgets. Page paths
+      are stripped of query parameters upstream so they are stable across
+      campaigns.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: current_domain
+        description: Domain serving the page (e.g. app.gnosis.io).
+        data_type: String
+      - name: page_path
+        description: URL path (no query string).
+        data_type: String
+      - name: event_count
+        description: Number of events for this page on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count for this page.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_geo_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App geography (country-level only for privacy).
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily Gnosis App
+      geographic breakdown, rolled up to country level only (no region)
+      for privacy reasons — Mixpanel's region field is dropped during the
+      view aggregation even though it exists upstream. Sourced from
+      int_mixpanel_ga_geo_daily.
+
+      Use case: country-level traffic distribution map / table on the
+      internal dashboard.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: country_code
+        description: ISO 2-letter country code (e.g. US, DE, GB).
+        data_type: String
+      - name: event_count
+        description: Total events from this country on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count from this country.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count from this country.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_tech_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App browser/OS/device breakdown.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily Gnosis App
+      browser / OS / device-type breakdown. Sourced from
+      int_mixpanel_ga_tech_daily. Mixpanel auto-extracts these from the
+      user agent.
+
+      Use case: technology-distribution widgets on the internal dashboard
+      and front-end compatibility prioritization.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: browser
+        description: Browser name (e.g. Chrome, Safari, Firefox).
+        data_type: String
+      - name: os
+        description: Operating system (e.g. Mac OS X, iOS, Windows).
+        data_type: String
+      - name: device_type
+        description: Device type (e.g. Desktop, Mobile, Tablet).
+        data_type: String
+      - name: event_count
+        description: Number of events from this tech combo on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count for this tech combo.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_usage_patterns_daily
-    description: >
-      API view (tier3, internal) for Gnosis App hourly and day-of-week usage patterns.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily Gnosis App event
+      counts by hour-of-day and ISO day-of-week (both UTC). One row per
+      (date, hour_of_day, day_of_week) bucket. Sourced from
+      int_mixpanel_ga_usage_patterns_daily.
+
+      Use case: heat-map of when users are active during the week.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: hour_of_day
+        description: Hour of day in UTC (0-23).
+        data_type: UInt8
+      - name: day_of_week
+        description: ISO day of week (1=Monday, 7=Sunday).
+        data_type: UInt8
+      - name: event_count
+        description: Number of events in this hour/day-of-week bucket.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count in this bucket.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_gpay_crossdomain_daily
-    description: >
-      API view (tier3, internal) for Gnosis App Mixpanel to Gnosis Pay cross-domain daily metrics.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Pass-through view over fct_mixpanel_ga_gpay_crossdomain_daily.
+
+      Privacy posture: the underlying fact table joins Mixpanel user_id_hash
+      to GP Safe addresses via the keyed-pseudonym identity bridge, BUT
+      this API view exposes only daily aggregate counts — no user_id_hash,
+      no Safe address, no raw EOA. The join is computed upstream; this view
+      surfaces just the aggregated outcome (DAU, matched-user counts by
+      role, match-rate percent), which is safe for analyst access.
+
+      Headline metrics: Mixpanel DAU, on-chain GPay active users, count of
+      matched users overall and broken down by identity role
+      (initial_owner / delegate / safe_self), plus 7- and 30-day activity
+      flags (Delay module queueing, allowance changes).
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: mp_dau
+        description: Mixpanel daily active users.
+        data_type: UInt64
+      - name: onchain_active_users
+        description: On-chain GPay active users from fct_execution_gpay_activity_daily.
+        data_type: UInt64
+      - name: matched_users
+        description: Backwards-compat alias for matched_users_any.
+        data_type: UInt64
+      - name: matched_users_any
+        description: Mixpanel users matched to at least one GP Safe via any role.
+        data_type: UInt64
+      - name: matched_by_initial_owner_users
+        description: Mixpanel users matched via the SafeSetup initial-owner identity.
+        data_type: UInt64
+      - name: matched_by_delegate_users
+        description: Mixpanel users matched via a Roles v2 spender delegate identity.
+        data_type: UInt64
+      - name: matched_by_safe_self_users
+        description: Mixpanel users matched via the Safe address itself (smart-account identifier).
+        data_type: UInt64
+      - name: users_with_delay_activity_7d
+        description: Matched users whose gp_safe queued at least one TransactionAdded event in the last 7 days.
+        data_type: UInt64
+      - name: users_with_allowance_changes_30d
+        description: Matched users whose gp_safe had a SetAllowance event in the last 30 days.
+        data_type: UInt64
+      - name: match_rate_pct
+        description: Percentage of Mixpanel DAU matched to GPay Safes via any role.
+        data_type: Float64
 
   - name: fct_mixpanel_ga_funnel_daily
     description: |
@@ -466,16 +776,99 @@ models:
           tags: [elementary]
 
   - name: api_mixpanel_ga_modals_daily
-    description: >
-      API view (tier3, internal) for daily Gnosis App modal/bottom-sheet open counts.
-      Filter by bottom_sheet component name (e.g. PasskeyStepsModal, ModalJoin,
-      SelectSwapAsset, ModalReceive, ModalSend).
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Daily open counts for
+      each modal/bottom-sheet component in Gnosis App. Sourced from
+      int_mixpanel_ga_modals_daily. Filter by bottom_sheet component name.
+
+      Known bottom_sheet values: PasskeyStepsModal (passkey onboarding),
+      ModalJoin (join Circles), SelectSwapAsset (swap token picker),
+      ModalReceive (receive funds QR), ModalSend (send funds flow),
+      CardActivationStepsModal (Gnosis Pay card activation).
+
+      Use case: front-end engagement analysis — which entry points users
+      interact with most.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: bottom_sheet
+        description: Modal or bottom-sheet component name from the Gnosis App front-end.
+        data_type: String
+      - name: open_count
+        description: Number of times this modal was opened on this date.
+        data_type: UInt64
+      - name: unique_users
+        description: Distinct user_id_hash count that opened this modal.
+        data_type: UInt64
+      - name: unique_devices
+        description: Distinct device_id_hash count that opened this modal.
+        data_type: UInt64
 
   - name: api_mixpanel_ga_funnel_daily
-    description: >
-      API view (tier3, internal) for Gnosis App daily funnel conversion metrics
-      across onboarding, swap, and Circles flows.
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic layer. Pass-through over
+      fct_mixpanel_ga_funnel_daily. Day-scoped funnel conversion metrics
+      across three Gnosis App flows. Unit of measurement is
+      uniqExact(user_id_hash) so all rates are DAU-based.
+
+      Funnels:
+        Onboarding   /welcome → ModalJoin open → Passkey login → identified
+        Swap         /swap/* visit → SelectSwapAsset → Swap button click
+        Circles      /circles → /circles/mint → Success - Circles mint
+
+      Production-only (app.gnosis.io). Deploy previews and localhost
+      excluded.
     meta:
       owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: date
+        description: Calendar date (UTC).
+        data_type: Date
+      - name: welcome_visitors
+        description: Distinct users who visited /welcome on this date.
+        data_type: UInt64
+      - name: join_modal_opens
+        description: Distinct users who opened the ModalJoin bottom sheet.
+        data_type: UInt64
+      - name: passkey_logins
+        description: Distinct users who completed Login with Passkey.
+        data_type: UInt64
+      - name: identified_users
+        description: Distinct users with a wallet-identified session (is_identified=1).
+        data_type: UInt64
+      - name: onboarding_conversion_rate
+        description: passkey_logins / greatest(welcome_visitors, 1).
+        data_type: Float64
+      - name: swap_page_visitors
+        description: Distinct users on any /swap/* page.
+        data_type: UInt64
+      - name: swap_asset_selectors
+        description: Distinct users who opened the SelectSwapAsset modal.
+        data_type: UInt64
+      - name: swap_completions
+        description: Distinct users who clicked the Swap button (autocaptured ariaLabel).
+        data_type: UInt64
+      - name: swap_conversion_rate
+        description: swap_completions / greatest(swap_page_visitors, 1).
+        data_type: Float64
+      - name: circles_visitors
+        description: Distinct users on /circles.
+        data_type: UInt64
+      - name: circles_mint_visitors
+        description: Distinct users on /circles/mint.
+        data_type: UInt64
+      - name: circles_mints
+        description: Distinct users who triggered the Success - Circles mint event.
+        data_type: UInt64
+      - name: circles_conversion_rate
+        description: circles_mints / greatest(circles_visitors, 1).
+        data_type: Float64

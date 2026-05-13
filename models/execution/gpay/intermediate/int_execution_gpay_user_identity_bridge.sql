@@ -2,7 +2,7 @@
   config(
     materialized='table',
     engine='ReplacingMergeTree()',
-    order_by='(user_pseudonym, identity_role, address)',
+    order_by='(user_pseudonym, identity_role, address, gp_safe)',
     settings={'allow_nullable_key': 1},
     tags=['internal_only', 'privacy:tier_internal', 'execution', 'gpay'],
     meta={'expose_to_mcp': False, 'privacy_tier': 'internal'}
@@ -15,11 +15,19 @@
 -- pseudonymize raw addresses at build time without recomputing the hash.
 -- Never exposed to MCP or API.
 --
--- Mirrors the existing pattern in int_execution_gpay_safe_identities, but
--- keeps the raw `address` column alongside `user_pseudonym` (the existing
--- model exposes pseudonym only and is what marts read). After this bridge
--- lands, int_execution_gpay_safe_identities should be refactored to SELECT
--- FROM this bridge (drop the join + hash recomputation).
+-- IMPORTANT — `gp_safe` MUST be in the ReplacingMergeTree order_by. Gnosis
+-- Pay uses a single shared delegate-signer EOA across all Safes, so for the
+-- `delegate` role the (user_pseudonym, identity_role, address) tuple is
+-- identical for every (delegate, Safe) pair (~30k rows on 2026-05). Without
+-- gp_safe in the dedup key, ReplacingMergeTree collapses all delegate
+-- relationships down to a single row, silently losing the delegate↔Safe
+-- mapping that downstream consumers (e.g. int_execution_gpay_conversions,
+-- int_execution_gpay_user_events_unified, and the
+-- int_execution_gpay_safe_identities projection) depend on.
+--
+-- int_execution_gpay_safe_identities is a 3-column projection of this model
+-- (drops address + timestamps) and is the safe-to-expose mart-facing
+-- pseudonymization boundary.
 
 WITH gp_safes AS (
     SELECT lower(address) AS gp_safe FROM {{ ref('int_execution_gpay_wallets') }}

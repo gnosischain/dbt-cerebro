@@ -2,6 +2,37 @@ version: 2
 models:
 
 - name: contracts_UniswapV3_Factory_events
+  description: |
+    Decoded event log stream from the Uniswap V3 Factory contract on Gnosis.
+    The factory emits PoolCreated events when a new pool is deployed; this
+    stream is the source of truth for which Uniswap V3 pools exist on
+    Gnosis. Produced via the standard decode_logs macro. Backfilled from
+    2022-04-22 in 6-month batches.
+  columns: &event_columns
+  - name: block_number
+    description: Block number containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the transaction.
+    data_type: UInt64
+  - name: contract_address
+    description: Address of the contract emitting the event.
+    data_type: String
+  - name: event_name
+    description: Name of the emitted event (from the ABI).
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameter name to value (values are stringified; arrays are JSON strings).
+    data_type: Map(String, String)
   meta:
     owner: analytics_team
     authoritative: false
@@ -11,8 +42,12 @@ models:
 
 - name: contracts_UniswapV3_Pool_events
   description: |
-    Pool addresses are dynamically selected from contracts_whitelist seed
-    based on whitelisted tokens (both token0 and token1 must be whitelisted).
+    Decoded event log stream from Uniswap V3 Pool contracts on Gnosis. Pool
+    addresses are dynamically selected from the contracts_whitelist seed
+    (both token0 and token1 must be whitelisted to be included). Emits
+    Swap, Mint, Burn, Collect, Initialize events. Produced via the standard
+    decode_logs macro.
+  columns: *event_columns
   meta:
     owner: analytics_team
     authoritative: false
@@ -30,3 +65,4 @@ models:
     covering the full 48h TTL. The filter lands inside the macro's FROM clause
     — before the dedup window function and ABI join — which is the only position
     where ClickHouse can use it for partition/granule skipping.
+  columns: *event_columns

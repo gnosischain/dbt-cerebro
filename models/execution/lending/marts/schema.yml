@@ -1,6 +1,152 @@
 version: 2
 models:
 
+- name: fct_execution_lending_weekly
+  description: |
+    Weekly fact aggregating lending activity per (week, protocol, token) across
+    Aave V3 and SparkLend on Gnosis. Built from int_execution_lending_aave_daily
+    by collapsing days into ISO weeks (toStartOfWeek). APYs use the
+    end-of-week value (argMax by date); volumes are summed across the week;
+    distinct lender/borrower counts come from the merged daily bitmap states.
+    Excludes the current (incomplete) week.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: week
+    description: ISO week start date (Monday, UTC).
+    data_type: Date
+  - name: token_address
+    description: Reserve token contract address.
+    data_type: String
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification (e.g. stable, native, governance).
+    data_type: String
+  - name: protocol
+    description: Lending protocol identifier ('Aave V3' or 'SparkLend').
+    data_type: String
+  - name: apy_weekly
+    description: Supply APY at end-of-week (last daily value).
+    data_type: Nullable(Float64)
+  - name: borrow_apy_weekly
+    description: Variable borrow APY at end-of-week (last daily value).
+    data_type: Nullable(Float64)
+  - name: lenders_bitmap_state
+    description: AggregateFunction holding the set of unique lender addresses active during the week (groupBitmap-mergeable).
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: borrowers_bitmap_state
+    description: AggregateFunction holding the set of unique borrower addresses active during the week.
+    data_type: AggregateFunction(groupBitmap, UInt64)
+  - name: lenders_count_weekly
+    description: Distinct lender count over the week (cardinality of the lender bitmap).
+    data_type: UInt64
+  - name: borrowers_count_weekly
+    description: Distinct borrower count over the week (cardinality of the borrower bitmap).
+    data_type: UInt64
+  - name: deposits_volume_weekly
+    description: Total deposit volume in the week (sum of daily values, native units).
+    data_type: Float64
+  - name: borrows_volume_weekly
+    description: Total borrow volume in the week (sum of daily values, native units).
+    data_type: Float64
+
+- name: api_execution_lending_daily
+  description: |
+    Long-format daily APY series per (token, protocol) across Aave V3 and
+    SparkLend. Each row pivots into one of two apy_type values
+    ('Lending APY' or 'Borrow APY'). Drives the lending APY time-series
+    chart on the lending dashboard.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    data_type: String
+  - name: label
+    description: Lending protocol identifier ('Aave V3' or 'SparkLend').
+    data_type: String
+  - name: apy_type
+    description: "'Lending APY' or 'Borrow APY'."
+    data_type: String
+  - name: value
+    description: APY for the row's apy_type.
+    data_type: Float64
+
+- name: api_execution_lending_activity_counts_weekly
+  description: |
+    Weekly lender/borrower distinct user counts pivoted into long format for
+    stacked-bar activity charts. One row per (week, token, protocol,
+    activity_type), filtered to non-zero counts. Sourced from
+    fct_execution_lending_weekly.
+  columns:
+  - name: date
+    description: Week start date.
+    data_type: Date
+  - name: token
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    data_type: String
+  - name: label
+    description: Lending protocol identifier.
+    data_type: String
+  - name: activity_type
+    description: "'Lenders' or 'Borrowers'."
+    data_type: String
+  - name: value
+    description: Distinct user count for the activity_type in the week.
+    data_type: UInt64
+
+- name: api_execution_lending_activity_volumes_weekly
+  description: |
+    Weekly deposit/borrow volumes pivoted into long format for stacked-bar
+    volume charts. One row per (week, token, protocol, volume_type), filtered
+    to non-zero volumes. Sourced from fct_execution_lending_weekly.
+  columns:
+  - name: date
+    description: Week start date.
+    data_type: Date
+  - name: token
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    data_type: String
+  - name: label
+    description: Lending protocol identifier.
+    data_type: String
+  - name: volume_type
+    description: "'Deposits' or 'Borrows'."
+    data_type: String
+  - name: value
+    description: Total volume in native units for the volume_type in the week.
+    data_type: Float64
+
+- name: api_execution_lending_borrowers_count_7d
+  description: |
+    KPI view of currently-active borrowers on Gnosis (Aave V3, SparkLend).
+    Mirror of api_execution_lending_lenders_count_7d but for borrowers.
+    "Active borrowers" is a STOCK measure — unique wallets currently holding
+    a positive debt position. One row per protocol plus an 'ALL'-protocols
+    aggregate. change_pct compares against the count 7 days earlier.
+  columns:
+  - name: token
+    description: Always 'ALL' (no per-token slice exposed).
+    data_type: String
+  - name: protocol
+    description: Lending protocol identifier or 'ALL' for the cross-protocol aggregate.
+    data_type: String
+  - name: value
+    description: Distinct borrower count with positive debt balance on the latest available date.
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the count 7 days earlier (NULL when prior is zero or missing).
+    data_type: Nullable(Float64)
+
 - name: api_execution_lending_tvl_by_token_latest
   description: Latest lending TVL per reserve token on Gnosis (aggregated across Aave V3 and SparkLend) for pie chart display. Each row is a token with its total USD value locked across all protocols.
   columns:

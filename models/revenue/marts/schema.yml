@@ -1,11 +1,84 @@
 version: 2
 
+# ═════════════════════════════════════════════════════════════════════
+# REVENUE — POTENTIAL-VALUE & ACTIVE-USER ESTIMATION MODEL
+# ═════════════════════════════════════════════════════════════════════
+#
+# Goal
+# ----
+# Track on-chain revenue streams that COULD accrue value to the Gnosis
+# DAO. All fees here are computed PER USER PER DAY and then aggregated
+# weekly / monthly. The headline output is a sector-deduplicated count
+# of "active" users — analysts use this to size economically meaningful
+# user activity on Gnosis Chain.
+#
+# IMPORTANT — what this is NOT
+# ----------------------------
+# These figures are POTENTIAL revenue, not realised DAO revenue. Each
+# stream represents a value flow the DAO MAY capture in part, depending
+# on program settings, fee schedules, or external agreements. The
+# primary purpose of these marts is to ESTIMATE ACTIVE USERS by
+# summing a meaningful economic signal across streams — not to report
+# what the treasury actually receives. Where actual DAO revenue is
+# needed, refer to the treasury-fees marts (separate module).
+#
+# Sectors covered (each computed independently at the user level)
+# ---------------------------------------------------------------
+#   holdings    Imputed interest on user balances of stablecoins
+#               held on Gnosis Chain (EURe / USDC.e / BRLA / ZCHF).
+#               Displayed as the full user-level imputed yield; the
+#               DAO-accruable share depends on program terms.
+#   sdai        Imputed yield on user sDAI / Savings xDAI balances.
+#               Same caveat as above.
+#   gpay        Per-payment fees applied to each Gnosis Pay transaction,
+#               summed per user (EURe / GBPe / USDC.e payment tokens).
+#
+# Sectors in the Dune spec NOT yet implemented in dbt
+# ---------------------------------------------------
+#   lending             Lending-fee attribution per user.
+#   gnosis_app_circles  Per-mint CRC fee tracked and translated to USD.
+# When/if these land, add the source as a new stream_type in
+# int_revenue_fees_weekly_per_user.sql / _monthly_per_user.sql; the
+# downstream cohort+totals marts pick up new streams automatically.
+#
+# Active-user definition (cross-stream, no double counting)
+# ---------------------------------------------------------
+# A user is counted as ACTIVE once if their fees aggregated across ALL
+# streams in a 52-week (or month-scaled) window reach the threshold:
+#   - Annual / rolling-52w threshold : $6
+#   - Monthly threshold              : $0.50  (= $6 / 12)
+# If a user exceeds the threshold in only one sector, they are still
+# active. If no single sector reaches the threshold but the combined
+# total does, they are still active. The threshold is applied AFTER
+# summing across streams per user, so cross-sector double-counting is
+# impossible. See `fct_revenue_active_users_totals_*` for the headline
+# totals and `fct_revenue_active_users_cohorts_*` for the same logic
+# split by $-bucket.
+#
+# Caveats
+# -------
+# 1. Coverage is bounded by identifiable on-chain events and address
+#    labels — anonymous / unlabelled wallets that don't surface in
+#    `int_revenue_*_fees_daily` are excluded.
+# 2. The dollar values are POTENTIAL accruable streams; realised DAO
+#    revenue may be a fraction (or zero) depending on policy.
+# 3. The $6 threshold is the Dune team's calibration of "meaningfully
+#    active revenue-generating user." It's a heuristic, not a contract.
+# ═════════════════════════════════════════════════════════════════════
+
 models:
 
 # ---------- Holdings (EURe / USDC.e / BRLA / ZCHF) ----------
 
 - name: fct_revenue_holdings_cohorts_weekly
-  description: Rolling-52-week holdings-interest revenue by symbol and user cohort bucket.
+  description: |
+    Holdings stream — rolling-52-week imputed-interest "potential" revenue
+    by token symbol and user $-cohort bucket. Each user's imputed
+    yield on EURe / USDC.e / BRLA / ZCHF balances over the trailing 52
+    weeks is bucketed into an annualised $-band. Users with annual
+    rolling fees < $1 are excluded from this cohort table (still counted
+    in the cross-stream active-users marts). "Potential" — the DAO may
+    capture a portion of this stream depending on program terms.
   columns:
   - {name: week,                      description: Week start.,                                        data_type: Date}
   - {name: symbol,                    description: Canonical token symbol.,                            data_type: String}
@@ -15,7 +88,12 @@ models:
   meta: {owner: analytics_team, authoritative: false}
 
 - name: fct_revenue_holdings_cohorts_monthly
-  description: Monthly holdings-interest revenue by symbol and user cohort bucket (month-scaled thresholds).
+  description: |
+    Holdings stream — monthly imputed-interest "potential" revenue by
+    symbol and user $-cohort bucket. Same source streams as the weekly
+    table (EURe / USDC.e / BRLA / ZCHF), aggregated per calendar month
+    and bucketed with month-scaled thresholds (1/12 of the annual
+    bands). "Potential" — see header.
   columns:
   - {name: month,      description: First day of the month., data_type: Date}
   - {name: symbol,     description: Canonical token symbol., data_type: String}
@@ -27,7 +105,12 @@ models:
 # ---------- sDAI ----------
 
 - name: fct_revenue_sdai_cohorts_weekly
-  description: Rolling-52-week sDAI DAO revenue share by user cohort bucket.
+  description: |
+    sDAI / Savings xDAI stream — rolling-52-week imputed-yield "potential"
+    revenue by user $-cohort bucket. Each user's imputed yield on their
+    sDAI balance over the trailing 52 weeks is bucketed into an
+    annualised $-band. "Potential" — DAO accruable share depends on
+    savings-rate program settings.
   columns:
   - {name: week,                      description: Week start., data_type: Date}
   - {name: cohort,                    description: Annualised $-bucket., data_type: String}
@@ -36,7 +119,10 @@ models:
   meta: {owner: analytics_team, authoritative: false}
 
 - name: fct_revenue_sdai_cohorts_monthly
-  description: Monthly sDAI DAO revenue share by user cohort bucket.
+  description: |
+    sDAI / Savings xDAI stream — monthly imputed-yield "potential" revenue
+    by user $-cohort bucket. Same source as the weekly table; monthly
+    grain with month-scaled thresholds.
   columns:
   - {name: month,      description: First day of the month., data_type: Date}
   - {name: cohort,     description: Monthly $-bucket., data_type: String}
@@ -47,7 +133,12 @@ models:
 # ---------- Gnosis Pay ----------
 
 - name: fct_revenue_gpay_cohorts_weekly
-  description: Rolling-52-week Gnosis Pay revenue by symbol and user cohort bucket.
+  description: |
+    Gnosis Pay stream — rolling-52-week per-payment fee "potential" revenue
+    by payment token and user $-cohort bucket. Each user's cumulative
+    per-payment fees (EURe / GBPe / USDC.e card transactions) over the
+    trailing 52 weeks is bucketed into an annualised $-band. "Potential"
+    — DAO accruable share depends on fee-split agreements.
   columns:
   - {name: week,                      description: Week start., data_type: Date}
   - {name: symbol,                    description: Payment token (EURe, GBPe, USDC.e)., data_type: String}
@@ -57,7 +148,10 @@ models:
   meta: {owner: analytics_team, authoritative: false}
 
 - name: fct_revenue_gpay_cohorts_monthly
-  description: Monthly Gnosis Pay revenue by symbol and user cohort bucket.
+  description: |
+    Gnosis Pay stream — monthly per-payment fee "potential" revenue by
+    symbol and user $-cohort bucket. Same source as the weekly table;
+    monthly grain with month-scaled thresholds.
   columns:
   - {name: month,      description: First day of the month., data_type: Date}
   - {name: symbol,     description: Payment token., data_type: String}
@@ -70,9 +164,14 @@ models:
 
 - name: fct_revenue_active_users_cohorts_weekly
   description: |
-    Cross-stream unique-active-user cohort (rolling 52-week).
-    A user's rolling fees are summed across all streams/symbols before
-    bucketing, so the same user isn't double-counted in multiple cohorts.
+    HEADLINE — cross-stream unique-active-user cohort (rolling 52-week).
+    For each user, fees across ALL streams (holdings + sDAI + GPay) and
+    ALL symbols are SUMMED FIRST, then the total is bucketed into a
+    $-cohort. Because aggregation happens before bucketing, a user
+    cannot appear in multiple cohorts even if they accrue fees in
+    several sectors. This is the canonical cross-sector "active user"
+    breakdown by economic size; the `$1+`/`$6+`/... buckets are
+    annualised. See file header for the active-user definition.
   columns:
   - {name: week,                      description: Week start., data_type: Date}
   - {name: cohort,                    description: Annualised $-bucket (includes `<1`)., data_type: String}
@@ -82,8 +181,11 @@ models:
 
 - name: fct_revenue_active_users_cohorts_monthly
   description: |
-    Cross-stream unique-active-user cohort (monthly).
-    Fees per user summed over all streams/symbols in the month, then bucketed.
+    HEADLINE — cross-stream unique-active-user cohort (monthly grain).
+    Same logic as the weekly variant: per-user fees summed across all
+    streams/symbols for the calendar month, then bucketed into
+    month-scaled $-bands. Cross-sector dedup is automatic. See file
+    header.
   columns:
   - {name: month,      description: First day of the month., data_type: Date}
   - {name: cohort,     description: Monthly $-bucket., data_type: String}

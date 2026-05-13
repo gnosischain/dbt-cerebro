@@ -2,6 +2,38 @@ version: 2
 models:
 
 - name: contracts_BalancerV2_Vault_events
+  description: |
+    Decoded event log stream from the Balancer V2 Vault contract on Gnosis
+    Chain. One row per emitted log; decoded_params is a Map(String, String)
+    with the event-specific payload (PoolBalanceChanged, PoolBalanceManaged,
+    Swap, TokensRegistered, etc.). Produced via the standard decode_logs
+    macro against the Vault ABI. Backfilled from 2021-01-01 in 6-month
+    batches.
+  columns: &event_columns
+  - name: block_number
+    description: Block number containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the transaction.
+    data_type: UInt64
+  - name: contract_address
+    description: Address of the contract emitting the event.
+    data_type: String
+  - name: event_name
+    description: Name of the emitted event (from the ABI).
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameter name to value (values are stringified; arrays are JSON strings).
+    data_type: Map(String, String)
   meta:
     owner: analytics_team
     authoritative: false
@@ -15,3 +47,4 @@ models:
     in near-real-time. Same approach as `contracts_UniswapV3_Pool_events_live`:
     plain view (not MV) because cryo-live bulk attaches don't fire MV triggers,
     source pre-filtered to last 4h from source HWM for decode performance.
+  columns: *event_columns
