@@ -479,9 +479,12 @@ models:
 - name: fct_execution_tokens_top_holders_ranked
   description: >
     Latest-day snapshot of token holders ranked by USD balance with pct_of_total,
-    filtered to top 500 per token. No joins — only window functions on
-    int_execution_tokens_balances_daily. Materialized as a table to decouple the
-    heavy scan from the lightweight joins in fct_execution_tokens_top_holders_latest.
+    filtered to top 500 per token. Composes int_execution_tokens_balances_daily
+    with fct_ubo_supply_claims_daily + fct_ubo_known_containers_daily so
+    pool contracts (Aave/Spark in Phase 1; Balancer/Curve in Phase 2) are
+    replaced with individual UBOs before ranking. Materialized as a table to
+    decouple the unwind work from the lightweight joins in
+    fct_execution_tokens_top_holders_latest.
   meta:
     owner: analytics_team
     authoritative: false
@@ -496,7 +499,7 @@ models:
     description: Token classification.
     data_type: String
   - name: address
-    description: Holder wallet or contract address.
+    description: Holder wallet or contract address. For Aave/Spark unwound rows this is the individual lender, not the aToken contract.
     data_type: String
   - name: balance
     description: Token balance in native units.
@@ -504,6 +507,9 @@ models:
   - name: balance_usd
     description: Token balance in USD.
     data_type: Float64
+  - name: unwound_from
+    description: Array of container addresses this row was unwound from. Empty for direct holders.
+    data_type: Array(String)
   - name: pct_of_total
     description: Holder's balance as percentage of total token supply by USD.
     data_type: Float64
@@ -515,8 +521,12 @@ models:
   description: >
     Latest-day snapshot of token holders ranked by USD balance, with concentration
     metrics (pct_of_total, cumulative_pct), 7-day balance change, and address labels
-    from the crawlers pipeline. One row per (token_address, address). Used by the
-    api view for the top holders table on the Tokens and Revenue dashboard sections.
+    from the crawlers pipeline. One row per (token_address, address). Top-N now
+    reflects ultimate beneficial owners for Aave V3 + SparkLend reserves — pool
+    contracts are replaced with individual lenders via the upstream
+    fct_ubo_supply_claims_daily surface. Phase 2+ (Balancer, Curve) plug in to
+    that same surface with no change here. Used by the api view for the top
+    holders table on the Tokens and Revenue dashboard sections.
   meta:
     owner: analytics_team
     authoritative: false
@@ -555,8 +565,14 @@ models:
     description: Running sum of pct_of_total from rank 1 downward — shows what share the top N holders control.
     data_type: Float64
   - name: change_usd_7d
-    description: USD balance change vs 7 days ago. Positive = accumulating, negative = exiting.
+    description: USD balance change vs 7 days ago. Positive = accumulating, negative = exiting. For unwound rows the comparison is against the same UBO's lent balance 7 days ago.
     data_type: Float64
+  - name: unwound_from
+    description: Array of container addresses this row was unwound from (e.g. ['agnoSDAI']). Empty array means the holder is direct, not unwound from any container.
+    data_type: Array(String)
+  - name: is_terminal_ubo
+    description: 1 = label-confirmed end-holder (EOA, Safe/AA, bridge, gpay). 0 = labeled but undecomposed container — Phase 2+ target. NULL = unclassified.
+    data_type: Nullable(UInt8)
 
 - name: api_execution_tokens_top_holders_latest
   description: >
@@ -603,8 +619,102 @@ models:
   - name: change_usd_7d
     description: USD balance change vs 7 days ago.
     data_type: Float64
+  - name: unwound_from
+    description: Array of container addresses this row was unwound from. Empty for direct holders.
+    data_type: Array(String)
+  - name: is_terminal_ubo
+    description: 1 = label-confirmed end-holder, 0 = undecomposed labeled container, NULL = unclassified.
+    data_type: Nullable(UInt8)
   tests:
   - elementary.schema_changes:
       severity: error
+      tags:
+      - elementary
+
+- name: fct_execution_tokens_ubo_coverage_latest
+  description: >
+    Per-token diagnostic of how much of the supply has been resolved to a
+    real end-holder (UBO) versus still sitting in a labeled-but-undecomposed
+    container. Materialized as a table — the underlying composition
+    (balances_daily LEFT ANTI JOIN containers UNION ALL supply_claims, then
+    LEFT JOIN labels over millions of rows) is too heavy for a view.
+    After Phase 1 only Aave V3 + SparkLend reserves are decomposed;
+    DEX vaults / Curve pools / Uni V3 NPM remain in pct_known_container until
+    later phases.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: token_address
+    description: Contract address of the token (lowercase).
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: total_usd
+    description: Total USD value of all positive-balance holders for this token on the latest snapshot date.
+    data_type: Float64
+  - name: pct_direct_terminal
+    description: Share of supply held by direct holders that are label-confirmed terminals (EOAs, Safes, bridges, gpay).
+    data_type: Float64
+  - name: pct_unwound_terminal
+    description: Share of supply unwound out of a container (Aave/Spark in Phase 1) into label-confirmed terminal addresses.
+    data_type: Float64
+  - name: pct_unwound_other
+    description: Share of supply unwound but landing on an unclassified or still-container address (e.g. an aave depositor that is itself another protocol).
+    data_type: Float64
+  - name: pct_known_container
+    description: Share of supply still held by labeled containers we have NOT yet decomposed. Phase 2+ work.
+    data_type: Float64
+  - name: pct_unclassified
+    description: Share of supply held by addresses with no label.
+    data_type: Float64
+  - name: pct_unwound_total
+    description: Total share of supply that flowed through any unwind path (sum of pct_unwound_terminal + pct_unwound_other).
+    data_type: Float64
+
+- name: api_execution_tokens_ubo_coverage_latest
+  description: >
+    Thin API view over fct_execution_tokens_ubo_coverage_latest.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: token_address
+    description: Contract address of the token (lowercase).
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: total_usd
+    description: Total USD value of all positive-balance holders for this token on the latest snapshot date.
+    data_type: Float64
+  - name: pct_direct_terminal
+    description: Share of supply held by direct holders that are label-confirmed terminals.
+    data_type: Float64
+  - name: pct_unwound_terminal
+    description: Share of supply unwound into label-confirmed terminal addresses.
+    data_type: Float64
+  - name: pct_unwound_other
+    description: Share of supply unwound but landing on unclassified or container addresses.
+    data_type: Float64
+  - name: pct_known_container
+    description: Share of supply still held by labeled containers not yet decomposed.
+    data_type: Float64
+  - name: pct_unclassified
+    description: Share of supply held by addresses with no label.
+    data_type: Float64
+  - name: pct_unwound_total
+    description: Total share of supply that flowed through any unwind path.
+    data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
       tags:
       - elementary

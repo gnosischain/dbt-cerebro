@@ -1,0 +1,151 @@
+version: 2
+models:
+
+- name: fct_ubo_supply_claims_daily
+  description: >
+    THE reusable UBO supply-claims surface. One row per (date, protocol,
+    container_address, ubo_address) — for each container contract that
+    pools a token, the individual end-holders and their withdrawable
+    balance. Phase 1 contributors: Aave V3 + SparkLend. Phase 2+ will
+    add Balancer V2/V3, Curve, and V2-style AMMs via additional
+    UNION ALL branches; downstream consumers do not change.
+
+    Use this model to answer "who really holds this token" questions —
+    join with int_execution_tokens_balances_daily on (token_address,
+    address) to replace container-contract rows with their UBOs.
+  meta:
+    owner: analytics_team
+    authoritative: true
+    full_refresh:
+      start_date: "2022-12-01"
+      batch_months: 6
+      stages:
+      - name: all
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Protocol the claim is sourced from (e.g. 'Aave V3', 'SparkLend').
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: Lowercase address of the container contract holding the pooled token.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of the underlying token being claimed.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the end-holder.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the claim.
+    data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, protocol, container_address, ubo_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: fct_ubo_supply_claims_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: fct_ubo_supply_claims_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: fct_ubo_known_containers_daily
+  description: >
+    Distinct (date, container_address, token_address) tuples for which
+    we have UBO-level supply claims. Derived directly from
+    fct_ubo_supply_claims_daily — self-consistent: a container appears
+    here iff we can decompose it. Consumers LEFT ANTI JOIN this against
+    int_execution_tokens_balances_daily to strip container rows before
+    merging in per-UBO rows.
+  meta:
+    owner: analytics_team
+    authoritative: true
+    full_refresh:
+      start_date: "2022-12-01"
+      batch_months: 6
+      stages:
+      - name: all
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: Lowercase address of the container contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of the underlying token the container holds.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, container_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: fct_ubo_known_containers_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
