@@ -664,13 +664,14 @@ models:
 
 - name: fct_execution_tokens_top_holders_ranked
   description: >
-    Latest-day snapshot of token holders ranked by USD balance with pct_of_total,
-    filtered to top 500 per token. Composes int_execution_tokens_balances_daily
-    with fct_ubo_supply_claims_daily + fct_ubo_known_containers_daily so
-    pool contracts (Aave/Spark in Phase 1; Balancer/Curve in Phase 2) are
-    replaced with individual UBOs before ranking. Materialized as a table to
-    decouple the unwind work from the lightweight joins in
-    fct_execution_tokens_top_holders_latest.
+    Latest-day snapshot of top-500 token holders per token ranked by USD balance.
+    Combines int_execution_tokens_balances_daily (direct holders, with known containers
+    excluded via LEFT ANTI JOIN on fct_ubo_known_containers_daily) and
+    fct_ubo_supply_claims_daily (UBO-unwound holders) for the single latest date.
+    Uses scalar subqueries in WHERE for partition pruning rather than CROSS JOIN,
+    keeping the scan to one date partition. Materialized as a table so
+    fct_execution_tokens_top_holders_latest can drive its 7d-ago lookup from
+    this small result set instead of re-scanning all holders.
   meta:
     owner: analytics_team
     authoritative: false
@@ -709,14 +710,14 @@ models:
     metrics (pct_of_total, cumulative_pct), 7-day balance change, and address labels
     from the crawlers pipeline. One row per (token_address, address). Top-N
     reflects ultimate beneficial owners — pool contracts are replaced with
-    individual end-holders via the upstream fct_ubo_supply_claims_daily surface;
-    all implemented phases (Aave, Balancer, Uniswap V3, Swapr V3) plug in with
-    no change here.
+    individual end-holders via the upstream UBO pipeline; all implemented phases
+    (Aave, Balancer, Uniswap V3, Swapr V3) plug in with no change here.
 
-    The 7-day delta is fully UBO-aware: prev_balances replays the same container
-    unwind for the snapshot 7 days ago, so change_usd_7d tracks the UBO's own
-    historical position rather than the container contract's balance. Used by the
-    api view for the top holders table on the Tokens and Revenue dashboard sections.
+    The 7-day delta is computed by driving the lookup FROM fct_execution_tokens_top_holders_ranked
+    (small — top 500 per token) into 1-day slices of int_execution_tokens_balances_daily and
+    fct_ubo_supply_claims_daily. ClickHouse builds a hash map from the ranked addresses and
+    probes the 7d-ago partition, so only the matching rows are ever aggregated — avoiding
+    the full-holder scan that previously caused OOM at 10.8 GiB.
   meta:
     owner: analytics_team
     authoritative: false

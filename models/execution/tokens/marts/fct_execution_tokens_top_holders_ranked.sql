@@ -5,7 +5,6 @@
   )
 }}
 
-
 {% set max_rank = 500 %}
 
 WITH
@@ -26,12 +25,14 @@ direct_rows AS (
         b.balance_usd                        AS balance_usd,
         CAST([] AS Array(String))            AS unwound_from
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
-    CROSS JOIN latest_date ld
-    LEFT ANTI JOIN {{ ref('fct_ubo_known_containers_daily') }} k
-        ON  k.date                     = b.date
-        AND lower(k.token_address)     = lower(b.token_address)
+    LEFT ANTI JOIN (
+        SELECT token_address, container_address
+        FROM {{ ref('fct_ubo_known_containers_daily') }}
+        WHERE date = (SELECT d FROM latest_date)
+    ) k
+        ON  lower(k.token_address)     = lower(b.token_address)
         AND lower(k.container_address) = lower(b.address)
-    WHERE b.date = ld.d
+    WHERE b.date = (SELECT d FROM latest_date)
       AND b.balance > 0
       AND lower(b.address) != '0x0000000000000000000000000000000000000000'
 ),
@@ -46,22 +47,15 @@ unwound_rows AS (
         c.balance_usd                        AS balance_usd,
         [c.container_address]                AS unwound_from
     FROM {{ ref('fct_ubo_supply_claims_daily') }} c
-    CROSS JOIN latest_date ld
-    WHERE c.date = ld.d
+    WHERE c.date = (SELECT d FROM latest_date)
       AND c.balance > 0
 ),
 
 combined AS (
-    SELECT
-        token_address, symbol, token_class, address,
-        balance, balance_usd, unwound_from
+    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from
     FROM direct_rows
-
     UNION ALL
-
-    SELECT
-        token_address, symbol, token_class, address,
-        balance, balance_usd, unwound_from
+    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from
     FROM unwound_rows
 ),
 
