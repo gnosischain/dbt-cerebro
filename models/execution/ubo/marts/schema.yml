@@ -6,9 +6,13 @@ models:
     THE reusable UBO supply-claims surface. One row per (date, protocol,
     container_address, ubo_address) — for each container contract that
     pools a token, the individual end-holders and their withdrawable
-    balance. Phase 1 contributors: Aave V3 + SparkLend. Phase 2+ will
-    add Balancer V2/V3, Curve, and V2-style AMMs via additional
-    UNION ALL branches; downstream consumers do not change.
+    balance. A "supply claim" is a withdrawable position an end-holder has
+    on a token held by a container contract (aToken, vault, pool LP).
+
+    Implemented phases: Phase 1 — Aave V3 + SparkLend; Phase 2 — Balancer
+    V2; Phase 3 — Uniswap V3; Phase 4 — Swapr V3. Phase 5+ (Curve,
+    V2-style AMMs) adds new UNION ALL branches; downstream consumers do
+    not change — they pick up new protocols automatically.
 
     Use this model to answer "who really holds this token" questions —
     join with int_execution_tokens_balances_daily on (token_address,
@@ -97,7 +101,8 @@ models:
     fct_ubo_supply_claims_daily — self-consistent: a container appears
     here iff we can decompose it. Consumers LEFT ANTI JOIN this against
     int_execution_tokens_balances_daily to strip container rows before
-    merging in per-UBO rows.
+    merging in per-UBO rows. Small — bounded by
+    (# protocols × # reserves × days) — so refresh is cheap.
   meta:
     owner: analytics_team
     authoritative: true

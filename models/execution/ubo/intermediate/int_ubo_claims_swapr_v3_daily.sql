@@ -13,19 +13,6 @@
     )
 }}
 
--- Per-user UBO supply claims for Swapr V3 (Algebra).
---
--- Same two-track approach as Uniswap V3, but simpler because Swapr's
--- IncreaseLiquidity event includes the pool address directly (no
--- transaction_hash join needed to resolve tokenId → pool).
---
--- Two tracks of LP attribution:
---   Track A (direct LPs): the pool Mint/Burn event's `owner` field is the
---     real LP — used directly from stg_pools__dex_liquidity_swapr_v3.
---   Track B (via NPM): the pool event's `owner` is the NPM contract
---     (0x91fd...). The real LP is determined by decoding the NPM's ERC-721
---     Transfer events (ownership tracking per tokenId) and the NPM's
---     IncreaseLiquidity / DecreaseLiquidity events for token deltas.
 
 {% set npm_address = '0x91fd594c46d8b01e62dbdebed2401dde01817834' %}
 
@@ -264,11 +251,11 @@ prev_balances AS (
         tw.symbol,
         t1.container_address,
         t1.balance_raw
-    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }}) t1
+    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }} FINAL) t1
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
     WHERE t1.date = (
-        SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')
+        SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')
     )
 ),
 {% elif is_incremental() %}
@@ -308,7 +295,7 @@ calendar AS (
         k.container_address,
         {% if start_month and end_month %}
             addDays(
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
                 offset + 1
             ) AS date
         {% else %}
@@ -322,7 +309,7 @@ calendar AS (
     ARRAY JOIN range(
         toUInt32(dateDiff('day',
             {% if start_month and end_month %}
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
             {% else %}
                 cp.max_date,
             {% endif %}

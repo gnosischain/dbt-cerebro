@@ -11,15 +11,6 @@
     )
 }}
 
--- Per-protocol UBO supply claims for Aave V3 + SparkLend.
---
--- This is the standardized "who can withdraw what" projection of
--- int_execution_lending_aave_user_balances_daily — same per-user balances,
--- reshaped into the protocol-agnostic supply-claim schema that
--- fct_ubo_supply_claims_daily unions across protocols.
---
--- Phase 2 protocols (Balancer, Curve, …) will each have their own sibling
--- int_ubo_claims_<protocol>_daily model contributing rows in the same shape.
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

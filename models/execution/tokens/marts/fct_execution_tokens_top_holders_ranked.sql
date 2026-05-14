@@ -5,10 +5,6 @@
   )
 }}
 
--- Latest-day token holder ranking with UBO unwinding. Container-contract
--- holders (Aave aTokens for Phase 1; Balancer/Curve for Phase 2) are
--- replaced with the individual end-holders inside them via
--- fct_ubo_supply_claims_daily + fct_ubo_known_containers_daily.
 
 {% set max_rank = 500 %}
 

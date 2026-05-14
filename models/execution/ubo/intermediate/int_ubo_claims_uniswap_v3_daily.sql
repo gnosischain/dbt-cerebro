@@ -13,22 +13,6 @@
     )
 }}
 
--- Per-user UBO supply claims for Uniswap V3.
---
--- Uniswap V3 pools custody their own tokens (unlike Balancer V2's single Vault),
--- so container_address is the individual pool address.
---
--- Two tracks of LP attribution:
---   Track A (direct LPs, ~45%): the pool Mint/Burn event's `owner` field is the
---     real LP — used directly.
---   Track B (via NPM, ~55%): the pool event's `owner` is the NPM contract
---     (0xae8fbe...). The real LP is determined by decoding the NPM's ERC-721
---     Transfer events (ownership tracking per tokenId) and joining NPM
---     IncreaseLiquidity / DecreaseLiquidity events to pool events via
---     transaction_hash to resolve tokenId → pool_address.
---
--- Position transfers (LP A mints NFT → transfers to LP B → LP B burns) are
--- handled correctly by the Transfer event ownership chain.
 
 {% set npm_address = '0xae8fbe656a77519a7490054274910129c9244fa3' %}
 
@@ -264,11 +248,11 @@ prev_balances AS (
         tw.symbol,
         t1.container_address,
         t1.balance_raw
-    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }}) t1
+    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }} FINAL) t1
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
     WHERE t1.date = (
-        SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')
+        SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')
     )
 ),
 {% elif is_incremental() %}
@@ -308,7 +292,7 @@ calendar AS (
         k.container_address,
         {% if start_month and end_month %}
             addDays(
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
                 offset + 1
             ) AS date
         {% else %}
@@ -322,7 +306,7 @@ calendar AS (
     ARRAY JOIN range(
         toUInt32(dateDiff('day',
             {% if start_month and end_month %}
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
             {% else %}
                 cp.max_date,
             {% endif %}

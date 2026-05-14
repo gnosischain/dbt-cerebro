@@ -13,17 +13,6 @@
     )
 }}
 
--- Per-user UBO supply claims for Balancer V2.
---
--- Balancer V2 uses a single Vault contract that custodies ALL pool tokens.
--- Each LP's net token position is the cumulative sum of their PoolBalanceChanged
--- deltas across all pools for that token. container_address is therefore the
--- Vault address for every row; token_address is the canonical address per
--- tokens_whitelist on that date.
---
--- Tracking is keyed by (ubo_address, symbol) through the cumsum so that token
--- migrations (e.g. EURe V1 → V2) collapse into a single continuous series.
--- The canonical token_address is resolved at the final SELECT via tokens_whitelist.
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
@@ -68,11 +57,11 @@ prev_balances AS (
         t1.ubo_address,
         tw.symbol,
         t1.balance_raw
-    FROM (SELECT ubo_address, token_address, balance_raw, date FROM {{ this }}) t1
+    FROM (SELECT ubo_address, token_address, balance_raw, date FROM {{ this }} FINAL) t1
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
     WHERE t1.date = (
-        SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')
+        SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')
     )
 ),
 {% elif is_incremental() %}
@@ -110,7 +99,7 @@ calendar AS (
         k.symbol,
         {% if start_month and end_month %}
             addDays(
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
                 offset + 1
             ) AS date
         {% else %}
@@ -124,7 +113,7 @@ calendar AS (
     ARRAY JOIN range(
         toUInt32(dateDiff('day',
             {% if start_month and end_month %}
-                (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+                (SELECT max(date) FROM {{ this }} FINAL WHERE date < toDate('{{ start_month }}')),
             {% else %}
                 cp.max_date,
             {% endif %}

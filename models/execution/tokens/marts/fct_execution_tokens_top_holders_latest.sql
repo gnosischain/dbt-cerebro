@@ -5,11 +5,6 @@
   )
 }}
 
--- Latest-day top holders with labels, cumulative %, and 7-day USD delta.
--- Both today and (today - 7) are UBO-aware: the prev_balances CTE replays
--- the same unwind as fct_execution_tokens_top_holders_ranked but for the
--- 7-day-ago snapshot, so deltas track the UBO's own historical position
--- rather than the container contract's.
 
 WITH
 
