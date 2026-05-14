@@ -1,5 +1,103 @@
 version: 2
 models:
+- name: int_execution_circles_v2_crc20_pools
+  description: >
+    View of all Uniswap V3 and Swapr V3 pools that contain at least one CRC20
+    wrapper token. Combines the dynamic pool registry (all pools ever created
+    by the factories) with the ERC20Lift wrapper list, so it captures CRC20
+    pools without requiring them to be in contracts_whitelist.
+  columns:
+  - name: pool_address
+    description: Pool contract address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: pool_address_no0x
+    description: Pool contract address without 0x prefix, for direct comparison with execution.logs.address.
+    data_type: String
+  - name: protocol
+    description: DEX protocol name (Uniswap V3 or Swapr V3).
+    data_type: String
+  - name: crc20_token
+    description: Address of the CRC20 wrapper token in this pool.
+    data_type: String
+  - name: backing_token
+    description: Address of the other token in the pool (the pricing token, e.g. WXDAI, WETH).
+    data_type: String
+  - name: crc20_is_token0
+    description: True if the CRC20 wrapper is token0 in the pool, false if it is token1.
+    data_type: Bool
+  - name: avatar
+    description: Circles avatar address that owns/minted this CRC20 wrapper.
+    data_type: String
+  - name: circles_type
+    description: Wrapper type — 0 = demurraged (decaying balance), 1 = inflationary (static balance, typically used in AMMs).
+    data_type: UInt8
+  - name: crc20_symbol
+    description: Display symbol for the CRC20 token, derived from dune_labels or a fallback abbreviation.
+    data_type: Nullable(String)
+  meta: &meta_int
+    owner: analytics_team
+    authoritative: false
+
+- name: int_execution_circles_v2_crc20_prices_raw
+  description: >
+    Trade-level executed prices for CRC20 wrapper tokens across all supported DEX
+    protocols. Filters int_execution_pools_dex_trades for trades where either leg
+    is a known CRC20 wrapper. Balancer V2 trades are captured automatically via
+    the single vault contract. Uniswap V3 CRC20 pools require their addresses in
+    contracts_whitelist.csv (type UniswapV3Pool). USD price is derived directly
+    from int_execution_pools_dex_trades.amount_usd using the backing token price.
+  columns:
+  - name: block_timestamp
+    description: UTC timestamp of the swap.
+    data_type: DateTime64
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: transaction_hash
+    description: Hash of the transaction.
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  - name: pool_address
+    description: Address of the Uniswap V3 / Swapr V3 pool.
+    data_type: String
+  - name: protocol
+    description: DEX protocol (Uniswap V3 or Swapr V3).
+    data_type: String
+  - name: crc20_token
+    description: Address of the CRC20 wrapper being priced.
+    data_type: String
+  - name: backing_token
+    description: Address of the counterpart token (e.g. WXDAI, WETH).
+    data_type: String
+  - name: avatar
+    description: Circles avatar that owns this CRC20 wrapper.
+    data_type: String
+  - name: circles_type
+    description: Wrapper type (0 = demurraged, 1 = inflationary).
+    data_type: UInt8
+  - name: crc20_symbol
+    description: Display symbol for the CRC20 token.
+    data_type: Nullable(String)
+  - name: backing_token_symbol
+    description: Symbol of the backing token from tokens_whitelist.
+    data_type: String
+  - name: backing_decimals
+    description: Decimal places of the backing token (18 if not in whitelist).
+    data_type: UInt8
+  - name: crc_amount
+    description: Amount of CRC20 tokens exchanged in this swap (token units, 18 decimals applied).
+    data_type: Float64
+  - name: backing_amount
+    description: Amount of backing tokens exchanged in this swap (token units, decimals applied).
+    data_type: Float64
+  - name: price_in_backing
+    description: Executed price — backing tokens paid or received per 1 CRC20 token.
+    data_type: Float64
+  meta: *meta_int
+
 - name: int_execution_circles_v1_avatars
   description: Circles v1 signup events normalized into avatar registrations.
   columns:

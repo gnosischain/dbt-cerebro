@@ -1,5 +1,120 @@
 version: 2
 models:
+- name: fct_execution_circles_v2_crc20_prices_daily
+  description: >
+    Daily aggregated executed prices for CRC20 wrapper tokens, one row per
+    (date, crc20_token, backing_token, pool_address). Aggregates trade-level
+    prices from int_execution_circles_v2_crc20_prices_raw and joins with
+    int_execution_token_prices_daily to convert backing-token prices to USD.
+  columns:
+  - name: date
+    description: Calendar date of the aggregated trades.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}date >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: crc20_token
+    description: Address of the CRC20 wrapper token.
+    data_type: String
+  - name: backing_token
+    description: Address of the counterpart token (e.g. WXDAI, WETH).
+    data_type: String
+  - name: backing_token_symbol
+    description: Symbol of the backing token.
+    data_type: String
+  - name: pool_address
+    description: Pool contract address.
+    data_type: String
+  - name: protocol
+    description: DEX protocol (Uniswap V3 or Swapr V3).
+    data_type: String
+  - name: avatar
+    description: Circles avatar address that owns this CRC20 wrapper.
+    data_type: String
+  - name: circles_type
+    description: Wrapper type (0 = demurraged, 1 = inflationary).
+    data_type: UInt8
+  - name: crc20_symbol
+    description: Display symbol for the CRC20 token.
+    data_type: Nullable(String)
+  - name: price_avg_in_backing
+    description: Volume-unweighted average executed price in backing token units across all trades on this day.
+    data_type: Float64
+  - name: price_median_in_backing
+    description: Median executed price in backing token units.
+    data_type: Float64
+  - name: price_p10_in_backing
+    description: 10th-percentile executed price in backing token units (low-end filter signal).
+    data_type: Float64
+  - name: price_p90_in_backing
+    description: 90th-percentile executed price in backing token units (high-end filter signal).
+    data_type: Float64
+  - name: crc_volume
+    description: Total CRC20 tokens traded (sum of crc_amount across all swaps on this day).
+    data_type: Float64
+  - name: trade_count
+    description: Number of swap transactions involving this CRC20 token in this pool on this day.
+    data_type: UInt64
+  - name: price_avg_usd
+    description: Average executed price converted to USD using the backing token's daily price.
+    data_type: Nullable(Float64)
+  - name: price_median_usd
+    description: Median executed price converted to USD.
+    data_type: Nullable(Float64)
+  meta: &meta_crc_prices
+    owner: analytics_team
+    authoritative: false
+  tests: &elementary_error_crc
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
+
+- name: api_execution_circles_v2_crc20_prices_daily
+  description: >
+    Public daily price view for CRC20 wrapper tokens, consolidated across all
+    pools. One row per (date, crc20_token) with a volume-weighted average USD
+    price (VWAP). Only tokens with at least one DEX trade on a given day appear;
+    tokens without market liquidity have no rows.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: '{% if var(''test_full_refresh'', false) %}1=1{% else %}date >= today() - {{ var(''test_lookback_days'', 7) }}{% endif %}'
+  - name: crc20_token
+    description: Address of the CRC20 wrapper token.
+    data_type: String
+  - name: avatar
+    description: Circles avatar address that owns this CRC20 wrapper.
+    data_type: String
+  - name: symbol
+    description: Display symbol for the CRC20 token.
+    data_type: Nullable(String)
+  - name: circles_type
+    description: Wrapper type (0 = demurraged, 1 = inflationary).
+    data_type: UInt8
+  - name: price_vwap_usd
+    description: Volume-weighted average price in USD across all pools on this day.
+    data_type: Nullable(Float64)
+  - name: price_median_usd
+    description: Median of per-pool daily median prices in USD.
+    data_type: Nullable(Float64)
+  - name: total_crc_volume
+    description: Total CRC20 tokens traded across all pools on this day.
+    data_type: Float64
+  - name: trade_count
+    description: Total number of swap transactions across all pools on this day.
+    data_type: UInt64
+  - name: pool_count
+    description: Number of distinct pools where this token was traded on this day.
+    data_type: UInt64
+  meta: *meta_crc_prices
+  tests: *elementary_error_crc
+
 - name: api_execution_circles_v2_avatars
   description: API view of daily avatar type counts and cumulative totals.
   columns:
