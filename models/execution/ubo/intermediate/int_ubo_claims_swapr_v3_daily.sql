@@ -270,7 +270,7 @@ prev_balances AS (
         tw.symbol,
         t1.container_address,
         t1.balance_raw
-    FROM {{ this }} t1
+    FROM (SELECT ubo_address, token_address, container_address, balance_raw, date FROM {{ this }}) t1
     CROSS JOIN current_partition t2
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
