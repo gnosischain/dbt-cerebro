@@ -1,14 +1,19 @@
-{{ 
+{{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(visit_ended_at, peer_id)',
         unique_key='(visit_ended_at, peer_id)',
         partition_by='toStartOfMonth(visit_ended_at)',
         tags=['production','p2p','discv5'],
-        pre_hook=["SET allow_experimental_json_type = 1", "SET enable_dynamic_type = 1", "SET join_use_nulls = 1"],
-        post_hook=["SET allow_experimental_json_type = 0", "SET enable_dynamic_type = 0", "SET join_use_nulls = 0"]
+        pre_hook=[
+            "SET allow_experimental_json_type = 1",
+            "SET enable_dynamic_type = 1",
+            "SET join_use_nulls = 1",
+            "SET join_algorithm = 'grace_hash'"
+        ],
+        post_hook=["SET allow_experimental_json_type = 0", "SET enable_dynamic_type = 0", "SET join_use_nulls = 0", "SET join_algorithm = 'default'"]
     )
 }}
 {% set start_month = var('start_month', none) %}

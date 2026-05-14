@@ -1,0 +1,52 @@
+version: 1
+
+# ═════════════════════════════════════════════════════════════════════
+# CROSS-SECTOR USER-PSEUDONYM JOINS
+# ═════════════════════════════════════════════════════════════════════
+#
+# `user_pseudonym` is the canonical cross-domain user identifier:
+# sipHash64(salt + lower(address)) per the pseudonymize_address macro.
+# It's deterministic across modules because all sides use the same salt
+# (CEREBRO_PII_SALT) — same wallet always produces the same UInt64. This
+# means a USER-LEVEL join on `user_pseudonym` works between any pair of
+# sectors that maintain user-keyed marts.
+#
+# Modules currently exposing `user_pseudonym` as a primary entity:
+#   - revenue   (fct_revenue_per_user_weekly / monthly)
+#   - gpay      (int_execution_gpay_safe_identities)
+#
+# Add a new module: build a user-keyed mart, declare `user_pseudonym` as
+# a primary entity in its semantic_model, then add a relationship block
+# here binding it to one of the existing user-keyed models (the planner
+# will transitively reach the rest via the user-pseudonym entity graph).
+# ═════════════════════════════════════════════════════════════════════
+
+relationships:
+
+- name: revenue_per_user_weekly_to_gpay_identity
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_execution_gpay_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_gpay_identity
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_execution_gpay_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved

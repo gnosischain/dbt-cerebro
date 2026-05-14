@@ -53,13 +53,13 @@ semantic_models:
   - name: volume_token_value
     agg: sum
     expr: volume_token
-  - name: volume_usd_value
+  - name: bridge_flow_volume_daily_value
     agg: sum
     expr: volume_usd
-  - name: net_usd_value
+  - name: bridge_flow_netflow_daily_value
     agg: sum
     expr: net_usd
-  - name: txs_value
+  - name: bridge_flow_transfers_daily_value
     agg: sum
     expr: txs
   config:
@@ -95,7 +95,7 @@ semantic_models:
 - name: bridges_kpi_distinct_chains_all_time
   model: ref('api_bridges_kpi_distinct_chains_all_time')
   measures:
-  - name: value_value
+  - name: bridge_distinct_chains_kpi
     agg: sum
     expr: value
   config:
@@ -108,7 +108,7 @@ semantic_models:
 - name: bridges_kpi_netflow_7d
   model: ref('api_bridges_kpi_netflow_7d')
   measures:
-  - name: value_value
+  - name: bridge_netflow_7d_kpi
     agg: sum
     expr: value
   - name: prev_value
@@ -127,7 +127,7 @@ semantic_models:
 - name: bridges_kpi_total_netflow_all_time
   model: ref('api_bridges_kpi_total_netflow_all_time')
   measures:
-  - name: value_value
+  - name: bridge_netflow_total_kpi
     agg: sum
     expr: value
   config:
@@ -140,7 +140,7 @@ semantic_models:
 - name: bridges_kpi_total_volume_all_time
   model: ref('api_bridges_kpi_total_volume_all_time')
   measures:
-  - name: value_value
+  - name: bridge_volume_total_kpi
     agg: sum
     expr: value
   config:
@@ -153,7 +153,7 @@ semantic_models:
 - name: bridges_kpi_volume_7d
   model: ref('api_bridges_kpi_volume_7d')
   measures:
-  - name: value_value
+  - name: bridge_volume_7d_kpi
     agg: sum
     expr: value
   - name: prev_value
@@ -254,7 +254,7 @@ semantic_models:
     type: categorical
     expr: bridge
   measures:
-  - name: netflow_usd_week_value
+  - name: bridge_netflow_weekly_value
     agg: sum
     expr: netflow_usd_week
   - name: cum_netflow_usd_value
@@ -555,4 +555,232 @@ semantic_models:
           directed: true
           time_column: date
           weight_column: volume_usd
-metrics: []
+
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — analyst-facing names that bind to the measures above.
+#
+# Tiering:
+#   candidate  Default for all bridge metrics today. The 7d / all-time
+#              KPI metrics back single-row scalar views (no
+#              dimensions), so the MCP semantic engine cannot aggregate
+#              or group them — keep these as `candidate` and treat them
+#              as dashboard-card displays, not metric-lab metrics. The
+#              daily / weekly flow metrics have real dimensions and can
+#              be promoted to `approved` once the bridges_team reviews
+#              dimension allow-lists.
+#   approved   Requires grain + owner + question_synonyms per
+#              REQUIRED_APPROVED_META in
+#              scripts/semantic/build_registry.py AND at least one
+#              non-empty `allowed_dimensions` entry for the semantic
+#              planner.
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+# ---- Headline cross-bridge KPIs (rolling 7-day snapshot) ----
+
+- name: bridge_volume_7d
+  label: Bridge Volume (Last 7 Days)
+  description: >
+    Total USD volume bridged across all tracked bridges and chains in
+    the trailing 7 days. Sourced from api_bridges_kpi_volume_7d.
+  type: simple
+  type_params:
+    measure: bridge_volume_7d_kpi
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: snapshot
+        owner: bridges_team
+        allowed_dimensions: []
+        supported_time_grains: [day, week]
+        question_synonyms:
+        - bridge volume 7 day
+        - last 7 days bridge volume
+        - weekly bridge volume
+        - how much was bridged last week
+
+- name: bridge_netflow_7d
+  label: Bridge Netflow (Last 7 Days)
+  description: >
+    Net USD flow into Gnosis Chain via tracked bridges over the last
+    7 days (inbound − outbound). Positive = net inflow.
+  type: simple
+  type_params:
+    measure: bridge_netflow_7d_kpi
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: snapshot
+        owner: bridges_team
+        allowed_dimensions: []
+        supported_time_grains: [day, week]
+        question_synonyms:
+        - bridge netflow 7 day
+        - net inflow gnosis last week
+        - net bridge flow week
+
+# ---- All-time headline totals ----
+
+- name: bridge_volume_total
+  label: Bridge Volume (All Time)
+  description: >
+    Cumulative USD volume bridged into and out of Gnosis Chain across
+    all tracked bridges since coverage began.
+  type: simple
+  type_params:
+    measure: bridge_volume_total_kpi
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: snapshot
+        owner: bridges_team
+        allowed_dimensions: []
+        supported_time_grains: [day]
+        question_synonyms:
+        - total bridge volume
+        - all time bridge volume
+        - lifetime bridge volume
+        - cumulative bridged usd
+
+- name: bridge_netflow_total
+  label: Bridge Netflow (All Time)
+  description: >
+    Cumulative net USD flow into Gnosis Chain across all tracked
+    bridges since coverage began. Positive = net inflow.
+  type: simple
+  type_params:
+    measure: bridge_netflow_total_kpi
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: snapshot
+        owner: bridges_team
+        allowed_dimensions: []
+        supported_time_grains: [day]
+        question_synonyms:
+        - total bridge netflow
+        - all time net inflow
+        - cumulative net bridge flow
+        - lifetime gnosis net inflow
+
+- name: bridge_distinct_chains
+  label: Distinct Bridge Chains
+  description: >
+    Number of distinct source/destination chains observed in bridged
+    transfers (cardinality of the bridge graph).
+  type: simple
+  type_params:
+    measure: bridge_distinct_chains_kpi
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: snapshot
+        owner: bridges_team
+        allowed_dimensions: []
+        supported_time_grains: [day]
+        question_synonyms:
+        - bridge chains count
+        - how many chains bridge to gnosis
+        - distinct bridge origins
+
+# ---- Daily flow grain — breakable by bridge / token / direction ----
+
+- name: bridge_flow_volume_daily
+  label: Bridge Volume (Daily by Bridge × Token × Direction)
+  description: >
+    Daily USD volume by bridge, token, source/dest chain, and direction.
+    Granular: use this when you need a per-bridge or per-token time
+    series rather than the headline 7d / all-time snapshots.
+  type: simple
+  type_params:
+    measure: bridge_flow_volume_daily_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: day
+        owner: bridges_team
+        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - bridge volume daily
+        - bridge volume by token
+        - bridge volume by chain
+        - bridge volume by direction
+        - daily bridged usd
+
+- name: bridge_flow_netflow_daily
+  label: Bridge Netflow (Daily by Bridge × Token × Direction)
+  description: >
+    Daily net USD flow by bridge / token / chain / direction. Positive
+    = net inflow into Gnosis. Same source as bridge_flow_volume_daily.
+  type: simple
+  type_params:
+    measure: bridge_flow_netflow_daily_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: day
+        owner: bridges_team
+        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - bridge netflow daily
+        - bridge netflow by token
+        - daily bridge inflow outflow
+
+- name: bridge_flow_transfers_daily
+  label: Bridge Transfers (Daily by Bridge × Token × Direction)
+  description: >
+    Daily bridge transfer count broken down by bridge / token /
+    chain / direction.
+  type: simple
+  type_params:
+    measure: bridge_flow_transfers_daily_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        grain: day
+        owner: bridges_team
+        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - bridge transfers daily
+        - bridge transaction count
+        - daily bridge transfers count
+        - how many bridge transactions
+
+# ---- Weekly netflow per bridge ----
+
+- name: bridge_netflow_weekly_by_bridge
+  label: Bridge Netflow (Weekly by Bridge)
+  description: >
+    Weekly net USD flow per bridge (positive = net inflow into Gnosis
+    Chain). Sourced from fct_bridges_netflow_weekly_by_bridge. Use this
+    for per-bridge market-share trend charts and for cross-sector
+    composition with other weekly metrics (revenue active users,
+    revenue potential total) via the dim_time_spine_weekly bridge.
+  type: simple
+  type_params:
+    measure: bridge_netflow_weekly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: week
+        owner: bridges_team
+        allowed_dimensions: [week, bridge]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - weekly bridge netflow
+        - weekly netflow by bridge
+        - bridge weekly market share
+        - bridge inflow per week
+        - net usd bridged per week

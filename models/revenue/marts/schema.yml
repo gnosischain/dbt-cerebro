@@ -193,6 +193,69 @@ models:
   - {name: users_cnt,  description: Unique users in this cohort., data_type: UInt64}
   meta: {owner: analytics_team, authoritative: false}
 
+# ---------- Per-user revenue (cross-sector USER-OVERLAP entry point) ----------
+#
+# These marts expose the revenue per-user grain — same data as the cohort
+# tables above, but keyed on the canonical `user_pseudonym` so analysts
+# can compute USER OVERLAPS across sectors via the semantic layer (e.g.
+# "revenue-active users who are also gpay users this week"). Raw addresses
+# never appear here: the pseudonymize_address macro is applied at the
+# mart boundary and the original `user` column is dropped.
+#
+# Threshold convention matches fct_revenue_active_users_totals_*: $6 over
+# the trailing 52 weeks (weekly variant) or $0.50 in the calendar month
+# (monthly variant). The `is_revenue_active` flag pre-computes that test.
+
+- name: fct_revenue_per_user_weekly
+  description: |
+    One row per (week, user_pseudonym). Sums `annual_rolling_fees` across
+    all streams (holdings + sDAI + gpay) for each user, exposes the total
+    plus sector-presence flags (`has_holdings`, `has_sdai`, `has_gpay`)
+    and a count of distinct streams contributing. `is_revenue_active = 1`
+    iff the rolling total >= $6 — the Dune "meaningfully active" cutoff.
+
+    Cross-sector join key: `user_pseudonym` (UInt64, sipHash64 of
+    lowercased wallet address with the project-wide PII salt). Compatible
+    with gpay safe identities, gnosis_app user identities, and Mixpanel
+    `user_id_hash` (same hash space).
+  columns:
+  - {name: week,               description: ISO week start (Monday).,                                       data_type: Date}
+  - {name: user_pseudonym,     description: Cross-sector pseudonym (sipHash64 of lowercased address).,      data_type: UInt64}
+  - {name: rolling_fees_total, description: Sum of 52w-rolling potential revenue across all streams (USD)., data_type: Float64}
+  - {name: has_holdings,       description: 1 if user has any rolling fees from the holdings stream.,       data_type: UInt8}
+  - {name: has_sdai,           description: 1 if user has any rolling fees from the sDAI stream.,           data_type: UInt8}
+  - {name: has_gpay,           description: 1 if user has any rolling fees from the Gnosis Pay stream.,     data_type: UInt8}
+  - {name: n_streams,          description: Number of distinct streams the user accrued fees in.,           data_type: UInt8}
+  - {name: is_revenue_active,  description: 1 iff rolling_fees_total >= $6 (Dune active-user threshold).,   data_type: UInt8}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_per_user_monthly
+  description: |
+    Monthly per-user revenue. Same shape as the weekly variant but at
+    calendar-month grain with `month_fees_total` (no rolling) and the
+    month-scaled $0.50 active threshold.
+  columns:
+  - {name: month,              description: First day of the calendar month.,                          data_type: Date}
+  - {name: user_pseudonym,     description: Cross-sector pseudonym (sipHash64).,                       data_type: UInt64}
+  - {name: month_fees_total,   description: Sum of monthly potential revenue across all streams (USD).,data_type: Float64}
+  - {name: has_holdings,       description: 1 if user had holdings-stream fees this month.,            data_type: UInt8}
+  - {name: has_sdai,           description: 1 if user had sDAI-stream fees this month.,                data_type: UInt8}
+  - {name: has_gpay,           description: 1 if user had Gnosis Pay-stream fees this month.,          data_type: UInt8}
+  - {name: n_streams,          description: Number of distinct streams contributing in the month.,     data_type: UInt8}
+  - {name: is_revenue_active,  description: 1 iff month_fees_total >= $0.50 (month-scaled $6 threshold).,data_type: UInt8}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: api_revenue_per_user_weekly
+  description: |
+    API view over fct_revenue_per_user_weekly. Per-user weekly revenue
+    keyed on `user_pseudonym` — the canonical join key for cross-sector
+    user-overlap queries. Filterable by week range and `is_revenue_active`.
+- name: api_revenue_per_user_monthly
+  description: |
+    API view over fct_revenue_per_user_monthly. Per-user monthly revenue
+    keyed on `user_pseudonym`. Filterable by month range and
+    `is_revenue_active`.
+
 # ---------- API views (thin wrappers for the query API) ----------
 
 - name: api_revenue_holdings_cohorts_weekly

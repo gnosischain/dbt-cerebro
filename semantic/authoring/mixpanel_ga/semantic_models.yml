@@ -1,3 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────
+# PRIVACY POLICY — two tiers:
+#
+#   cerebro-api : NONE of these models are exposed. Enforced via
+#                 `meta.api.exclude_from_api: true` set at both project
+#                 level (dbt_project.yml: models.gnosis_dbt.mixpanel_ga)
+#                 AND per-model in models/mixpanel_ga/marts/schema.yml.
+#                 CI test: tests/test_mixpanel_privacy.py.
+#
+#   MCP / semantic registry : aggregate-only views are accessible
+#                 (`quality_tier: candidate`). Views that expose hashed
+#                 user identifiers at per-user grain — or any view
+#                 carrying raw addresses — are either kept out of this
+#                 file (invisible by omission) or set
+#                 `quality_tier: blocked` and
+#                 `meta.expose_to_mcp: false` in the dbt schema.
+#
+# All views currently registered here are aggregate-only (daily counts,
+# rates, breakdowns by dimension). gpay_crossdomain_daily is included
+# because it exposes only matched-user *counts*, not any address or
+# user_id_hash; the underlying fct_*_crossdomain_daily reads identity
+# data but the api_* projection drops every PII column.
+#
+# Not registered here at all — must not be added without a privacy
+# review:
+#   - api_mixpanel_ga_users_daily   (per-user_id_hash grain)
+#   - api_mixpanel_ga_pages_daily   (per-path)
+#   - api_mixpanel_ga_usage_patterns_daily  (hour-of-day; low value via MCP)
+# ─────────────────────────────────────────────────────────────────────
 semantic_models:
 - name: mixpanel_ga_overview_daily
   model: ref('api_mixpanel_ga_overview_daily')

@@ -4,7 +4,26 @@
     engine='MergeTree()',
     order_by='(hour, project)',
     unique_key='(hour, project)',
-    tags=['production','execution','transactions','hourly']
+    tags=['production','execution','transactions','hourly'],
+    pre_hook=[
+        "SYSTEM DROP MARK CACHE",
+        "SYSTEM DROP UNCOMPRESSED CACHE",
+        "SYSTEM DROP COMPILED EXPRESSION CACHE",
+        "SYSTEM DROP QUERY CACHE"
+    ],
+    query_settings={
+        'max_threads': '1',
+        'max_memory_usage': '2000000000',
+        'memory_usage_overcommit_max_wait_microseconds': '60000000',
+        'group_by_two_level_threshold': '1',
+        'group_by_two_level_threshold_bytes': '1',
+        'max_bytes_before_external_group_by': '20000000',
+        'max_bytes_before_external_sort':     '20000000',
+        'aggregation_memory_efficient_merge_threads': '1',
+        'distributed_aggregation_memory_efficient': '1',
+        'use_uncompressed_cache': '0',
+        'use_query_cache': '0'
+    }
   )
 }}
 
@@ -85,7 +104,7 @@ classified AS (
     tx.hour,
     coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
     count()                                          AS tx_count,
-    countDistinct(tx.from_address)                   AS active_accounts,
+    uniqCombined64(tx.from_address)                  AS active_accounts,
     groupBitmapState(cityHash64(tx.from_address))    AS ua_bitmap_state,
     sum(tx.gas_used * tx.gas_price) / 1e18           AS fee_native_sum
   FROM tx

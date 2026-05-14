@@ -8,8 +8,28 @@
     unique_key='(transaction_hash, log_index, owner)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','safe'],
-    pre_hook=["SET allow_experimental_json_type = 1", "SET join_algorithm = 'grace_hash'"],
-    post_hook=["SET allow_experimental_json_type = 0", "SET join_algorithm = 'default'"]
+    pre_hook=[
+        "SYSTEM DROP MARK CACHE",
+        "SYSTEM DROP UNCOMPRESSED CACHE",
+        "SYSTEM DROP COMPILED EXPRESSION CACHE",
+        "SYSTEM DROP QUERY CACHE",
+        "SET allow_experimental_json_type = 1",
+        "SET join_algorithm = 'grace_hash'"
+    ],
+    post_hook=["SET allow_experimental_json_type = 0", "SET join_algorithm = 'default'"],
+    query_settings={
+        'max_threads': '1',
+        'max_memory_usage': '2000000000',
+        'memory_usage_overcommit_max_wait_microseconds': '60000000',
+        'group_by_two_level_threshold': '1',
+        'group_by_two_level_threshold_bytes': '1',
+        'max_bytes_before_external_group_by': '20000000',
+        'max_bytes_before_external_sort':     '20000000',
+        'aggregation_memory_efficient_merge_threads': '1',
+        'distributed_aggregation_memory_efficient': '1',
+        'use_uncompressed_cache': '0',
+        'use_query_cache': '0'
+    }
   )
 }}
 WITH decoded AS (

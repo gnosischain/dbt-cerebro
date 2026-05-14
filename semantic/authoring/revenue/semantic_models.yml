@@ -1,0 +1,739 @@
+# ═════════════════════════════════════════════════════════════════════
+# REVENUE — semantic layer
+# ═════════════════════════════════════════════════════════════════════
+#
+# Source-of-truth framing is in models/revenue/marts/schema.yml. Read
+# that file's header first if you haven't seen the revenue model before
+# — the headline points are:
+#
+#   * Figures here are POTENTIAL DAO-accruable value, not realised
+#     treasury revenue. The primary deliverable is an estimate of
+#     economically meaningful ACTIVE USERS, not a P&L.
+#   * Three streams currently implemented: holdings (EURe / USDC.e /
+#     BRLA / ZCHF), sdai, gpay. Lending and Circles-mint are in the
+#     Dune spec but not yet wired in dbt.
+#   * "Active" = a user whose CROSS-STREAM SUMMED fees in a 52-week
+#     window reach $6 (annual) or $0.50 (monthly). Dedup is intrinsic
+#     because aggregation happens before thresholding.
+#
+# Quality tiers:
+#   approved   The cross-stream active-user totals — the headline
+#              metric the DAO uses to size economic activity. Analyst-
+#              reviewed and stable.
+#   candidate  Per-stream cohort breakdowns. Stable structure but
+#              the underlying "potential" caveat means analysts must
+#              be careful when reporting these as revenue.
+# ═════════════════════════════════════════════════════════════════════
+
+semantic_models:
+
+# ---------- Per-user revenue (cross-sector USER overlap entry) ----------
+#
+# These two semantic_models expose `user_pseudonym` as a PRIMARY entity
+# so the planner can join revenue to ANY other user-keyed semantic_model
+# on equality (gpay user identities, gnosis_app users, mixpanel
+# cross-domain). Without these, the only cross-sector composition
+# possible is the time-axis overlay (see the weekly/monthly totals
+# below).
+
+- name: revenue_per_user_weekly
+  model: ref('api_revenue_per_user_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: has_holdings
+    type: categorical
+    expr: has_holdings
+  - name: has_sdai
+    type: categorical
+    expr: has_sdai
+  - name: has_gpay
+    type: categorical
+    expr: has_gpay
+  - name: is_revenue_active
+    type: categorical
+    expr: is_revenue_active
+  measures:
+  # fct_revenue_per_user_weekly is already 1 row per (week, user_pseudonym),
+  # so a simple count() on user_pseudonym equals distinct-user count without
+  # needing a count_distinct aggregator (which ClickHouse doesn't expose
+  # under that name — it's uniqExact). Same trick used on the gpay side
+  # via a deduped projection.
+  - name: revenue_per_user_weekly_users
+    agg: count
+    expr: user_pseudonym
+  - name: revenue_per_user_weekly_fees
+    agg: sum
+    expr: rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: week
+        question_synonyms:
+        - revenue per user weekly
+        - revenue user list
+        - revenue active users with addresses
+        - revenue users by sector
+        - per-user revenue table
+
+- name: revenue_per_user_monthly
+  model: ref('api_revenue_per_user_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  - name: has_holdings
+    type: categorical
+    expr: has_holdings
+  - name: has_sdai
+    type: categorical
+    expr: has_sdai
+  - name: has_gpay
+    type: categorical
+    expr: has_gpay
+  - name: is_revenue_active
+    type: categorical
+    expr: is_revenue_active
+  measures:
+  - name: revenue_per_user_monthly_users
+    agg: count
+    expr: user_pseudonym
+  - name: revenue_per_user_monthly_fees
+    agg: sum
+    expr: month_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - revenue per user monthly
+        - revenue user list monthly
+        - monthly per-user revenue table
+
+# ---------- Headline: cross-stream active users ----------
+
+- name: revenue_active_users_totals_weekly
+  model: ref('api_revenue_active_users_totals_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: revenue_week
+    type: primary
+    expr: toString(week)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: revenue_active_users_weekly_count
+    agg: sum
+    expr: users_cnt
+  - name: revenue_potential_total_weekly_value
+    agg: sum
+    expr: annual_rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: week
+        question_synonyms:
+        - active users
+        - dao active users
+        - revenue active users
+        - active revenue users
+        - economically active users
+        - users above $6 annual
+
+- name: revenue_active_users_totals_monthly
+  model: ref('api_revenue_active_users_totals_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: revenue_month
+    type: primary
+    expr: toString(month)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  measures:
+  - name: revenue_active_users_monthly_count
+    agg: sum
+    expr: users_cnt
+  - name: revenue_potential_total_monthly_value
+    agg: sum
+    expr: fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - monthly active users
+        - revenue mau
+        - economic mau
+        - dao monthly active users
+        - users above $0.50 monthly
+
+# ---------- Cross-stream active users by $-cohort ----------
+
+- name: revenue_active_users_cohorts_weekly
+  model: ref('api_revenue_active_users_cohorts_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: revenue_week_cohort
+    type: primary
+    expr: concat(toString(week), '|', cohort)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: annual_rolling_fees_total_value
+    agg: sum
+    expr: annual_rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - active users by cohort
+        - active users by dollar bucket
+        - revenue cohorts weekly
+        - users by annual fee size
+
+- name: revenue_active_users_cohorts_monthly
+  model: ref('api_revenue_active_users_cohorts_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: revenue_month_cohort
+    type: primary
+    expr: concat(toString(month), '|', cohort)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: fees_total_value
+    agg: sum
+    expr: fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - active users by cohort monthly
+        - revenue cohorts monthly
+        - mau by dollar bucket
+
+# ---------- Per-stream: holdings ----------
+
+- name: revenue_holdings_cohorts_weekly
+  model: ref('api_revenue_holdings_cohorts_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: revenue_holdings_week
+    type: primary
+    expr: concat(toString(week), '|', symbol, '|', cohort)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: revenue_holdings_weekly_value
+    agg: sum
+    expr: annual_rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - holdings revenue
+        - imputed interest revenue
+        - stablecoin holdings fees
+        - eure holdings revenue
+        - usdce holdings revenue
+
+- name: revenue_holdings_cohorts_monthly
+  model: ref('api_revenue_holdings_cohorts_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: revenue_holdings_month
+    type: primary
+    expr: concat(toString(month), '|', symbol, '|', cohort)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: fees_total_value
+    agg: sum
+    expr: fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - holdings revenue monthly
+        - monthly imputed interest
+
+# ---------- Per-stream: sDAI ----------
+
+- name: revenue_sdai_cohorts_weekly
+  model: ref('api_revenue_sdai_cohorts_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: revenue_sdai_week
+    type: primary
+    expr: concat(toString(week), '|', cohort)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: revenue_sdai_weekly_value
+    agg: sum
+    expr: annual_rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - sdai revenue
+        - savings xdai revenue
+        - sdai imputed yield
+
+- name: revenue_sdai_cohorts_monthly
+  model: ref('api_revenue_sdai_cohorts_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: revenue_sdai_month
+    type: primary
+    expr: concat(toString(month), '|', cohort)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: fees_total_value
+    agg: sum
+    expr: fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - sdai revenue monthly
+        - savings xdai monthly
+
+# ---------- Per-stream: Gnosis Pay ----------
+
+- name: revenue_gpay_cohorts_weekly
+  model: ref('api_revenue_gpay_cohorts_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: revenue_gpay_week
+    type: primary
+    expr: concat(toString(week), '|', symbol, '|', cohort)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: revenue_gpay_weekly_value
+    agg: sum
+    expr: annual_rolling_fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - gnosis pay revenue
+        - gpay fees
+        - card payment fees
+        - gpay revenue by token
+
+- name: revenue_gpay_cohorts_monthly
+  model: ref('api_revenue_gpay_cohorts_monthly')
+  defaults:
+    agg_time_dimension: month
+  entities:
+  - name: revenue_gpay_month
+    type: primary
+    expr: concat(toString(month), '|', symbol, '|', cohort)
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: users_cnt_value
+    agg: sum
+    expr: users_cnt
+  - name: fees_total_value
+    agg: sum
+    expr: fees_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - gnosis pay revenue monthly
+        - gpay monthly fees
+
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — analyst-facing names that bind to the measures above
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+# ---- Per-user (cross-sector USER overlap entry points) ----
+
+- name: revenue_per_user_weekly_users
+  label: Revenue Per-User Distinct Users (Weekly)
+  description: >
+    Distinct user_pseudonym count from fct_revenue_per_user_weekly. The
+    weekly per-user revenue mart is the cross-sector USER join key for
+    the semantic layer — combine with gpay / gnosis_app / mixpanel
+    user-keyed metrics on `user_pseudonym` to compute overlaps.
+  type: simple
+  type_params:
+    measure: revenue_per_user_weekly_users
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [week, has_holdings, has_sdai, has_gpay, is_revenue_active, user_pseudonym]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - revenue users count
+        - distinct revenue users
+        - per-user revenue count
+        - revenue user list size
+
+- name: revenue_per_user_weekly_fees
+  label: Revenue Per-User Total Fees (Weekly)
+  description: >
+    Sum of rolling-52w potential revenue across the per-user mart. Same
+    figure as `revenue_potential_total_weekly` aggregated from the
+    per-user grain (useful when you also want a user-level breakdown in
+    the same query).
+  type: simple
+  type_params:
+    measure: revenue_per_user_weekly_fees
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [week, has_holdings, has_sdai, has_gpay, is_revenue_active, user_pseudonym]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - per-user revenue fees
+        - revenue fees from per-user table
+
+- name: revenue_per_user_monthly_users
+  label: Revenue Per-User Distinct Users (Monthly)
+  description: >
+    Distinct user_pseudonym count from fct_revenue_per_user_monthly.
+    Monthly cross-sector user-overlap entry point.
+  type: simple
+  type_params:
+    measure: revenue_per_user_monthly_users
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [month, has_holdings, has_sdai, has_gpay, is_revenue_active, user_pseudonym]
+        supported_time_grains: [month]
+        question_synonyms:
+        - monthly per-user revenue count
+        - distinct revenue users monthly
+
+- name: revenue_per_user_monthly_fees
+  label: Revenue Per-User Total Fees (Monthly)
+  description: >
+    Sum of monthly potential revenue across the per-user mart.
+  type: simple
+  type_params:
+    measure: revenue_per_user_monthly_fees
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [month, has_holdings, has_sdai, has_gpay, is_revenue_active, user_pseudonym]
+        supported_time_grains: [month]
+        question_synonyms:
+        - monthly per-user fees
+        - monthly per-user potential revenue
+
+# ---- Headline: economically active user counts ----
+
+- name: revenue_active_users_weekly
+  label: Revenue Active Users (Weekly)
+  description: >
+    Unique users with cross-stream summed potential revenue >= $6
+    over the trailing 52 weeks. Dedup is intrinsic — aggregation
+    across streams happens before thresholding, so a user is counted
+    once regardless of how many sectors they accrue fees in.
+  type: simple
+  type_params:
+    measure: revenue_active_users_weekly_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [week]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - active users weekly
+        - revenue active users
+        - economic wau
+        - active users 52w
+        - users above $6 annual
+
+- name: revenue_active_users_monthly
+  label: Revenue Active Users (Monthly)
+  description: >
+    Unique users whose cross-stream summed potential revenue in the
+    calendar month reaches $0.50 (month-scaled equivalent of the $6
+    annual threshold).
+  type: simple
+  type_params:
+    measure: revenue_active_users_monthly_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [month]
+        supported_time_grains: [month]
+        question_synonyms:
+        - active users monthly
+        - revenue mau
+        - economic mau
+        - users above $0.50 monthly
+
+# ---- Headline: total potential revenue across streams ----
+
+- name: revenue_potential_total_weekly
+  label: Potential Revenue (Rolling 52w)
+  description: >
+    Total cross-stream potential revenue accruable to the DAO over
+    the trailing 52 weeks. POTENTIAL — actual DAO capture depends on
+    program terms per stream. Useful as an upper bound on economic
+    activity, NOT a treasury report.
+  type: simple
+  type_params:
+    measure: revenue_potential_total_weekly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [week]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - potential revenue
+        - rolling annual fees
+        - cross-stream rolling fees
+        - potential dao revenue
+
+- name: revenue_potential_total_monthly
+  label: Potential Revenue (Monthly)
+  description: >
+    Total cross-stream potential revenue accruable to the DAO in the
+    calendar month. POTENTIAL — see weekly metric.
+  type: simple
+  type_params:
+    measure: revenue_potential_total_monthly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [month]
+        supported_time_grains: [month]
+        question_synonyms:
+        - monthly potential revenue
+        - monthly cross-stream fees
+
+# ---- Per-stream revenue (candidate tier) ----
+
+- name: revenue_holdings_weekly
+  label: Holdings Imputed-Interest Revenue (Rolling 52w)
+  description: >
+    Per-stream potential revenue from imputed interest on stablecoin
+    holdings (EURe / USDC.e / BRLA / ZCHF). Group by `symbol` to
+    break down per token.
+  type: simple
+  type_params:
+    measure: revenue_holdings_weekly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        allowed_dimensions: [week, symbol, cohort]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - holdings revenue
+        - imputed interest revenue
+        - eure holdings revenue
+        - stablecoin yield potential
+
+- name: revenue_sdai_weekly
+  label: sDAI Imputed-Yield Revenue (Rolling 52w)
+  description: >
+    Per-stream potential revenue from imputed yield on user sDAI /
+    Savings xDAI balances.
+  type: simple
+  type_params:
+    measure: revenue_sdai_weekly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        allowed_dimensions: [week, cohort]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - sdai revenue
+        - savings xdai revenue
+        - sdai yield revenue
+
+- name: revenue_gpay_weekly
+  label: Gnosis Pay Per-Payment Fees (Rolling 52w)
+  description: >
+    Per-stream potential revenue from per-payment fees on Gnosis Pay
+    card transactions (EURe / GBPe / USDC.e). Group by `symbol` for
+    per-token breakdown.
+  type: simple
+  type_params:
+    measure: revenue_gpay_weekly_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        allowed_dimensions: [week, symbol, cohort]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - gnosis pay revenue
+        - gpay fees
+        - card payment fees
+        - gpay revenue by token

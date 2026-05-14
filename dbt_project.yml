@@ -40,28 +40,62 @@ clean-targets:
 
 models:
   gnosis_dbt:
+    # Mixpanel privacy policy (two tiers):
+    #   API : ALL mixpanel models are excluded from cerebro-api uniformly
+    #         (enforced here via api.exclude_from_api: true).
+    #   MCP : aggregate-only views are accessible; per-user grain and
+    #         cross-domain joins are blocked at the semantic registry
+    #         (`quality_tier: blocked` in semantic/authoring/mixpanel_ga/).
+    # `expose_to_mcp` is therefore NOT set at the project level — leave
+    # it to per-model overrides in schema.yml where the sensitive views
+    # explicitly opt out.
     mixpanel_ga:
-      +tags: ["internal_only", "privacy:tier_internal", "mixpanel_ga"]
+      +tags: ["privacy:mixpanel_ga", "mixpanel_ga"]
       +meta:
-        expose_to_mcp: false
-        privacy_tier: internal
+        privacy_tier: mixpanel
         api:
           exclude_from_api: true
     execution:
       gnosis_app:
         intermediate:
+          # Bridge model — maps user_pseudonym (sipHash64) to plaintext wallet
+          # addresses. Internal only; never exposed via cerebro-api.
           int_execution_gnosis_app_user_identity_bridge:
             +tags: ["internal_only", "privacy:tier_internal"]
             +meta:
               expose_to_mcp: false
               privacy_tier: internal
+              api:
+                exclude_from_api: true
+          # Identity table — contains plaintext addresses alongside
+          # user_pseudonym. Same privacy class as the bridge above.
+          int_execution_gnosis_app_user_identities:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
       gpay:
         intermediate:
+          # Bridge model — maps user_pseudonym to plaintext Safe / EOA
+          # addresses. Internal only; never exposed via cerebro-api.
           int_execution_gpay_user_identity_bridge:
             +tags: ["internal_only", "privacy:tier_internal"]
             +meta:
               expose_to_mcp: false
               privacy_tier: internal
+              api:
+                exclude_from_api: true
+          # Safe-identity table — joins gp_safe (plaintext Safe address) to
+          # user_pseudonym across initial-owner, delegate, and safe-self roles.
+          int_execution_gpay_safe_identities:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
       mmm:
         +tags: ["mmm", "execution"]
         intermediate:
