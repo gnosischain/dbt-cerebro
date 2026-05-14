@@ -23,7 +23,8 @@ direct_rows AS (
         lower(b.address)                     AS address,
         b.balance                            AS balance,
         b.balance_usd                        AS balance_usd,
-        CAST([] AS Array(String))            AS unwound_from
+        CAST([] AS Array(String))            AS unwound_from,
+        CAST([] AS Array(String))            AS protocols
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
     LEFT ANTI JOIN (
         SELECT token_address, container_address
@@ -45,17 +46,18 @@ unwound_rows AS (
         c.ubo_address                        AS address,
         c.balance                            AS balance,
         c.balance_usd                        AS balance_usd,
-        [c.container_address]                AS unwound_from
+        [c.container_address]                AS unwound_from,
+        [c.protocol]                         AS protocols
     FROM {{ ref('fct_ubo_supply_claims_daily') }} c
     WHERE c.date = (SELECT d FROM latest_date)
       AND c.balance > 0
 ),
 
 combined AS (
-    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from
+    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from, protocols
     FROM direct_rows
     UNION ALL
-    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from
+    SELECT token_address, symbol, token_class, address, balance, balance_usd, unwound_from, protocols
     FROM unwound_rows
 ),
 
@@ -67,7 +69,8 @@ per_holder AS (
         address,
         sum(balance)                                 AS balance,
         sum(balance_usd)                             AS balance_usd,
-        arrayDistinct(groupArrayArray(unwound_from)) AS unwound_from
+        arrayDistinct(groupArrayArray(unwound_from)) AS unwound_from,
+        arrayDistinct(groupArrayArray(protocols))    AS protocols
     FROM combined
     GROUP BY token_address, address
 ),
@@ -81,6 +84,7 @@ ranked AS (
         balance,
         balance_usd,
         unwound_from,
+        protocols,
         balance_usd / nullIf(sum(balance_usd) OVER (PARTITION BY token_address), 0) * 100
             AS pct_of_total,
         row_number() OVER (PARTITION BY token_address ORDER BY balance_usd DESC) AS rank

@@ -72,6 +72,7 @@ SELECT
     ), 4) AS cumulative_pct,
     r.balance_usd - coalesce(p.balance_usd_7d_ago, 0) AS change_usd_7d,
     r.unwound_from,
+    r.protocols,
     CASE
         WHEN l.sector IN ('EOAs', 'Wallets & AA', 'Bridges', 'Payments') THEN toNullable(toUInt8(1))
         WHEN l.sector IN ('Lending & Yield', 'DEX')                      THEN toNullable(toUInt8(0))

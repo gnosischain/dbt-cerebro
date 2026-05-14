@@ -19,6 +19,7 @@ SELECT
     cumulative_pct,
     change_usd_7d,
     unwound_from,
+    protocols,
     is_terminal_ubo
 FROM {{ ref('fct_execution_tokens_top_holders_latest') }}
 ORDER BY token_address, rank
