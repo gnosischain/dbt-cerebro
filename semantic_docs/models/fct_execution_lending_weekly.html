@@ -15,16 +15,22 @@
   <body>
     
     <h1>fct_execution_lending_weekly</h1>
-    <p></p>
+    <p>Weekly fact aggregating lending activity per (week, protocol, token) across
+Aave V3 and SparkLend on Gnosis. Built from int_execution_lending_aave_daily
+by collapsing days into ISO weeks (toStartOfWeek). APYs use the
+end-of-week value (argMax by date); volumes are summed across the week;
+distinct lender/borrower counts come from the merged daily bitmap states.
+Excludes the current (incomplete) week.
+</p>
     <p><strong>Module:</strong> execution</p>
-    <p><strong>Status:</strong> candidate</p>
-    <p><strong>Owner:</strong> </p>
+    <p><strong>Status:</strong> approved</p>
+    <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/execution/lending/marts/fct_execution_lending_weekly.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>lending</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
-    <h2>Dimensions</h2><ul><li>None</li></ul>
-    <h2>Measures</h2><ul><li>None</li></ul>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>apy_weekly</code></td><td>Nullable(Float64)</td><td>Supply APY at end-of-week (last daily value).</td></tr><tr><td><code>borrow_apy_weekly</code></td><td>Nullable(Float64)</td><td>Variable borrow APY at end-of-week (last daily value).</td></tr><tr><td><code>borrowers_bitmap_state</code></td><td>AggregateFunction(groupBitmap, UInt64)</td><td>AggregateFunction holding the set of unique borrower addresses active during the week.</td></tr><tr><td><code>borrowers_count_weekly</code></td><td>UInt64</td><td>Distinct borrower count over the week (cardinality of the borrower bitmap).</td></tr><tr><td><code>borrows_volume_weekly</code></td><td>Float64</td><td>Total borrow volume in the week (sum of daily values, native units).</td></tr><tr><td><code>deposits_volume_weekly</code></td><td>Float64</td><td>Total deposit volume in the week (sum of daily values, native units).</td></tr><tr><td><code>lenders_bitmap_state</code></td><td>AggregateFunction(groupBitmap, UInt64)</td><td>AggregateFunction holding the set of unique lender addresses active during the week (groupBitmap-mergeable).</td></tr><tr><td><code>lenders_count_weekly</code></td><td>UInt64</td><td>Distinct lender count over the week (cardinality of the lender bitmap).</td></tr><tr><td><code>protocol</code></td><td>String</td><td>Lending protocol identifier (&#x27;Aave V3&#x27; or &#x27;SparkLend&#x27;).</td></tr><tr><td><code>symbol</code></td><td>String</td><td>Reserve token symbol.</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Reserve token contract address.</td></tr><tr><td><code>token_class</code></td><td>String</td><td>Token classification (e.g. stable, native, governance).</td></tr><tr><td><code>week</code></td><td>Date</td><td>ISO week start date (Monday, UTC).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>week</code> (time)</li><li><code>symbol</code> (categorical)</li><li><code>token_class</code> (categorical)</li><li><code>protocol</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>execution_lending_deposits_volume_value</code> (sum)</li><li><code>execution_lending_borrows_volume_value</code> (sum)</li><li><code>execution_lending_apy_weekly_value</code> (avg)</li><li><code>execution_lending_borrow_apy_weekly_value</code> (avg)</li></ul>
     <h2>Upstream</h2><ul><li><code>int_execution_lending_aave_daily</code></li></ul>
     <h2>Downstream</h2><ul><li><code>api_execution_lending_activity_counts_weekly</code></li><li><code>api_execution_lending_activity_volumes_weekly</code></li></ul>
     

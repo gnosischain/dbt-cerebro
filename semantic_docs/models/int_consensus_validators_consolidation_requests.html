@@ -15,14 +15,26 @@
   <body>
     
     <h1>int_consensus_validators_consolidation_requests</h1>
-    <p></p>
+    <p>Deduplicated EIP-7251 (MaxEB) validator consolidation requests. One row
+per unique (source_pubkey, is_self_consolidation) tuple, keeping the
+earliest submitted request_slot. is_self_consolidation is derived from
+(source_pubkey == target_pubkey). The dedup matters because the raw
+consensus.execution_requests.payload.consolidations array records every
+operator resubmission, while the beacon chain only processes the first
+valid request per source (and rejects later resubmissions). On heavy
+consolidation days this inflated downstream target_inflow_gno by up to
+8× before the fix landed. A validator may legitimately have BOTH a
+self-consolidation (credential switch 0x01 → 0x02) and a later
+cross-consolidation (balance transfer out, validator exits), which is
+why dedup partitions by (source, is_self) rather than by source alone.
+</p>
     <p><strong>Module:</strong> consensus</p>
     <p><strong>Status:</strong> docs_only</p>
-    <p><strong>Owner:</strong> </p>
+    <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/consensus/intermediate/int_consensus_validators_consolidation_requests.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>validators_consolidations</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>request_date</code></td><td>Date</td><td>Start-of-day UTC corresponding to the request slot.</td></tr><tr><td><code>request_slot</code></td><td>UInt64</td><td>Beacon-chain slot in which the deduped request was submitted.</td></tr><tr><td><code>source_pubkey</code></td><td>String</td><td>Lowercased source validator pubkey.</td></tr><tr><td><code>target_pubkey</code></td><td>String</td><td>Lowercased target validator pubkey (== source for self-consolidations).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>stg_consensus__execution_requests</code></li></ul>

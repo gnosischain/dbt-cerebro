@@ -122,11 +122,18 @@ yields AS (
     active_lending_positions,
     first_yield_date
   FROM `dbt`.`fct_execution_yields_user_lifetime_metrics`
+),
+
+safe_creation AS (
+  SELECT
+    lower(safe_address) AS address,
+    block_date AS safe_creation_date
+  FROM `dbt`.`int_execution_safes`
 )
 
 SELECT
-  coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address) AS address,
-  coalesce(nullIf(r.display_name, ''), r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address) AS display_name,
+  coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address, sc.address) AS address,
+  coalesce(nullIf(r.display_name, ''), r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address, sc.address) AS display_name,
   r.is_safe,
   r.is_safe_owner,
   r.is_circles_avatar,
@@ -148,13 +155,25 @@ SELECT
     coalesce(m.first_activity_date, toDate('2100-01-01')),
     coalesce(gp.gpay_first_activity_date, toDate('2100-01-01')),
     coalesce(y.first_yield_date, toDate('2100-01-01')),
-    coalesce(toDate(ga.gnosis_app_first_seen_at), toDate('2100-01-01'))
+    coalesce(toDate(ga.gnosis_app_first_seen_at), toDate('2100-01-01')),
+    coalesce(sc.safe_creation_date, toDate('2100-01-01'))
   ]), toDate('2100-01-01')) AS first_seen_date,
   nullIf(arrayMax([
     coalesce(m.last_activity_date, toDate('1970-01-01')),
     coalesce(gp.gpay_last_activity_date, toDate('1970-01-01')),
     coalesce(toDate(ga.gnosis_app_last_seen_at), toDate('1970-01-01'))
   ]), toDate('1970-01-01')) AS last_active_date,
+  sc.safe_creation_date,
+  multiIf(r.is_safe, 'safe', 'eoa_or_contract') AS address_type,
+  coalesce(
+    sc.safe_creation_date,
+    nullIf(arrayMin([
+      coalesce(m.first_activity_date, toDate('2100-01-01')),
+      coalesce(gp.gpay_first_activity_date, toDate('2100-01-01')),
+      coalesce(y.first_yield_date, toDate('2100-01-01')),
+      coalesce(toDate(ga.gnosis_app_first_seen_at), toDate('2100-01-01'))
+    ]), toDate('2100-01-01'))
+  ) AS wallet_age_date,
   m.counterparty_count,
   m.token_transfer_count,
   coalesce(ls.linked_entity_count, 0) AS linked_entity_count,
@@ -180,4 +199,5 @@ FULL OUTER JOIN ga_users ga ON ga.address = coalesce(r.address, b.address, m.add
 FULL OUTER JOIN ga_gpay gg ON gg.address = coalesce(r.address, b.address, m.address, ga.address)
 FULL OUTER JOIN gpay gp ON gp.address = coalesce(r.address, b.address, m.address, ga.address, gg.address)
 FULL OUTER JOIN yields y ON y.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address)
+LEFT JOIN safe_creation sc ON sc.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address)
 LEFT JOIN linked_summary ls ON ls.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address)

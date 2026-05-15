@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_user_events_unified</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_user_events_unified</h1>
+    <p>Thin UNION ALL of `int_execution_gnosis_app_events_chain_unified` +
+`int_execution_gnosis_app_events_mixpanel_unified`. The single
+touchpoint table the MTA persona&#x27;s runtime mapping points at as
+`touchpoint_model`.
+
+Mixpanel rows are pseudonymized at ingestion using the same salt as
+the bridge — equality on `user_pseudonym` joins chain-side actions
+to in-app sessions for the same human without ever materializing a
+raw address.
+
+Chain rows have NULL for Mixpanel-only columns
+(`device_type`, `country_code`, `page_path`, `bottom_sheet`);
+Mixpanel rows have NULL for `amount_usd`. Otherwise the schemas
+match column-for-column.
+
+Incremental, partitioned by month on `event_date`. Low cost — the
+upstreams already enforce incremental boundaries.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_user_events_unified.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD value where applicable (chain-side only). NULL for Mixpanel rows and chain rows without a natural amount.</td></tr><tr><td><code>bottom_sheet</code></td><td>Nullable(String)</td><td>Mixpanel in-app bottom-sheet identifier. NULL on chain rows.</td></tr><tr><td><code>country_code</code></td><td>Nullable(String)</td><td>Mixpanel country code. NULL on chain rows.</td></tr><tr><td><code>device_type</code></td><td>Nullable(String)</td><td>Mixpanel device type (mobile / desktop / etc.). NULL on chain rows.</td></tr><tr><td><code>event_date</code></td><td>Date</td><td>Calendar date partition key.</td></tr><tr><td><code>event_dedup_key</code></td><td>UInt64</td><td>Carried from the upstream (chain or mixpanel) for ReplacingMergeTree dedup.</td></tr><tr><td><code>event_kind</code></td><td>LowCardinality(String)</td><td>Canonical event kind. `chain.*` for on-chain actions, `mp.*` for Mixpanel events.</td></tr><tr><td><code>event_source</code></td><td>LowCardinality(String)</td><td>`chain` or `mixpanel` — distinguishes the two halves of the UNION.</td></tr><tr><td><code>event_subkind</code></td><td>LowCardinality(String)</td><td>Provenance subtype, lets downstream code group across `chain.X` and `mp.X`.</td></tr><tr><td><code>event_ts</code></td><td>DateTime</td><td>UTC timestamp of the action.</td></tr><tr><td><code>page_path</code></td><td>Nullable(String)</td><td>Mixpanel page path / route. NULL on chain rows.</td></tr><tr><td><code>provenance_model</code></td><td>LowCardinality(String)</td><td>Upstream dbt model that produced the row.</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the acting GA user.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_events_chain_unified</code></li><li><code>int_execution_gnosis_app_events_mixpanel_unified</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_gnosis_app_funnel_daily</code></li><li><code>fct_execution_gnosis_app_journeys_30d</code></li><li><code>fct_execution_gnosis_app_journeys_60d</code></li><li><code>fct_execution_gnosis_app_journeys_7d</code></li><li><code>int_execution_gnosis_app_coverage_daily</code></li></ul>
+    
+  </body>
+</html>

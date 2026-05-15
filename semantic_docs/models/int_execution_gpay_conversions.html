@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gpay_conversions</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gpay_conversions</h1>
+    <p>GP conversion registry. One row per (conversion event, identity_role)
+pair via the bridge fan-out — every chain conversion on a GP Safe
+produces one row per pseudonym × role tied to that Safe. Persona
+picks the analytical grain at query time:
+
+  WHERE conversion_kind=&#x27;gpay_payment&#x27; AND identity_role=&#x27;initial_owner&#x27;
+    → owner grain (one human → one row per payment from any owned Safe)
+  WHERE conversion_kind=&#x27;gpay_payment&#x27; AND identity_role=&#x27;safe_self&#x27;
+    → treasury grain (one Safe → one row per payment)
+  WHERE conversion_kind=&#x27;gpay_payment&#x27; AND identity_role=&#x27;delegate&#x27;
+    → operator grain (rarely useful; delegates are usually backend keys)
+
+v1 conversion sources:
+  gpay_payment        — int_execution_gpay_activity WHERE action=&#x27;Payment&#x27;
+  gpay_cashback_claim — int_execution_gpay_activity WHERE action=&#x27;Cashback&#x27;
+  gpay_funded         — first inflow (`Fiat Top Up` or `Crypto Deposit`)
+                        into a Safe across the FULL history. Computed
+                        via per-Safe `argMin`/`min` over all-time activity
+                        (not microbatch-bounded — &quot;first&quot; is global) and
+                        then filtered to rows whose first_inflow_ts falls
+                        in the target window.
+
+`int_execution_gpay_activity` has no `log_index`, so
+`conversion_dedup_key` is built from (transaction_hash, token_address,
+counterparty, direction, identity_role) — the activity table&#x27;s
+natural unique tuple plus the role fan-out.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_conversions.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>conversion_amount_usd</code></td><td>Nullable(Float64)</td><td>USD amount carried from `int_execution_gpay_activity.amount_usd`.</td></tr><tr><td><code>conversion_date</code></td><td>Date</td><td>Calendar date partition key.</td></tr><tr><td><code>conversion_dedup_key</code></td><td>UInt64</td><td>cityHash64 of (kind, transaction_hash, token_address, counterparty, direction, identity_role).</td></tr><tr><td><code>conversion_kind</code></td><td>LowCardinality(String)</td><td>One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.</td></tr><tr><td><code>conversion_token</code></td><td>Nullable(String)</td><td>Token symbol of the converted asset.</td></tr><tr><td><code>conversion_ts</code></td><td>DateTime</td><td>UTC timestamp of the conversion.</td></tr><tr><td><code>identity_role</code></td><td>LowCardinality(String)</td><td>One of `safe_self`, `initial_owner`, `delegate`.</td></tr><tr><td><code>provenance_model</code></td><td>LowCardinality(String)</td><td>Always `int_execution_gpay_activity` in v1.</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the converting identity.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_activity</code></li><li><code>int_execution_gpay_user_identity_bridge</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_gpay_attribution_30d</code></li><li><code>fct_execution_gpay_attribution_60d</code></li><li><code>fct_execution_gpay_attribution_7d</code></li><li><code>fct_execution_gpay_journeys_30d</code></li><li><code>fct_execution_gpay_journeys_60d</code></li><li><code>fct_execution_gpay_journeys_7d</code></li><li><code>int_execution_gpay_coverage_daily</code></li></ul>
+    
+  </body>
+</html>

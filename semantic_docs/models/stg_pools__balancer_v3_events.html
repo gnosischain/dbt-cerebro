@@ -15,14 +15,25 @@
   <body>
     
     <h1>stg_pools__balancer_v3_events</h1>
-    <p></p>
+    <p>Unified Balancer V3 Vault event stream normalized into a single
+row-shape: (pool_address | wrapped_token_address, block_timestamp,
+transaction_hash, log_index, event_type, token_index | token_address,
+delta_amount_raw, fee_amount_raw). Source:
+contracts_BalancerV3_Vault_events. LiquidityAdded/Removed are exploded
+by ARRAY JOIN over the amountsAdded/Removed arrays (one row per pool
+token). Swap emits two rows (positive tokenIn, negative tokenOut).
+Wrap/Unwrap/LiquidityAddedToBuffer events are emitted with
+wrapped_token_address populated and pool_address NULL. Delta sign
+convention: positive = tokens entering the pool/wrapper, negative =
+leaving.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> </p>
     <p><strong>Path:</strong> <code>models/execution/pools/staging/stg_pools__balancer_v3_events.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>pools</span> <span class='pill'>balancer_v3</span> <span class='pill'>staging</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>delta_amount_raw</code></td><td>Int256</td><td>Signed raw token delta (positive = entering pool/wrapper, negative = leaving).</td></tr><tr><td><code>event_type</code></td><td>String</td><td>One of LiquidityAdded, LiquidityRemoved, Swap, Wrap, Unwrap, LiquidityAddedToBuffer.</td></tr><tr><td><code>fee_amount_raw</code></td><td>Int256</td><td>Swap-fee amount in raw token units for the row (0 when not applicable).</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td></td></tr><tr><td><code>pool_address</code></td><td>Nullable(String)</td><td>Pool contract address (lowercase, no 0x prefix). NULL for wrap/unwrap/buffer events.</td></tr><tr><td><code>token_address</code></td><td>Nullable(String)</td><td>Token contract address (Swap rows only).</td></tr><tr><td><code>token_index</code></td><td>Nullable(UInt64)</td><td>Position of the token in the pool&#x27;s token list (LiquidityAdded/Removed only).</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td></td></tr><tr><td><code>wrapped_token_address</code></td><td>Nullable(String)</td><td>Wrapped token contract address (Wrap/Unwrap/LiquidityAddedToBuffer only).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>contracts_BalancerV3_Vault_events</code></li></ul>

@@ -8,4 +8,4 @@ SELECT
   native_or_wrapped_xdai_balance,
   priced_balance_usd,
   priced_tokens_held
-FROM `dbt`.`fct_execution_account_balance_history_daily`
+FROM `dbt`.`int_execution_account_balance_history_daily`

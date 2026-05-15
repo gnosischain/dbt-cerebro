@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_mmm_baseline_latest</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_mmm_baseline_latest</h1>
+    <p>Per-(KPI, media) baseline KPI: the median KPI value during weeks
+where the media&#x27;s adstocked spend sits in the bottom decile. This
+is the level the KPI sits at when the media is effectively zero —
+used by `mmm_analyst` as the `baseline_kpi` input that anchors the
+log-log response curve fit and the contribution-decomposition
+intercept.
+
+Adstock is computed inline as a geometric 8-week running window
+with λ=0.5 (recent-week weight 1, prior-week 0.5, two-back 0.25,
+…) per media column. The bottom-decile threshold is
+`quantile(0.1)(adstock_v)` per (KPI, media) pair. The persona can
+recompute with a different λ if a fit prefers it; this mart is a
+canonical starting point.
+
+Pairs with fewer than 5 low-spend weeks are dropped (HAVING clause)
+because the median wouldn&#x27;t be statistically meaningful — the
+`n_low_spend_weeks &gt; 5` test guards against schema drift bringing
+them back.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/mmm/marts/fct_execution_mmm_baseline_latest.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>mmm</span> <span class='pill'>execution</span> <span class='pill'>production</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>baseline_kpi_median</code></td><td>Float64</td><td>Median KPI across low-spend weeks.</td></tr><tr><td><code>baseline_kpi_q05</code></td><td>Float64</td><td>5th-percentile KPI across low-spend weeks (lower bound).</td></tr><tr><td><code>baseline_kpi_q95</code></td><td>Float64</td><td>95th-percentile KPI across low-spend weeks (upper bound).</td></tr><tr><td><code>bottom_decile_threshold</code></td><td>Float64</td><td>Adstock value at the 10th percentile — the cutoff that defines &quot;low-spend&quot;.</td></tr><tr><td><code>computed_at</code></td><td>DateTime</td><td>Materialisation timestamp.</td></tr><tr><td><code>kpi_name</code></td><td>LowCardinality(String)</td><td>KPI being baselined.</td></tr><tr><td><code>media_name</code></td><td>LowCardinality(String)</td><td>Media used to define the &quot;low-spend&quot; weeks for this baseline.</td></tr><tr><td><code>n_low_spend_weeks</code></td><td>UInt64</td><td>Number of weeks below the bottom-decile threshold. Must be &gt; 5 for the row to be emitted.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_execution_mmm_spine_weekly</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

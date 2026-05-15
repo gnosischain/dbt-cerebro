@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_mmm_controls_weekly</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_mmm_controls_weekly</h1>
+    <p>Long-form weekly MMM control variables (macro / seasonality /
+operational signals the regression conditions on but does not
+attribute to). One row per (`week`, `control_name`) on the same
+continuous weekly spine as KPIs / media.
+
+Source aggregators (weekly grain):
+  gno_usd_price_avg          ← avg(price) over int_execution_token_prices_daily
+                               filtered to symbol=&#x27;GNO&#x27;
+  eth_usd_price_avg          ← avg(price) where symbol IN (&#x27;WETH&#x27;,&#x27;ETH&#x27;)
+  wxdai_eur_proxy_avg        ← avg(price) where symbol IN (&#x27;WXDAI&#x27;,&#x27;EURE&#x27;)
+  chain_gas_price_gwei_avg   ← avg(gas_price_median) over int_execution_transactions_info_daily
+  chain_block_count          ← sum(n_txs)
+  week_of_year               ← toWeek(week) (computed)
+  week_index                 ← weeks-since-spine-start (computed)
+  is_holiday_week            ← LEFT JOIN to seed mmm_holiday_weeks
+  hardfork_step              ← 1 from the fork-week onward via LEFT JOIN
+                               to seed mmm_hardfork_steps. Computed via
+                               LEFT JOIN to a `count of forks ≤ week`
+                               sub-CTE rather than a correlated subquery
+                               (ClickHouse plans correlated subqueries
+                               inefficiently and they OOM at scale).
+
+Incremental on `week` (monthly partition).
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/mmm/intermediate/int_execution_mmm_controls_weekly.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>mmm</span> <span class='pill'>execution</span> <span class='pill'>production</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>control_name</code></td><td>LowCardinality(String)</td><td>Control identifier from `mmm_control_registry.csv`.</td></tr><tr><td><code>control_value</code></td><td>Nullable(Float64)</td><td>Weekly value of the control variable.</td></tr><tr><td><code>control_value_method</code></td><td>LowCardinality(String)</td><td>One of `avg`, `sum`, `computed`.</td></tr><tr><td><code>provenance_model</code></td><td>LowCardinality(String)</td><td>Upstream dbt model or `_derived` for computed signals.</td></tr><tr><td><code>week</code></td><td>Date</td><td>ISO Monday-start week date.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_token_prices_daily</code></li><li><code>int_execution_transactions_info_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_mmm_spine_weekly</code></li></ul>
+    
+  </body>
+</html>

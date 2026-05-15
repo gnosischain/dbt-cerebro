@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_gpay_attribution_7d</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_gpay_attribution_7d</h1>
+    <p>Pre-computed first / last / linear / time-decay (HL=7d) attribution
+per (`conversion_kind`, `identity_role`, `event_kind`) over the last
+180 days of conversions. Same shape as the GA attribution mart with
+the role dimension added, so a single
+`WHERE conversion_kind = &#x27;gpay_payment&#x27; AND identity_role = &#x27;initial_owner&#x27;`
+filter pulls owner-grain attribution for payments without changing
+SQL shape.
+
+Implementation: pre-aggregate per conversion → tie counts →
+per-touch score → group by `event_kind`. Same memory-safe
+GROUP BY + LEFT JOIN pattern as the GA mart (see GA model header
+for the v1 / v2 / v3 history).
+
+Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+credit splits across ties.
+Note: the time-decay half-life is fixed at 7 days regardless of
+the lookback window — this is a per-conversation customer-decay
+parameter, not a window-length parameter.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/marts/fct_execution_gpay_attribution_7d.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gpay</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>computed_at</code></td><td>DateTime</td><td>`now()` at materialisation time.</td></tr><tr><td><code>conversion_kind</code></td><td>LowCardinality(String)</td><td>One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.</td></tr><tr><td><code>conversions_with_touch</code></td><td>UInt64</td><td>Distinct (user, role, conversion_ts) triples where this `event_kind` appeared in the journey.</td></tr><tr><td><code>event_kind</code></td><td>LowCardinality(String)</td><td>Touchpoint event kind. != the conversion&#x27;s mapped event_kind.</td></tr><tr><td><code>first_touch</code></td><td>Float64</td><td>Sum of first-touch credits, conversion-equivalent units.</td></tr><tr><td><code>identity_role</code></td><td>LowCardinality(String)</td><td>Role grain (`safe_self`, `initial_owner`, `delegate`).</td></tr><tr><td><code>last_touch</code></td><td>Float64</td><td>Sum of last-touch credits.</td></tr><tr><td><code>linear</code></td><td>Float64</td><td>Sum of linear (1/n_touches) credits.</td></tr><tr><td><code>time_decay_hl_7d</code></td><td>Float64</td><td>Sum of time-decay credits with 7-day half-life.</td></tr><tr><td><code>total_conversions</code></td><td>UInt64</td><td>Total conversions of this (kind, role) in the 180-day window.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_execution_gpay_journeys_7d</code></li><li><code>int_execution_gpay_conversions</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_gpay_attribution_7d</code></li></ul>
+    
+  </body>
+</html>

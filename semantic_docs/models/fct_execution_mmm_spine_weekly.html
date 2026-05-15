@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_mmm_spine_weekly</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_mmm_spine_weekly</h1>
+    <p>MMM weekly spine — wide pivot of `int_execution_mmm_kpis_weekly`,
+`int_execution_mmm_media_weekly`, and `int_execution_mmm_controls_weekly`.
+One row per `week`, one column per (kpi | media | control) name,
+populated by `sumIf` against the long-form intermediates. Continuous
+time — every week within the spine range exists, even when no
+KPI / media / control rows reference it.
+
+This is the single mart the MMM analyst&#x27;s runtime mapping points at.
+The persona reads it directly and runs adstock decay, Hill / log-log
+response-curve fits, and contribution decomposition against the
+`media_*` columns conditioned on `kpi_*` and `ctrl_*`.
+
+Adding a new column: update the corresponding intermediate&#x27;s UNION,
+update the registry seed, then add a `sumIf` clause here for the
+new name. Schema is wide-by-design and bounded by the registry
+seeds (~30 cols today).
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/mmm/marts/fct_execution_mmm_spine_weekly.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>mmm</span> <span class='pill'>execution</span> <span class='pill'>production</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>ctrl_chain_block_count</code></td><td>Nullable(Float64)</td><td>Sum of weekly chain transactions (control proxy for chain activity).</td></tr><tr><td><code>ctrl_chain_gas_price_gwei_avg</code></td><td>Nullable(Float64)</td><td>Weekly average median gas price (gwei).</td></tr><tr><td><code>ctrl_eth_usd_price_avg</code></td><td>Nullable(Float64)</td><td>Weekly average ETH/USD price.</td></tr><tr><td><code>ctrl_gno_usd_price_avg</code></td><td>Nullable(Float64)</td><td>Weekly average GNO/USD price.</td></tr><tr><td><code>ctrl_hardfork_step</code></td><td>Nullable(Float64)</td><td>Step indicator — 0 before fork week, 1 from fork week onward.</td></tr><tr><td><code>ctrl_is_holiday_week</code></td><td>Nullable(Float64)</td><td>1 if the week is flagged in seed `mmm_holiday_weeks`.</td></tr><tr><td><code>ctrl_week_index</code></td><td>Nullable(Float64)</td><td>Linear time index (weeks since spine start) — secular trend control.</td></tr><tr><td><code>ctrl_week_of_year</code></td><td>Nullable(Float64)</td><td>Week-of-year integer (seasonality control).</td></tr><tr><td><code>ctrl_wxdai_eur_proxy_avg</code></td><td>Nullable(Float64)</td><td>Weekly average WXDAI/EUR (or EURe) proxy price.</td></tr><tr><td><code>kpi_bridge_inflow_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly bridge inflow USD (placeholder).</td></tr><tr><td><code>kpi_bridge_outflow_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly bridge outflow USD (placeholder).</td></tr><tr><td><code>kpi_chain_tx_count</code></td><td>Nullable(Float64)</td><td>Sum of weekly chain transactions (NULL until the source aggregator lands).</td></tr><tr><td><code>kpi_dex_volume_usd_dedup</code></td><td>Nullable(Float64)</td><td>DEX-protocol weekly volume. First-hop-only — see is_dedup_safe note in `int_execution_mmm_kpis_weekly`.</td></tr><tr><td><code>kpi_ga_active_users</code></td><td>Nullable(Float64)</td><td>Last-value weekly GA active users.</td></tr><tr><td><code>kpi_ga_new_users</code></td><td>Nullable(Float64)</td><td>Sum of new GA users in the week.</td></tr><tr><td><code>kpi_gno_staked</code></td><td>Nullable(Float64)</td><td>Last-value GNO staked (placeholder — source aggregator pending).</td></tr><tr><td><code>kpi_gpay_active_users</code></td><td>Nullable(Float64)</td><td>Last-value weekly GP active users (NULL until the GP source aggregator lands).</td></tr><tr><td><code>kpi_gpay_payment_volume_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly GP payment volume USD.</td></tr><tr><td><code>kpi_gpay_topups_count</code></td><td>Nullable(Float64)</td><td>Sum of GA→GP TopUp count for the week.</td></tr><tr><td><code>kpi_gpay_topups_volume_usd</code></td><td>Nullable(Float64)</td><td>Sum of GA→GP TopUp USD volume for the week.</td></tr><tr><td><code>kpi_pools_tvl_usd</code></td><td>Nullable(Float64)</td><td>Last-value snapshot of total pools TVL at week-end (stock).</td></tr><tr><td><code>kpi_pools_volume_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly pools volume (deduped at the pool grain).</td></tr><tr><td><code>media_bridge_incentive_outlay_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly bridge-incentive outlay (placeholder).</td></tr><tr><td><code>media_ga_token_offer_emissions_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly GA token-offer emission value in USD (subsidy outlay).</td></tr><tr><td><code>media_gpay_cashback_outlay_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly GP cashback outlay in USD (placeholder).</td></tr><tr><td><code>media_lm_rewards_outlay_usd</code></td><td>Nullable(Float64)</td><td>Sum of weekly LM rewards outlay (placeholder).</td></tr><tr><td><code>media_pools_lp_fee_apr_avg</code></td><td>Nullable(Float64)</td><td>TVL-weighted mean LP fee APR for the week.</td></tr><tr><td><code>media_validator_apr_proxy</code></td><td>Nullable(Float64)</td><td>Validator APR proxy signal (placeholder).</td></tr><tr><td><code>media_validator_income_gno</code></td><td>Nullable(Float64)</td><td>Sum of weekly validator income (placeholder).</td></tr><tr><td><code>media_validator_proposer_rewards_gno</code></td><td>Nullable(Float64)</td><td>Sum of weekly proposer-reward GNO emitted to validators.</td></tr><tr><td><code>week</code></td><td>Date</td><td>ISO Monday-start week date. Unique per row.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_mmm_controls_weekly</code></li><li><code>int_execution_mmm_kpis_weekly</code></li><li><code>int_execution_mmm_media_weekly</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_mmm_spine_weekly</code></li><li><code>fct_execution_mmm_baseline_latest</code></li><li><code>fct_execution_mmm_collinearity_latest</code></li></ul>
+    
+  </body>
+</html>

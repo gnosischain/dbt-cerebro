@@ -7,22 +7,35 @@
 -- changes for a selected avatar.
 --
 -- Incremental strategy: delete+insert keyed on (avatar, metadata_digest).
--- The `affected_avatars` CTE uses the standard
--- `apply_monthly_incremental_filter` macro (same as other Circles
--- intermediates) to find any avatar that received an UpdateMetadataDigest
--- event in the incremental window. We then INNER JOIN the targets view
--- to that set so the full history of every affected avatar is
--- recomputed in one shot — guaranteeing the leadInFrame window function
--- still sees every event for those avatars and `valid_to` stays correct.
+-- On an incremental run we only emit the rows that actually need to
+-- change:
+--   * new_events     — events whose block_timestamp falls in the
+--                      incremental window (these become brand-new rows).
+--   * prior_current  — the row currently flagged is_current for any
+--                      avatar that shows up in new_events. Its valid_to
+--                      flips from NULL to the next event's timestamp and
+--                      is_current flips to false. (Skipped when the
+--                      prior current digest is itself in new_events.)
+-- next_block_timestamp is computed by a windowed lead over the targets
+-- view restricted to affected avatars — internal scan only, the
+-- per-avatar full history is NOT re-emitted to the table.
 --
 -- valid_to is NULL on the most recent row per avatar.
 
 
 
 
-WITH affected_avatars AS (
-    SELECT DISTINCT avatar
-    FROM `dbt`.`int_execution_circles_v2_avatar_metadata_targets`
+WITH new_events AS (
+    SELECT
+        t.avatar,
+        t.metadata_digest,
+        t.ipfs_cid_v0,
+        t.gateway_url,
+        t.block_timestamp,
+        t.transaction_hash,
+        t.log_index,
+        t.is_current_avatar_metadata
+    FROM `dbt`.`int_execution_circles_v2_avatar_metadata_targets` t
     WHERE 1 = 1
       
         
@@ -36,12 +49,12 @@ WITH affected_avatars AS (
     AND 
     
       
-      toStartOfMonth(toDate(block_timestamp)) >= (
+      toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.valid_from)), -0))
         FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` AS x1
         WHERE 1=1 
       )
-      AND toDate(block_timestamp) >= (
+      AND toDate(t.block_timestamp) >= (
         SELECT
           
             addDays(max(toDate(x2.valid_from)), -0)
@@ -55,24 +68,59 @@ WITH affected_avatars AS (
 
       
 ),
-ordered AS (
+
+prior_current AS (
+    SELECT
+        h.avatar,
+        h.metadata_digest,
+        h.ipfs_cid_v0,
+        h.gateway_url,
+        h.valid_from                                      AS block_timestamp,
+        h.transaction_hash,
+        h.log_index,
+        false                                             AS is_current_avatar_metadata
+    FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history` h
+    WHERE h.is_current = true
+      AND h.avatar IN (SELECT DISTINCT avatar FROM new_events)
+      AND (h.avatar, h.metadata_digest) NOT IN (
+          SELECT avatar, metadata_digest FROM new_events
+      )
+),
+touched AS (
+    SELECT * FROM new_events
+    UNION ALL
+    SELECT * FROM prior_current
+),
+
+targets_with_lead AS (
     SELECT
         t.avatar,
-        t.metadata_digest,
-        t.ipfs_cid_v0,
-        t.gateway_url,
         t.block_timestamp,
-        t.transaction_hash,
         t.log_index,
-        t.is_current_avatar_metadata,
         leadInFrame(t.block_timestamp) OVER (
             PARTITION BY t.avatar
             ORDER BY t.block_timestamp, t.log_index
             ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
         ) AS next_block_timestamp
     FROM `dbt`.`int_execution_circles_v2_avatar_metadata_targets` t
-    INNER JOIN affected_avatars aa
-        ON aa.avatar = t.avatar
+    WHERE t.avatar IN (SELECT DISTINCT avatar FROM touched)
+),
+ordered AS (
+    SELECT
+        e.avatar,
+        e.metadata_digest,
+        e.ipfs_cid_v0,
+        e.gateway_url,
+        e.block_timestamp,
+        e.transaction_hash,
+        e.log_index,
+        e.is_current_avatar_metadata,
+        twl.next_block_timestamp                        AS next_block_timestamp
+    FROM touched e
+    LEFT JOIN targets_with_lead twl
+        ON twl.avatar = e.avatar
+       AND twl.block_timestamp = e.block_timestamp
+       AND twl.log_index = e.log_index
 ),
 latest_raw AS (
     SELECT

@@ -88,7 +88,7 @@ classified AS (
     tx.hour,
     coalesce(nullIf(trim(l.project), ''), 'Unknown') AS project,
     count()                                          AS tx_count,
-    countDistinct(tx.from_address)                   AS active_accounts,
+    uniqCombined64(tx.from_address)                  AS active_accounts,
     groupBitmapState(cityHash64(tx.from_address))    AS ua_bitmap_state,
     sum(tx.gas_used * tx.gas_price) / 1e18           AS fee_native_sum
   FROM tx

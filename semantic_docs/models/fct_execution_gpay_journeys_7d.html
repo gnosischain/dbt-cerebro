@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_gpay_journeys_7d</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_gpay_journeys_7d</h1>
+    <p>Pre-joined GP-side journey spine with a 7-day lookback. One row per
+(conversion, prior-7d touchpoint) pair. Built via
+`build_journey_lookback(7, &#x27;gpay&#x27;)` — the same macro that powers
+the GA spine, with `identity_role` matched on both sides of the
+conversion ↔ events join so role-grain semantics are preserved
+(treasury-grain conversions match treasury-grain touchpoints, etc.).
+
+Leakage guards enforced at materialisation:
+  * `e.event_ts &lt; c.conversion_ts`
+  * `e.identity_role = c.identity_role`
+  * `e.event_kind != conversion_kind_to_event_kind(c.conversion_kind)`
+
+Microbatched in 1-month chunks via `scripts/full_refresh/refresh.py`
+(`meta.full_refresh.batch_months: 1`). A single 2-year full-refresh
+OOM&#x27;d at the 10 GiB per-query cap because of the 3-role fan-out ×
+all GP activity × 7-day lookback. Per-month batches fit
+comfortably; the refresh script auto-retries the rare batch that
+pushes the limit.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/marts/fct_execution_gpay_journeys_7d.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gpay</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>conversion_amount_usd</code></td><td>Nullable(Float64)</td><td>USD amount of the conversion.</td></tr><tr><td><code>conversion_date</code></td><td>Date</td><td>Calendar date of the conversion (partition key).</td></tr><tr><td><code>conversion_kind</code></td><td>LowCardinality(String)</td><td>One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.</td></tr><tr><td><code>conversion_token</code></td><td>Nullable(String)</td><td>Token symbol of the converted asset.</td></tr><tr><td><code>conversion_ts</code></td><td>DateTime</td><td>UTC timestamp of the conversion.</td></tr><tr><td><code>event_dedup_key</code></td><td>UInt64</td><td>Carried from upstream events table.</td></tr><tr><td><code>event_kind</code></td><td>LowCardinality(String)</td><td>Touchpoint event kind. Guaranteed != the conversion&#x27;s own mapped event_kind.</td></tr><tr><td><code>event_source</code></td><td>LowCardinality(String)</td><td>Always `&#x27;chain&#x27;` in v1 (GP unified events are chain-only).</td></tr><tr><td><code>event_subkind</code></td><td>String</td><td>Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).</td></tr><tr><td><code>identity_role</code></td><td>LowCardinality(String)</td><td>Role grain — matches between conversion and touchpoint sides.</td></tr><tr><td><code>lag_days</code></td><td>Int64</td><td>Day-resolution lag, used by the time-decay weight.</td></tr><tr><td><code>lag_seconds</code></td><td>Int64</td><td>Seconds between touchpoint and conversion. Strictly positive.</td></tr><tr><td><code>touch_ts</code></td><td>DateTime</td><td>UTC timestamp of the prior touchpoint.</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the converting identity.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_conversions</code></li><li><code>int_execution_gpay_user_events_unified</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_gpay_attribution_7d</code></li></ul>
+    
+  </body>
+</html>

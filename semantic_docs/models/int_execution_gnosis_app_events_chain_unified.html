@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gnosis_app_events_chain_unified</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gnosis_app_events_chain_unified</h1>
+    <p>Long-form on-chain GA event log at full timestamp grain, keyed by
+`user_pseudonym` (no raw address ever leaves the bridge). Single
+source of chain-side touchpoints for MTA.
+
+UNION ALL of seven CTEs, each tagged with a distinct `event_kind`
+starting with `chain.`:
+
+  chain.onboard               — first-ever heuristic hit per user
+                                (from int_execution_gnosis_app_users_current)
+  chain.&lt;heuristic_kind&gt;      — six heuristic rules from
+                                int_execution_gnosis_app_user_events
+                                (circles_register_human, circles_invite_human,
+                                circles_trust, circles_profile_update,
+                                circles_metri_fee, safe_invitation_module)
+  chain.swap_signed           — every PreSignature event in
+                                int_execution_gnosis_app_swaps
+  chain.swap_filled           — was_filled subset, ts = first_fill_at
+  chain.topup                 — int_execution_gnosis_app_gpay_topups
+  chain.marketplace_buy       — int_execution_gnosis_app_marketplace_payments
+  chain.token_offer_claim     — int_execution_gnosis_app_token_offer_claims
+
+Incremental (monthly partition on `event_date`); reads
+user_pseudonym from `int_execution_gnosis_app_user_identity_bridge`.
+Use `grace_hash` join algorithm (set in pre-hook) to keep memory
+bounded across the seven UNIONs.
+
+`event_kind` is LowCardinality and validated against seed
+`mta_event_kinds.csv` (relationship test, severity warn).
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_events_chain_unified.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD value of the action where one applies (swap_filled, topup, token_offer_claim). NULL for events without a natural USD amount.</td></tr><tr><td><code>event_date</code></td><td>Date</td><td>Calendar date partition key (`toDate(event_ts)`).</td></tr><tr><td><code>event_dedup_key</code></td><td>UInt64</td><td>cityHash64 of (kind, transaction_hash, log_index | order_uid | user_pseudonym). Combined with (event_ts, event_kind, user_pseudonym) gives the unique key for the ReplacingMergeTree.</td></tr><tr><td><code>event_kind</code></td><td>LowCardinality(String)</td><td>Canonical event kind (e.g. `chain.swap_signed`, `chain.topup`).
+Validated against the seed registry at warn severity so new event
+kinds emitted by the SQL but not declared in the seed surface as
+Elementary warnings instead of breaking the build.
+</td></tr><tr><td><code>event_source</code></td><td>LowCardinality(String)</td><td>Always `&#x27;chain&#x27;` in this model. Distinguishes from `&#x27;mixpanel&#x27;` rows in the unified UNION downstream.</td></tr><tr><td><code>event_subkind</code></td><td>LowCardinality(String)</td><td>Provenance subtype (e.g. `swap_signed`, `topup`, `circles_trust`).
+Lets downstream code group across `chain.X` and `mp.X` versions of
+the same conceptual action.
+</td></tr><tr><td><code>event_ts</code></td><td>DateTime</td><td>UTC timestamp of the action.</td></tr><tr><td><code>provenance_model</code></td><td>LowCardinality(String)</td><td>Name of the upstream model that produced the row (e.g. `int_execution_gnosis_app_swaps`). Survives the UNION ALL so analysts can audit which feed contributed which event.</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the acting GA user. Joinable to GP and Mixpanel.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_gpay_topups</code></li><li><code>int_execution_gnosis_app_marketplace_payments</code></li><li><code>int_execution_gnosis_app_swaps</code></li><li><code>int_execution_gnosis_app_token_offer_claims</code></li><li><code>int_execution_gnosis_app_user_events</code></li><li><code>int_execution_gnosis_app_user_identity_bridge</code></li><li><code>int_execution_gnosis_app_users_current</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gnosis_app_user_events_unified</code></li></ul>
+    
+  </body>
+</html>

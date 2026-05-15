@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_gnosis_app_journeys_7d</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_gnosis_app_journeys_7d</h1>
+    <p>Pre-joined GA-side journey spine with a 7-day lookback. One row per
+(conversion, prior-7d touchpoint) pair with the conversion&#x27;s own
+event kind excluded from touches. Built via
+`build_journey_lookback(7, &#x27;gnosis_app&#x27;)` so the leakage guards
+(`event_ts &lt; conversion_ts` and
+`event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
+applied at materialisation, not at query time.
+
+The MTA persona reads this directly to score first/last/linear/
+time-decay credit per touch without re-running the conversions ×
+events self-join. The 7d / 14d / 60d sensitivity-sweep variants
+(deferred) reuse the same macro with a different `lookback_days`
+argument.
+
+Incremental, monthly partition on `conversion_date`. Uses
+`grace_hash` join algorithm to keep memory bounded across the
+explicit lookback window.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/marts/fct_execution_gnosis_app_journeys_7d.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>conversion_amount_usd</code></td><td>Nullable(Float64)</td><td>USD amount of the conversion (carried from the conversions registry).</td></tr><tr><td><code>conversion_date</code></td><td>Date</td><td>Calendar date of the conversion (partition key).</td></tr><tr><td><code>conversion_kind</code></td><td>LowCardinality(String)</td><td>One of `topup` / `swap_filled` / `token_offer_claim` / `marketplace_buy`.</td></tr><tr><td><code>conversion_token</code></td><td>Nullable(String)</td><td>Token symbol or offer name associated with the conversion.</td></tr><tr><td><code>conversion_ts</code></td><td>DateTime</td><td>UTC timestamp of the conversion.</td></tr><tr><td><code>event_dedup_key</code></td><td>UInt64</td><td>Carried from upstream events table for downstream dedup if needed.</td></tr><tr><td><code>event_kind</code></td><td>LowCardinality(String)</td><td>Canonical event kind of the touchpoint. Guaranteed != the conversion&#x27;s own mapped event_kind.</td></tr><tr><td><code>event_source</code></td><td>LowCardinality(String)</td><td>`chain` or `mixpanel` — provenance of the touchpoint.</td></tr><tr><td><code>event_subkind</code></td><td>LowCardinality(String)</td><td>Provenance subtype of the touchpoint.</td></tr><tr><td><code>lag_days</code></td><td>Int64</td><td>Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.</td></tr><tr><td><code>lag_seconds</code></td><td>Int64</td><td>Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).</td></tr><tr><td><code>touch_ts</code></td><td>DateTime</td><td>UTC timestamp of the touchpoint event (= upstream `event_ts`).</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the converting user.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_conversions</code></li><li><code>int_execution_gnosis_app_user_events_unified</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_execution_gnosis_app_attribution_7d</code></li></ul>
+    
+  </body>
+</html>

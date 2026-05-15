@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_execution_gnosis_app_funnel_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_execution_gnosis_app_funnel_daily</h1>
+    <p>Per-day funnel diagnostics over `int_execution_gnosis_app_user_events_unified`
+using ClickHouse `windowFunnel`. Funnel definitions live in seed
+`mta_funnels.csv` (funnel_name + step_1/2/3 event_kinds + window_seconds).
+
+The model materialises one SELECT block per funnel via a Jinja loop
+over `run_query(seed)` and UNION ALLs the results — required because
+`windowFunnel(window_seconds)` needs `window_seconds` as a
+compile-time literal (a CROSS JOIN against the seed with the column
+is rejected by ClickHouse with BAD_ARGUMENTS at runtime).
+
+Each output row is one (date, funnel_name, user) triple with `level`
+= the max step reached by that user within `window_seconds` of their
+first matching event. `level=0` rows are emitted for users who hit
+step 1&#x27;s event but not step 2 within the window.
+
+Adding a funnel: append a row to `mta_funnels.csv`, run
+`dbt seed --select mta_funnels`, then `dbt run` regenerates the model
+automatically.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gnosis_app/marts/fct_execution_gnosis_app_funnel_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>mta</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>mart</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Calendar date of the user&#x27;s first matching event.</td></tr><tr><td><code>first_event_ts</code></td><td>DateTime</td><td>Timestamp of the user&#x27;s first event matching any funnel step on this date.</td></tr><tr><td><code>funnel_name</code></td><td>LowCardinality(String)</td><td>Funnel identifier from `mta_funnels.csv`.</td></tr><tr><td><code>last_event_ts</code></td><td>DateTime</td><td>Timestamp of the user&#x27;s latest matching event on this date.</td></tr><tr><td><code>level</code></td><td>UInt8</td><td>Max funnel step reached within `window_seconds` (0 = step 1 hit but no step 2; up to step count).</td></tr><tr><td><code>user_pseudonym</code></td><td>UInt64</td><td>Keyed pseudonym of the user.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_user_events_unified</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>
