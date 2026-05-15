@@ -63,5 +63,5 @@ FROM trades t
 LEFT JOIN wrappers wb ON wb.wrapper_address = t.token_bought_address
 LEFT JOIN wrappers ws ON ws.wrapper_address = t.token_sold_address
 WHERE (wb.wrapper_address IS NOT NULL OR ws.wrapper_address IS NOT NULL)
-  AND t.amount_bought > 0
-  AND t.amount_sold   > 0
+  AND t.amount_bought > 1e-4
+  AND t.amount_sold   > 1e-4
