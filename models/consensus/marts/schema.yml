@@ -2273,3 +2273,31 @@ models:
     data_type: UInt64
   - name: balance_gno_total
     data_type: Float64
+
+# ---------- Cross-sector user-overlap entry (validator operators) ----------
+# Closes the user_pseudonym graph on the consensus side. The 873-ish
+# unique 0x01 withdrawal addresses controlling ~124k validators are
+# joinable to revenue / gpay / gnosis_app / Circles on user_pseudonym.
+
+- name: fct_consensus_validators_withdrawal_addresses_distinct
+  description: |
+    One row per `user_pseudonym` (sipHash of validator withdrawal
+    address). Aggregates `n_validators_controlled` per address and
+    bucketises into concentration tiers (single / small / medium /
+    large / whale).
+
+    `user_pseudonym` is the canonical cross-sector join key (sipHash64
+    of lowercased address with the project PII salt). Same hash space
+    as fct_revenue_per_user_*, fct_execution_gpay_users_distinct,
+    fct_execution_gnosis_app_users_distinct,
+    fct_execution_circles_human_avatars_distinct, and Mixpanel
+    `user_id_hash`.
+
+    Excludes 0x00-type BLS-credential validators (their credentials are
+    BLS pubkey hashes, not EVM addresses — can't be projected into the
+    pseudonym space). See model description for the full caveat list.
+  columns:
+  - {name: user_pseudonym,           description: Cross-sector pseudonym (sipHash64 of withdrawal address).,                  data_type: UInt64}
+  - {name: n_validators_controlled,  description: Count of 0x01-credential validators controlled by this withdrawal address., data_type: UInt64}
+  - {name: concentration_tier,       description: "Bucket: 'single' / 'small (2-10)' / 'medium (11-100)' / 'large (101-1000)' / 'whale (>1000)'.", data_type: String}
+  meta: {owner: consensus_team, authoritative: false}

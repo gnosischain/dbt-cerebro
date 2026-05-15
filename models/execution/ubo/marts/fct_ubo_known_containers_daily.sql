@@ -8,7 +8,7 @@
         unique_key='(date, container_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production','execution','ubo','known_containers']
+        tags=['dev','execution','ubo','known_containers']
     )
 }}
 

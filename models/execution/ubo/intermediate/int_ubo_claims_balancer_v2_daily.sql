@@ -10,7 +10,7 @@
         settings={'allow_nullable_key': 1},
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"],
-        tags=['production','execution','ubo','claims','balancer']
+        tags=['dev','execution','ubo','claims','balancer']
     )
 }}
 

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='table',
-    tags=['production','execution','tokens','ubo','coverage']
+    tags=['dev','execution','tokens','ubo','coverage']
   )
 }}
 

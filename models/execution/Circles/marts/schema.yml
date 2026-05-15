@@ -1130,3 +1130,28 @@ models:
   - {name: median_days_to_second_mint, description: "Median days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
   - {name: p25_days_to_second_mint, data_type: Nullable(Int64)}
   - {name: p75_days_to_second_mint, data_type: Nullable(Int64)}
+
+# ---------- Cross-sector user-overlap entry (Circles humans) ----------
+
+- name: fct_execution_circles_human_avatars_distinct
+  description: |
+    One row per `user_pseudonym` for Circles v2 HUMAN avatars
+    (Groups and Orgs excluded — those aren't user-grain entities).
+
+    `user_pseudonym` is the canonical cross-sector join key (sipHash64
+    of the avatar address with the project PII salt). Same hash space
+    as fct_revenue_per_user_*, fct_execution_gpay_users_distinct,
+    fct_execution_gnosis_app_users_distinct, and Mixpanel `user_id_hash`.
+    Powers user-overlap analysis: "Circles humans who are also revenue-
+    active", "Circles humans who hold a Gnosis Pay Safe", etc.
+
+    Carries lightweight engagement / metadata flags so analysts can
+    slice by registration path or profile-completion stage without
+    re-joining to the metadata table.
+  columns:
+  - {name: user_pseudonym,    description: Cross-sector pseudonym (sipHash64 of avatar address).,    data_type: UInt64}
+  - {name: first_seen_at,     description: Avatar registration timestamp.,                            data_type: "DateTime64(0, 'UTC')"}
+  - {name: was_invited,       description: 1 if registered via an inviter (`invited_by` not NULL).,  data_type: UInt8}
+  - {name: has_ipfs_profile,  description: 1 if avatar has published an IPFS metadata payload.,      data_type: UInt8}
+  - {name: has_display_name,  description: 1 if avatar has a non-empty display name in metadata.,    data_type: UInt8}
+  meta: {owner: analytics_team, authoritative: false}

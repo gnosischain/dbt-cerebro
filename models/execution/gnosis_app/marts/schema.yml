@@ -1435,3 +1435,40 @@ models:
 - {name: api_execution_gnosis_app_purchase_freq_distribution_latest, description: "Distribution histogram of last-30d purchase counts per user (buckets 1/2/3/4-5/6-10/11+).",     meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_time_to_first_conversion_cohort_monthly, description: "Cohort by month-of-onboard × conversion_kind: conversion rate + p25/median/p75 days.",  meta: {owner: analytics_team, authoritative: false}}
 - {name: api_execution_gnosis_app_token_offer_claim_funnel_daily,    description: "Daily per-offer token-offer claim conversion (claims, claimers, USD received, claim_rate_pct).", meta: {owner: analytics_team, authoritative: false}}
+
+# ---------- Cross-sector user-overlap entry (Gnosis App on-chain users) ----------
+# Deduped per-pseudonym projection used as the canonical user-keyed
+# entry into the semantic layer for the Gnosis App ON-CHAIN domain.
+# Pairs with the Mixpanel-side mart for web/mobile usage of the same app
+# (semantic/authoring/mixpanel_ga/) — same hash space for joins.
+
+- name: fct_execution_gnosis_app_users_distinct
+  description: |
+    One row per Gnosis App on-chain user_pseudonym, with boolean flags
+    indicating which identification heuristic(s) fired and a high-
+    confidence flag (n_distinct_heuristics >= 2).
+
+    user_pseudonym is the canonical cross-domain join key
+    (sipHash64 of lowercased address with the project PII salt).
+    Same hash space as: fct_revenue_per_user_*,
+    fct_execution_gpay_users_distinct, and stg_mixpanel_ga__events.user_id_hash.
+    Powers cross-sector overlap queries through the semantic layer.
+
+    "Gnosis App" spans two complementary data domains: web/mobile
+    analytics (Mixpanel-sourced, models/mixpanel_ga/) and on-chain
+    behaviour (this module). Discovery queries for "Gnosis App users"
+    should surface metrics from both — synonyms on the semantic_model
+    are set up accordingly.
+  columns:
+  - {name: user_pseudonym,              description: Cross-sector pseudonym (sipHash64 of address).,                    data_type: UInt64}
+  - {name: first_seen_at,               description: Earliest heuristic hit timestamp.,                                 data_type: "DateTime64(0, 'UTC')"}
+  - {name: last_seen_at,                description: Most recent heuristic hit timestamp.,                              data_type: "DateTime64(0, 'UTC')"}
+  - {name: n_distinct_heuristics,       description: Number of distinct identification heuristics that fired.,          data_type: UInt8}
+  - {name: via_circles_trust,           description: 1 if identified via Circles trust-graph activity.,                 data_type: UInt8}
+  - {name: via_circles_metri_fee,       description: 1 if identified via Circles METRI fee payment.,                    data_type: UInt8}
+  - {name: via_circles_profile_update,  description: 1 if identified via Circles profile update.,                       data_type: UInt8}
+  - {name: via_circles_invite_human,    description: 1 if identified via Circles invite-human event.,                   data_type: UInt8}
+  - {name: via_circles_register_human,  description: 1 if identified via Circles register-human event.,                 data_type: UInt8}
+  - {name: via_safe_invitation_module,  description: 1 if identified via Safe invitation-module setup.,                 data_type: UInt8}
+  - {name: is_high_confidence,          description: 1 iff n_distinct_heuristics >= 2 (multiple independent signals).,  data_type: UInt8}
+  meta: {owner: analytics_team, authoritative: false}

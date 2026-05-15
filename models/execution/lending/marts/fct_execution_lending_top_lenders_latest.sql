@@ -1,7 +1,7 @@
 {{
   config(
     materialized='table',
-    tags=['production','execution','lending','top_lenders']
+    tags=['dev','execution','lending','top_lenders']
   )
 }}
 

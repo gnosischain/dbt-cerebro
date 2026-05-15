@@ -12,8 +12,14 @@ version: 1
 # sectors that maintain user-keyed marts.
 #
 # Modules currently exposing `user_pseudonym` as a primary entity:
-#   - revenue   (fct_revenue_per_user_weekly / monthly)
-#   - gpay      (int_execution_gpay_safe_identities)
+#   - revenue     (fct_revenue_per_user_weekly / monthly)
+#   - gpay        (fct_execution_gpay_users_distinct)
+#   - gnosis_app  (fct_execution_gnosis_app_users_distinct) — ON-CHAIN
+#                 side of the app; the Mixpanel/web side lives in
+#                 mixpanel_ga and joins via the same user_pseudonym
+#                 hash space but isn't currently exposed as a
+#                 user-keyed semantic_model (aggregate-only views
+#                 only — per the mixpanel privacy policy).
 #
 # Add a new module: build a user-keyed mart, declare `user_pseudonym` as
 # a primary entity in its semantic_model, then add a relationship block
@@ -43,6 +49,403 @@ relationships:
   left_keys: [user_pseudonym]
   right_keys: [user_pseudonym]
   cardinality: many_to_many
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── revenue × gnosis_app (on-chain) ────────────────────────────────
+
+- name: revenue_per_user_weekly_to_gnosis_app
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_execution_gnosis_app_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_gnosis_app
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_execution_gnosis_app_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── gpay × gnosis_app (both on-chain Gnosis-ecosystem identities) ──
+# Closes the three-way overlap triangle (revenue ↔ gpay ↔ gnosis_app).
+# Same hash space; this is a true equi-join on the pseudonym.
+
+- name: gpay_identity_to_gnosis_app
+  left_model: fct_execution_gpay_users_distinct
+  right_model: fct_execution_gnosis_app_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── Circles × everything else ─────────────────────────────────────
+# Circles is the largest user-graph addition (~17k humans). Closes
+# the user-pseudonym graph for all flagship Gnosis Chain products:
+# revenue ↔ gpay ↔ gnosis_app ↔ circles. The Mixpanel side joins
+# transitively via user_pseudonym = user_id_hash (same hash space).
+
+- name: revenue_per_user_weekly_to_circles_humans
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_execution_circles_human_avatars_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_circles_humans
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_execution_circles_human_avatars_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gpay_identity_to_circles_humans
+  left_model: fct_execution_gpay_users_distinct
+  right_model: fct_execution_circles_human_avatars_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gnosis_app_to_circles_humans
+  left_model: fct_execution_gnosis_app_users_distinct
+  right_model: fct_execution_circles_human_avatars_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── Validator operators × everything else ─────────────────────────
+# Closes the user_pseudonym graph on the consensus side. 873 unique
+# 0x01-withdrawal-address operators control ~124k validators. Many are
+# pool/staking-service addresses (so individual humans are aggregated),
+# but the address-level pseudonym joins identically to the rest.
+
+- name: revenue_per_user_weekly_to_validator_operators
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_consensus_validators_withdrawal_addresses_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_validator_operators
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_consensus_validators_withdrawal_addresses_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gpay_identity_to_validator_operators
+  left_model: fct_execution_gpay_users_distinct
+  right_model: fct_consensus_validators_withdrawal_addresses_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gnosis_app_to_validator_operators
+  left_model: fct_execution_gnosis_app_users_distinct
+  right_model: fct_consensus_validators_withdrawal_addresses_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── Safe → Owner pseudonym bridge ─────────────────────────────────
+# A Safe is a smart-contract wallet; analytically activity from a Safe
+# address belongs to its human owner(s). The bridge mart
+# `fct_execution_safe_owner_pseudonyms` exposes BOTH sides in the
+# project-wide user_pseudonym hash space:
+#
+#   - safe_user_pseudonym  = pseudonymize_address(safe_address)
+#   - owner_user_pseudonym = pseudonymize_address(owner)
+#
+# Relationships below bind EVERY existing user-keyed mart to ONE of the
+# bridge's two pseudonym columns. The planner can then compose any
+# Safe-keyed sector with any owner-keyed sector via two equi-joins
+# (sector → bridge.safe_user_pseudonym, bridge.owner_user_pseudonym →
+# other sector). This closes the dead-end where Safe-wallet activity
+# couldn't be reattributed to the human EOAs behind the Safe.
+#
+# Why BOTH sides for every mart? The user-keyed marts are NOT single-
+# population pseudonym sets — most are UNIONs across multiple identity
+# layers. For example, `fct_execution_gpay_users_distinct` (64,418 rows)
+# is the union of:
+#   * 32,209 `safe_self` pseudonyms (the GP Safe contract)
+#   * 32,208 `initial_owner` pseudonyms (the EOA that set up the Safe)
+#   * 1 `delegate` pseudonym (shared signer)
+# So a single GP user_pseudonym may be either a Safe address OR an
+# owner EOA. To reach all GP users via the bridge, the planner needs
+# TWO relationships per mart: one to `safe_user_pseudonym`, one to
+# `owner_user_pseudonym`. We declare both below for every user-keyed
+# mart. The planner picks the side that resolves and aggregates the
+# rest. This mirrors the bridge's own dual-entity declaration
+# (safe_user_pseudonym primary, owner_user_pseudonym foreign).
+
+- name: gpay_identity_to_safe_owner_bridge
+  left_model: fct_execution_gpay_users_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gnosis_app_to_safe_owner_bridge
+  left_model: fct_execution_gnosis_app_users_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: circles_humans_to_safe_owner_bridge
+  left_model: fct_execution_circles_human_avatars_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: validator_operators_to_safe_owner_bridge
+  left_model: fct_consensus_validators_withdrawal_addresses_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_weekly_to_safe_owner_bridge
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_safe_owner_bridge
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── Reverse-direction (owner-side) edges ──────────────────────────
+# The marts above (gpay/gnosis_app/circles/validator_operators) also
+# carry owner-EOA pseudonyms in their distinct-users sets (initial-
+# owner rows, not just safe-self rows). Bridging on the owner side as
+# well lets the planner reach those EOA-flavoured pseudonyms when
+# composing cross-sector. Mirror the Safe-side edges for completeness.
+
+- name: gpay_identity_to_safe_owner_bridge_owner_side
+  left_model: fct_execution_gpay_users_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: gnosis_app_to_safe_owner_bridge_owner_side
+  left_model: fct_execution_gnosis_app_users_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: circles_humans_to_safe_owner_bridge_owner_side
+  left_model: fct_execution_circles_human_avatars_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: validator_operators_to_safe_owner_bridge_owner_side
+  left_model: fct_consensus_validators_withdrawal_addresses_distinct
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [owner_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# Revenue marts: pseudonyms can also be Safe-contract addresses (e.g.
+# treasury Safes receiving revenue). Add the Safe-side mirror so the
+# planner can join from revenue to gpay/gnosis_app via the bridge's
+# safe_user_pseudonym column when the revenue subject is itself a Safe.
+
+- name: revenue_per_user_weekly_to_safe_owner_bridge_safe_side
+  left_model: fct_revenue_per_user_weekly
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: revenue_per_user_monthly_to_safe_owner_bridge_safe_side
+  left_model: fct_revenue_per_user_monthly
+  right_model: fct_execution_safe_owner_pseudonyms
+  left_keys: [user_pseudonym]
+  right_keys: [safe_user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: left
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: circles_humans_to_validator_operators
+  left_model: fct_execution_circles_human_avatars_distinct
+  right_model: fct_consensus_validators_withdrawal_addresses_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
   join_semantics: inner
   via_entity: user_pseudonym
   preferred_bridge: true

@@ -1322,6 +1322,46 @@ semantic_models:
           source_kind: address
           target_kind: validator
           directed: true
+
+# ── User-overlap entry: validator withdrawal-address controllers ────
+# 873 unique 0x01 withdrawal addresses controlling ~124k validators.
+# Hugely concentrated stake — most addresses control >100 validators
+# (pooled / staking-service operators). The cross-sector value: lets
+# analysts ask "validator operators who are also gpay users" or
+# "revenue-active users who run validators" via the user_pseudonym graph.
+
+- name: consensus_validators_withdrawal_addresses_distinct
+  model: ref('fct_consensus_validators_withdrawal_addresses_distinct')
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: concentration_tier
+    type: categorical
+    expr: concentration_tier
+  measures:
+  - name: consensus_validators_withdrawal_addresses_distinct_count
+    agg: count
+    expr: user_pseudonym
+  - name: consensus_validators_controlled_total
+    agg: sum
+    expr: n_validators_controlled
+  config:
+    meta:
+      cerebro:
+        owner: consensus_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - validator operators
+        - validator withdrawal addresses
+        - validator controllers
+        - distinct validator operators
+        - how many validator operators
+        - staking operators count
+        - validator concentration
+
 metrics:
 - name: validators_active
   label: Validators Active
@@ -1342,6 +1382,62 @@ metrics:
         - active validators
         - validators active
         - validator activity
+
+- name: validator_operators_distinct
+  label: Validator Operators (Distinct Withdrawal Addresses)
+  description: >
+    Distinct count of EVM withdrawal addresses controlling 0x01-credential
+    validators. The `user_pseudonym` join key is in the same hash space
+    as revenue / gpay / gnosis_app / Circles — use cross-sector joins
+    on `user_pseudonym` to compute overlaps (e.g. "validator operators
+    who are also gpay users", "revenue-active users who run validators").
+
+    Excludes 0x00-credential validators (BLS-only, no EVM withdrawal
+    address to hash).
+  type: simple
+  type_params:
+    measure: consensus_validators_withdrawal_addresses_distinct_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: consensus_team
+        allowed_dimensions: [user_pseudonym, concentration_tier]
+        supported_time_grains: []
+        question_synonyms:
+        - validator operators
+        - validator controllers
+        - distinct validator operators
+        - how many validator operators
+        - validator withdrawal addresses
+        - staking operators count
+        - validator concentration
+
+- name: validators_controlled_total
+  label: Validators Controlled (sum across operators)
+  description: >
+    Total count of 0x01-credential validators across all operator
+    addresses. Equals total 0x01 validators by definition.
+    Use the `concentration_tier` dimension to see how stake is
+    distributed (single / small / medium / large / whale).
+  type: simple
+  type_params:
+    measure: consensus_validators_controlled_total
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: consensus_team
+        allowed_dimensions: [user_pseudonym, concentration_tier]
+        supported_time_grains: []
+        question_synonyms:
+        - validators per operator
+        - validator stake concentration
+        - validators by operator size
+        - validator distribution
+
 - name: consensus_validators_performance_daily
   model: ref('api_consensus_validators_performance_daily')
   defaults:

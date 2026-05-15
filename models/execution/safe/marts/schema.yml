@@ -1,6 +1,76 @@
 version: 2
 
 models:
+- name: fct_execution_safe_owner_pseudonyms
+  description: |
+    Chain-wide Safe → owner pseudonym bridge. One row per current
+    (safe_address, owner) pair, hashed into the project-wide
+    `user_pseudonym` space via the `pseudonymize_address` macro.
+
+    Exists so that any sector mart whose `user_pseudonym` is the hash
+    of a Safe contract address (gpay pay_wallets, validator withdrawal
+    Safes, gnosis_app AA wallets, Circles avatar Safes, ...) can be
+    composed with any owner-keyed sector via two equi-joins:
+
+        sector_A.user_pseudonym = bridge.safe_user_pseudonym
+        bridge.owner_user_pseudonym = sector_B.user_pseudonym
+
+    Surfaced in the semantic layer (`semantic/authoring/execution/safe/
+    semantic_models.yml`) and bridged into every existing user-keyed
+    mart via `semantic/relationships/user_pseudonym.yml`. Grain is
+    `(safe_user_pseudonym, owner_user_pseudonym)`.
+
+    ## Coverage caveat — read before sizing this against another mart
+
+    `safe_user_pseudonym` is ONLY the Safe-contract side of the bridge
+    by construction; EOA owners appear ONLY on the `owner_user_pseudonym`
+    side. So an outer-join cardinality like "how many of mart X's
+    pseudonyms appear as safe_user_pseudonym in the bridge" is NOT a
+    coverage metric — it's the fraction of X's pseudonyms that happen
+    to be Safe addresses.
+
+    Example: `fct_execution_gpay_users_distinct` (64,418 rows) is a
+    UNION of safe_self pseudonyms (32,209), initial_owner pseudonyms
+    (32,208) and the GP delegate (1). All 32,209 GP Safes are covered
+    here as `safe_user_pseudonym`. The remaining ~32k initial-owner
+    pseudonyms are EOAs by definition; they land on the
+    `owner_user_pseudonym` side. The relationship definitions in
+    `semantic/relationships/user_pseudonym.yml` declare BOTH directions
+    per mart so the planner can reach either pseudonym flavour.
+  tests:
+    - dbt_utils.unique_combination_of_columns:
+        combination_of_columns: [safe_user_pseudonym, owner_user_pseudonym]
+  columns:
+    - name: safe_user_pseudonym
+      description: |
+        `pseudonymize_address(safe_address)` — Safe contract pseudonym
+        in the project-wide hash space. Equi-joinable to any other
+        mart's `user_pseudonym` when that user's wallet IS a Safe.
+      tests:
+        - not_null
+    - name: owner_user_pseudonym
+      description: |
+        `pseudonymize_address(owner)` — pseudonym of an EOA listed as
+        a current owner of the Safe. Equi-joinable to any other mart's
+        `user_pseudonym` for cross-sector owner-level overlap.
+      tests:
+        - not_null
+    - name: became_owner_at
+      description: |
+        Timestamp of the most recent event that added (or set up) this
+        owner on this Safe. Re-add after removal resets to the re-add
+        time, not the original setup time.
+    - name: current_threshold
+      description: |
+        Current signature threshold of the Safe (denormalized onto
+        every owner row). Use `1/current_threshold` as a per-signer
+        influence weight when computing attribution.
+    - name: n_owners_for_safe
+      description: |
+        Total number of current owners of the Safe (denormalized onto
+        every owner row). Use `1/n_owners_for_safe` as a per-owner
+        share when fanning Safe-level activity out to owners.
+
 - name: fct_execution_account_safes_latest
   description: |
     One row per current (owner, Safe) pair, enriched with that Safe's threshold,

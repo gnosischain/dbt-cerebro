@@ -39,10 +39,10 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: total_events_value
+  - name: mixpanel_gnosis_app_total_events_value
     agg: sum
     expr: total_events
-  - name: dau_value
+  - name: mixpanel_gnosis_app_dau_value
     agg: sum
     expr: dau
   - name: unique_devices_value
@@ -61,7 +61,7 @@ semantic_models:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
         question_synonyms:
         - mixpanel daily overview
         - website daily active users
@@ -271,7 +271,7 @@ semantic_models:
     type: categorical
     expr: bottom_sheet
   measures:
-  - name: open_count_value
+  - name: mixpanel_gnosis_app_modal_opens_value
     agg: sum
     expr: open_count
   - name: unique_users_value
@@ -284,7 +284,7 @@ semantic_models:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
         question_synonyms:
         - modal open counts
         - bottom sheet analytics
@@ -309,10 +309,10 @@ semantic_models:
   - name: welcome_visitors_value
     agg: sum
     expr: welcome_visitors
-  - name: passkey_logins_value
+  - name: mixpanel_gnosis_app_passkey_logins_value
     agg: sum
     expr: passkey_logins
-  - name: identified_users_value
+  - name: mixpanel_gnosis_app_identified_users_value
     agg: sum
     expr: identified_users
   - name: onboarding_conversion_rate_value
@@ -340,7 +340,7 @@ semantic_models:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
         question_synonyms:
         - gnosis app funnel conversion
         - onboarding conversion rate
@@ -353,4 +353,154 @@ semantic_models:
         - gnosis app activation rate
         grain: day
 
-metrics: []
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — Mixpanel-side Gnosis App web/mobile analytics
+# ═════════════════════════════════════════════════════════════════════
+#
+# These are deliberately tagged with "gnosis app" synonyms so a generic
+# analyst query for "Gnosis App users" or "Gnosis App DAU" surfaces
+# BOTH this Mixpanel-side data AND the on-chain side
+# (semantic/authoring/execution/gnosis_app/) — the two views of the
+# same app's users.
+#
+# Privacy: these metrics back the aggregate-only Mixpanel views. They
+# carry no user_id_hash or address. cerebro-api blanket-exclusion via
+# meta.api.exclude_from_api: true still applies — these are MCP /
+# semantic-layer only. See file header for the full policy.
+#
+# Quality tier: `approved` here because the underlying views are
+# production-stable and analyst-reviewed via the dashboard. Adding new
+# Mixpanel metrics should start at `candidate` until promoted.
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+- name: gnosis_app_mixpanel_dau
+  label: Gnosis App DAU (Mixpanel / Web)
+  description: >
+    Daily active users on app.gnosis.io as measured by Mixpanel.
+    Headline web/mobile-side companion to the on-chain
+    `gnosis_app_distinct_users` metric — same app, different domains.
+    Source: api_mixpanel_ga_overview_daily.dau column.
+  type: simple
+  type_params:
+    measure: mixpanel_gnosis_app_dau_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - gnosis app DAU
+        - gnosis app daily active users
+        - gnosis app users today
+        - app gnosis io DAU
+        - how many users on gnosis app
+        - gnosis app users
+        - gnosis app
+        - mixpanel DAU
+        - web DAU
+        - website daily active users
+
+- name: gnosis_app_mixpanel_total_events
+  label: Gnosis App Events (Mixpanel / Web)
+  description: >
+    Total Mixpanel events fired on app.gnosis.io per day. Headline
+    web-side engagement signal — pageviews, clicks, custom events,
+    modal opens all included.
+  type: simple
+  type_params:
+    measure: mixpanel_gnosis_app_total_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - gnosis app events
+        - gnosis app daily events
+        - mixpanel events
+        - app gnosis io events
+        - gnosis app
+        - gnosis app activity web
+
+- name: gnosis_app_mixpanel_modal_opens
+  label: Gnosis App Modal Opens (Mixpanel / Web)
+  description: >
+    Daily count of modal / bottom-sheet opens per component. Groupable
+    by `bottom_sheet` to see which onboarding / feature entry points
+    users engage with (PasskeyStepsModal, ModalJoin, SelectSwapAsset,
+    ModalReceive, ModalSend, CardActivationStepsModal).
+  type: simple
+  type_params:
+    measure: mixpanel_gnosis_app_modal_opens_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date, bottom_sheet]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - gnosis app modal opens
+        - gnosis app bottom sheet opens
+        - passkey modal opens
+        - circles join modal
+        - swap modal opens
+        - gnosis app
+        - gnosis app feature engagement
+
+- name: gnosis_app_mixpanel_passkey_logins
+  label: Gnosis App Passkey Logins (Mixpanel / Web)
+  description: >
+    Daily count of distinct users who completed a passkey login on
+    app.gnosis.io. Identification signal that pairs with the on-chain
+    `gnosis_app_distinct_users` view: passkey-authenticated Mixpanel
+    sessions are the most-likely-to-be-identified visitors.
+  type: simple
+  type_params:
+    measure: mixpanel_gnosis_app_passkey_logins_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - gnosis app passkey logins
+        - gnosis app authenticated users
+        - passkey signins
+        - gnosis app sign in
+        - gnosis app
+
+- name: gnosis_app_mixpanel_identified_users
+  label: Gnosis App Identified Users (Mixpanel / Web)
+  description: >
+    Daily count of distinct Mixpanel users who reached a wallet-identified
+    state on app.gnosis.io (Mixpanel `distinct_id` set to a wallet
+    address, not the anonymous `$device:uuid`). The closest Mixpanel
+    proxy for the on-chain `gnosis_app_distinct_users` metric.
+  type: simple
+  type_params:
+    measure: mixpanel_gnosis_app_identified_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - gnosis app identified users
+        - gnosis app wallet-identified users
+        - gnosis app signed in users
+        - gnosis app
