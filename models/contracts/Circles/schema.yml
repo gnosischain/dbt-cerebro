@@ -286,6 +286,59 @@ models:
     meta: *meta_events_2024_10
     tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
 
+  - name: contracts_circles_v2_Migration_calls
+    description: |
+      Decoded function calls for the Circles v2 Migration contract
+      (0xd44b8dcfbadfc78ea64c55b705bfc68199b56376). Dedicated V1→V2
+      migration entry point — `migrate(_avatars, _amounts)` burns V1
+      balances and mints equivalent V2 CRC. The ABI exposes no events
+      (mint emissions surface as Hub TransferSingle from 0x0 with
+      operator = this contract; see int_execution_circles_v2_mint_events
+      where mint_kind = 'migration').
+
+      Decoded from `execution.traces` (not `execution.transactions`)
+      because almost every migrate() call is invoked through a user
+      Safe / AA bundler, so the Migration selector is only visible one
+      hop down in internal calls. decode_calls auto-detects the traces
+      source and emits an extra `trace_address` column used in the
+      unique_key.
+    columns:
+      - name: block_number
+        description: Block number containing the transaction
+        data_type: UInt64
+      - name: block_timestamp
+        description: Timestamp of the block in UTC
+        data_type: DateTime
+      - name: transaction_hash
+        description: Hash of the transaction
+        data_type: String
+      - name: contract_address
+        description: Target contract of the call (always the Migration contract here)
+        data_type: String
+      - name: nonce
+        description: NULL — traces don't carry tx nonce
+        data_type: Nullable(UInt64)
+      - name: gas_price
+        description: NULL — traces don't carry tx gas_price
+        data_type: Nullable(UInt64)
+      - name: value
+        description: Value transferred with the internal call
+        data_type: String
+      - name: trace_address
+        description: >
+          Parity trace-path of the internal call (e.g. '0_0', '0_1_3').
+          Used in unique_key so multiple internal migrate() calls in
+          the same tx don't collapse.
+        data_type: String
+      - name: function_name
+        description: Name of the called function
+        data_type: String
+      - name: decoded_input
+        description: Map of decoded function input parameters (name to value)
+        data_type: Map(String, String)
+    meta: *meta_events_2024_10
+    tests: [{elementary.schema_changes: {severity: warn, tags: [elementary]}}]
+
   - name: contracts_circles_v2_NameRegistry_calls
     description: Decoded function calls for the Circles v2 NameRegistry contract.
     columns: *call_columns

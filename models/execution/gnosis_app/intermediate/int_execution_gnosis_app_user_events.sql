@@ -3,7 +3,7 @@
     materialized='incremental',
     incremental_strategy=('append' if start_month else 'delete+insert'),
     engine='ReplacingMergeTree()',
-    order_by='(address, block_timestamp, transaction_hash)',
+    order_by='(address, heuristic_kind, block_timestamp, transaction_hash)',
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(address, heuristic_kind, transaction_hash)',
     settings={ 'allow_nullable_key': 1 },
@@ -12,6 +12,13 @@
     post_hook=["SET join_algorithm = 'default'"]
   )
 }}
+-- heuristic_kind MUST be in order_by: a single tx can trigger multiple
+-- rules for the same user (e.g. circles_personal_mint + circles_fee on
+-- the same mint claim), and ReplacingMergeTree dedups by order_by. The
+-- unique_key here only governs the delete+insert deletion semantics, not
+-- on-disk replacement — leaving heuristic_kind out of order_by would
+-- silently collapse all but one heuristic per (address, block_timestamp,
+-- transaction_hash) tuple.
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month',   none) %}
 
@@ -65,13 +72,14 @@ rule_safe_invitation AS (
     WHERE s.block_timestamp >= toDateTime('2025-11-12')
 ),
 
--- Rule 2: CRC ERC-1155 transfer to the Metri fee receiver via Cometh tx.
+-- Rule 2: CRC ERC-1155 transfer to the Gnosis App fee receiver via Cometh tx.
+-- ("Metri" was rebranded to "Gnosis App" — the receiver address is unchanged.)
 -- contracts_circles_v2_Hub_events stores transaction_hash WITHOUT 0x
 -- prefix (inherited from execution.logs), so the join is direct.
-rule_metri_fee AS (
+rule_app_fee AS (
     SELECT
         lower(he.decoded_params['from'])  AS address,
-        'circles_metri_fee'               AS heuristic_kind,
+        'circles_fee'                     AS heuristic_kind,
         he.block_timestamp,
         concat('0x', he.transaction_hash) AS transaction_hash
     FROM {{ ref('contracts_circles_v2_Hub_events') }} he
@@ -134,15 +142,41 @@ rule_profile AS (
     INNER JOIN cometh_txs ct
         ON nre.transaction_hash = ct.transaction_hash
     WHERE nre.event_name = 'UpdateMetadataDigest'
+),
+
+-- Rule 7: Personal CRC mint via Cometh tx. Sourced from
+-- int_execution_circles_v2_mint_events with mint_kind = 'personal'
+-- (Human token owner — covers both self-token claims and cross-token
+-- matrix-routed unscheduled mints; excludes group mints and V1→V2
+-- migrations via the dedicated Migration contract operator). The
+-- address credited is the **token owner** (the minter), not the
+-- recipient — for cross-token mints the recipient is just a routing
+-- counterparty.
+--
+-- mint_events stores transaction_hash WITH a 0x prefix (inherited from
+-- hub_transfers), while cometh_txs is from execution.transactions and
+-- has no prefix — so we strip 0x in the join. Output is already
+-- 0x-prefixed and matches the other rules' format.
+rule_personal_mint AS (
+    SELECT
+        lower(m.token_address)           AS address,
+        'circles_personal_mint'          AS heuristic_kind,
+        m.block_timestamp,
+        m.transaction_hash               AS transaction_hash
+    FROM {{ ref('int_execution_circles_v2_mint_events') }} m
+    INNER JOIN cometh_txs ct
+        ON replaceAll(m.transaction_hash, '0x', '') = ct.transaction_hash
+    WHERE m.mint_kind = 'personal'
 )
 
 SELECT * FROM (
     SELECT * FROM rule_safe_invitation
-    UNION ALL SELECT * FROM rule_metri_fee
+    UNION ALL SELECT * FROM rule_app_fee
     UNION ALL SELECT * FROM rule_register_human
     UNION ALL SELECT * FROM rule_invite_human
     UNION ALL SELECT * FROM rule_trust
     UNION ALL SELECT * FROM rule_profile
+    UNION ALL SELECT * FROM rule_personal_mint
 )
 WHERE address IS NOT NULL
   AND address != ''

@@ -1250,16 +1250,97 @@ models:
       config:
         severity: warn
 
+- name: int_execution_circles_v2_mint_events
+  description: >
+    Per-event view over int_execution_circles_v2_hub_transfers restricted to
+    mint events (from_address = 0x00…00), tagged with a `mint_kind` to
+    distinguish personal mints, group mints, and V1→V2 migrations. All three
+    look identical at the ERC-1155 layer; classification combines the
+    structural shape of the transfer (`token_address = to_address`) with the
+    avatar registry (`avatar_type`) and a join against top-level V2 Hub
+    `migrate()` calls.
+
+    Classifier:
+      personal  - token_avatar_type = 'Human' AND token_address = to_address.
+                  Human avatar mints their own Circles to themselves —
+                  either via a direct personalMint() call or as the
+                  unscheduled mint that the Hub performs during a transfer.
+      group     - token_avatar_type = 'Group'. Group CRC minted; covers both
+                  group-to-depositor and group-to-self shapes.
+      migration - tx contains a top-level V2 Hub migrate() call. Historically
+                  4 calls, 0 emitted mints; kept in the enum so the
+                  classifier remains structurally correct.
+      other     - residual; should be ~0. Presence indicates a missing
+                  avatar registration row.
+
+    Incremental, monthly partitioned on block_timestamp.
+  columns:
+  - name: block_number
+    data_type: Nullable(UInt32)
+    description: Block number containing the mint event.
+  - name: block_timestamp
+    data_type: DateTime64(0, 'UTC')
+    description: UTC timestamp of the mint event.
+  - name: transaction_hash
+    data_type: Nullable(String)
+    description: Hash of the transaction (without 0x prefix).
+  - name: transaction_index
+    data_type: Nullable(UInt32)
+    description: Index of the transaction within the block.
+  - name: log_index
+    data_type: Nullable(UInt32)
+    description: Index of the log within the block.
+  - name: batch_index
+    data_type: UInt32
+    description: Index within a TransferBatch (0 for TransferSingle).
+  - name: operator
+    data_type: Nullable(String)
+    description: Address of the operator that initiated the transfer.
+  - name: to_address
+    data_type: Nullable(String)
+    description: Recipient address of the minted Circles.
+  - name: token_id
+    data_type: Nullable(String)
+    description: ERC-1155 token ID (avatar address encoded as uint256).
+  - name: token_address
+    data_type: Nullable(String)
+    description: Avatar address whose Circles are being minted.
+  - name: amount_raw
+    data_type: Nullable(UInt256)
+    description: Raw mint amount in token base units.
+  - name: transfer_type
+    data_type: String
+    description: Transfer classification (CrcV2_TransferSingle or CrcV2_TransferBatch).
+  - name: mint_kind
+    data_type: String
+    description: "Enum: personal | group | migration | other (see model description)."
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [transaction_hash, log_index, batch_index]
+      config:
+        severity: warn
+
 - name: int_execution_circles_v2_mints_daily
   description: >
-    Network-level daily personal-mint summary: total mint events,
-    distinct minters, and total CRC minted (raw / 1e18). Incremental,
-    monthly partitioned on date.
+    Network-level daily mint summary broken down by mint_kind: total mint
+    events, distinct recipient addresses, and total CRC minted (raw /
+    1e18). Sourced from int_execution_circles_v2_mint_events (one row per
+    (date, mint_kind)). Incremental, monthly partitioned on date.
   columns:
   - {name: date, description: Calendar day (UTC).,                                                          data_type: Date}
-  - {name: n_mint_events, description: Number of mint TransferSingle events.,                               data_type: UInt64}
-  - {name: n_minters, description: Distinct minting avatars (to_address).,                                  data_type: UInt64}
-  - {name: amount_minted, description: Total CRC minted on this day (sum of amount / 1e18).,                data_type: Float64}
+  - {name: mint_kind, description: "Mint flavour: personal | group | migration | other.",                    data_type: String}
+  - {name: n_mint_events, description: Number of mint TransferSingle events for this (date, kind).,         data_type: UInt64}
+  - {name: n_minters, description: Distinct recipient addresses (to_address) for this (date, kind).,        data_type: UInt64}
+  - {name: amount_minted, description: Total CRC minted for this (date, kind) (sum of amount / 1e18).,      data_type: Float64}
   meta:
     owner: analytics_team
     authoritative: false
@@ -1268,7 +1349,7 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date]
+      combination_of_columns: [date, mint_kind]
       config:
         severity: warn
 
@@ -1373,6 +1454,7 @@ models:
   - {name: amount_raw, data_type: UInt256}
   - {name: amount_demurraged_raw, data_type: UInt256}
   - {name: transfer_category, description: "mint / burn / wrap / unwrap / p2p.", data_type: String}
+  - {name: mint_kind, description: "For mint rows: personal | group | migration | other (see int_execution_circles_v2_mint_events). NULL for non-mint rows.", data_type: Nullable(String)}
   meta:
     owner: analytics_team
     authoritative: false

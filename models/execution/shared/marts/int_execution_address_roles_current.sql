@@ -5,9 +5,13 @@
         order_by='(address)',
         tags=["execution", "shared", "identity", "graph_explorer"],
         pre_hook=[
-            "SET join_algorithm = 'grace_hash'"
+            "SET join_algorithm = 'grace_hash'",
+            "SET max_bytes_before_external_group_by = 4000000000"
         ],
-        post_hook=["SET join_algorithm = 'default'"]
+        post_hook=[
+            "SET join_algorithm = 'default'",
+            "SET max_bytes_before_external_group_by = 0"
+        ]
     )
 }}
 
@@ -23,7 +27,15 @@
 --   2. UNION ALL + one final GROUP BY address coalesces across sources.
 --
 -- Memory stays bounded by |unique addresses| × 11 source blocks, not by
--- upstream row counts.
+-- upstream row counts. The pre_hook enables external-spill on the final
+-- GROUP BY at 4 GB so a high-cardinality address universe degrades into
+-- disk-backed aggregation instead of an OOM.
+--
+-- dex_addresses is materialised into a subquery (not a CTE) so the
+-- arrayJoin-emitting LP+pool pre-aggregation runs **once** — ClickHouse
+-- inlines CTEs as subqueries, so the previous (dex_addresses → lps,
+-- dex_addresses → pools) shape re-scanned the billion-row dex events
+-- table twice.
 
 WITH
 safes AS (
@@ -68,23 +80,29 @@ safe_owners AS (
     GROUP BY 1
 ),
 -- One scan of pools_dex_liquidity_events emits both lp-provider and pool
--- rows via arrayJoin — halves memory + IO vs two separate aggregations.
-dex_addresses AS (
+-- rows via arrayJoin, then collapses the two roles into a single row per
+-- address with side-by-side flags. This means the dex pre-aggregation is
+-- referenced exactly once in the final UNION ALL — avoiding the
+-- double-scan that CTE inlining would otherwise produce if we exposed
+-- separate `lps` and `pools` CTEs.
+dex_roles AS (
     SELECT
-        tup.1 AS role,
-        tup.2 AS address,
-        any(protocol) AS pool_protocol
-    FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
-    ARRAY JOIN [('lp', lower(ifNull(provider, ''))),
-                ('pool', lower(ifNull(pool_address, '')))] AS tup
-    WHERE tup.2 != ''
-    GROUP BY role, address
-),
-lps AS (
-    SELECT address, pool_protocol FROM dex_addresses WHERE role = 'lp'
-),
-pools AS (
-    SELECT address FROM dex_addresses WHERE role = 'pool'
+        address,
+        maxIf(toUInt8(1), role = 'lp')                                 AS is_lp_provider,
+        anyIf(pool_protocol, role = 'lp' AND pool_protocol != '')      AS pool_protocol,
+        maxIf(toUInt8(1), role = 'pool')                               AS is_pool
+    FROM (
+        SELECT
+            tup.1 AS role,
+            tup.2 AS address,
+            any(protocol) AS pool_protocol
+        FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
+        ARRAY JOIN [('lp', lower(ifNull(provider, ''))),
+                    ('pool', lower(ifNull(pool_address, '')))] AS tup
+        WHERE tup.2 != ''
+        GROUP BY role, address
+    )
+    GROUP BY address
 ),
 lenders AS (
     SELECT lower(user_address) AS address
@@ -138,12 +156,14 @@ all_rows AS (
     FROM safe_owners
 
     UNION ALL
-    SELECT address, 0, 0, 0, '', 0, '', 0, 0, 1, pool_protocol, 0, 0, 0, 0, ''
-    FROM lps
-
-    UNION ALL
-    SELECT address, 0, 0, 0, '', 0, '', 0, 0, 0, '', 1, 0, 0, 0, ''
-    FROM pools
+    SELECT
+        address,
+        0, 0, 0, '', 0, '', 0, 0,
+        is_lp_provider,
+        coalesce(pool_protocol, ''),
+        is_pool,
+        0, 0, 0, ''
+    FROM dex_roles
 
     UNION ALL
     SELECT address, 0, 0, 0, '', 0, '', 0, 0, 0, '', 0, 1, 0, 0, ''

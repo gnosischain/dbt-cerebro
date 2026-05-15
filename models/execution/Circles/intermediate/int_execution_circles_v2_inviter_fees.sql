@@ -19,8 +19,11 @@
 -- least 1 CRC of inviter fee landed in that week.
 --
 -- Heuristic (matches Dune circles-v2-kpis `weekly_earning_inviter_fee_avatars`):
---   * Same tx_hash as a Hub.PersonalMint (mint = Hub TransferSingle with
---     from_address = 0x00…00).
+--   * Same tx_hash as a personal mint (Hub TransferSingle from 0x00…00
+--     where the recipient is a Human avatar minting its own Circles — see
+--     int_execution_circles_v2_mint_events, mint_kind = 'personal'). The
+--     personal-only filter avoids attributing inviter fees to group mints
+--     or V1→V2 migrations.
 --   * Wrapped-CRC ERC-20 Transfer where `from = invitee` and `to = inviter`,
 --     per the avatar→inviter mapping in int_execution_circles_v2_avatars.
 --
@@ -49,9 +52,8 @@ mint_txs AS (
     SELECT DISTINCT
         transaction_hash,
         block_timestamp
-    FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
-    WHERE from_address = '0x0000000000000000000000000000000000000000'
-      AND to_address  != '0x0000000000000000000000000000000000000000'
+    FROM {{ ref('int_execution_circles_v2_mint_events') }}
+    WHERE mint_kind = 'personal'
       {% if start_month and end_month %}
         AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')

@@ -119,15 +119,24 @@ def is_valid_model_name(name: str) -> bool:
     return True
 
 
-def get_models_in_order(selector: str) -> List[str]:
+def get_models_in_order(selector: str, exclude: str | None = None) -> List[str]:
     """
     Get models matching selector in dependency order.
     Uses dbt ls to get matching models, then sorts by dependencies from manifest.
+
+    If `exclude` is provided it is forwarded to dbt ls as `--exclude <exclude>`
+    — same semantics as `dbt run --exclude`. Useful for "downstream-only"
+    refreshes that pair a `model+` selector with the model name itself
+    excluded.
     """
     import re
-    
+
+    ls_args = ["ls", "--select", selector, "--resource-type", "model", "--output", "name", "--quiet"]
+    if exclude:
+        ls_args.extend(["--exclude", exclude])
+
     result = run_dbt_command(
-        ["ls", "--select", selector, "--resource-type", "model", "--output", "name", "--quiet"],
+        ls_args,
         capture=True
     )
     
@@ -248,22 +257,40 @@ def ensure_manifest() -> None:
         run_dbt_command(["compile"])
 
 
+_MANIFEST_CACHE: Optional[dict] = None
+
+
+def _load_manifest() -> dict:
+    """Load and cache manifest.json.
+
+    Opened ONCE per refresh.py invocation. Caching is important: with 160+
+    selected models, we hit get_model_meta() once per model — and any
+    concurrent process touching target/manifest.json (e.g. a long-running
+    `dbt docs serve` rebuilding the manifest) can leave the file partially
+    written for the duration of one fsync, producing JSONDecodeError mid-
+    iteration. Reading once and caching the parsed dict avoids the race.
+    """
+    global _MANIFEST_CACHE
+    if _MANIFEST_CACHE is None:
+        ensure_manifest()
+        with open(MANIFEST_PATH) as f:
+            _MANIFEST_CACHE = json.load(f)
+    return _MANIFEST_CACHE
+
+
 def get_model_meta(model_name: str) -> Optional[dict]:
     """
     Extract meta.full_refresh configuration from manifest.json.
     Returns None if model has no full_refresh config.
     """
-    ensure_manifest()
-    
-    with open(MANIFEST_PATH) as f:
-        manifest = json.load(f)
-    
+    manifest = _load_manifest()
+
     # Find the model in manifest
     for node_id, node in manifest.get("nodes", {}).items():
         if node.get("resource_type") == "model" and node.get("name") == model_name:
             meta = node.get("meta", {})
             return meta.get("full_refresh")
-    
+
     return None
 
 
@@ -549,6 +576,14 @@ Examples:
         help="dbt selector(s) - model names, tag:xxx, etc. (space-separated)"
     )
     parser.add_argument(
+        "--exclude", "-e",
+        nargs='+',
+        default=None,
+        help="dbt exclusion selector(s) — passed through to dbt ls as "
+             "--exclude. Use to refresh downstream-only by pairing "
+             "`--select model+` with `--exclude model`."
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show execution plan without running"
@@ -607,10 +642,11 @@ Examples:
     
     # Join multiple selectors into space-separated string for dbt
     selector = " ".join(args.select)
-    
-    print(f"Getting models for: {selector}")
+    exclude = " ".join(args.exclude) if args.exclude else None
+
+    print(f"Getting models for: {selector}" + (f"  (exclude: {exclude})" if exclude else ""))
     try:
-        models = get_models_in_order(selector)
+        models = get_models_in_order(selector, exclude=exclude)
     except subprocess.CalledProcessError:
         print("ERROR: Failed to get model list. Is dbt configured correctly?")
         sys.exit(1)
@@ -654,7 +690,11 @@ Examples:
         
         if not success and not args.dry_run:
             print(f"\nFailed at model: {model}")
-            print(f"State saved. Resume with: python {sys.argv[0]} --select {selector} --resume")
+            resume_cmd = f"python {sys.argv[0]} --select {selector}"
+            if exclude:
+                resume_cmd += f" --exclude {exclude}"
+            resume_cmd += " --resume"
+            print(f"State saved. Resume with: {resume_cmd}")
             sys.exit(1)
         
         # Mark model complete

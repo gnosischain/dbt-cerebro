@@ -5,7 +5,7 @@ models:
   description: |
     Long-form heuristic event log for Gnosis App user identification.
 
-    Six rules, all keyed off the same chokepoint: a Cometh ERC-4337
+    Seven rules, all keyed off the same chokepoint: a Cometh ERC-4337
     bundler (one of three relayer addresses in
     seeds/gnosis_app_relayers.csv) sent the outer transaction to the
     canonical EntryPoint v0.7. Any account that appears as a parameter
@@ -17,8 +17,11 @@ models:
                                 enabled the Circles InvitationModule
                                 (0x00738aca…). The Safe address is the
                                 user.
-      circles_metri_fee       — CRC ERC-1155 transfer to the Metri fee
-                                receiver (0x97FD8f78…) inside a Cometh tx.
+      circles_fee             — CRC ERC-1155 transfer to the Gnosis App
+                                fee receiver (0x97FD8f78…) inside a
+                                Cometh tx. The receiver was branded
+                                "Metri" before the rebrand to "Gnosis
+                                App"; the address is unchanged.
       circles_register_human  — Hub.RegisterHuman event inside a Cometh
                                 tx. decoded_params['avatar'] is the user.
       circles_invite_human    — Same RegisterHuman event with a non-zero
@@ -29,6 +32,11 @@ models:
       circles_profile_update  — NameRegistry.UpdateMetadataDigest event
                                 inside a Cometh tx.
                                 decoded_params['avatar'] is the user.
+      circles_personal_mint   — Personal CRC mint (Human avatar minting
+                                its own Circles, via
+                                int_execution_circles_v2_mint_events
+                                mint_kind = 'personal') inside a Cometh
+                                tx. The mint recipient is the user.
 
     Address columns are stored lowercase WITH the 0x prefix to match the
     rest of the dbt outputs and the format that decode_logs produces for
@@ -55,9 +63,9 @@ models:
 
   - name: heuristic_kind
     description: >
-      Enum: safe_invitation_module, circles_metri_fee,
+      Enum: safe_invitation_module, circles_fee,
       circles_register_human, circles_invite_human, circles_trust,
-      circles_profile_update.
+      circles_profile_update, circles_personal_mint.
     data_type: String
 
   - name: block_timestamp
@@ -310,7 +318,8 @@ models:
       circles_invite_human,
       circles_trust,
       circles_profile_update,
-      circles_metri_fee,
+      circles_fee,
+      circles_personal_mint,
       safe_invitation_module  — raw heuristic rows from
                                  int_execution_gnosis_app_user_events.
       swap_signed             — PreSignature events (all rows in
@@ -845,11 +854,12 @@ models:
 
       chain.onboard               — first-ever heuristic hit per user
                                     (from int_execution_gnosis_app_users_current)
-      chain.<heuristic_kind>      — six heuristic rules from
+      chain.<heuristic_kind>      — seven heuristic rules from
                                     int_execution_gnosis_app_user_events
                                     (circles_register_human, circles_invite_human,
                                     circles_trust, circles_profile_update,
-                                    circles_metri_fee, safe_invitation_module)
+                                    circles_fee, circles_personal_mint,
+                                    safe_invitation_module)
       chain.swap_signed           — every PreSignature event in
                                     int_execution_gnosis_app_swaps
       chain.swap_filled           — was_filled subset, ts = first_fill_at

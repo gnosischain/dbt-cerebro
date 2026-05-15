@@ -61,13 +61,15 @@ WITH invitees AS (
 -- Per-avatar mint events for the avatars in this batch. Restricting by the
 -- invitees subquery prevents reading the full mint history on incremental runs.
 mint_events AS (
+    -- Personal mints only — the invite-funnel "first mint" milestone is
+    -- the invitee's own personalMint claim, not a group mint dropped on
+    -- them or a migration backfill.
     SELECT
         to_address              AS avatar,
         block_timestamp         AS mint_at,
         toDate(block_timestamp) AS mint_date
-    FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
-    WHERE from_address = '0x0000000000000000000000000000000000000000'
-      AND to_address  != '0x0000000000000000000000000000000000000000'
+    FROM {{ ref('int_execution_circles_v2_mint_events') }}
+    WHERE mint_kind = 'personal'
       AND to_address IN (SELECT avatar FROM invitees)
 ),
 

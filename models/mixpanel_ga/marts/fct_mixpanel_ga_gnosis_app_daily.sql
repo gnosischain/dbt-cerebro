@@ -42,11 +42,12 @@ daily_kinds_pivot AS (
     SELECT
         date,
         sumIf(addresses_hit, heuristic_kind = 'safe_invitation_module') AS h_safe_invitation,
-        sumIf(addresses_hit, heuristic_kind = 'circles_metri_fee')      AS h_metri_fee,
+        sumIf(addresses_hit, heuristic_kind = 'circles_fee')            AS h_fee,
         sumIf(addresses_hit, heuristic_kind = 'circles_register_human') AS h_register_human,
         sumIf(addresses_hit, heuristic_kind = 'circles_invite_human')   AS h_invite_human,
         sumIf(addresses_hit, heuristic_kind = 'circles_trust')          AS h_trust,
-        sumIf(addresses_hit, heuristic_kind = 'circles_profile_update') AS h_profile_update
+        sumIf(addresses_hit, heuristic_kind = 'circles_profile_update') AS h_profile_update,
+        sumIf(addresses_hit, heuristic_kind = 'circles_personal_mint')  AS h_personal_mint
     FROM daily_by_kind
     GROUP BY date
 ),
@@ -69,11 +70,12 @@ SELECT
     sum(d.new_users)        OVER (ORDER BY d.date) AS cumulative_users,
     sum(coalesce(m.new_matched, 0)) OVER (ORDER BY d.date) AS cumulative_mp_matched,
     coalesce(k.h_safe_invitation, 0)   AS h_safe_invitation,
-    coalesce(k.h_metri_fee, 0)         AS h_metri_fee,
+    coalesce(k.h_fee, 0)               AS h_fee,
     coalesce(k.h_register_human, 0)    AS h_register_human,
     coalesce(k.h_invite_human, 0)      AS h_invite_human,
     coalesce(k.h_trust, 0)             AS h_trust,
-    coalesce(k.h_profile_update, 0)    AS h_profile_update
+    coalesce(k.h_profile_update, 0)    AS h_profile_update,
+    coalesce(k.h_personal_mint, 0)     AS h_personal_mint
 FROM daily_new d
 LEFT JOIN daily_kinds_pivot      k ON k.date = d.date
 LEFT JOIN mp_matched_first_seen  m ON m.first_seen_date = d.date
