@@ -88,9 +88,24 @@ jobs:
         run: |
           dbt deps
 
+      - name: Install test dependencies
+        # pytest is only needed for the semantic-registry guard tests below;
+        # not part of the production image so we install it inline here.
+        run: |
+          pip install pytest
+
+      - name: Run semantic-layer guard tests
+        # tests/test_semantic_registry.py validates that build_registry.py +
+        # build_semantic_docs.py + scaffold_candidates.py still produce a
+        # well-shaped registry for the canonical fixtures. A regression in
+        # the build pipeline is caught here before we ship a broken
+        # `semantic_registry.json` to gh-pages.
+        run: |
+          python -m pytest tests/test_semantic_registry.py -v
+
       - name: Generate dbt docs
         run: |
-          dbt docs generate 
+          dbt docs generate
 
       - name: Assert docs artifacts
         run: |
@@ -99,8 +114,48 @@ jobs:
           test -f target/semantic_manifest.json
 
       - name: Build semantic registry
+        # --validate enforces invariants: globally-unique measure names,
+        # no metric pointing at a missing root_model, every relationship
+        # referencing materialised models, no measure binding ambiguity,
+        # etc. Without it the build would silently produce a registry
+        # that passes JSON-schema checks but breaks at query time.
+        #
+        # TRANSITION STATE — `continue-on-error: true`. The repo currently
+        # has ~23 pre-existing validate errors (missing required
+        # `meta.cerebro.grain` on approved models, unreachable metric
+        # dimensions, metrics with no root_model binding). These need a
+        # cleanup pass before validation can be strict. Run
+        # `python scripts/semantic/build_registry.py --target-dir target
+        # --validate` locally and triage `target/semantic_validation_report
+        # .json` to drive the cleanup. Once the count is zero, drop
+        # `continue-on-error: true` so a regression future-breaks CI.
+        continue-on-error: true
         run: |
-          python scripts/semantic/build_registry.py --target-dir target
+          python scripts/semantic/build_registry.py --target-dir target --validate
+
+      - name: Surface validation report in build summary
+        # Print the validation summary into the GitHub Actions step log
+        # so reviewers see the error count even when the step itself is
+        # `continue-on-error: true`. Once validation is strict, this step
+        # becomes redundant (failures will block the build) but it's
+        # harmless to leave in.
+        if: always()
+        run: |
+          if [ -f target/semantic_validation_report.json ]; then
+            python -c "
+          import json
+          r = json.load(open('target/semantic_validation_report.json'))
+          errs = r.get('errors', [])
+          warns = r.get('warnings', [])
+          print(f'Semantic validation: {len(errs)} errors, {len(warns)} warnings')
+          for e in errs[:20]:
+              print(f'  [{e.get(\"code\")}] {e.get(\"message\")}')
+          if len(errs) > 20:
+              print(f'  ... and {len(errs)-20} more (see target/semantic_validation_report.json)')
+          "
+          else
+            echo "no validation report produced"
+          fi
 
       - name: Build semantic docs
         run: |
