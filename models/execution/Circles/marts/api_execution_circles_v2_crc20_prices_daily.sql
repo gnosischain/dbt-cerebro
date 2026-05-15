@@ -20,6 +20,8 @@ SELECT
     sum(price_avg_usd * crc_volume) / NULLIF(sum(crc_volume), 0)   AS price_vwap_usd,
     median(price_median_usd)                                        AS price_median_usd,
     sum(crc_volume)                                                 AS total_crc_volume,
+    sum(crc_bought_volume)                                          AS total_crc_bought_volume,
+    sum(crc_sold_volume)                                            AS total_crc_sold_volume,
     sum(trade_count)                                                AS trade_count,
     count()                                                         AS pool_count
 FROM {{ ref('fct_execution_circles_v2_crc20_prices_daily') }}

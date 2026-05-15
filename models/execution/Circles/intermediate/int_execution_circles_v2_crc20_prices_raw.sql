@@ -53,6 +53,9 @@ SELECT
     -- Amounts
     if(wb.wrapper_address IS NOT NULL, t.amount_bought, t.amount_sold)   AS crc_amount,
     if(wb.wrapper_address IS NOT NULL, t.amount_sold,   t.amount_bought) AS backing_amount,
+    -- Direction split: exactly one is non-zero per row (CRC is either bought or sold, not both)
+    if(wb.wrapper_address IS NOT NULL, t.amount_bought, 0)               AS crc_bought_amount,
+    if(ws.wrapper_address IS NOT NULL, t.amount_sold,   0)               AS crc_sold_amount,
     -- Executed price: backing units per 1 CRC
     if(wb.wrapper_address IS NOT NULL, t.amount_sold,   t.amount_bought)
         / NULLIF(if(wb.wrapper_address IS NOT NULL, t.amount_bought, t.amount_sold), 0)
