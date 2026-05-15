@@ -1,6 +1,59 @@
 version: 2
 models:
 
+- name: int_consensus_validators_consolidation_requests
+  description: |
+    Deduplicated EIP-7251 (MaxEB) validator consolidation requests. One row
+    per unique (source_pubkey, is_self_consolidation) tuple, keeping the
+    earliest submitted request_slot. is_self_consolidation is derived from
+    (source_pubkey == target_pubkey). The dedup matters because the raw
+    consensus.execution_requests.payload.consolidations array records every
+    operator resubmission, while the beacon chain only processes the first
+    valid request per source (and rejects later resubmissions). On heavy
+    consolidation days this inflated downstream target_inflow_gno by up to
+    8× before the fix landed. A validator may legitimately have BOTH a
+    self-consolidation (credential switch 0x01 → 0x02) and a later
+    cross-consolidation (balance transfer out, validator exits), which is
+    why dedup partitions by (source, is_self) rather than by source alone.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: request_slot
+    description: Beacon-chain slot in which the deduped request was submitted.
+    data_type: UInt64
+  - name: request_date
+    description: Start-of-day UTC corresponding to the request slot.
+    data_type: Date
+  - name: source_pubkey
+    description: Lowercased source validator pubkey.
+    data_type: String
+  - name: target_pubkey
+    description: Lowercased target validator pubkey (== source for self-consolidations).
+    data_type: String
+
+- name: int_consensus_validators_consolidation_flags
+  description: |
+    Small per-validator lookup: does this validator appear as the SOURCE or
+    TARGET of any cross-consolidation request (ever). Self-consolidations
+    are excluded because they don't affect balance attribution.
+    Materialized as a table so downstream per-batch income_daily queries
+    don't have to re-run the consolidation_requests × status_latest join
+    on every monthly batch (which hits the 10.8 GiB cluster memory cap on
+    the shared tier).
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: validator_index
+    data_type: UInt32
+  - name: has_source_consolidation_request
+    description: 1 if this validator's pubkey appears as the source of any cross-consolidation request.
+    data_type: UInt8
+  - name: has_target_consolidation_request
+    description: 1 if this validator's pubkey appears as the target of any cross-consolidation request.
+    data_type: UInt8
+
 - name: int_consensus_validators_status_daily
   description: The int_consensus_validators_status_daily model aggregates daily counts of validators' statuses to monitor network health and validator activity trends over time.
   meta:

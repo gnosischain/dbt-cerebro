@@ -301,17 +301,27 @@ def build_metrics(
     registry_models: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     metrics: dict[str, dict[str, Any]] = {}
-    measure_to_model: dict[str, str] = {}
+
+    # Build a `measure_name -> [model_names...]` map. Multiple semantic_models
+    # can declare measures with the same name (this happens commonly with
+    # generic names like `value_value`, `users_cnt_value`). Previously this
+    # was a flat last-write-wins dict, which silently picked the wrong root
+    # model when authors hit a collision. We now keep all candidates so
+    # `validate_registry` can flag ambiguous bindings as errors. For the
+    # `root_model` field below we deterministically pick `sorted(models)[0]`
+    # — still a single source but at least stable across runs.
+    measure_to_models: dict[str, list[str]] = defaultdict(list)
     for model_name, model in registry_models.items():
         for measure in model.get("measures", []):
-            measure_to_model[measure["name"]] = model_name
+            measure_to_models[measure["name"]].append(model_name)
 
     for metric_name, authored_metric in authored_metrics.items():
         meta = get_cerebro_meta(authored_metric)
         measure_name = authored_metric.get("type_params", {}).get("measure", "")
-        root_model = measure_to_model.get(measure_name, "")
+        candidate_models = sorted(measure_to_models.get(measure_name, []))
+        root_model = candidate_models[0] if candidate_models else ""
         status = canonical_status(meta.get("quality_tier"), default="candidate")
-        metrics[metric_name] = {
+        metric_entry = {
             "name": metric_name,
             "label": authored_metric.get("label", metric_name),
             "description": authored_metric.get("description", ""),
@@ -327,6 +337,12 @@ def build_metrics(
             "question_synonyms": meta.get("question_synonyms", []),
             "source_file": authored_metric.get("source_file", ""),
         }
+        # Preserve the full candidate list so the validator can detect
+        # ambiguous bindings. Not part of the public schema — consumers
+        # should keep reading `root_model` (which is deterministic).
+        if len(candidate_models) > 1:
+            metric_entry["_ambiguous_measure_models"] = candidate_models
+        metrics[metric_name] = metric_entry
         if root_model:
             registry_models[root_model].setdefault("metric_names", []).append(metric_name)
     return metrics
@@ -675,6 +691,50 @@ def validate_registry(
             )
 
     for metric_name, metric in metrics.items():
+        # Ambiguous measure binding: the measure name this metric points at
+        # is declared in 2+ semantic_models. `build_metrics` picks the first
+        # one alphabetically so the registry stays deterministic, but the
+        # author almost certainly meant just one of them — surface as an
+        # error with a concrete rename suggestion. See the
+        # `_ambiguous_measure_models` field set in build_metrics().
+        ambiguous_models = metric.get("_ambiguous_measure_models") or []
+        if len(ambiguous_models) > 1:
+            errors.append(
+                {
+                    "code": "ambiguous_measure_binding",
+                    "severity": "error",
+                    "metric": metric_name,
+                    "measure": metric.get("measure", ""),
+                    "candidate_models": ambiguous_models,
+                    "message": (
+                        f"Metric '{metric_name}' references measure "
+                        f"'{metric.get('measure', '')}' which is defined in "
+                        f"{len(ambiguous_models)} semantic_models: "
+                        f"{ambiguous_models}. Rename the measure on the "
+                        f"intended source to be globally unique (e.g. "
+                        f"'{metric_name}_value')."
+                    ),
+                }
+            )
+
+        # Missing measure: metric points at a measure that no semantic_model
+        # declares at all. Likely a typo or a stale reference.
+        if metric.get("measure") and not metric.get("root_model"):
+            errors.append(
+                {
+                    "code": "missing_measure",
+                    "severity": "error",
+                    "metric": metric_name,
+                    "measure": metric.get("measure", ""),
+                    "message": (
+                        f"Metric '{metric_name}' references measure "
+                        f"'{metric.get('measure', '')}' which is not declared "
+                        f"on any semantic_model. Check for typos or remove "
+                        f"the orphaned metric definition."
+                    ),
+                }
+            )
+
         root_model = metric.get("root_model", "")
         if not root_model or root_model not in models:
             errors.append(

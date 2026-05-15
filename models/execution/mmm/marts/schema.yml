@@ -1,0 +1,260 @@
+version: 2
+
+models:
+- name: fct_execution_mmm_spine_weekly
+  description: |
+    MMM weekly spine — wide pivot of `int_execution_mmm_kpis_weekly`,
+    `int_execution_mmm_media_weekly`, and `int_execution_mmm_controls_weekly`.
+    One row per `week`, one column per (kpi | media | control) name,
+    populated by `sumIf` against the long-form intermediates. Continuous
+    time — every week within the spine range exists, even when no
+    KPI / media / control rows reference it.
+
+    This is the single mart the MMM analyst's runtime mapping points at.
+    The persona reads it directly and runs adstock decay, Hill / log-log
+    response-curve fits, and contribution decomposition against the
+    `media_*` columns conditioned on `kpi_*` and `ctrl_*`.
+
+    Adding a new column: update the corresponding intermediate's UNION,
+    update the registry seed, then add a `sumIf` clause here for the
+    new name. Schema is wide-by-design and bounded by the registry
+    seeds (~30 cols today).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: week
+    description: ISO Monday-start week date. Unique per row.
+    data_type: Date
+    tests: [not_null, unique]
+  - name: kpi_pools_tvl_usd
+    description: Last-value snapshot of total pools TVL at week-end (stock).
+    data_type: Nullable(Float64)
+  - name: kpi_pools_volume_usd
+    description: Sum of weekly pools volume (deduped at the pool grain).
+    data_type: Nullable(Float64)
+  - name: kpi_dex_volume_usd_dedup
+    description: DEX-protocol weekly volume. First-hop-only — see is_dedup_safe note in `int_execution_mmm_kpis_weekly`.
+    data_type: Nullable(Float64)
+  - name: kpi_gpay_active_users
+    description: Last-value weekly GP active users (NULL until the GP source aggregator lands).
+    data_type: Nullable(Float64)
+  - name: kpi_gpay_payment_volume_usd
+    description: Sum of weekly GP payment volume USD.
+    data_type: Nullable(Float64)
+  - name: kpi_ga_active_users
+    description: Last-value weekly GA active users.
+    data_type: Nullable(Float64)
+  - name: kpi_ga_new_users
+    description: Sum of new GA users in the week.
+    data_type: Nullable(Float64)
+  - name: kpi_chain_tx_count
+    description: Sum of weekly chain transactions (NULL until the source aggregator lands).
+    data_type: Nullable(Float64)
+  - name: kpi_gpay_topups_count
+    description: Sum of GA→GP TopUp count for the week.
+    data_type: Nullable(Float64)
+  - name: kpi_gpay_topups_volume_usd
+    description: Sum of GA→GP TopUp USD volume for the week.
+    data_type: Nullable(Float64)
+  - name: kpi_gno_staked
+    description: Last-value GNO staked (placeholder — source aggregator pending).
+    data_type: Nullable(Float64)
+  - name: kpi_bridge_inflow_usd
+    description: Sum of weekly bridge inflow USD (placeholder).
+    data_type: Nullable(Float64)
+  - name: kpi_bridge_outflow_usd
+    description: Sum of weekly bridge outflow USD (placeholder).
+    data_type: Nullable(Float64)
+  - name: media_validator_proposer_rewards_gno
+    description: Sum of weekly proposer-reward GNO emitted to validators.
+    data_type: Nullable(Float64)
+  - name: media_validator_income_gno
+    description: Sum of weekly validator income (placeholder).
+    data_type: Nullable(Float64)
+  - name: media_validator_apr_proxy
+    description: Validator APR proxy signal (placeholder).
+    data_type: Nullable(Float64)
+  - name: media_ga_token_offer_emissions_usd
+    description: Sum of weekly GA token-offer emission value in USD (subsidy outlay).
+    data_type: Nullable(Float64)
+  - name: media_gpay_cashback_outlay_usd
+    description: Sum of weekly GP cashback outlay in USD (placeholder).
+    data_type: Nullable(Float64)
+  - name: media_pools_lp_fee_apr_avg
+    description: TVL-weighted mean LP fee APR for the week.
+    data_type: Nullable(Float64)
+  - name: media_lm_rewards_outlay_usd
+    description: Sum of weekly LM rewards outlay (placeholder).
+    data_type: Nullable(Float64)
+  - name: media_bridge_incentive_outlay_usd
+    description: Sum of weekly bridge-incentive outlay (placeholder).
+    data_type: Nullable(Float64)
+  - name: ctrl_gno_usd_price_avg
+    description: Weekly average GNO/USD price.
+    data_type: Nullable(Float64)
+  - name: ctrl_eth_usd_price_avg
+    description: Weekly average ETH/USD price.
+    data_type: Nullable(Float64)
+  - name: ctrl_wxdai_eur_proxy_avg
+    description: Weekly average WXDAI/EUR (or EURe) proxy price.
+    data_type: Nullable(Float64)
+  - name: ctrl_chain_gas_price_gwei_avg
+    description: Weekly average median gas price (gwei).
+    data_type: Nullable(Float64)
+  - name: ctrl_chain_block_count
+    description: Sum of weekly chain transactions (control proxy for chain activity).
+    data_type: Nullable(Float64)
+  - name: ctrl_week_of_year
+    description: Week-of-year integer (seasonality control).
+    data_type: Nullable(Float64)
+  - name: ctrl_is_holiday_week
+    description: 1 if the week is flagged in seed `mmm_holiday_weeks`.
+    data_type: Nullable(Float64)
+  - name: ctrl_week_index
+    description: Linear time index (weeks since spine start) — secular trend control.
+    data_type: Nullable(Float64)
+  - name: ctrl_hardfork_step
+    description: Step indicator — 0 before fork week, 1 from fork week onward.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week]
+      severity: error
+
+- name: fct_execution_mmm_collinearity_latest
+  description: |
+    Pairwise Pearson correlation matrix between MMM media columns
+    computed over the last 730 days of `fct_execution_mmm_spine_weekly`.
+    Refreshed daily. The MMM analyst reads `is_high_collinearity = 1`
+    (`abs(pearson_corr) > 0.9`) directly to identify pairs that need
+    merge / drop / segment per the multicollinearity check in
+    `mmm_analyst`'s SOP.
+
+    Cross-product is bounded by the media registry length (~10 media
+    today), so the output is at most ~100 rows. Trivial cost. Only
+    unique pairs are emitted (`a.col_name < b.col_name`).
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: col_a
+    description: First media column name (lexicographically smaller).
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: col_b
+    description: Second media column name.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: pearson_corr
+    description: Pearson correlation between the two media columns.
+    data_type: Float64
+    tests:
+    - dbt_utils.accepted_range:
+        min_value: -1.0001
+        max_value: 1.0001
+  - name: n_weeks
+    description: Number of week rows that contributed to the correlation (both columns non-NULL).
+    data_type: UInt64
+  - name: is_high_collinearity
+    description: '1 if `abs(pearson_corr) > 0.9` — flags pairs that violate the multicollinearity assumption.'
+    data_type: UInt8
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [col_a, col_b]
+      severity: error
+
+- name: fct_execution_mmm_baseline_latest
+  description: |
+    Per-(KPI, media) baseline KPI: the median KPI value during weeks
+    where the media's adstocked spend sits in the bottom decile. This
+    is the level the KPI sits at when the media is effectively zero —
+    used by `mmm_analyst` as the `baseline_kpi` input that anchors the
+    log-log response curve fit and the contribution-decomposition
+    intercept.
+
+    Adstock is computed inline as a geometric 8-week running window
+    with λ=0.5 (recent-week weight 1, prior-week 0.5, two-back 0.25,
+    …) per media column. The bottom-decile threshold is
+    `quantile(0.1)(adstock_v)` per (KPI, media) pair. The persona can
+    recompute with a different λ if a fit prefers it; this mart is a
+    canonical starting point.
+
+    Pairs with fewer than 5 low-spend weeks are dropped (HAVING clause)
+    because the median wouldn't be statistically meaningful — the
+    `n_low_spend_weeks > 5` test guards against schema drift bringing
+    them back.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: kpi_name
+    description: KPI being baselined.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: media_name
+    description: Media used to define the "low-spend" weeks for this baseline.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: baseline_kpi_median
+    description: Median KPI across low-spend weeks.
+    data_type: Float64
+  - name: baseline_kpi_q05
+    description: 5th-percentile KPI across low-spend weeks (lower bound).
+    data_type: Float64
+  - name: baseline_kpi_q95
+    description: 95th-percentile KPI across low-spend weeks (upper bound).
+    data_type: Float64
+  - name: bottom_decile_threshold
+    description: Adstock value at the 10th percentile — the cutoff that defines "low-spend".
+    data_type: Float64
+  - name: n_low_spend_weeks
+    description: Number of weeks below the bottom-decile threshold. Must be > 5 for the row to be emitted.
+    data_type: UInt64
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: "n_low_spend_weeks > 5"
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [kpi_name, media_name]
+      severity: error
+
+- name: api_execution_mmm_spine_weekly
+  description: |
+    API view passthrough over `fct_execution_mmm_spine_weekly`. Tier1
+    endpoint (`api:mmm_spine_weekly`), requires `X-API-Key`. The MMM
+    analyst persona reads this directly to pull a complete (kpi, media,
+    control) weekly spine without hand-rolling the union — a single
+    `SELECT * FROM api_execution_mmm_spine_weekly WHERE week >= today()
+    - INTERVAL 730 DAY` returns the regression input dataset.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: week
+    description: ISO Monday-start week date.
+    data_type: Date
+    tests: [not_null]
+  meta:
+    owner: analytics_team

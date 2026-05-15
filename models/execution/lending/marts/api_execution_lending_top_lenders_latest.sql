@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tier1','api:lending_top_lenders', 'granularity:latest']
+    tags=['dev','execution','tier1','api:lending_top_lenders', 'granularity:latest']
   )
 }}
 

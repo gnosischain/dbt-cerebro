@@ -1,6 +1,79 @@
 version: 2
 models:
 
+- name: api_execution_pools_fees_7d
+  description: Per-token total LP fees over the last 7 days (snapshot) with 7-day-prior change. Sourced from fct_execution_pools_snapshots filtered to metric='Fees_7D'.
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    description: 7-day total fees in USD for the token.
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the previous 7-day window.
+    data_type: Nullable(Float64)
+
+- name: api_execution_pools_tvl_latest
+  description: Latest TVL snapshot per token across all tracked DEX pools with 7-day change. Sourced from fct_execution_pools_snapshots filtered to metric='TVL_Latest'.
+  columns:
+  - name: token
+    data_type: String
+  - name: value
+    description: Latest TVL in USD.
+    data_type: Float64
+  - name: change_pct
+    data_type: Nullable(Float64)
+
+- name: api_execution_pools_tvl_by_pool_latest
+  description: |
+    Latest-day TVL breakdown per (token, pool) for the pools dashboard's
+    drill-down chart. One row per pool with positive TVL on the latest
+    available date (excluding today, which may be partial). Sourced from
+    fct_execution_pools_daily.
+  columns:
+  - name: token
+    description: Reference token symbol used to group pools.
+    data_type: String
+  - name: label
+    description: Pool display name (combines symbols, protocol, address suffix).
+    data_type: String
+  - name: value
+    description: Pool TVL in USD on the latest available date.
+    data_type: Float64
+
+- name: api_execution_pools_tvl_token_daily
+  description: |
+    Daily TVL time series per (token, pool) decomposed into the contribution
+    of each pool side. Sourced from fct_execution_pools_tvl_token_daily.
+    Drives the per-token TVL stacked-area chart.
+  columns:
+  - name: date
+    data_type: Date
+  - name: token
+    description: Reference token symbol (renamed from ref_token).
+    data_type: String
+  - name: label
+    description: Pool display name.
+    data_type: String
+  - name: series
+    description: Series identifier for stacking (typically the side of the pool the TVL is denominated in).
+    data_type: String
+  - name: tvl_usd
+    data_type: Float64
+  - name: tvl_in_token0
+    description: Pool TVL portion attributable to token0 (native units).
+    data_type: Nullable(Float64)
+  - name: tvl_in_token1
+    description: Pool TVL portion attributable to token1 (native units).
+    data_type: Nullable(Float64)
+  - name: token0_symbol
+    data_type: String
+  - name: token1_symbol
+    data_type: String
+  - name: token_amount
+    description: Token-side balance for the reference token on this date.
+    data_type: Nullable(Float64)
+
 - name: fct_execution_pools_daily
   description: |
     Daily pool-level metrics for top Uniswap V3, Swapr V3, and Balancer V3 pools on

@@ -1,4 +1,55 @@
 semantic_models:
+
+# ── User-overlap entry: Circles HUMAN avatars ─────────────────────
+# Cross-sector join target on `user_pseudonym`. Filtered to Humans
+# only — Groups / Orgs are excluded because they're not user-grain
+# entities. Pairs with revenue / gpay / gnosis_app / mixpanel to
+# support overlap questions ("Circles humans who are also revenue-
+# active" etc.).
+- name: execution_circles_human_avatars_distinct
+  model: ref('fct_execution_circles_human_avatars_distinct')
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: was_invited
+    type: categorical
+    expr: was_invited
+  - name: has_ipfs_profile
+    type: categorical
+    expr: has_ipfs_profile
+  - name: has_display_name
+    type: categorical
+    expr: has_display_name
+  - name: first_seen_at
+    type: time
+    expr: toDate(first_seen_at)
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_human_avatars_distinct_count
+    agg: count
+    expr: user_pseudonym
+  - name: execution_circles_human_avatars_with_profile
+    agg: sum
+    expr: has_ipfs_profile
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - circles humans
+        - circles users
+        - circles human avatars
+        - distinct circles users
+        - how many circles humans
+        - circles registered users
+        - circles user identities
+        - circles
+
 - name: execution_circles_avatars
   model: ref('api_execution_circles_v2_avatars')
   defaults:
@@ -64,56 +115,6 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution circles avatars
-- name: execution_circles_backers_cnt_latest
-  model: ref('api_execution_circles_v2_backers_cnt_latest')
-  measures:
-  - name: total_value
-    agg: sum
-    expr: total
-  - name: change_pct_value
-    agg: average
-    expr: change_pct
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution circles backers cnt latest
-- name: execution_circles_backing
-  model: ref('fct_execution_circles_v2_backing')
-  defaults:
-    agg_time_dimension: min_date
-  dimensions:
-  - name: min_date
-    type: time
-    expr: min_date
-    type_params:
-      time_granularity: day
-  - name: max_date
-    type: time
-    expr: max_date
-    type_params:
-      time_granularity: day
-  - name: date
-    type: time
-    expr: date
-    type_params:
-      time_granularity: day
-  measures:
-  - name: cnt_value
-    agg: sum
-    expr: cnt
-  - name: total_value
-    agg: sum
-    expr: total
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution circles backing
 - name: int_execution_circles_backing
   model: ref('int_execution_circles_v2_backing')
   defaults:
@@ -184,37 +185,6 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution circles orgs cnt latest
-- name: execution_circles_transitive_transfers
-  model: ref('int_execution_circles_transitive_transfers')
-  defaults:
-    agg_time_dimension: date
-  dimensions:
-  - name: date
-    type: time
-    expr: date
-    type_params:
-      time_granularity: day
-  - name: from_avatar
-    type: categorical
-    expr: from_avatar
-  - name: to_avatar
-    type: categorical
-    expr: to_avatar
-  measures:
-  - name: total_amount_value
-    agg: sum
-    expr: total_amount
-  - name: cnt_value
-    agg: sum
-    expr: cnt
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution circles transitive transfers
-        grain: day
 - name: execution_circles_v1_avatars
   model: ref('int_execution_circles_v1_avatars')
   defaults:
@@ -408,4 +378,55 @@ semantic_models:
           weight_column: balance
           node_enrichment_model: api_execution_circles_v2_avatar_metadata
           node_enrichment_key: avatar
-metrics: []
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — Circles human-avatar user-overlap entry
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+- name: circles_distinct_human_users
+  label: Circles Distinct Human Users
+  description: >
+    Total distinct human avatar count (Groups / Orgs excluded). The
+    `user_pseudonym` join key here is in the same hash space as
+    revenue / gpay / gnosis_app / Mixpanel — use semantic-layer joins
+    on `user_pseudonym` for cross-sector overlap questions.
+  type: simple
+  type_params:
+    measure: execution_circles_human_avatars_distinct_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions: [user_pseudonym, was_invited, has_ipfs_profile, has_display_name]
+        supported_time_grains: []
+        question_synonyms:
+        - circles humans
+        - circles distinct users
+        - circles user count
+        - how many circles humans
+        - circles human avatars count
+        - circles
+
+- name: circles_humans_with_ipfs_profile
+  label: Circles Humans With Published IPFS Profile
+  description: >
+    Subset of human avatars who have published an IPFS metadata
+    payload (stronger engagement signal than mere registration).
+  type: simple
+  type_params:
+    measure: execution_circles_human_avatars_with_profile
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions: [user_pseudonym, was_invited, has_display_name]
+        supported_time_grains: []
+        question_synonyms:
+        - circles humans with profile
+        - circles engaged users
+        - circles profile completion
+        - circles humans who published metadata

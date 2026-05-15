@@ -221,6 +221,30 @@ The `scripts/signatures/signature_generator.py` script:
    - Check raw data format in source tables
    - Verify the signature tables have entries for your function or event
 
+4. **`UNKNOWN_TABLE` on first build of a new incremental model**:
+   - Symptom (ClickHouse error code 60):
+     ```
+     Code: 60. DB::Exception: Unknown table expression identifier
+     'dbt.your_new_events' in scope (SELECT coalesce(max(block_timestamp),
+     '1970-01-01') FROM dbt.your_new_events). (UNKNOWN_TABLE)
+     ```
+   - **Cause**: both `decode_logs` and `decode_calls` guard their watermark
+     subquery with `not flags.FULL_REFRESH` instead of `is_incremental()`.
+     On the first build of an incremental model the target table doesn't
+     exist yet, but the guard still emits the watermark SELECT, which then
+     fails. (`is_incremental()` would correctly return False in this case
+     and skip the subquery, but the macro's guard is narrower by design.)
+   - **Fix**: pass `--full-refresh` for the first build:
+     ```bash
+     dbt build --select your_new_model --full-refresh
+     ```
+     Subsequent runs without the flag will work normally because the table
+     now exists.
+   - Also applies to disaster recovery, fresh dev environments, or any
+     case where the materialised table has been dropped. Anytime you select
+     into a `decode_logs` / `decode_calls`-backed incremental whose target
+     is missing, use `--full-refresh` once to bootstrap.
+
 ## Best Practices
 
 1. **Contract Organization**:

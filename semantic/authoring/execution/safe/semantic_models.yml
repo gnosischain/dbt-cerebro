@@ -45,4 +45,106 @@ semantic_models:
           target_kind: safe
           directed: true
           time_column: became_owner_at
-metrics: []
+- name: execution_safe_owner_pseudonyms
+  model: ref('fct_execution_safe_owner_pseudonyms')
+  description: |
+    Chain-wide Safe → owner pseudonym bridge. The cross-sector route
+    that lets any Safe-keyed sector mart (gpay pay_wallets, validator
+    Safes, gnosis_app AA wallets, Circles avatar Safes, ...) fan out
+    to the underlying human owner(s) and re-enter the user_pseudonym
+    graph. See `models/execution/safe/marts/fct_execution_safe_owner_
+    pseudonyms.sql` for the long-form rationale.
+  defaults:
+    agg_time_dimension: became_owner_at
+  entities:
+  # Both pseudonym columns are first-class `user_pseudonym` entities so
+  # the planner can equi-join from either side. The "primary" is the
+  # safe side because that's the typical lookup direction (given a
+  # Safe-keyed activity row, find its owners); the owner side is
+  # declared as a `foreign` user_pseudonym so it composes with any
+  # other user-keyed mart in the graph.
+  - name: safe_user_pseudonym
+    type: primary
+    expr: safe_user_pseudonym
+  - name: owner_user_pseudonym
+    type: foreign
+    expr: owner_user_pseudonym
+  dimensions:
+  - name: became_owner_at
+    type: time
+    expr: became_owner_at
+    type_params:
+      time_granularity: day
+  - name: current_threshold
+    type: categorical
+    expr: current_threshold
+  - name: n_owners_for_safe
+    type: categorical
+    expr: n_owners_for_safe
+  measures:
+  - name: safe_owner_links_value
+    agg: count
+    expr: safe_user_pseudonym
+    description: |
+      Count of (safe, owner) link rows. Use with the `safe_user_pseudonym`
+      or `owner_user_pseudonym` dimension to get distinct safes / owners
+      respectively via `count_distinct`.
+  - name: safe_owner_links_distinct_safes_value
+    agg: count_distinct
+    expr: safe_user_pseudonym
+  - name: safe_owner_links_distinct_owners_value
+    agg: count_distinct
+    expr: owner_user_pseudonym
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: pair
+        question_synonyms:
+        - safe owner pseudonym bridge
+        - safe to owner cross-sector fanout
+        - how many EOAs own this safe
+        - how many safes does this user own
+
+metrics:
+- name: safe_owner_links_total
+  label: Safe ↔ Owner Links (Total)
+  type: simple
+  type_params:
+    measure: safe_owner_links_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        question_synonyms:
+        - safe owner link count
+        - total safe-owner pairs
+
+- name: safe_owner_distinct_safes
+  label: Distinct Safes With at Least One Owner
+  type: simple
+  type_params:
+    measure: safe_owner_links_distinct_safes_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        question_synonyms:
+        - distinct safes
+        - how many safes have owners
+        - safe wallet count
+
+- name: safe_owner_distinct_owners
+  label: Distinct Owners Across All Safes
+  type: simple
+  type_params:
+    measure: safe_owner_links_distinct_owners_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        question_synonyms:
+        - distinct safe owners
+        - unique EOAs owning safes
+        - safe ownership unique humans

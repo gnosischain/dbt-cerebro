@@ -2,6 +2,64 @@ version: 2
 models:
 
 - name: contracts_CowProtocol_GPv2Settlement_events
+  description: |
+    Decoded event log stream from the CoW Protocol GPv2Settlement contract
+    on Gnosis Chain (the main settlement contract — Trade, Settlement,
+    OrderInvalidated, Interaction events). One row per emitted log.
+    Backfilled from 2021-04-01 in 1-month batches.
+  columns: &event_columns
+  - name: block_number
+    description: Block number containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the transaction.
+    data_type: UInt64
+  - name: contract_address
+    description: Address of the contract emitting the event.
+    data_type: String
+  - name: event_name
+    description: Name of the emitted event (from the ABI).
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameter name to value (values are stringified; arrays are JSON strings).
+    data_type: Map(String, String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-04-01"
+      batch_months: 1
+
+- name: contracts_CowProtocol_CoWSwapEthFlow_events
+  description: |
+    Decoded event log stream from the CoW Swap EthFlow contract on Gnosis
+    (0xbA3cB449bD2B4ADddBc894D8697F5170800EAdeC). Captures native-ETH order
+    placement and refund-flow events. One row per emitted log. Produced via
+    the standard decode_logs macro.
+  columns: *event_columns
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-04-01"
+      batch_months: 1
+
+- name: contracts_CowProtocol_GPv2VaultRelayer_events
+  description: |
+    Decoded event log stream from the CoW Protocol GPv2VaultRelayer contract
+    on Gnosis (0xC92E8bdf79f0507f65a392b0ab4667716BFE0110). The relayer
+    pulls trader funds via approvals during settlement. One row per emitted
+    log. Produced via the standard decode_logs macro.
+  columns: *event_columns
   meta:
     owner: analytics_team
     authoritative: false
@@ -13,6 +71,8 @@ models:
   description: |
     Proxy contract — implementation ABI (GPv2AllowListAuthentication) was
     fetched and stored under the proxy address by fetch_and_insert_abi.
+    Emits Solver allow-list management events (e.g. solver added/removed).
+  columns: *event_columns
   meta:
     owner: analytics_team
     authoritative: false

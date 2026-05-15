@@ -1,0 +1,208 @@
+version: 2
+models:
+
+- name: int_ubo_claims_balancer_v2_daily
+  description: >
+    Per-protocol UBO supply claims for Balancer V2. Standardized shape: one
+    row per (date, container_address, ubo_address, token_address) capturing
+    each LP's net withdrawable token balance in the Balancer Vault.
+
+    Balancer V2 uses a single Vault contract (0xba12...2c8) that custodies
+    all pool tokens. LPs interact with individual pool contracts but the
+    token custody sits in the Vault, so container_address is the Vault for
+    every row.
+
+    Balances are computed as a daily cumulative sum of PoolBalanceChanged
+    event deltas from stg_pools__dex_liquidity_balancer_v2, keyed by
+    (ubo_address, symbol) so that token migrations (e.g. EURe V1 → V2)
+    collapse into a single series. token_address is the canonical contract
+    per tokens_whitelist (symbol + date range) on each balance date.
+
+    Only whitelisted tokens (tokens_whitelist) are tracked. Positions with
+    balance_raw <= 0 are excluded from output.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Balancer V2'.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: Lowercase Vault address (0xba12222222228d8ba445958a75a0704d566bf2c8).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: >
+      Canonical token address per tokens_whitelist (symbol + date range).
+      Resolved at the balance date, so migrated tokens (e.g. EURe) follow
+      the canonical successor contract from the migration date onward.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol from tokens_whitelist.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.) from tokens_whitelist.
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the LP (liquidityProvider).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Cumulative raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-04-21"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, container_address, ubo_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_balancer_v2_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_balancer_v2_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_aave_daily
+  description: >
+    Per-protocol UBO supply claims for Aave V3 + SparkLend. Standardized
+    shape: one row per (date, protocol, container_address, ubo_address)
+    capturing the individual end-holder's withdrawable balance in the
+    pool. Sourced from int_execution_lending_aave_user_balances_daily
+    joined to lending_market_mapping for the container (aToken) address.
+    Materialized daily so it can be re-used cheaply by any consumer.
+
+    token_address is the canonical token contract per tokens_whitelist
+    (symbol + date range), NOT the raw Aave reserve address. Aave pool
+    contracts are immutable so they always reference the original reserve
+    address even after token migrations (e.g. EURe V1 0xcb44 → V2 0x420c
+    on 2024-08-25). The canonical lookup ensures UBO claims align with
+    int_execution_tokens_balances_daily, which also normalises via
+    tokens_whitelist.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: 'Aave V3 or SparkLend.'
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: Lowercase address of the aToken contract that custodies the underlying.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: >
+      Canonical token address per tokens_whitelist (symbol + date range). For
+      most tokens this equals the Aave reserve address. For migrated tokens
+      (e.g. EURe) it is the canonical successor contract for the claim date,
+      matching the address used by int_execution_tokens_balances_daily.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Reserve symbol from lending_market_mapping (e.g. 'sDAI', 'WxDAI').
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN or OTHERS) from the seed.
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the individual lender.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit balance (Int256), exact aToken claim converted to underlying units.
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-12-01"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, protocol, container_address, ubo_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_aave_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_aave_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

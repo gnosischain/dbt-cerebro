@@ -70,23 +70,6 @@ models:
         - not_null
     - name: display_name
 
-- name: fct_execution_account_balance_history_daily
-  description: Daily address-grain portfolio balance history from production token balances.
-  meta:
-    full_refresh:
-      start_date: "2020-07-01"
-      batch_months: 1
-  columns:
-    - name: address
-      tests: [not_null]
-    - name: date
-      tests: [not_null]
-    - name: total_balance_usd
-    - name: tokens_held
-  tests:
-    - dbt_utils.unique_combination_of_columns:
-        combination_of_columns: [address, date]
-
 - name: api_execution_account_balance_history_daily
   description: Simple API view for Account Portfolio balance history.
   columns:
@@ -241,6 +224,19 @@ models:
     - name: display_name
     - name: total_balance_usd
     - name: tokens_held
+    - name: first_seen_date
+      tests:
+        - dbt_utils.expression_is_true:
+            expression: "first_seen_date IS NULL OR first_seen_date > toDate('1970-01-01')"
+    - name: safe_creation_date
+    - name: address_type
+      tests:
+        - accepted_values:
+            values: ['safe', 'eoa_or_contract']
+    - name: wallet_age_date
+      tests:
+        - dbt_utils.expression_is_true:
+            expression: "wallet_age_date IS NULL OR (wallet_age_date > toDate('1970-01-01') AND wallet_age_date <= today())"
 
 - name: api_execution_account_profile_latest
   description: Simple API view over the latest Account Portfolio profile fact.

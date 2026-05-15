@@ -4,10 +4,10 @@
         engine='ReplacingMergeTree()',
         order_by='(address)',
         tags=["execution", "shared", "identity", "graph_explorer"],
-        query_settings={
-            'max_bytes_before_external_group_by': '2000000000',
-            'max_bytes_before_external_sort': '2000000000'
-        }
+        pre_hook=[
+            "SET join_algorithm = 'grace_hash'"
+        ],
+        post_hook=["SET join_algorithm = 'default'"]
     )
 }}
 

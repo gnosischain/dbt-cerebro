@@ -11,7 +11,7 @@
 
 WITH weekly_agg AS (
     SELECT
-        toStartOfWeek(date) AS week,
+        toStartOfWeek(date, 1) AS week,
         token_address,
         symbol,
         token_class,
@@ -24,7 +24,7 @@ WITH weekly_agg AS (
         sum(deposits_volume_daily) AS deposits_volume_weekly,
         sum(borrows_volume_daily) AS borrows_volume_weekly
     FROM {{ ref('int_execution_lending_aave_daily') }}
-    WHERE date < toStartOfWeek(today())
+    WHERE date < toStartOfWeek(today(), 1)
     GROUP BY week, token_address, symbol, token_class, protocol
 )
 

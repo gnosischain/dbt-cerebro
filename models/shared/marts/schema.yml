@@ -1,5 +1,12 @@
 version: 2
 
+# Shared dimensions — primarily the semantic time spines that the
+# semantic-layer planner uses as join bridges between modules running at
+# different time grains (e.g. revenue weekly ↔ consensus daily, bridges
+# 7d-snapshot ↔ revenue monthly). Each spine is the DISTINCT projection
+# of `dim_time_spine_daily` at the appropriate granularity, so
+# granularity boundaries always agree.
+
 models:
   - name: dim_time_spine_daily
     description: Daily semantic time spine covering Gnosis Chain history and five future years for gap filling and cumulative metrics.
@@ -13,6 +20,47 @@ models:
         description: Calendar day on the semantic time spine.
         data_type: Date
         granularity: day
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_time_spine_weekly
+    description: |
+      ISO-week (Monday-start) time spine, used as the cross-sector join
+      bridge for weekly metrics (e.g. revenue, gpay, p2p weekly aggregates).
+      One row per Monday between Gnosis Chain genesis and five years past
+      today. Built as a deduped projection of dim_time_spine_daily so
+      granularity boundaries always agree.
+    time_spine:
+      standard_granularity_column: week
+    meta:
+      owner: analytics_team
+      authoritative: true
+    columns:
+      - name: week
+        description: Monday of the calendar week on the semantic time spine.
+        data_type: Date
+        granularity: week
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_time_spine_monthly
+    description: |
+      Calendar-month time spine (first day of each month), used as the
+      cross-sector join bridge for monthly metrics. One row per month
+      between Gnosis Chain genesis and five years past today. Built as
+      a deduped projection of dim_time_spine_daily.
+    time_spine:
+      standard_granularity_column: month
+    meta:
+      owner: analytics_team
+      authoritative: true
+    columns:
+      - name: month
+        description: First day of the calendar month on the semantic time spine.
+        data_type: Date
+        granularity: month
         tests:
           - not_null
           - unique

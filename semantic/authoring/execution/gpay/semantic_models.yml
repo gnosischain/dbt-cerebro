@@ -1,4 +1,54 @@
 semantic_models:
+
+# ---------- Per-user gpay identity (cross-sector USER join key) ----------
+#
+# Exposes `user_pseudonym` as a PRIMARY entity so the planner can join
+# gpay to other user-keyed semantic_models (revenue, gnosis_app,
+# mixpanel) on equality. Source is the production projection of the
+# gpay user identity bridge — pseudonym + Safe + role, no raw addresses.
+
+- name: execution_gpay_users_distinct
+  # Deduped user-pseudonym projection so the planner can do `agg: count`
+  # (1 row per user) — ClickHouse doesn't expose `count_distinct` under
+  # that name. The richer multi-Safe view (per-role, per-Safe rows) lives
+  # in int_execution_gpay_safe_identities and is queryable via
+  # execute_query; here we expose the deduped grain that's safe for the
+  # semantic layer's count aggregator.
+  model: ref('fct_execution_gpay_users_distinct')
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: has_initial_owner
+    type: categorical
+    expr: has_initial_owner
+  - name: has_delegate
+    type: categorical
+    expr: has_delegate
+  - name: has_safe_self
+    type: categorical
+    expr: has_safe_self
+  measures:
+  - name: execution_gpay_users_distinct
+    agg: count
+    expr: user_pseudonym
+  - name: execution_gpay_users_n_safes_total
+    agg: sum
+    expr: n_safes
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - gpay users
+        - gnosis pay user identities
+        - gpay safe owners
+        - gpay user pseudonyms
+        - users with a gnosis pay safe
+
 - name: execution_gpay_actions_by_token_daily
   model: ref('fct_execution_gpay_actions_by_token_daily')
   defaults:
@@ -2531,4 +2581,49 @@ semantic_models:
             that is NOT the real human admin; use the Delay-module binding in
             int_execution_gnosis_app_gpay_wallets.first_ga_owner_address for
             that path instead.
-metrics: []
+metrics:
+
+# ---- Per-user gpay identity (cross-sector USER join target) ----
+
+- name: gpay_distinct_users
+  label: Gnosis Pay Distinct Users
+  description: >
+    Distinct user_pseudonym count from int_execution_gpay_safe_identities
+    — i.e. unique humans who own / delegate / control at least one Gnosis
+    Pay Safe. Join with revenue per-user metrics on `user_pseudonym` to
+    compute overlaps (e.g. "revenue-active users who are also gpay users").
+    Cardinality is per-pseudonym, not per-Safe; one user can manage many
+    Safes (initial_owner / delegate / safe_self roles).
+  type: simple
+  type_params:
+    measure: execution_gpay_users_distinct
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        allowed_dimensions: [identity_role, gp_safe, user_pseudonym]
+        supported_time_grains: []
+        question_synonyms:
+        - gpay distinct users
+        - gnosis pay distinct users
+        - how many gpay users
+        - unique gnosis pay user count
+
+- name: gpay_safes_total
+  label: Gnosis Pay Total Safes (sum across users)
+  description: >
+    Sum of distinct Safes per user across all users. This is the total
+    user-Safe edge count (not distinct Safes — see fct_bridges_kpis_*
+    for distinct Safe counts at the address grain).
+  type: simple
+  type_params:
+    measure: execution_gpay_users_n_safes_total
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        allowed_dimensions: [user_pseudonym, has_initial_owner, has_delegate, has_safe_self]
+        supported_time_grains: []
+        question_synonyms:
+        - gpay user-safe edges
+        - total user-safe links

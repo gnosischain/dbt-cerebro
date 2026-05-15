@@ -1078,3 +1078,377 @@ models:
       config:
         severity: warn
         where: "date >= today() - 7"
+
+- name: int_execution_circles_v2_active_avatars_weekly
+  description: >
+    Week-bucketed Circles v2 activity (one row per (week, address)) covering
+    human registrations, trust events, and personal mints. Source for the
+    Gnosis App composite Weekly Active Users metric. NameRegistry metadata
+    and Hub StreamCompleted are NOT yet included (waiting on decoded staging
+    models). Full-rebuild table.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: address
+    description: Lowercase avatar address.
+    data_type: String
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, address]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_inviter_fees
+  description: >
+    Per-event Circles v2 inviter-fee transfers — wrapped-CRC ERC-20 Transfer
+    events in the same tx as a Hub.PersonalMint, from invitee to inviter per
+    the avatar→inviter mapping in int_execution_circles_v2_avatars. Used by
+    the WEAU weekly-earners definition. The >= 1 CRC threshold is applied
+    downstream so this stays event-grain and incremental-safe.
+  columns:
+  - name: block_number
+    data_type: UInt64
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt32
+  - name: token_address
+    description: Wrapped CRC ERC-20 token address.
+    data_type: String
+  - name: invitee
+    description: Lowercase address of the invitee paying the fee.
+    data_type: String
+  - name: inviter
+    description: Lowercase address of the inviter receiving the fee.
+    data_type: String
+  - name: amount
+    description: Fee amount in CRC (raw / 1e18).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [transaction_hash, log_index]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_gcrc_cashback_recipients_weekly
+  description: >
+    Weekly gCRC cashback recipients — addresses that received >= 1 gCRC
+    (group token 0x548c…4bc1) from the Circles cashback wallet
+    (0x7abe…af6a) in a given week. Used by the WEAU weekly-earners
+    definition. Full-rebuild table; threshold applied at aggregation.
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: address
+    description: Lowercase cashback recipient address.
+    data_type: String
+  - name: amount
+    description: Cashback received that week (gCRC, raw / 1e18).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [week, address]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_mint_activity_daily
+  description: >
+    Densified per-(avatar, date) personal-mint activity with 14-day rolling
+    window. Replaces Dune's gnosis_circlesv2_mint_activity_v (query_6317871).
+    Source-of-truth for the Active Minters daily KPI and the minter cohort
+    distribution.
+  columns:
+  - name: avatar
+    description: Lowercase Circles v2 avatar address.
+    data_type: String
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: mint_amount
+    description: CRC minted by this avatar on this day. Zero on days with no mint event.
+    data_type: Float64
+  - name: mint_14dw
+    description: Trailing 14-day sum of mint_amount (inclusive of current row).
+    data_type: Float64
+  - name: mint_days_14dw
+    description: Trailing 14-day count of rows (always between 1 and 14).
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [avatar, date]
+      config:
+        severity: warn
+  - dbt_utils.expression_is_true:
+      name: int_circles_v2_mint_activity_14dw_nonneg
+      expression: "mint_14dw >= 0"
+      config:
+        severity: warn
+        where: "date >= today() - 7"
+
+- name: int_execution_circles_v2_hub_events_daily
+  description: >
+    Daily count of every Circles v2 Hub event, broken down by event_name.
+    Per (date, event_name): n_events, n_tx, n_distinct_addresses across all
+    event-specific participant fields (avatar / inviter / group / org /
+    truster / trustee / operator / from / to / human / account / backer /
+    holder). The 0x00..00 sentinel is excluded. Incremental, monthly
+    partitioned on date.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: event_name
+    description: Hub event name (RegisterHuman, Trust, TransferSingle, …).
+    data_type: String
+  - name: n_events
+    description: Number of events of this kind on this day.
+    data_type: UInt64
+  - name: n_tx
+    description: Number of distinct transactions emitting this event on this day.
+    data_type: UInt64
+  - name: n_distinct_addresses
+    description: Distinct participant addresses across all event-specific fields.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, event_name]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_mints_daily
+  description: >
+    Network-level daily personal-mint summary: total mint events,
+    distinct minters, and total CRC minted (raw / 1e18). Incremental,
+    monthly partitioned on date.
+  columns:
+  - {name: date, description: Calendar day (UTC).,                                                          data_type: Date}
+  - {name: n_mint_events, description: Number of mint TransferSingle events.,                               data_type: UInt64}
+  - {name: n_minters, description: Distinct minting avatars (to_address).,                                  data_type: UInt64}
+  - {name: amount_minted, description: Total CRC minted on this day (sum of amount / 1e18).,                data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_trusts_daily
+  description: >
+    Event-grain daily trust activity: total trust events, new trusts
+    (expiry > block_timestamp), revoked trusts (expiry <= block_timestamp),
+    distinct trusters, distinct trustees. Complements
+    fct_execution_circles_v2_active_trusts_daily, which carries the
+    SCD2-derived active stock. Incremental, monthly partitioned on date.
+  columns:
+  - {name: date, description: Calendar day (UTC).,                                                          data_type: Date}
+  - {name: n_trust_events, description: Total Trust events on this day.,                                    data_type: UInt64}
+  - {name: n_new_trusts, description: Events granting or extending trust (expiry > now).,                   data_type: UInt64}
+  - {name: n_revoked_trusts, description: Events setting expiry <= now (revoke).,                           data_type: UInt64}
+  - {name: n_distinct_trusters, description: Distinct truster addresses active that day.,                   data_type: UInt64}
+  - {name: n_distinct_trustees, description: Distinct trustee addresses active that day.,                   data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config:
+        severity: warn
+
+- name: int_execution_circles_v2_backing_events_daily
+  description: >
+    Daily Circles v2 backing-lifecycle event counts. Tracks the "depositors"
+    set — addresses that emit a backing event. NOT the trust-defined
+    "backers" set (which awaits the backers-group address).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: lifecycle_stage, description: "initiated / deployed / lbp_deployed / completed / released / asset_status_updated / global_release_updated.", data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_distinct_backers, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, lifecycle_stage]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_backing_depositors_current
+  description: Current snapshot of distinct depositor addresses with lifecycle counts.
+  columns:
+  - {name: backer, data_type: String}
+  - {name: first_initiated_at, data_type: DateTime}
+  - {name: last_event_at, data_type: DateTime}
+  - {name: n_initiated, data_type: UInt64}
+  - {name: n_completed, data_type: UInt64}
+  - {name: n_released, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: int_execution_circles_v2_groups_overview_daily
+  description: Network-level daily group metrics — new groups + collateral activity.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_new_groups, data_type: UInt64}
+  - {name: n_collateral_events, data_type: UInt64}
+  - {name: n_distinct_groups_acting, data_type: UInt64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_transfers_categorised
+  description: >
+    Per-transfer categorisation of int_execution_circles_v2_transfers into
+    one of mint / burn / wrap / unwrap / p2p. (Matrix-routed p2p subdivision
+    deferred — see model header.)
+  columns:
+  - {name: block_number, data_type: UInt64}
+  - {name: block_timestamp, data_type: DateTime64}
+  - {name: transaction_hash, data_type: String}
+  - {name: transaction_index, data_type: UInt64}
+  - {name: log_index, data_type: UInt64}
+  - {name: batch_index, data_type: UInt64}
+  - {name: transfer_type, data_type: String}
+  - {name: from_address, data_type: String}
+  - {name: to_address, data_type: String}
+  - {name: token_address, data_type: String}
+  - {name: amount_raw, data_type: UInt256}
+  - {name: amount_demurraged_raw, data_type: UInt256}
+  - {name: transfer_category, description: "mint / burn / wrap / unwrap / p2p.", data_type: String}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 1
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: int_execution_circles_v2_transfers_daily
+  description: Daily transfer counts + volume per category.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: transfer_category, data_type: String}
+  - {name: n_transfers, data_type: UInt64}
+  - {name: n_senders, data_type: UInt64}
+  - {name: n_receivers, data_type: UInt64}
+  - {name: amount, description: "Sum of native amount (raw / 1e18).", data_type: Float64}
+  - {name: amount_demurraged, description: "Sum of demurrage-adjusted amount.", data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, transfer_category]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_wrapper_supply_daily
+  description: Daily wrapped-supply delta per ERC-20 wrapper token.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: wrapper_address, data_type: String}
+  - {name: wrap_amount, data_type: Float64}
+  - {name: unwrap_amount, data_type: Float64}
+  - {name: supply_delta, data_type: Float64}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 6
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, wrapper_address]
+      config: {severity: warn}
+
+- name: int_execution_circles_v2_invite_funnel
+  description: >
+    One row per invited human, carrying the mint-cadence signals for the
+    five-stage funnel (Invited → ≥2 days → ≥7 days → ≥14 days → Active Minter).
+    Skips the trivial acceptance mint by tracking days actually minted in
+    the first 30 / 60 days post-invite and the date the avatar first reached
+    canonical Active Minter status.
+  columns:
+  - {name: avatar, data_type: String}
+  - {name: inviter, data_type: String}
+  - {name: invited_at, data_type: DateTime}
+  - {name: first_mint_at, description: "First mint event timestamp (typically equals the acceptance mint).", data_type: Nullable(DateTime)}
+  - {name: second_mint_date, description: "First calendar day with a mint that is NOT the invited_at day. NULL = invitee never came back.", data_type: Nullable(Date)}
+  - {name: days_to_second_mint, description: "Days from invited_at date to second_mint_date. NULL when no second mint.", data_type: Nullable(Int64)}
+  - {name: n_mint_days_first_30d, description: "Distinct mint days in [invited_at, invited_at + 30).", data_type: UInt16}
+  - {name: n_mint_days_first_60d, description: "Distinct mint days in [invited_at, invited_at + 60).", data_type: UInt16}
+  - {name: became_active_minter_at, description: "Earliest date the avatar hit mint_days_14dw = 14 AND mint_14dw >= 0.8 * 336. NULL if never reached.", data_type: Nullable(Date)}
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2024-10-01"
+      batch_months: 3
+  tests:
+  - elementary.schema_changes: {severity: warn, tags: [elementary]}
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [avatar]
+      config: {severity: warn}

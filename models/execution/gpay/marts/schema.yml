@@ -4035,3 +4035,592 @@ models:
   - name: token
     tests:
     - not_null
+
+- name: fct_execution_gpay_journeys_30d
+  description: |
+    Pre-joined GP-side journey spine with a 30-day lookback. One row per
+    (conversion, prior-30d touchpoint) pair. Built via
+    `build_journey_lookback(30, 'gpay')` — the same macro that powers
+    the GA spine, with `identity_role` matched on both sides of the
+    conversion ↔ events join so role-grain semantics are preserved
+    (treasury-grain conversions match treasury-grain touchpoints, etc.).
+
+    Leakage guards enforced at materialisation:
+      * `e.event_ts < c.conversion_ts`
+      * `e.identity_role = c.identity_role`
+      * `e.event_kind != conversion_kind_to_event_kind(c.conversion_kind)`
+
+    Microbatched in 1-month chunks via `scripts/full_refresh/refresh.py`
+    (`meta.full_refresh.batch_months: 1`). A single 2-year full-refresh
+    OOM'd at the 10 GiB per-query cap because of the 3-role fan-out ×
+    all GP activity × 30-day lookback. Per-month batches fit
+    comfortably; the refresh script auto-retries the rare batch that
+    pushes the limit.
+  config:
+    contract:
+      enforced: false
+  meta:
+    owner: analytics_team
+    full_refresh:
+      start_date: "2024-05-01"
+      batch_months: 1
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting identity.
+    data_type: UInt64
+    tests: [not_null]
+  - name: identity_role
+    description: Role grain — matches between conversion and touchpoint sides.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion.
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol of the converted asset.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the prior touchpoint.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: Always `'chain'` in v1 (GP unified events are chain-only).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
+    data_type: String
+  - name: event_dedup_key
+    description: Carried from upstream events table.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive.
+    data_type: Int64
+    tests:
+    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
+    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
+    # the column name in `expression` (that produced a SYNTAX_ERROR before).
+    - dbt_utils.expression_is_true:
+        expression: "> 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution lag, used by the time-decay weight.
+    data_type: Int64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns test over the full GP
+  # journey set (3-role fan-out × 30d lookback) OOMs at the 10 GiB cap.
+
+- name: fct_execution_gpay_attribution_30d
+  description: |
+    Pre-computed first / last / linear / time-decay (HL=7d) attribution
+    per (`conversion_kind`, `identity_role`, `event_kind`) over the last
+    180 days of conversions. Same shape as the GA attribution mart with
+    the role dimension added, so a single
+    `WHERE conversion_kind = 'gpay_payment' AND identity_role = 'initial_owner'`
+    filter pulls owner-grain attribution for payments without changing
+    SQL shape.
+
+    Implementation: pre-aggregate per conversion → tie counts →
+    per-touch score → group by `event_kind`. Same memory-safe
+    GROUP BY + LEFT JOIN pattern as the GA mart (see GA model header
+    for the v1 / v2 / v3 history).
+
+    Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+    normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+    credit splits across ties.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain (`safe_self`, `initial_owner`, `delegate`).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. != the conversion's mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct (user, role, conversion_ts) triples where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits, conversion-equivalent units.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, identity_role, event_kind]
+      severity: error
+
+- name: api_execution_gpay_attribution_30d
+  description: |
+    API view passthrough over `fct_execution_gpay_attribution_30d`.
+    Tier1 endpoint (`api:gpay_attribution_30d`), requires `X-API-Key`.
+    `granularity:rolling_180d` documents the underlying window. The
+    `identity_role` column lets API callers filter to owner-grain,
+    treasury-grain, or delegate-grain at query time.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+
+- name: fct_execution_gpay_journeys_7d
+  description: |
+    Pre-joined GP-side journey spine with a 7-day lookback. One row per
+    (conversion, prior-7d touchpoint) pair. Built via
+    `build_journey_lookback(7, 'gpay')` — the same macro that powers
+    the GA spine, with `identity_role` matched on both sides of the
+    conversion ↔ events join so role-grain semantics are preserved
+    (treasury-grain conversions match treasury-grain touchpoints, etc.).
+
+    Leakage guards enforced at materialisation:
+      * `e.event_ts < c.conversion_ts`
+      * `e.identity_role = c.identity_role`
+      * `e.event_kind != conversion_kind_to_event_kind(c.conversion_kind)`
+
+    Microbatched in 1-month chunks via `scripts/full_refresh/refresh.py`
+    (`meta.full_refresh.batch_months: 1`). A single 2-year full-refresh
+    OOM'd at the 10 GiB per-query cap because of the 3-role fan-out ×
+    all GP activity × 7-day lookback. Per-month batches fit
+    comfortably; the refresh script auto-retries the rare batch that
+    pushes the limit.
+  config:
+    contract:
+      enforced: false
+  meta:
+    owner: analytics_team
+    full_refresh:
+      start_date: "2024-05-01"
+      batch_months: 1
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting identity.
+    data_type: UInt64
+    tests: [not_null]
+  - name: identity_role
+    description: Role grain — matches between conversion and touchpoint sides.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion.
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol of the converted asset.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the prior touchpoint.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: Always `'chain'` in v1 (GP unified events are chain-only).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
+    data_type: String
+  - name: event_dedup_key
+    description: Carried from upstream events table.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive.
+    data_type: Int64
+    tests:
+    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
+    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
+    # the column name in `expression` (that produced a SYNTAX_ERROR before).
+    - dbt_utils.expression_is_true:
+        expression: "> 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution lag, used by the time-decay weight.
+    data_type: Int64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns test over the full GP
+  # journey set (3-role fan-out × 7d lookback) OOMs at the 10 GiB cap.
+
+
+- name: fct_execution_gpay_attribution_7d
+  description: |
+    Pre-computed first / last / linear / time-decay (HL=7d) attribution
+    per (`conversion_kind`, `identity_role`, `event_kind`) over the last
+    180 days of conversions. Same shape as the GA attribution mart with
+    the role dimension added, so a single
+    `WHERE conversion_kind = 'gpay_payment' AND identity_role = 'initial_owner'`
+    filter pulls owner-grain attribution for payments without changing
+    SQL shape.
+
+    Implementation: pre-aggregate per conversion → tie counts →
+    per-touch score → group by `event_kind`. Same memory-safe
+    GROUP BY + LEFT JOIN pattern as the GA mart (see GA model header
+    for the v1 / v2 / v3 history).
+
+    Time-decay weight per touch: `td_raw = exp(-lag_days / 7)`,
+    normalized so `Σ td_credit_per_conversion = 1.0`. First / last
+    credit splits across ties.
+    Note: the time-decay half-life is fixed at 7 days regardless of
+    the lookback window — this is a per-conversation customer-decay
+    parameter, not a window-length parameter.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain (`safe_self`, `initial_owner`, `delegate`).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. != the conversion's mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct (user, role, conversion_ts) triples where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits, conversion-equivalent units.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, identity_role, event_kind]
+      severity: error
+
+
+- name: api_execution_gpay_attribution_7d
+  description: |
+    API view passthrough over `fct_execution_gpay_attribution_7d`.
+    Tier1 endpoint (`api:gpay_attribution_7d`), requires `X-API-Key`.
+    `granularity:rolling_180d` documents the underlying window. The
+    `identity_role` column lets API callers filter to owner-grain,
+    treasury-grain, or delegate-grain at query time.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+
+
+- name: fct_execution_gpay_journeys_60d
+  description: |
+    Pre-joined GP-side journey spine with a 60-day lookback. Sensitivity-
+    sweep variant of the canonical `_30d` mart. Built via
+    `build_journey_lookback(60, 'gpay')`. `identity_role` is matched
+    on both sides of the conversion ↔ events join so role-grain
+    semantics are preserved (treasury vs owner vs delegate).
+
+    Leakage guards enforced at materialisation:
+      * `e.event_ts < c.conversion_ts`
+      * `e.identity_role = c.identity_role`
+      * `e.event_kind != conversion_kind_to_event_kind(c.conversion_kind)`
+
+    Microbatched in 1-month chunks via `scripts/full_refresh/refresh.py`
+    (`meta.full_refresh.batch_months: 1`). At 3-role × 60-day lookback ×
+    2-year history this is the heaviest of the journey marts —
+    individual monthly batches can transiently push the 10 GiB cluster
+    cap; the refresh script auto-retries the rare batch that does.
+  config:
+    contract:
+      enforced: false
+  meta:
+    owner: analytics_team
+    full_refresh:
+      start_date: "2024-05-01"
+      batch_months: 1
+  columns:
+  - name: user_pseudonym
+    description: Keyed pseudonym of the converting identity.
+    data_type: UInt64
+    tests: [not_null]
+  - name: identity_role
+    description: Role grain — matches between conversion and touchpoint sides.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+    tests: [not_null]
+  - name: conversion_ts
+    description: UTC timestamp of the conversion.
+    data_type: DateTime
+    tests: [not_null]
+  - name: conversion_date
+    description: Calendar date of the conversion (partition key).
+    data_type: Date
+    tests: [not_null]
+  - name: conversion_amount_usd
+    description: USD amount of the conversion.
+    data_type: Nullable(Float64)
+  - name: conversion_token
+    description: Token symbol of the converted asset.
+    data_type: Nullable(String)
+  - name: touch_ts
+    description: UTC timestamp of the prior touchpoint.
+    data_type: DateTime
+    tests: [not_null]
+  - name: event_source
+    description: Always `'chain'` in v1 (GP unified events are chain-only).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: event_subkind
+    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
+    data_type: String
+  - name: event_dedup_key
+    description: Carried from upstream events table.
+    data_type: UInt64
+  - name: lag_seconds
+    description: Seconds between touchpoint and conversion. Strictly positive.
+    data_type: Int64
+    tests:
+    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
+    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
+    # the column name in `expression`.
+    - dbt_utils.expression_is_true:
+        expression: "> 0"
+        config:
+          severity: error
+  - name: lag_days
+    description: Day-resolution lag, used by the time-decay weight.
+    data_type: Int64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  # Uniqueness is enforced by the ReplacingMergeTree unique_key; a
+  # dbt_utils.unique_combination_of_columns over the full GP 60d journey
+  # set OOMs at the 10 GiB cap.
+
+- name: fct_execution_gpay_attribution_60d
+  description: |
+    Pre-computed first / last / linear / time-decay (HL=7d) attribution
+    per (`conversion_kind`, `identity_role`, `event_kind`) over the last
+    180 days of conversions, using a 60-day touchpoint lookback. Same
+    pre-aggregate-then-JOIN pattern as the 30d mart. The time-decay
+    half-life is fixed at 7 days regardless of lookback — it is a
+    customer-decay parameter, not a window parameter.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain (`safe_self`, `initial_owner`, `delegate`).
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint event kind. != the conversion's mapped event_kind.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct (user, role, conversion_ts) triples where this `event_kind` appeared in the journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits, conversion-equivalent units.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear (1/n_touches) credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits with 7-day half-life.
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: '`now()` at materialisation time.'
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [conversion_kind, identity_role, event_kind]
+      severity: error
+
+- name: api_execution_gpay_attribution_60d
+  description: |
+    API view passthrough over `fct_execution_gpay_attribution_60d`.
+    Tier1 endpoint (`api:gpay_attribution_60d`), requires `X-API-Key`.
+    `granularity:rolling_180d` documents the underlying window.
+  config:
+    contract:
+      enforced: false
+  columns:
+  - name: conversion_kind
+    description: Conversion target.
+    data_type: LowCardinality(String)
+  - name: identity_role
+    description: Role grain.
+    data_type: LowCardinality(String)
+  - name: event_kind
+    description: Touchpoint kind being credited.
+    data_type: LowCardinality(String)
+  - name: conversions_with_touch
+    description: Distinct conversions that saw this `event_kind` in their journey.
+    data_type: UInt64
+  - name: first_touch
+    description: Sum of first-touch credits.
+    data_type: Float64
+  - name: last_touch
+    description: Sum of last-touch credits.
+    data_type: Float64
+  - name: linear
+    description: Sum of linear credits.
+    data_type: Float64
+  - name: time_decay_hl_7d
+    description: Sum of time-decay credits (HL=7d).
+    data_type: Float64
+  - name: total_conversions
+    description: Total conversions of this (kind, role) in the 180-day window.
+    data_type: UInt64
+  - name: computed_at
+    description: Materialisation timestamp.
+    data_type: DateTime
+  meta:
+    owner: analytics_team

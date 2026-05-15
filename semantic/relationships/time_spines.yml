@@ -1,0 +1,202 @@
+version: 1
+
+# ═════════════════════════════════════════════════════════════════════
+# CROSS-SECTOR TIME-SPINE BRIDGES
+# ═════════════════════════════════════════════════════════════════════
+#
+# Each entry binds a metric's source table to a shared time spine so the
+# semantic planner can route a cross-sector query over a common time
+# axis. Without these the planner sees disjoint metrics living on
+# bespoke `revenue_week`, `bridges_d`, `consensus_day` entities and can't
+# compose them.
+#
+# Convention: `dim_time_spine_<grain>` is always the LEFT model, the
+# metric source is the RIGHT model. `via_entity` matches the time
+# column on the spine. Cardinality is `one_to_many` (one spine date can
+# back many metric rows — e.g. many cohorts/symbols/bridges per week).
+# `aggregate_then_join_only: true` tells the planner this bridge is
+# strictly for time-axis enrichment, not row-level joins.
+#
+# Adding a new module: pick the right spine for the grain, copy a
+# matching block, set `right_model` to your metric's root table and
+# `right_keys` to the time column on it.
+# ═════════════════════════════════════════════════════════════════════
+
+relationships:
+
+# ---------- Daily spine ----------
+
+- name: daily_spine_to_consensus_validators_active
+  left_model: dim_time_spine_daily
+  right_model: api_consensus_validators_active_daily
+  left_keys: [day]
+  right_keys: [date]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+# (execution/transactions daily-spine bridge already lives in
+# semantic/relationships/execution_transactions.yml — not duplicated here.)
+
+# ---------- Weekly spine ----------
+
+- name: weekly_spine_to_revenue_active_users
+  left_model: dim_time_spine_weekly
+  right_model: api_revenue_active_users_totals_weekly
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_one
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_revenue_active_users_cohorts
+  left_model: dim_time_spine_weekly
+  right_model: api_revenue_active_users_cohorts_weekly
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_revenue_holdings_cohorts
+  left_model: dim_time_spine_weekly
+  right_model: api_revenue_holdings_cohorts_weekly
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_revenue_sdai_cohorts
+  left_model: dim_time_spine_weekly
+  right_model: api_revenue_sdai_cohorts_weekly
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_revenue_gpay_cohorts
+  left_model: dim_time_spine_weekly
+  right_model: api_revenue_gpay_cohorts_weekly
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_bridges_netflow_by_bridge
+  left_model: dim_time_spine_weekly
+  right_model: fct_bridges_netflow_weekly_by_bridge
+  left_keys: [week]
+  right_keys: [week]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+# ---------- Monthly spine ----------
+
+- name: monthly_spine_to_revenue_active_users
+  left_model: dim_time_spine_monthly
+  right_model: api_revenue_active_users_totals_monthly
+  left_keys: [month]
+  right_keys: [month]
+  cardinality: one_to_one
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_revenue_active_users_cohorts
+  left_model: dim_time_spine_monthly
+  right_model: api_revenue_active_users_cohorts_monthly
+  left_keys: [month]
+  right_keys: [month]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_revenue_holdings_cohorts
+  left_model: dim_time_spine_monthly
+  right_model: api_revenue_holdings_cohorts_monthly
+  left_keys: [month]
+  right_keys: [month]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_revenue_sdai_cohorts
+  left_model: dim_time_spine_monthly
+  right_model: api_revenue_sdai_cohorts_monthly
+  left_keys: [month]
+  right_keys: [month]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_revenue_gpay_cohorts
+  left_model: dim_time_spine_monthly
+  right_model: api_revenue_gpay_cohorts_monthly
+  left_keys: [month]
+  right_keys: [month]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved

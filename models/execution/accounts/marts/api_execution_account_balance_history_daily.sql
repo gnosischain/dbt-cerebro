@@ -27,5 +27,5 @@ SELECT
   native_or_wrapped_xdai_balance,
   priced_balance_usd,
   priced_tokens_held
-FROM {{ ref('fct_execution_account_balance_history_daily') }}
+FROM {{ ref('int_execution_account_balance_history_daily') }}
 

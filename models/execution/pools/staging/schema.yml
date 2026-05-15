@@ -313,3 +313,45 @@ models:
   - name: current_tick
     description: Tick value from the most recent Swap event on this pool.
     data_type: Nullable(Int32)
+
+- name: stg_pools__balancer_v3_events
+  description: |
+    Unified Balancer V3 Vault event stream normalized into a single
+    row-shape: (pool_address | wrapped_token_address, block_timestamp,
+    transaction_hash, log_index, event_type, token_index | token_address,
+    delta_amount_raw, fee_amount_raw). Source:
+    contracts_BalancerV3_Vault_events. LiquidityAdded/Removed are exploded
+    by ARRAY JOIN over the amountsAdded/Removed arrays (one row per pool
+    token). Swap emits two rows (positive tokenIn, negative tokenOut).
+    Wrap/Unwrap/LiquidityAddedToBuffer events are emitted with
+    wrapped_token_address populated and pool_address NULL. Delta sign
+    convention: positive = tokens entering the pool/wrapper, negative =
+    leaving.
+  columns:
+  - name: pool_address
+    description: Pool contract address (lowercase, no 0x prefix). NULL for wrap/unwrap/buffer events.
+    data_type: Nullable(String)
+  - name: block_timestamp
+    data_type: DateTime
+  - name: transaction_hash
+    data_type: String
+  - name: log_index
+    data_type: UInt64
+  - name: event_type
+    description: One of LiquidityAdded, LiquidityRemoved, Swap, Wrap, Unwrap, LiquidityAddedToBuffer.
+    data_type: String
+  - name: token_index
+    description: Position of the token in the pool's token list (LiquidityAdded/Removed only).
+    data_type: Nullable(UInt64)
+  - name: wrapped_token_address
+    description: Wrapped token contract address (Wrap/Unwrap/LiquidityAddedToBuffer only).
+    data_type: Nullable(String)
+  - name: token_address
+    description: Token contract address (Swap rows only).
+    data_type: Nullable(String)
+  - name: delta_amount_raw
+    description: Signed raw token delta (positive = entering pool/wrapper, negative = leaving).
+    data_type: Int256
+  - name: fee_amount_raw
+    description: Swap-fee amount in raw token units for the row (0 when not applicable).
+    data_type: Int256

@@ -45,4 +45,4 @@
     )
 }}
 
-SELECT * FROM {{ ref('fct_consensus_validators_explorer_apy_dist_daily') }}
+SELECT * FROM {{ ref('int_consensus_validators_explorer_apy_dist_daily') }}

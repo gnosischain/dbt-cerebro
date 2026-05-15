@@ -303,15 +303,15 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution yields lending borrowers count 7d
-- name: execution_lending_daily
-  model: ref('api_execution_lending_daily')
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution yields lending daily
+# `execution_lending_daily` semantic_model moved to
+# semantic/authoring/execution/lending/semantic_models.yml — it
+# belongs to the lending module, not yields. Kept in the lending file
+# with proper dimensions, measures, and approved metrics; the empty
+# auto-scaffolded shell was overwriting that proper definition because
+# `load_semantic_authoring` keys semantic_models by resolved dbt model
+# (last-write-wins). Delete this comment once the registry-build is
+# changed to detect & error on duplicate (resolved_model) entries.
+
 - name: execution_lending_latest
   model: ref('fct_execution_lending_latest')
   config:
@@ -347,15 +347,10 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution yields lending tvl by token latest
-- name: execution_lending_weekly
-  model: ref('fct_execution_lending_weekly')
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution yields lending weekly
+# `execution_lending_weekly` semantic_model moved to
+# semantic/authoring/execution/lending/semantic_models.yml (see note
+# at execution_lending_daily above).
+
 - name: execution_yields_opportunities_latest
   model: ref('api_execution_yields_opportunities_latest')
   config:
@@ -1164,14 +1159,26 @@ semantic_models:
     type: categorical
     expr: label
   measures:
-  - name: apy_value
+  - name: yields_sdai_apy_value
     agg: average
     expr: apy
+  - name: yields_sdai_apy_7dma_value
+    agg: average
+    expr: apy_7DMA
+  - name: yields_sdai_apy_30dma_value
+    agg: average
+    expr: apy_30DMA
   config:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - sdai apy
+        - savings xdai apy
+        - sdai yield
+        - sdai rate
         question_synonyms:
         - yields sdai apy daily
         - Savings xDAI APY (legacy view)
@@ -1230,7 +1237,7 @@ semantic_models:
     type: categorical
     expr: yield_source
   measures:
-  - name: apy_value
+  - name: yields_savings_xdai_apy_value
     agg: average
     expr: apy
   config:
@@ -1334,4 +1341,90 @@ semantic_models:
           target_kind: token
           directed: true
           weight_column: balance_usd
-metrics: []
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — yields aggregate metrics
+# ═════════════════════════════════════════════════════════════════════
+#
+# ⚠️ NOT EXPOSED HERE (deferred to UBO models)
+# --------------------------------------------
+# Per-user LP-holder counts and lender counts on `fct_*_user_balances_*`
+# marts are intentionally NOT promoted to approved semantic metrics —
+# they count protocol-level addresses (Vault contracts, wrappers,
+# strategy aggregators), not real human users. See
+# semantic/authoring/execution/lending/semantic_models.yml header
+# (same UBO caveat) and the in-progress models/execution/ubo/* module
+# for the correct attribution path.
+#
+# What's safe to expose: aggregate APY / TVL / supply time series.
+# Currently approved: sDAI APY daily (savings rate). The scalar KPI
+# snapshot entries (api_execution_yields_overview_*) deliberately stay
+# `candidate` — scalar single-row views can't be semantically planned
+# (see metric-registry docs on scalar-KPI handling).
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+- name: yields_sdai_apy
+  label: sDAI / Savings xDAI APY (Daily)
+  description: >
+    Daily Savings xDAI APY (the headline yield analysts care about on
+    Gnosis Chain). The 7-day and 30-day moving averages are exposed
+    as separate measures on the same semantic_model — pick the one
+    that suits the chart smoothing you want.
+  type: simple
+  type_params:
+    measure: yields_sdai_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date, label]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - sdai apy
+        - savings xdai apy
+        - sdai yield
+        - sdai rate
+        - gnosis savings rate
+
+- name: yields_sdai_apy_7dma
+  label: sDAI APY (7-Day Moving Average)
+  description: >
+    7-day moving average of sDAI APY. Less noisy than the raw daily
+    rate; useful for trend visualisation.
+  type: simple
+  type_params:
+    measure: yields_sdai_apy_7dma_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date, label]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - sdai apy 7 day
+        - sdai apy smoothed
+        - sdai weekly average
+
+- name: yields_sdai_apy_30dma
+  label: sDAI APY (30-Day Moving Average)
+  description: >
+    30-day moving average of sDAI APY. Strong smoothing for
+    quarterly-trend charts.
+  type: simple
+  type_params:
+    measure: yields_sdai_apy_30dma_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date, label]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - sdai apy 30 day
+        - sdai apy monthly average

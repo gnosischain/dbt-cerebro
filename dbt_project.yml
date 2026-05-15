@@ -14,6 +14,16 @@ vars:
   circles_ipfs_gateway: "https://ipfs.io/ipfs/"
   circles_target_group_address: "0x1aca75e38263c79d9d4f10df0635cc6fcfe6f026"
   circles_target_group_start_date: "2025-04-25"
+  # Floor date for the Gnosis App WAU/WEAU composite metric. Aligns with
+  # the Cometh v4 bundler launch (when AA swap routing went live). Centralised
+  # here so SQL doesn't hard-code the literal.
+  gnosis_app_wau_floor_date: "2025-11-12"
+  # On-chain address of the Circles v2 group "Circles cashback" wallet that
+  # distributes gCRC rewards. Used by the weekly economically-active-users
+  # definition (cashback recipients ≥ 1 gCRC / week).
+  circles_v2_cashback_wallet: "0x7abe74b71f2958b624cb2be0596678784c0caf6a"
+  # Contract address of the gCRC group token (group ID 0x548c…4bc1).
+  circles_v2_gcrc_token: "0x548c20e6c24e4876e20dadbeab75362e2f5a4bc1"
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -29,9 +39,72 @@ clean-targets:
   - "logs"
 
 models:
-  gnosis_dbt: {}
+  gnosis_dbt:
+    # Mixpanel privacy policy (two tiers):
+    #   API : ALL mixpanel models are excluded from cerebro-api uniformly
+    #         (enforced here via api.exclude_from_api: true).
+    #   MCP : aggregate-only views are accessible; per-user grain and
+    #         cross-domain joins are blocked at the semantic registry
+    #         (`quality_tier: blocked` in semantic/authoring/mixpanel_ga/).
+    # `expose_to_mcp` is therefore NOT set at the project level — leave
+    # it to per-model overrides in schema.yml where the sensitive views
+    # explicitly opt out.
+    mixpanel_ga:
+      +tags: ["privacy:mixpanel_ga", "mixpanel_ga"]
+      +meta:
+        privacy_tier: mixpanel
+        api:
+          exclude_from_api: true
+    execution:
+      gnosis_app:
+        intermediate:
+          # Bridge model — maps user_pseudonym (sipHash64) to plaintext wallet
+          # addresses. Internal only; never exposed via cerebro-api.
+          int_execution_gnosis_app_user_identity_bridge:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
+          # Identity table — contains plaintext addresses alongside
+          # user_pseudonym. Same privacy class as the bridge above.
+          int_execution_gnosis_app_user_identities:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
+      gpay:
+        intermediate:
+          # Bridge model — maps user_pseudonym to plaintext Safe / EOA
+          # addresses. Internal only; never exposed via cerebro-api.
+          int_execution_gpay_user_identity_bridge:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
+          # Safe-identity table — joins gp_safe (plaintext Safe address) to
+          # user_pseudonym across initial-owner, delegate, and safe-self roles.
+          int_execution_gpay_safe_identities:
+            +tags: ["internal_only", "privacy:tier_internal"]
+            +meta:
+              expose_to_mcp: false
+              privacy_tier: internal
+              api:
+                exclude_from_api: true
+      mmm:
+        +tags: ["mmm", "execution"]
+        intermediate:
+          +materialized: incremental
+        marts:
+          +materialized: table
   elementary:
     +schema: "elementary"
+    +enabled: false
 
 seeds:
   gnosis_dbt:
@@ -199,3 +272,108 @@ seeds:
         child_abi_source_address: "String"
         protocol: "String"
         start_blocktime: "String"
+
+    # ── MTA / MMM registries ──────────────────────────────────────────────
+    mta_event_kinds:
+      +engine: MergeTree()
+      +order_by: [event_kind]
+      +column_types:
+        event_kind: "LowCardinality(String)"
+        domain: "LowCardinality(String)"
+        description: "String"
+
+    mta_conversion_kinds:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_conversion_to_event_kind:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        event_kind: "LowCardinality(String)"
+
+    mta_funnels:
+      +engine: MergeTree()
+      +order_by: [funnel_name]
+      +column_types:
+        funnel_name: "LowCardinality(String)"
+        step_1_event_kind: "LowCardinality(String)"
+        step_2_event_kind: "LowCardinality(String)"
+        step_3_event_kind: "Nullable(String)"
+        window_seconds: "UInt32"
+
+    mta_gp_event_kinds:
+      +engine: MergeTree()
+      +order_by: [event_kind]
+      +column_types:
+        event_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_gp_conversion_kinds:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        description: "String"
+
+    mta_gp_conversion_to_event_kind:
+      +engine: MergeTree()
+      +order_by: [conversion_kind]
+      +column_types:
+        conversion_kind: "LowCardinality(String)"
+        event_kind: "LowCardinality(String)"
+
+    mta_gp_identity_roles:
+      +engine: MergeTree()
+      +order_by: [identity_role]
+      +column_types:
+        identity_role: "LowCardinality(String)"
+        description: "String"
+
+    mmm_kpi_registry:
+      +engine: MergeTree()
+      +order_by: [kpi_name]
+      +column_types:
+        kpi_name: "LowCardinality(String)"
+        kpi_value_method: "LowCardinality(String)"
+        units: "LowCardinality(String)"
+        source_model: "String"
+        is_dedup_safe: "UInt8"
+
+    mmm_media_registry:
+      +engine: MergeTree()
+      +order_by: [media_name]
+      +column_types:
+        media_name: "LowCardinality(String)"
+        media_value_method: "LowCardinality(String)"
+        media_units: "LowCardinality(String)"
+        is_outlay: "UInt8"
+        source_model: "String"
+
+    mmm_control_registry:
+      +engine: MergeTree()
+      +order_by: [control_name]
+      +column_types:
+        control_name: "LowCardinality(String)"
+        control_value_method: "LowCardinality(String)"
+        source_model: "String"
+
+    mmm_holiday_weeks:
+      +engine: MergeTree()
+      +order_by: [week]
+      +column_types:
+        week: "Date"
+        is_holiday_week: "UInt8"
+        region: "LowCardinality(String)"
+
+    mmm_hardfork_steps:
+      +engine: MergeTree()
+      +order_by: [fork_date]
+      +column_types:
+        fork_date: "Date"
+        fork_name: "String"
+        sectors_affected: "String"

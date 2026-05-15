@@ -1127,6 +1127,60 @@ models:
       severity: error
       tags:
       - elementary
+- name: fct_consensus_validators_status_latest
+  description: |
+    Validator-level point-in-time snapshot at the most recent slot. One row
+    per validator with current balance, effective balance, status, slashed
+    flag, lifecycle epochs (activation/eligibility/exit/withdrawable), and
+    a derived 20-byte withdrawal_address parsed from 0x01/0x02 credentials
+    (NULL for 0x00 BLS credentials). Sourced from stg_consensus__validators_all
+    by selecting MAX(slot). Materialized as a table; the upstream API view
+    (api_consensus_validators_status_latest) is the canonical lookup
+    endpoint by pubkey / validator_index / withdrawal_credentials /
+    withdrawal_address.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: slot
+    description: The most recent consensus slot included in the snapshot.
+    data_type: UInt64
+  - name: validator_index
+    description: Unique numerical identifier assigned to each validator.
+    data_type: UInt32
+  - name: balance
+    description: Current validator balance in Gwei at the latest slot.
+    data_type: UInt64
+  - name: status
+    description: Current validator lifecycle status at the latest slot.
+    data_type: String
+  - name: pubkey
+    description: Lowercased validator public key.
+    data_type: String
+  - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials.
+    data_type: String
+  - name: withdrawal_address
+    description: 20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL for 0x00 BLS credentials.
+    data_type: Nullable(String)
+  - name: effective_balance
+    description: Effective validator balance used for consensus calculations.
+    data_type: UInt64
+  - name: slashed
+    description: Indicator showing whether the validator has been slashed.
+    data_type: UInt8
+  - name: activation_eligibility_epoch
+    data_type: UInt64
+  - name: activation_epoch
+    data_type: UInt64
+  - name: exit_epoch
+    data_type: UInt64
+  - name: withdrawable_epoch
+    data_type: UInt64
+  - name: slot_timestamp
+    description: Timestamp corresponding to the snapshot slot.
+    data_type: DateTime64
+
 - name: fct_consensus_forks
   description: The fct_consensus_forks model provides a consolidated view of consensus fork details, including their identifiers, versions, and activation times, to support analysis of network upgrades
     and protocol changes.
@@ -1864,81 +1918,11 @@ models:
       tags:
       - elementary
 
-- name: fct_consensus_validators_apy_dist_income_daily
-  description: |
-    Physical materialisation of int_consensus_validators_apy_dist_income_daily — network-wide
-    daily APY quantile distribution (q05..q95) + balance-weighted mean, built on the
-    spec-bounded int_consensus_validators_income_daily. Feeds the Network Average APY band
-    chart on the Consensus tab via api_consensus_validators_apy_dist_income_daily.
-  columns:
-  - name: date
-    data_type: DateTime
-  - name: q05_apy
-    data_type: Float64
-  - name: q10_apy
-    data_type: Float64
-  - name: q25_apy
-    data_type: Float64
-  - name: q50_apy
-    description: Network median APY on the date.
-    data_type: Float64
-  - name: q75_apy
-    data_type: Float64
-  - name: q90_apy
-    data_type: Float64
-  - name: q95_apy
-    data_type: Float64
-  - name: avg_apy_weighted
-    data_type: Float64
-  - name: validators_included
-    data_type: UInt64
-
 - name: api_consensus_validators_apy_dist_income_daily
-  description: Public API view — SELECT * FROM fct_consensus_validators_apy_dist_income_daily. Filter/pagination metadata in model config.
-
-- name: fct_consensus_validators_explorer_apy_dist_daily
-  description: |
-    Per-(date, withdrawal_credentials) APY quantile distribution + rolling medians.
-    Physical materialisation of int_consensus_validators_explorer_apy_dist_daily; ordered
-    on (withdrawal_credentials, date) so the API's WHERE withdrawal_credentials filter
-    prunes via the primary index. Feeds the "Average APY" band chart on the Validator
-    Explorer tab.
-  meta:
-    owner: analytics_team
-    authoritative: false
-    full_refresh:
-      start_date: "2021-12-01"
-      batch_months: 1
-  columns:
-  - name: date
-    data_type: DateTime
-  - name: withdrawal_credentials
-    data_type: String
-  - name: q05_apy
-    data_type: Float64
-  - name: q10_apy
-    data_type: Float64
-  - name: q25_apy
-    data_type: Float64
-  - name: q50_apy
-    data_type: Float64
-  - name: q75_apy
-    data_type: Float64
-  - name: q90_apy
-    data_type: Float64
-  - name: q95_apy
-    data_type: Float64
-  - name: apy_weighted
-    data_type: Float64
-  - name: validator_count_active
-    data_type: UInt64
-  - name: apy_rolling_7d_median
-    data_type: Float64
-  - name: apy_rolling_30d_median
-    data_type: Float64
+  description: Public API view — SELECT * FROM int_consensus_validators_apy_dist_income_daily. Filter/pagination metadata in model config.
 
 - name: api_consensus_validators_explorer_apy_dist_daily
-  description: Public API view — SELECT * FROM fct_consensus_validators_explorer_apy_dist_daily. Requires withdrawal_credentials filter; see model config.
+  description: Public API view — SELECT * FROM int_consensus_validators_explorer_apy_dist_daily. Requires withdrawal_credentials filter; see model config.
 
 - name: fct_consensus_validators_apy_mean_daily
   description: |
@@ -2289,3 +2273,31 @@ models:
     data_type: UInt64
   - name: balance_gno_total
     data_type: Float64
+
+# ---------- Cross-sector user-overlap entry (validator operators) ----------
+# Closes the user_pseudonym graph on the consensus side. The 873-ish
+# unique 0x01 withdrawal addresses controlling ~124k validators are
+# joinable to revenue / gpay / gnosis_app / Circles on user_pseudonym.
+
+- name: fct_consensus_validators_withdrawal_addresses_distinct
+  description: |
+    One row per `user_pseudonym` (sipHash of validator withdrawal
+    address). Aggregates `n_validators_controlled` per address and
+    bucketises into concentration tiers (single / small / medium /
+    large / whale).
+
+    `user_pseudonym` is the canonical cross-sector join key (sipHash64
+    of lowercased address with the project PII salt). Same hash space
+    as fct_revenue_per_user_*, fct_execution_gpay_users_distinct,
+    fct_execution_gnosis_app_users_distinct,
+    fct_execution_circles_human_avatars_distinct, and Mixpanel
+    `user_id_hash`.
+
+    Excludes 0x00-type BLS-credential validators (their credentials are
+    BLS pubkey hashes, not EVM addresses — can't be projected into the
+    pseudonym space). See model description for the full caveat list.
+  columns:
+  - {name: user_pseudonym,           description: Cross-sector pseudonym (sipHash64 of withdrawal address).,                  data_type: UInt64}
+  - {name: n_validators_controlled,  description: Count of 0x01-credential validators controlled by this withdrawal address., data_type: UInt64}
+  - {name: concentration_tier,       description: "Bucket: 'single' / 'small (2-10)' / 'medium (11-100)' / 'large (101-1000)' / 'whale (>1000)'.", data_type: String}
+  meta: {owner: consensus_team, authoritative: false}

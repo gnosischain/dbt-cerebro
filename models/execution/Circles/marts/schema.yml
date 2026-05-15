@@ -901,3 +901,257 @@ models:
     data_type: Float64
   meta: *meta_fct
   tests: *elementary_warn
+
+- name: fct_execution_circles_v2_active_minters_daily
+  description: >
+    Per-day count of Circles v2 "Active Minters" — avatars that minted on
+    each of the last 14 days AND whose 14-day mint sum is >= 80% of the
+    336 CRC theoretical maximum. Canonical KPI from the Dune circles-v2-kpis
+    dashboard. Blacklisted avatars are NOT excluded here; the cohort
+    distribution mart does the exclusion.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: active_minters
+    description: Distinct avatars meeting the active-minter criteria on this day.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+
+- name: api_execution_circles_v2_active_minters_daily
+  description: Time-series view over fct_execution_circles_v2_active_minters_daily; latest day excluded.
+  columns:
+  - name: date
+    data_type: Date
+  - name: active_minters
+    data_type: UInt64
+
+- name: fct_execution_circles_v2_minter_cohort_daily
+  description: >
+    Daily cohort distribution of Circles v2 minters bucketed by 14-day mint
+    coverage (mint_14dw / 336). Six buckets: <1%, [1-20%[, [20-40%[, [40-60%[,
+    [60-80%[, +80%. Blacklisted avatars are excluded via LEFT JOIN to
+    stg_crawlers_data__circles_blacklisted, matching the Dune circles-v2-kpis chart.
+  columns:
+  - name: date
+    description: Calendar day (UTC).
+    data_type: Date
+  - name: cohort_order
+    description: 1..6 ordering for stable stacking (low → high coverage).
+    data_type: UInt8
+  - name: cohort
+    description: Human-readable bucket label.
+    data_type: String
+  - name: cnt
+    description: Distinct avatars in this bucket on this day.
+    data_type: UInt64
+  meta: *meta_fct
+  tests: *elementary_warn
+
+- name: api_execution_circles_v2_minter_cohort_daily
+  description: Time-series view over fct_execution_circles_v2_minter_cohort_daily; latest day excluded.
+  columns:
+  - name: date
+    data_type: Date
+  - name: cohort
+    data_type: String
+  - name: cohort_order
+    data_type: UInt8
+  - name: cnt
+    data_type: UInt64
+
+- name: api_execution_circles_v2_hub_events_daily
+  description: Time-series view over int_execution_circles_v2_hub_events_daily; latest day excluded.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: event_name, data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_tx, data_type: UInt64}
+  - {name: n_distinct_addresses, data_type: UInt64}
+
+- name: api_execution_circles_v2_mints_daily
+  description: Time-series view over int_execution_circles_v2_mints_daily; latest day excluded.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_mint_events, data_type: UInt64}
+  - {name: n_minters, data_type: UInt64}
+  - {name: amount_minted, data_type: Float64}
+
+- name: api_execution_circles_v2_trusts_daily
+  description: Time-series view over int_execution_circles_v2_trusts_daily; latest day excluded.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_trust_events, data_type: UInt64}
+  - {name: n_new_trusts, data_type: UInt64}
+  - {name: n_revoked_trusts, data_type: UInt64}
+  - {name: n_distinct_trusters, data_type: UInt64}
+  - {name: n_distinct_trustees, data_type: UInt64}
+
+- name: api_execution_circles_v2_inviters_ranking
+  description: >
+    Top-N inviters leaderboard ordered by number of human avatars invited.
+    Pre-joins the inviter's display name, preview image URL (IPFS profile),
+    and current blacklist flag so the dashboard renders the table directly.
+  columns:
+  - {name: rank, data_type: UInt64}
+  - {name: inviter, description: Lowercase inviter avatar address.,                                  data_type: String}
+  - {name: display_name, description: IPFS profile display name (empty string when unset).,         data_type: String}
+  - {name: preview_image_url, description: IPFS profile previewImageUrl (empty string when unset)., data_type: String}
+  - {name: is_blacklisted, description: True iff the address appears in stg_crawlers_data__circles_blacklisted at build time., data_type: Bool}
+  - {name: invite_count, description: Total humans invited.,                                         data_type: UInt64}
+  - {name: first_invite_ts, description: Timestamp of the first invite.,                             data_type: DateTime}
+  - {name: last_invite_ts, description: Timestamp of the most recent invite.,                        data_type: DateTime}
+
+- name: api_execution_circles_v2_trusts_distribution
+  description: >
+    Distribution histogram of trust degree (given / received) across avatars.
+    Each row is a (direction, bucket) cell with the count of avatars whose
+    trust degree falls in that bucket as of the latest complete day.
+  columns:
+  - {name: direction, description: "'given' or 'received'." ,                                        data_type: String}
+  - {name: trust_bucket, description: "Bucket label (0 / 1-5 / 6-10 / 11-25 / 26-50 / 51-100 / 100+)." ,    data_type: String}
+  - {name: avatar_count, description: Number of avatars in this bucket. ,                            data_type: UInt64}
+
+- name: api_execution_circles_v2_stats_current
+  description: >
+    Snapshot of network-level Circles v2 counts (avatars total + by type, active trusts,
+    tokens, wrappers). One row per measure.
+  columns:
+  - {name: measure, description: "Measure name (avatar_count_v2 / human_count_v2 / group_count_v2 / org_count_v2 / active_trust_count_v2 / token_count_v2 / wrapper_count_v2)." , data_type: String}
+  - {name: value, description: Measure value. ,                                                      data_type: UInt64}
+
+- name: api_execution_circles_v2_kpi_mints_7d
+  description: "KPI: total mints in the last 7 full days with WoW pct change."
+  columns:
+  - {name: value, description: Total mint events in last 7 days. ,                                   data_type: UInt64}
+  - {name: amount, description: Total CRC minted in last 7 days. ,                                   data_type: Float64}
+  - {name: change_pct, description: Percent change vs prior 7d window. ,                             data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_active_minters_latest
+  description: "KPI: yesterday's Active Minters count with WoW pct change."
+  columns:
+  - {name: value, data_type: UInt64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_new_trusts_7d
+  description: "KPI: new trusts granted in the last 7 full days with WoW pct change."
+  columns:
+  - {name: value, description: Total new trusts in last 7 days. ,                                    data_type: UInt64}
+  - {name: revoked, description: Total revoked trusts in last 7 days. ,                              data_type: UInt64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_total_supply_latest
+  description: "KPI: latest network-wide CRC supply with 7-day pct change."
+  columns:
+  - {name: value, description: Latest total CRC supply (raw / 1e18). ,                               data_type: Float64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_avg_trusts_per_avatar_latest
+  description: "KPI: average trusts per human avatar = active_trusts / humans. Network-density indicator."
+  columns:
+  - {name: value, description: active_trusts / humans (rounded to 2 decimals). ,                     data_type: Float64}
+
+- name: api_execution_circles_v2_backing_events_daily
+  description: Time-series of Circles v2 backing-lifecycle events, by stage.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: lifecycle_stage, data_type: String}
+  - {name: n_events, data_type: UInt64}
+  - {name: n_distinct_backers, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+
+- name: api_execution_circles_v2_backing_depositors_current
+  description: Snapshot of distinct depositor addresses.
+  columns:
+  - {name: backer, data_type: String}
+  - {name: first_initiated_at, data_type: DateTime}
+  - {name: last_event_at, data_type: DateTime}
+  - {name: n_initiated, data_type: UInt64}
+  - {name: n_completed, data_type: UInt64}
+  - {name: n_released, data_type: UInt64}
+  - {name: n_distinct_assets, data_type: UInt64}
+
+- name: api_execution_circles_v2_groups_overview_daily
+  description: Daily group registrations + collateral activity, with cumulative group total.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_new_groups, data_type: UInt64}
+  - {name: n_collateral_events, data_type: UInt64}
+  - {name: n_distinct_groups_acting, data_type: UInt64}
+  - {name: n_groups_total, data_type: UInt64}
+
+- name: api_execution_circles_v2_transfers_daily
+  description: Time-series of Circles v2 transfers by category.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: transfer_category, data_type: String}
+  - {name: n_transfers, data_type: UInt64}
+  - {name: n_senders, data_type: UInt64}
+  - {name: n_receivers, data_type: UInt64}
+  - {name: amount, data_type: Float64}
+  - {name: amount_demurraged, data_type: Float64}
+
+- name: api_execution_circles_v2_p2p_velocity_daily
+  description: Peer-to-peer transfer velocity (mint/burn/wrap/unwrap excluded).
+  columns:
+  - {name: date, data_type: Date}
+  - {name: n_transfers, data_type: UInt64}
+  - {name: n_senders, data_type: UInt64}
+  - {name: n_receivers, data_type: UInt64}
+  - {name: amount, data_type: Float64}
+
+- name: api_execution_circles_v2_wrapper_share_daily
+  description: Network wrapped vs unwrapped supply share over time.
+  columns:
+  - {name: date, data_type: Date}
+  - {name: wrapped_supply, data_type: Float64}
+  - {name: unwrapped_supply, data_type: Float64}
+  - {name: total_supply, data_type: Float64}
+  - {name: wrapped_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_invite_funnel_cohort_monthly
+  description: >
+    Invitee cohort by month, with the five-stage mint-cadence funnel
+    (Invited → ≥2 days → ≥7 days → ≥14 days → Active Minter) and the
+    percentile latency to "came back" (second mint on a different day).
+    Skips the trivial acceptance mint, which always fires.
+  columns:
+  - {name: cohort_month, data_type: Date}
+  - {name: n_invited, description: "Total invitees in this cohort.", data_type: UInt64}
+  - {name: n_minted_2_days, description: "Invitees with >= 2 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_minted_7_days, description: "Invitees with >= 7 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_minted_14_days, description: "Invitees with >= 14 distinct mint days in the first 30 days.", data_type: UInt64}
+  - {name: n_active_minter, description: "Invitees that ever reached canonical Active Minter status (mint_days_14dw = 14 AND mint_14dw >= 80% of 336).", data_type: UInt64}
+  - {name: pct_minted_2_days, data_type: Float64}
+  - {name: pct_minted_7_days, data_type: Float64}
+  - {name: pct_minted_14_days, data_type: Float64}
+  - {name: pct_active_minter, data_type: Float64}
+  - {name: median_days_to_second_mint, description: "Median days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
+  - {name: p25_days_to_second_mint, data_type: Nullable(Int64)}
+  - {name: p75_days_to_second_mint, data_type: Nullable(Int64)}
+
+# ---------- Cross-sector user-overlap entry (Circles humans) ----------
+
+- name: fct_execution_circles_human_avatars_distinct
+  description: |
+    One row per `user_pseudonym` for Circles v2 HUMAN avatars
+    (Groups and Orgs excluded — those aren't user-grain entities).
+
+    `user_pseudonym` is the canonical cross-sector join key (sipHash64
+    of the avatar address with the project PII salt). Same hash space
+    as fct_revenue_per_user_*, fct_execution_gpay_users_distinct,
+    fct_execution_gnosis_app_users_distinct, and Mixpanel `user_id_hash`.
+    Powers user-overlap analysis: "Circles humans who are also revenue-
+    active", "Circles humans who hold a Gnosis Pay Safe", etc.
+
+    Carries lightweight engagement / metadata flags so analysts can
+    slice by registration path or profile-completion stage without
+    re-joining to the metadata table.
+  columns:
+  - {name: user_pseudonym,    description: Cross-sector pseudonym (sipHash64 of avatar address).,    data_type: UInt64}
+  - {name: first_seen_at,     description: Avatar registration timestamp.,                            data_type: "DateTime64(0, 'UTC')"}
+  - {name: was_invited,       description: 1 if registered via an inviter (`invited_by` not NULL).,  data_type: UInt8}
+  - {name: has_ipfs_profile,  description: 1 if avatar has published an IPFS metadata payload.,      data_type: UInt8}
+  - {name: has_display_name,  description: 1 if avatar has a non-empty display name in metadata.,    data_type: UInt8}
+  meta: {owner: analytics_team, authoritative: false}

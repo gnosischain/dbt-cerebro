@@ -1,0 +1,220 @@
+# ═════════════════════════════════════════════════════════════════════
+# LENDING — semantic layer (Phase B, aggregate-only)
+# ═════════════════════════════════════════════════════════════════════
+#
+# Covers Aave V3 and SparkLend on Gnosis. Aggregate metrics only:
+# TVL, APY, deposits/borrows volume.
+#
+# ⚠️ NOT EXPOSED HERE (deferred to UBO models)
+# --------------------------------------------
+# Distinct LENDER / BORROWER counts (e.g. `lenders_count_weekly`,
+# `borrowers_count_weekly` on fct_execution_lending_weekly) are
+# intentionally NOT promoted to approved semantic metrics. Reason:
+# those counts measure protocol-level holders (the addresses that
+# physically hold the aToken / debt token), NOT real human users.
+# In practice these protocol-holder addresses include:
+#   - Vault / wrapper contracts that hold positions on behalf of many
+#     human users (Balancer V2 pools, Aave-on-Balancer aggregators)
+#   - Smart-account wallets that aggregate multiple humans
+#   - Custodian / strategy contracts
+#
+# The CORRECT attribution lives in the `ubo` (Ultimate Beneficial
+# Owner) module:
+#   - `fct_ubo_known_containers_daily`  — daily snapshot of which
+#                                          contracts are "containers"
+#                                          (custody for other addresses)
+#   - `fct_ubo_supply_claims_daily`     — claims that project container
+#                                          balances back to real human
+#                                          beneficiaries
+#   - `int_ubo_claims_aave_daily`       — Aave-specific UBO claims
+#   - `int_ubo_claims_balancer_v2_daily` — Balancer-V2 LP claims
+#
+# When the UBO models stabilise, the per-user lending mart should be
+# derived FROM them (not from the raw protocol-holder bitmaps in
+# fct_execution_lending_weekly). At that point we can add a real
+# `lending_distinct_users` metric to this file. Until then, exposing
+# the protocol-holder count via the semantic layer would mislead
+# analysts.
+#
+# Skipped (single-row scalar KPI cards):
+#   * api_execution_lending_lenders_count_7d
+#   * api_execution_lending_borrowers_count_7d
+#   * api_execution_lending_tvl_by_token_latest   (could expose later
+#                                                  as a tabular metric)
+# ═════════════════════════════════════════════════════════════════════
+
+semantic_models:
+
+# Daily APY time series (long-format): one row per (date, protocol,
+# token, apy_type). apy_type is 'Lending APY' or 'Borrow APY'.
+- name: execution_lending_apy_daily
+  model: ref('api_execution_lending_daily')
+  defaults:
+    agg_time_dimension: date
+  entities:
+  - name: lending_apy_row
+    type: primary
+    expr: concat(toString(date), '|', label, '|', token, '|', apy_type)
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: token
+    type: categorical
+    expr: token
+  - name: token_class
+    type: categorical
+    expr: token_class
+  - name: protocol
+    type: categorical
+    expr: label
+  - name: apy_type
+    type: categorical
+    expr: apy_type
+  measures:
+  - name: execution_lending_apy_value
+    agg: avg
+    expr: coalesce(value, 0)
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - lending apy daily
+        - lending interest rate daily
+        - aave apy
+        - spark apy
+        - borrow rate daily
+
+# Weekly volume / TVL fact per (week, protocol, token).
+# IMPORTANT: lenders_count_weekly / borrowers_count_weekly columns
+# exist on the source but are deliberately NOT exposed as measures
+# here — they count protocol-level addresses, not real humans. See
+# file header for the UBO context.
+- name: execution_lending_weekly
+  model: ref('fct_execution_lending_weekly')
+  defaults:
+    agg_time_dimension: week
+  entities:
+  - name: lending_weekly_row
+    type: primary
+    expr: concat(toString(week), '|', protocol, '|', symbol)
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  - name: protocol
+    type: categorical
+    expr: protocol
+  measures:
+  - name: execution_lending_deposits_volume_value
+    agg: sum
+    expr: deposits_volume_weekly
+  - name: execution_lending_borrows_volume_value
+    agg: sum
+    expr: borrows_volume_weekly
+  - name: execution_lending_apy_weekly_value
+    agg: avg
+    expr: coalesce(apy_weekly, 0)
+  - name: execution_lending_borrow_apy_weekly_value
+    agg: avg
+    expr: coalesce(borrow_apy_weekly, 0)
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: week
+        question_synonyms:
+        - lending weekly
+        - lending deposits volume
+        - lending borrows volume
+        - aave weekly
+        - sparklend weekly
+
+# ═════════════════════════════════════════════════════════════════════
+# METRICS — aggregate lending activity, no user-count exposure.
+# ═════════════════════════════════════════════════════════════════════
+metrics:
+
+- name: lending_apy_daily
+  label: Lending APY (Daily)
+  description: >
+    Daily supply/borrow APY per (protocol, token, apy_type). Use
+    `apy_type` filter to pick supply vs borrow side, `protocol` /
+    `token` to slice. Average across rows for headline numbers.
+  type: simple
+  type_params:
+    measure: execution_lending_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions: [date, token, token_class, protocol, apy_type]
+        supported_time_grains: [day, week, month]
+        question_synonyms:
+        - lending apy
+        - aave apy
+        - spark apy
+        - lending interest rate
+        - borrow apy
+        - supply apy
+
+- name: lending_deposits_volume_weekly
+  label: Lending Deposits Volume (Weekly, native units)
+  description: >
+    Sum of weekly deposit volume per (protocol, token). Volumes are in
+    native token units — combine with price ts if you need USD
+    normalisation across tokens.
+  type: simple
+  type_params:
+    measure: execution_lending_deposits_volume_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: week
+        owner: analytics_team
+        allowed_dimensions: [week, symbol, token_class, protocol]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - lending deposits weekly
+        - aave deposits weekly
+        - sparklend deposits weekly
+        - lending supply weekly
+        - weekly lending volume
+
+- name: lending_borrows_volume_weekly
+  label: Lending Borrows Volume (Weekly, native units)
+  description: >
+    Sum of weekly borrow volume per (protocol, token).
+  type: simple
+  type_params:
+    measure: execution_lending_borrows_volume_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: week
+        owner: analytics_team
+        allowed_dimensions: [week, symbol, token_class, protocol]
+        supported_time_grains: [week, month]
+        question_synonyms:
+        - lending borrows weekly
+        - aave borrows weekly
+        - sparklend borrows weekly
+        - weekly borrow volume
