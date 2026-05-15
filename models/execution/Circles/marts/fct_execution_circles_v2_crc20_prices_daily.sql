@@ -26,8 +26,6 @@ SELECT
     sum(crc_bought_amount)              AS crc_bought_volume,
     sum(crc_sold_amount)                AS crc_sold_volume,
     count()                             AS trade_count,
-    -- USD price derived directly from amount_usd / crc_amount; no extra ASOF join needed
-    -- because int_execution_pools_dex_trades already resolved the backing token price.
     avg(amount_usd / NULLIF(crc_amount, 0))    AS price_avg_usd,
     median(amount_usd / NULLIF(crc_amount, 0)) AS price_median_usd
 FROM {{ ref('int_execution_circles_v2_crc20_prices_raw') }}

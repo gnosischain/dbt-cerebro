@@ -41,11 +41,14 @@ models:
 - name: int_execution_circles_v2_crc20_prices_raw
   description: >
     Trade-level executed prices for CRC20 wrapper tokens across all supported DEX
-    protocols. Filters int_execution_pools_dex_trades for trades where either leg
-    is a known CRC20 wrapper. Balancer V2 trades are captured automatically via
-    the single vault contract. Uniswap V3 CRC20 pools require their addresses in
-    contracts_whitelist.csv (type UniswapV3Pool). USD price is derived directly
-    from int_execution_pools_dex_trades.amount_usd using the backing token price.
+    protocols. Filters int_execution_pools_dex_trades for swaps where either leg
+    is a known CRC20 wrapper (joined from int_execution_circles_v2_wrapper_tokens).
+    Balancer V2 trades are captured automatically via the single vault contract and
+    need no whitelist entry. Uniswap V3 CRC20 pools require their addresses in
+    contracts_whitelist.csv (type UniswapV3Pool). USD price is passed through
+    directly from int_execution_pools_dex_trades.amount_usd, which already resolves
+    the backing token price — no extra join is needed here. Dust trades with either
+    leg below 1e-4 tokens are excluded to prevent tiny swaps from distorting prices.
   columns:
   - name: block_timestamp
     description: UTC timestamp of the swap.
@@ -88,14 +91,23 @@ models:
     description: Decimal places of the backing token (18 if not in whitelist).
     data_type: UInt8
   - name: crc_amount
-    description: Amount of CRC20 tokens exchanged in this swap (token units, 18 decimals applied).
+    description: Amount of CRC20 tokens exchanged in this swap (bought or sold, token units). Equal to crc_bought_amount + crc_sold_amount; exactly one of those is non-zero per row.
     data_type: Float64
   - name: backing_amount
     description: Amount of backing tokens exchanged in this swap (token units, decimals applied).
     data_type: Float64
-  - name: price_in_backing
-    description: Executed price — backing tokens paid or received per 1 CRC20 token.
+  - name: crc_bought_amount
+    description: CRC20 tokens received by the pool buyer in this swap. Non-zero only when CRC is the token_bought leg; zero otherwise. Mutually exclusive with crc_sold_amount except for CRC-to-CRC swaps.
     data_type: Float64
+  - name: crc_sold_amount
+    description: CRC20 tokens sent into the pool by the seller in this swap. Non-zero only when CRC is the token_sold leg; zero otherwise. Mutually exclusive with crc_bought_amount except for CRC-to-CRC swaps.
+    data_type: Float64
+  - name: price_in_backing
+    description: Executed price — backing tokens per 1 CRC20 token (backing_amount / crc_amount).
+    data_type: Float64
+  - name: amount_usd
+    description: USD value of the swap, inherited from int_execution_pools_dex_trades where the backing token price is already applied.
+    data_type: Nullable(Float64)
   meta: *meta_int
 
 - name: int_execution_circles_v1_avatars

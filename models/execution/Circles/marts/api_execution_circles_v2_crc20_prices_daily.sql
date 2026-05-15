@@ -8,15 +8,12 @@
     )
 }}
 
--- Volume-weighted consolidated daily price per CRC20 token across all pools.
--- Tokens without any DEX trades on a given day have no row (no market price to report).
 SELECT
     date,
     crc20_token,
     avatar,
     crc20_symbol                                                    AS symbol,
     circles_type,
-    -- Volume-weighted average price in USD across all pools
     sum(price_avg_usd * crc_volume) / NULLIF(sum(crc_volume), 0)   AS price_vwap_usd,
     median(price_median_usd)                                        AS price_median_usd,
     sum(crc_volume)                                                 AS total_crc_volume,
