@@ -17,7 +17,7 @@
     <h1>int_execution_gnosis_app_user_events</h1>
     <p>Long-form heuristic event log for Gnosis App user identification.
 
-Six rules, all keyed off the same chokepoint: a Cometh ERC-4337
+Seven rules, all keyed off the same chokepoint: a Cometh ERC-4337
 bundler (one of three relayer addresses in
 seeds/gnosis_app_relayers.csv) sent the outer transaction to the
 canonical EntryPoint v0.7. Any account that appears as a parameter
@@ -29,8 +29,11 @@ Rules:
                             enabled the Circles InvitationModule
                             (0x00738aca…). The Safe address is the
                             user.
-  circles_metri_fee       — CRC ERC-1155 transfer to the Metri fee
-                            receiver (0x97FD8f78…) inside a Cometh tx.
+  circles_fee             — CRC ERC-1155 transfer to the Gnosis App
+                            fee receiver (0x97FD8f78…) inside a
+                            Cometh tx. The receiver was branded
+                            &quot;Metri&quot; before the rebrand to &quot;Gnosis
+                            App&quot;; the address is unchanged.
   circles_register_human  — Hub.RegisterHuman event inside a Cometh
                             tx. decoded_params[&#x27;avatar&#x27;] is the user.
   circles_invite_human    — Same RegisterHuman event with a non-zero
@@ -41,6 +44,11 @@ Rules:
   circles_profile_update  — NameRegistry.UpdateMetadataDigest event
                             inside a Cometh tx.
                             decoded_params[&#x27;avatar&#x27;] is the user.
+  circles_personal_mint   — Personal CRC mint (Human avatar minting
+                            its own Circles, via
+                            int_execution_circles_v2_mint_events
+                            mint_kind = &#x27;personal&#x27;) inside a Cometh
+                            tx. The mint recipient is the user.
 
 Address columns are stored lowercase WITH the 0x prefix to match the
 rest of the dbt outputs and the format that decode_logs produces for
@@ -61,11 +69,11 @@ int_execution_gnosis_app_user_identities, one model downstream.
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span></p>
     <h2>Columns</h2>
     <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>The Gnosis App user address (avatar / inviter / truster / Safe, depending on the rule). Lowercase, 0x-prefixed — the same form that decode_logs writes for decoded_params address values and that stg_mixpanel_ga__events sees for wallet-identified users. Storing in this form means the cross-domain pseudonym join lines up exactly without any per-side normalization.
-</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the block in which the action happened.</td></tr><tr><td><code>heuristic_kind</code></td><td>String</td><td>Enum: safe_invitation_module, circles_metri_fee, circles_register_human, circles_invite_human, circles_trust, circles_profile_update.
+</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the block in which the action happened.</td></tr><tr><td><code>heuristic_kind</code></td><td>String</td><td>Enum: safe_invitation_module, circles_fee, circles_register_human, circles_invite_human, circles_trust, circles_profile_update, circles_personal_mint.
 </td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>The Cometh-relayed transaction hash (lowercase, no 0x prefix).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_Hub_events</code></li><li><code>contracts_circles_v2_NameRegistry_events</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_module_events</code></li><li><code>transactions</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_Hub_events</code></li><li><code>contracts_circles_v2_NameRegistry_events</code></li><li><code>int_execution_circles_v2_mint_events</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_module_events</code></li><li><code>transactions</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_mixpanel_ga_gnosis_app_daily</code></li><li><code>int_execution_gnosis_app_events_chain_unified</code></li><li><code>int_execution_gnosis_app_user_activity_daily</code></li><li><code>int_execution_gnosis_app_users_current</code></li></ul>
     
   </body>

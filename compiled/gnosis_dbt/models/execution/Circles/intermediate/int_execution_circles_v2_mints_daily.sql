@@ -1,27 +1,29 @@
 
 
--- Network-level daily personal-mint summary.
+-- Network-level daily mint summary, broken down by mint_kind.
+--   mint_kind      - 'personal' | 'group' | 'migration' | 'other'
 --   n_mint_events  - number of mint TransferSingle events
---   n_minters      - distinct avatars minting that day
+--   n_minters      - distinct recipient addresses minting that day
 --   amount_minted  - total CRC minted (raw / 1e18)
 --
--- Source: int_execution_circles_v2_hub_transfers filtered to mint events
--- (from_address = 0x00…00, to_address = recipient avatar). Mirrors the
--- semantics of api_execution_circles_v2_avatar_mint_activity_daily but
--- collapsed to a single row per day.
+-- Source: int_execution_circles_v2_mint_events (which classifies each
+-- mint via the avatar registry + V2 Hub call-decoder; see that model
+-- for the classifier details). Replaces the previous logic that filtered
+-- int_execution_circles_v2_hub_transfers on from-zero alone — that
+-- predicate lumped personal mints, group mints, and V1→V2 migrations
+-- together.
 
 
 
 
 SELECT
     toDate(block_timestamp)                          AS date,
+    mint_kind                                        AS mint_kind,
     count()                                          AS n_mint_events,
     uniqExact(to_address)                            AS n_minters,
     sum(toFloat64(amount_raw)) / pow(10, 18)         AS amount_minted
-FROM `dbt`.`int_execution_circles_v2_hub_transfers`
-WHERE from_address = '0x0000000000000000000000000000000000000000'
-  AND to_address  != '0x0000000000000000000000000000000000000000'
-  AND block_timestamp < today()
+FROM `dbt`.`int_execution_circles_v2_mint_events`
+WHERE block_timestamp < today()
   
     
   
@@ -52,4 +54,4 @@ WHERE from_address = '0x0000000000000000000000000000000000000000'
   
 
   
-GROUP BY date
+GROUP BY date, mint_kind

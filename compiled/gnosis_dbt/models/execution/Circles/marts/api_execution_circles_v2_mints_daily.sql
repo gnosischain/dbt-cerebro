@@ -2,9 +2,10 @@
 
 SELECT
     date,
+    mint_kind,
     n_mint_events,
     n_minters,
     amount_minted
 FROM `dbt`.`int_execution_circles_v2_mints_daily`
 WHERE date < today()
-ORDER BY date DESC
+ORDER BY date DESC, mint_kind

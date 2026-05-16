@@ -64,8 +64,9 @@ onboard_rows AS (
 ),
 
 -- 2. heuristic events — circles_register_human, circles_invite_human,
---    circles_trust, circles_profile_update, circles_metri_fee,
---    safe_invitation_module — all flow through int_execution_gnosis_app_user_events
+--    circles_trust, circles_profile_update, circles_fee,
+--    circles_personal_mint, safe_invitation_module — all flow through
+--    int_execution_gnosis_app_user_events
 heuristic_rows AS (
     SELECT
         toDateTime(ue.block_timestamp)                          AS event_ts,

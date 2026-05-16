@@ -38,12 +38,14 @@ trusts AS (
 ),
 
 mints AS (
+    -- Personal mints only: "active minters" should not be inflated by
+    -- group mints (where the recipient is a depositor, not the minter)
+    -- or by V1→V2 migrations.
     SELECT
         toStartOfWeek(block_timestamp, 1) AS week,
         to_address                        AS address
-    FROM `dbt`.`int_execution_circles_v2_hub_transfers`
-    WHERE from_address = '0x0000000000000000000000000000000000000000'
-      AND to_address  != '0x0000000000000000000000000000000000000000'
+    FROM `dbt`.`int_execution_circles_v2_mint_events`
+    WHERE mint_kind = 'personal'
       AND block_timestamp < today()
 )
 

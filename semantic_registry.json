@@ -33,9 +33,9 @@
         "total_nodes": 113
       },
       "contracts": {
-        "docs_only": 97,
-        "model": 97,
-        "total_nodes": 97
+        "docs_only": 98,
+        "model": 98,
+        "total_nodes": 98
       },
       "crawlers_data": {
         "api": 2,
@@ -53,13 +53,13 @@
         "api": 302,
         "approved": 19,
         "candidate": 222,
-        "docs_only": 399,
+        "docs_only": 400,
         "fct": 143,
-        "int": 147,
-        "model": 621,
+        "int": 148,
+        "model": 622,
         "source": 19,
         "stg": 27,
-        "total_nodes": 640
+        "total_nodes": 641
       },
       "mixpanel_ga": {
         "api": 11,
@@ -120,16 +120,16 @@
     "semantic_status_counts": {
       "approved": 33,
       "candidate": 340,
-      "docs_only": 694
+      "docs_only": 696
     }
   },
   "metadata": {
-    "catalog_hash": "d27fa087c156238312d6dc889a5bb88ec607ab6941b7de12afb12167cd4f073a",
-    "generated_at": "2026-05-15T08:49:37.493924+00:00",
-    "manifest_hash": "424d7f720c04db34d7648ac8a4f8c72ff1f487e2343c4ca5d5a876cbfaec3ae1",
-    "model_count": 991,
+    "catalog_hash": "6392e26de08d4f988c17877f1a482047f1d45fc17c8ad5aeb10d84e4840fd6ac",
+    "generated_at": "2026-05-16T22:32:56.519607+00:00",
+    "manifest_hash": "eff3769292bd185c484dd8da0893ed0f73c2798bf43a72fefc00433986bc768d",
+    "model_count": 993,
     "project_name": "gnosis_dbt",
-    "semantic_manifest_hash": "4e9dab862c859d949b6d41dc26562d81925c22fb30694f62fd8764d8100e55b5",
+    "semantic_manifest_hash": "0fc958ddd2c3ed91c46af9dc9753218d320e3684bdb94b6f79f8ed99bb5f0604",
     "source_count": 76
   },
   "metrics": {
@@ -766,10 +766,11 @@
         "user_pseudonym",
         "is_high_confidence",
         "via_circles_trust",
-        "via_circles_metri_fee",
+        "via_circles_fee",
         "via_circles_profile_update",
         "via_circles_invite_human",
         "via_circles_register_human",
+        "via_circles_personal_mint",
         "via_safe_invitation_module"
       ],
       "default_filters": [],
@@ -800,10 +801,11 @@
       "allowed_dimensions": [
         "user_pseudonym",
         "via_circles_trust",
-        "via_circles_metri_fee",
+        "via_circles_fee",
         "via_circles_profile_update",
         "via_circles_invite_human",
         "via_circles_register_human",
+        "via_circles_personal_mint",
         "via_safe_invitation_module"
       ],
       "default_filters": [],
@@ -9182,7 +9184,7 @@
           "int_execution_circles_v2_mint_activity_daily"
         ],
         "upstream": [
-          "int_execution_circles_v2_hub_transfers"
+          "int_execution_circles_v2_mint_events"
         ]
       },
       "materialized": "view",
@@ -10924,6 +10926,11 @@
           "description": "",
           "name": "date"
         },
+        "mint_kind": {
+          "data_type": "String",
+          "description": "personal | group | migration | other.",
+          "name": "mint_kind"
+        },
         "n_mint_events": {
           "data_type": "UInt64",
           "description": "",
@@ -10935,7 +10942,7 @@
           "name": "n_minters"
         }
       },
-      "description": "Time-series view over int_execution_circles_v2_mints_daily; latest day excluded.",
+      "description": "Time-series view over int_execution_circles_v2_mints_daily; latest day excluded. One row per (date, mint_kind) \u2014 mint_kind separates personal mints from group mints and V1\u2192V2 migrations; aggregate across kinds for the network-total grain.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -42062,7 +42069,8 @@
           "contracts_circles_v2_ERC20TokenOffer_calls",
           "contracts_circles_v2_ERC20TokenOffer_events",
           "contracts_circles_v2_PaymentGateway_calls",
-          "contracts_circles_v2_PaymentGateway_events"
+          "contracts_circles_v2_PaymentGateway_events",
+          "int_execution_circles_v2_mint_events"
         ],
         "upstream": [
           "contracts_circles_v2_BaseGroupFactory_events",
@@ -44998,6 +45006,98 @@
         "contracts",
         "circles_v2",
         "events"
+      ]
+    },
+    "contracts_circles_v2_Migration_calls": {
+      "columns": {
+        "block_number": {
+          "data_type": "UInt64",
+          "description": "Block number containing the transaction",
+          "name": "block_number"
+        },
+        "block_timestamp": {
+          "data_type": "DateTime",
+          "description": "Timestamp of the block in UTC",
+          "name": "block_timestamp"
+        },
+        "contract_address": {
+          "data_type": "String",
+          "description": "Target contract of the call (always the Migration contract here)",
+          "name": "contract_address"
+        },
+        "decoded_input": {
+          "data_type": "Map(String, String)",
+          "description": "Map of decoded function input parameters (name to value)",
+          "name": "decoded_input"
+        },
+        "function_name": {
+          "data_type": "String",
+          "description": "Name of the called function",
+          "name": "function_name"
+        },
+        "gas_price": {
+          "data_type": "Nullable(UInt64)",
+          "description": "NULL \u2014 traces don't carry tx gas_price",
+          "name": "gas_price"
+        },
+        "nonce": {
+          "data_type": "Nullable(UInt64)",
+          "description": "NULL \u2014 traces don't carry tx nonce",
+          "name": "nonce"
+        },
+        "trace_address": {
+          "data_type": "String",
+          "description": "Parity trace-path of the internal call (e.g. '0_0', '0_1_3'). Used in unique_key so multiple internal migrate() calls in the same tx don't collapse.\n",
+          "name": "trace_address"
+        },
+        "transaction_hash": {
+          "data_type": "String",
+          "description": "Hash of the transaction",
+          "name": "transaction_hash"
+        },
+        "value": {
+          "data_type": "String",
+          "description": "Value transferred with the internal call",
+          "name": "value"
+        }
+      },
+      "description": "Decoded function calls for the Circles v2 Migration contract\n(0xd44b8dcfbadfc78ea64c55b705bfc68199b56376). Dedicated V1\u2192V2\nmigration entry point \u2014 `migrate(_avatars, _amounts)` burns V1\nbalances and mints equivalent V2 CRC. The ABI exposes no events\n(mint emissions surface as Hub TransferSingle from 0x0 with\noperator = this contract; see int_execution_circles_v2_mint_events\nwhere mint_kind = 'migration').\n\nDecoded from `execution.traces` (not `execution.transactions`)\nbecause almost every migrate() call is invoked through a user\nSafe / AA bundler, so the Migration selector is only visible one\nhop down in internal calls. decode_calls auto-detects the traces\nsource and emits an extra `trace_address` column used in the\nunique_key.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "contracts",
+        "Circles",
+        "contracts_circles_v2_Migration_calls"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "traces"
+        ]
+      },
+      "materialized": "incremental",
+      "measures": [],
+      "metric_names": [],
+      "module": "contracts",
+      "name": "contracts_circles_v2_Migration_calls",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/contracts/Circles/contracts_circles_v2_Migration_calls.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`contracts_circles_v2_Migration_calls`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "contracts",
+        "circles_v2",
+        "calls"
       ]
     },
     "contracts_circles_v2_NameRegistry_calls": {
@@ -49952,6 +50052,7 @@
       ],
       "lineage": {
         "downstream": [
+          "contracts_circles_v2_Migration_calls",
           "contracts_circles_v2_PaymentGatewayFactory_calls",
           "int_execution_safes"
         ],
@@ -59314,15 +59415,20 @@
           "description": "Cross-sector pseudonym (sipHash64 of address).",
           "name": "user_pseudonym"
         },
+        "via_circles_fee": {
+          "data_type": "UInt8",
+          "description": "1 if identified via Circles Gnosis App fee payment (formerly Metri fee).",
+          "name": "via_circles_fee"
+        },
         "via_circles_invite_human": {
           "data_type": "UInt8",
           "description": "1 if identified via Circles invite-human event.",
           "name": "via_circles_invite_human"
         },
-        "via_circles_metri_fee": {
+        "via_circles_personal_mint": {
           "data_type": "UInt8",
-          "description": "1 if identified via Circles METRI fee payment.",
-          "name": "via_circles_metri_fee"
+          "description": "1 if identified via a personal CRC mint (Human avatar minting own Circles) inside a Cometh tx.",
+          "name": "via_circles_personal_mint"
         },
         "via_circles_profile_update": {
           "data_type": "UInt8",
@@ -59358,8 +59464,8 @@
           "type": "categorical"
         },
         {
-          "expr": "via_circles_metri_fee",
-          "name": "via_circles_metri_fee",
+          "expr": "via_circles_fee",
+          "name": "via_circles_fee",
           "type": "categorical"
         },
         {
@@ -59375,6 +59481,11 @@
         {
           "expr": "via_circles_register_human",
           "name": "via_circles_register_human",
+          "type": "categorical"
+        },
+        {
+          "expr": "via_circles_personal_mint",
+          "name": "via_circles_personal_mint",
           "type": "categorical"
         },
         {
@@ -67584,15 +67695,20 @@
           "description": "Calendar date (UTC).",
           "name": "date"
         },
+        "h_fee": {
+          "data_type": "UInt64",
+          "description": "Daily count of addresses triggering the circles_fee rule (Gnosis App fee receiver, formerly Metri).",
+          "name": "h_fee"
+        },
         "h_invite_human": {
           "data_type": "UInt64",
           "description": "Daily count of addresses triggering the circles_invite_human rule.",
           "name": "h_invite_human"
         },
-        "h_metri_fee": {
+        "h_personal_mint": {
           "data_type": "UInt64",
-          "description": "Daily count of addresses triggering the circles_metri_fee rule.",
-          "name": "h_metri_fee"
+          "description": "Daily count of addresses triggering the circles_personal_mint rule (Cometh-relayed personal CRC mint).",
+          "name": "h_personal_mint"
         },
         "h_profile_update": {
           "data_type": "UInt64",
@@ -75838,7 +75954,7 @@
         ],
         "upstream": [
           "int_execution_circles_v2_avatars",
-          "int_execution_circles_v2_hub_transfers",
+          "int_execution_circles_v2_mint_events",
           "int_execution_circles_v2_trust_updates"
         ]
       },
@@ -76339,7 +76455,8 @@
           "int_execution_circles_v2_avatar_metadata_history",
           "int_execution_circles_v2_groups_overview_daily",
           "int_execution_circles_v2_invite_funnel",
-          "int_execution_circles_v2_inviter_fees"
+          "int_execution_circles_v2_inviter_fees",
+          "int_execution_circles_v2_mint_events"
         ],
         "upstream": [
           "contracts_circles_v2_Hub_events"
@@ -77459,11 +77576,7 @@
       ],
       "lineage": {
         "downstream": [
-          "api_execution_circles_v2_avatar_mint_activity_daily",
-          "int_execution_circles_v2_active_avatars_weekly",
-          "int_execution_circles_v2_invite_funnel",
-          "int_execution_circles_v2_inviter_fees",
-          "int_execution_circles_v2_mints_daily",
+          "int_execution_circles_v2_mint_events",
           "int_execution_circles_v2_transfers"
         ],
         "upstream": [
@@ -77558,8 +77671,8 @@
         ],
         "upstream": [
           "int_execution_circles_v2_avatars",
-          "int_execution_circles_v2_hub_transfers",
-          "int_execution_circles_v2_mint_activity_daily"
+          "int_execution_circles_v2_mint_activity_daily",
+          "int_execution_circles_v2_mint_events"
         ]
       },
       "materialized": "incremental",
@@ -77645,7 +77758,7 @@
         ],
         "upstream": [
           "int_execution_circles_v2_avatars",
-          "int_execution_circles_v2_hub_transfers",
+          "int_execution_circles_v2_mint_events",
           "int_execution_circles_v2_wrapper_transfers"
         ]
       },
@@ -77745,11 +77858,129 @@
         "mint_activity_daily"
       ]
     },
+    "int_execution_circles_v2_mint_events": {
+      "columns": {
+        "amount_raw": {
+          "data_type": "Nullable(UInt256)",
+          "description": "Raw mint amount in token base units.",
+          "name": "amount_raw"
+        },
+        "batch_index": {
+          "data_type": "UInt32",
+          "description": "Index within a TransferBatch (0 for TransferSingle).",
+          "name": "batch_index"
+        },
+        "block_number": {
+          "data_type": "Nullable(UInt32)",
+          "description": "Block number containing the mint event.",
+          "name": "block_number"
+        },
+        "block_timestamp": {
+          "data_type": "DateTime64(0, 'UTC')",
+          "description": "UTC timestamp of the mint event.",
+          "name": "block_timestamp"
+        },
+        "log_index": {
+          "data_type": "Nullable(UInt32)",
+          "description": "Index of the log within the block.",
+          "name": "log_index"
+        },
+        "mint_kind": {
+          "data_type": "String",
+          "description": "Enum: personal | group | migration | other (see model description).",
+          "name": "mint_kind"
+        },
+        "operator": {
+          "data_type": "Nullable(String)",
+          "description": "Address of the operator that initiated the transfer.",
+          "name": "operator"
+        },
+        "to_address": {
+          "data_type": "Nullable(String)",
+          "description": "Recipient address of the minted Circles.",
+          "name": "to_address"
+        },
+        "token_address": {
+          "data_type": "Nullable(String)",
+          "description": "Avatar address whose Circles are being minted.",
+          "name": "token_address"
+        },
+        "token_id": {
+          "data_type": "Nullable(String)",
+          "description": "ERC-1155 token ID (avatar address encoded as uint256).",
+          "name": "token_id"
+        },
+        "transaction_hash": {
+          "data_type": "Nullable(String)",
+          "description": "Hash of the transaction (without 0x prefix).",
+          "name": "transaction_hash"
+        },
+        "transaction_index": {
+          "data_type": "Nullable(UInt32)",
+          "description": "Index of the transaction within the block.",
+          "name": "transaction_index"
+        },
+        "transfer_type": {
+          "data_type": "String",
+          "description": "Transfer classification (CrcV2_TransferSingle or CrcV2_TransferBatch).",
+          "name": "transfer_type"
+        }
+      },
+      "description": "Per-event view over int_execution_circles_v2_hub_transfers restricted to mint events (from_address = 0x00\u202600), tagged with a `mint_kind` to distinguish personal mints, group mints, and V1\u2192V2 migrations. All three look identical at the ERC-1155 layer; classification combines the structural shape of the transfer (`token_address = to_address`) with the avatar registry (`avatar_type`) and a join against top-level V2 Hub `migrate()` calls.\nClassifier:\n  personal  - token_avatar_type = 'Human' AND token_address = to_address.\n              Human avatar mints their own Circles to themselves \u2014\n              either via a direct personalMint() call or as the\n              unscheduled mint that the Hub performs during a transfer.\n  group     - token_avatar_type = 'Group'. Group CRC minted; covers both\n              group-to-depositor and group-to-self shapes.\n  migration - tx contains a top-level V2 Hub migrate() call. Historically\n              4 calls, 0 emitted mints; kept in the enum so the\n              classifier remains structurally correct.\n  other     - residual; should be ~0. Presence indicates a missing\n              avatar registration row.\n\nIncremental, monthly partitioned on block_timestamp.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "execution",
+        "Circles",
+        "intermediate",
+        "int_execution_circles_v2_mint_events"
+      ],
+      "lineage": {
+        "downstream": [
+          "api_execution_circles_v2_avatar_mint_activity_daily",
+          "int_execution_circles_v2_active_avatars_weekly",
+          "int_execution_circles_v2_invite_funnel",
+          "int_execution_circles_v2_inviter_fees",
+          "int_execution_circles_v2_mints_daily",
+          "int_execution_circles_v2_transfers_categorised",
+          "int_execution_gnosis_app_user_events"
+        ],
+        "upstream": [
+          "contracts_circles_registry",
+          "int_execution_circles_v2_avatars",
+          "int_execution_circles_v2_hub_transfers"
+        ]
+      },
+      "materialized": "incremental",
+      "measures": [],
+      "metric_names": [],
+      "module": "execution",
+      "name": "int_execution_circles_v2_mint_events",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/execution/Circles/intermediate/int_execution_circles_v2_mint_events.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_execution_circles_v2_mint_events`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "execution",
+        "circles_v2",
+        "mint_events"
+      ]
+    },
     "int_execution_circles_v2_mints_daily": {
       "columns": {
         "amount_minted": {
           "data_type": "Float64",
-          "description": "Total CRC minted on this day (sum of amount / 1e18).",
+          "description": "Total CRC minted for this (date",
           "name": "amount_minted"
         },
         "date": {
@@ -77757,18 +77988,23 @@
           "description": "Calendar day (UTC).",
           "name": "date"
         },
+        "mint_kind": {
+          "data_type": "String",
+          "description": "Mint flavour: personal | group | migration | other.",
+          "name": "mint_kind"
+        },
         "n_mint_events": {
           "data_type": "UInt64",
-          "description": "Number of mint TransferSingle events.",
+          "description": "Number of mint TransferSingle events for this (date",
           "name": "n_mint_events"
         },
         "n_minters": {
           "data_type": "UInt64",
-          "description": "Distinct minting avatars (to_address).",
+          "description": "Distinct recipient addresses (to_address) for this (date",
           "name": "n_minters"
         }
       },
-      "description": "Network-level daily personal-mint summary: total mint events, distinct minters, and total CRC minted (raw / 1e18). Incremental, monthly partitioned on date.\n",
+      "description": "Network-level daily mint summary broken down by mint_kind: total mint events, distinct recipient addresses, and total CRC minted (raw / 1e18). Sourced from int_execution_circles_v2_mint_events (one row per (date, mint_kind)). Incremental, monthly partitioned on date.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -77784,7 +78020,7 @@
           "api_execution_circles_v2_mints_daily"
         ],
         "upstream": [
-          "int_execution_circles_v2_hub_transfers"
+          "int_execution_circles_v2_mint_events"
         ]
       },
       "materialized": "incremental",
@@ -78230,6 +78466,11 @@
           "description": "",
           "name": "log_index"
         },
+        "mint_kind": {
+          "data_type": "Nullable(String)",
+          "description": "For mint rows: personal | group | migration | other (see int_execution_circles_v2_mint_events). NULL for non-mint rows.",
+          "name": "mint_kind"
+        },
         "to_address": {
           "data_type": "String",
           "description": "",
@@ -78276,6 +78517,7 @@
           "int_execution_circles_v2_transfers_daily"
         ],
         "upstream": [
+          "int_execution_circles_v2_mint_events",
           "int_execution_circles_v2_transfers"
         ]
       },
@@ -78714,7 +78956,8 @@
       "lineage": {
         "downstream": [
           "fct_execution_gnosis_app_gpay_topups_by_token_daily",
-          "fct_execution_gnosis_app_swaps_by_pair_daily"
+          "fct_execution_gnosis_app_swaps_by_pair_daily",
+          "int_execution_gnosis_app_swaps"
         ],
         "upstream": [
           "int_execution_circles_v2_wrappers",
@@ -79175,7 +79418,7 @@
       "semantic_source_file": "",
       "semantic_status": "docs_only",
       "tags": [
-        "dev",
+        "production",
         "execution",
         "cow",
         "trades",
@@ -79409,7 +79652,7 @@
           "name": "user_pseudonym"
         }
       },
-      "description": "Long-form on-chain GA event log at full timestamp grain, keyed by\n`user_pseudonym` (no raw address ever leaves the bridge). Single\nsource of chain-side touchpoints for MTA.\n\nUNION ALL of seven CTEs, each tagged with a distinct `event_kind`\nstarting with `chain.`:\n\n  chain.onboard               \u2014 first-ever heuristic hit per user\n                                (from int_execution_gnosis_app_users_current)\n  chain.<heuristic_kind>      \u2014 six heuristic rules from\n                                int_execution_gnosis_app_user_events\n                                (circles_register_human, circles_invite_human,\n                                circles_trust, circles_profile_update,\n                                circles_metri_fee, safe_invitation_module)\n  chain.swap_signed           \u2014 every PreSignature event in\n                                int_execution_gnosis_app_swaps\n  chain.swap_filled           \u2014 was_filled subset, ts = first_fill_at\n  chain.topup                 \u2014 int_execution_gnosis_app_gpay_topups\n  chain.marketplace_buy       \u2014 int_execution_gnosis_app_marketplace_payments\n  chain.token_offer_claim     \u2014 int_execution_gnosis_app_token_offer_claims\n\nIncremental (monthly partition on `event_date`); reads\nuser_pseudonym from `int_execution_gnosis_app_user_identity_bridge`.\nUse `grace_hash` join algorithm (set in pre-hook) to keep memory\nbounded across the seven UNIONs.\n\n`event_kind` is LowCardinality and validated against seed\n`mta_event_kinds.csv` (relationship test, severity warn).\n",
+      "description": "Long-form on-chain GA event log at full timestamp grain, keyed by\n`user_pseudonym` (no raw address ever leaves the bridge). Single\nsource of chain-side touchpoints for MTA.\n\nUNION ALL of seven CTEs, each tagged with a distinct `event_kind`\nstarting with `chain.`:\n\n  chain.onboard               \u2014 first-ever heuristic hit per user\n                                (from int_execution_gnosis_app_users_current)\n  chain.<heuristic_kind>      \u2014 seven heuristic rules from\n                                int_execution_gnosis_app_user_events\n                                (circles_register_human, circles_invite_human,\n                                circles_trust, circles_profile_update,\n                                circles_fee, circles_personal_mint,\n                                safe_invitation_module)\n  chain.swap_signed           \u2014 every PreSignature event in\n                                int_execution_gnosis_app_swaps\n  chain.swap_filled           \u2014 was_filled subset, ts = first_fill_at\n  chain.topup                 \u2014 int_execution_gnosis_app_gpay_topups\n  chain.marketplace_buy       \u2014 int_execution_gnosis_app_marketplace_payments\n  chain.token_offer_claim     \u2014 int_execution_gnosis_app_token_offer_claims\n\nIncremental (monthly partition on `event_date`); reads\nuser_pseudonym from `int_execution_gnosis_app_user_identity_bridge`.\nUse `grace_hash` join algorithm (set in pre-hook) to keep memory\nbounded across the seven UNIONs.\n\n`event_kind` is LowCardinality and validated against seed\n`mta_event_kinds.csv` (relationship test, severity warn).\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -80414,6 +80657,7 @@
         ],
         "upstream": [
           "contracts_CowProtocol_GPv2Settlement_events",
+          "int_execution_circles_v2_wrapper_tokens",
           "int_execution_cow_trades",
           "int_execution_gnosis_app_users_current",
           "transactions"
@@ -80814,7 +81058,7 @@
           "name": "n_events"
         }
       },
-      "description": "Foundation table for all Gnosis App user-activity analytics \u2014 one row\nper (date, address, activity_kind). Every downstream cohort, retention,\nchurn, DAU/WAU/MAU, and activity-by-action mart derives from this table.\n\nactivity_kind enum:\n  onboard                 \u2014 first-ever heuristic hit for this address\n                             (from int_execution_gnosis_app_users_current.\n                             first_seen_at). Exactly one row per user.\n                             Anchors the cohort_month for retention.\n  circles_register_human,\n  circles_invite_human,\n  circles_trust,\n  circles_profile_update,\n  circles_metri_fee,\n  safe_invitation_module  \u2014 raw heuristic rows from\n                             int_execution_gnosis_app_user_events.\n  swap_signed             \u2014 PreSignature events (all rows in\n                             int_execution_gnosis_app_swaps).\n  swap_filled             \u2014 subset with was_filled = true.\n  topup                   \u2014 GA\u2192GP TopUps\n                             (int_execution_gnosis_app_gpay_topups).\n  marketplace_buy         \u2014 GA marketplace purchases\n                             (int_execution_gnosis_app_marketplace_payments).\n  token_offer_claim       \u2014 GA token-offer claims (e.g. CRC \u2192 GNO discount)\n                             (int_execution_gnosis_app_token_offer_claims).\n\namount_usd populated for swap_filled, topup, and token_offer_claim\n(USD on the *received* side only). marketplace buys carry NULL until the\nCircles token price feed is wired.\n",
+      "description": "Foundation table for all Gnosis App user-activity analytics \u2014 one row\nper (date, address, activity_kind). Every downstream cohort, retention,\nchurn, DAU/WAU/MAU, and activity-by-action mart derives from this table.\n\nactivity_kind enum:\n  onboard                 \u2014 first-ever heuristic hit for this address\n                             (from int_execution_gnosis_app_users_current.\n                             first_seen_at). Exactly one row per user.\n                             Anchors the cohort_month for retention.\n  circles_register_human,\n  circles_invite_human,\n  circles_trust,\n  circles_profile_update,\n  circles_fee,\n  circles_personal_mint,\n  safe_invitation_module  \u2014 raw heuristic rows from\n                             int_execution_gnosis_app_user_events.\n  swap_signed             \u2014 PreSignature events (all rows in\n                             int_execution_gnosis_app_swaps).\n  swap_filled             \u2014 subset with was_filled = true.\n  topup                   \u2014 GA\u2192GP TopUps\n                             (int_execution_gnosis_app_gpay_topups).\n  marketplace_buy         \u2014 GA marketplace purchases\n                             (int_execution_gnosis_app_marketplace_payments).\n  token_offer_claim       \u2014 GA token-offer claims (e.g. CRC \u2192 GNO discount)\n                             (int_execution_gnosis_app_token_offer_claims).\n\namount_usd populated for swap_filled, topup, and token_offer_claim\n(USD on the *received* side only). marketplace buys carry NULL until the\nCircles token price feed is wired.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -80889,7 +81133,7 @@
         },
         "heuristic_kind": {
           "data_type": "String",
-          "description": "Enum: safe_invitation_module, circles_metri_fee, circles_register_human, circles_invite_human, circles_trust, circles_profile_update.\n",
+          "description": "Enum: safe_invitation_module, circles_fee, circles_register_human, circles_invite_human, circles_trust, circles_profile_update, circles_personal_mint.\n",
           "name": "heuristic_kind"
         },
         "transaction_hash": {
@@ -80898,7 +81142,7 @@
           "name": "transaction_hash"
         }
       },
-      "description": "Long-form heuristic event log for Gnosis App user identification.\n\nSix rules, all keyed off the same chokepoint: a Cometh ERC-4337\nbundler (one of three relayer addresses in\nseeds/gnosis_app_relayers.csv) sent the outer transaction to the\ncanonical EntryPoint v0.7. Any account that appears as a parameter\ninside such a transaction is, by construction, acting through Gnosis\nApp for that action.\n\nRules:\n  safe_invitation_module  \u2014 Safe created in the same Cometh tx that\n                            enabled the Circles InvitationModule\n                            (0x00738aca\u2026). The Safe address is the\n                            user.\n  circles_metri_fee       \u2014 CRC ERC-1155 transfer to the Metri fee\n                            receiver (0x97FD8f78\u2026) inside a Cometh tx.\n  circles_register_human  \u2014 Hub.RegisterHuman event inside a Cometh\n                            tx. decoded_params['avatar'] is the user.\n  circles_invite_human    \u2014 Same RegisterHuman event with a non-zero\n                            decoded_params['inviter'] \u2014 the inviter\n                            is the user.\n  circles_trust           \u2014 Hub.Trust event inside a Cometh tx.\n                            decoded_params['truster'] is the user.\n  circles_profile_update  \u2014 NameRegistry.UpdateMetadataDigest event\n                            inside a Cometh tx.\n                            decoded_params['avatar'] is the user.\n\nAddress columns are stored lowercase WITH the 0x prefix to match the\nrest of the dbt outputs and the format that decode_logs produces for\ndecoded_params address values. Rule 1 reads from int_execution_safes\n(which is already 0x-prefixed) and rules 2-6 read from\ncontracts_circles_v2_*_events.decoded_params (also 0x-prefixed).\n\nPrivacy: this is the source-of-truth intermediate for sector\nmembership. Raw addresses are kept here because they are required\nfor the snapshot argMax and for the cross-reference with\nint_execution_safes. The pseudonymization boundary is in\nint_execution_gnosis_app_user_identities, one model downstream.\n",
+      "description": "Long-form heuristic event log for Gnosis App user identification.\n\nSeven rules, all keyed off the same chokepoint: a Cometh ERC-4337\nbundler (one of three relayer addresses in\nseeds/gnosis_app_relayers.csv) sent the outer transaction to the\ncanonical EntryPoint v0.7. Any account that appears as a parameter\ninside such a transaction is, by construction, acting through Gnosis\nApp for that action.\n\nRules:\n  safe_invitation_module  \u2014 Safe created in the same Cometh tx that\n                            enabled the Circles InvitationModule\n                            (0x00738aca\u2026). The Safe address is the\n                            user.\n  circles_fee             \u2014 CRC ERC-1155 transfer to the Gnosis App\n                            fee receiver (0x97FD8f78\u2026) inside a\n                            Cometh tx. The receiver was branded\n                            \"Metri\" before the rebrand to \"Gnosis\n                            App\"; the address is unchanged.\n  circles_register_human  \u2014 Hub.RegisterHuman event inside a Cometh\n                            tx. decoded_params['avatar'] is the user.\n  circles_invite_human    \u2014 Same RegisterHuman event with a non-zero\n                            decoded_params['inviter'] \u2014 the inviter\n                            is the user.\n  circles_trust           \u2014 Hub.Trust event inside a Cometh tx.\n                            decoded_params['truster'] is the user.\n  circles_profile_update  \u2014 NameRegistry.UpdateMetadataDigest event\n                            inside a Cometh tx.\n                            decoded_params['avatar'] is the user.\n  circles_personal_mint   \u2014 Personal CRC mint (Human avatar minting\n                            its own Circles, via\n                            int_execution_circles_v2_mint_events\n                            mint_kind = 'personal') inside a Cometh\n                            tx. The mint recipient is the user.\n\nAddress columns are stored lowercase WITH the 0x prefix to match the\nrest of the dbt outputs and the format that decode_logs produces for\ndecoded_params address values. Rule 1 reads from int_execution_safes\n(which is already 0x-prefixed) and rules 2-6 read from\ncontracts_circles_v2_*_events.decoded_params (also 0x-prefixed).\n\nPrivacy: this is the source-of-truth intermediate for sector\nmembership. Raw addresses are kept here because they are required\nfor the snapshot argMax and for the cross-reference with\nint_execution_safes. The pseudonymization boundary is in\nint_execution_gnosis_app_user_identities, one model downstream.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -80918,6 +81162,7 @@
         "upstream": [
           "contracts_circles_v2_Hub_events",
           "contracts_circles_v2_NameRegistry_events",
+          "int_execution_circles_v2_mint_events",
           "int_execution_safes",
           "int_execution_safes_module_events",
           "transactions"
@@ -95502,7 +95747,7 @@
       "semantic_source_file": "",
       "semantic_status": "docs_only",
       "tags": [
-        "dev",
+        "production",
         "execution",
         "cow",
         "settlements",
@@ -95689,7 +95934,7 @@
       "semantic_source_file": "",
       "semantic_status": "docs_only",
       "tags": [
-        "dev",
+        "production",
         "execution",
         "cow",
         "trades",
@@ -99761,9 +100006,9 @@
       "total_nodes": 113
     },
     "contracts": {
-      "docs_only": 97,
-      "model": 97,
-      "total_nodes": 97
+      "docs_only": 98,
+      "model": 98,
+      "total_nodes": 98
     },
     "crawlers_data": {
       "api": 2,
@@ -99781,13 +100026,13 @@
       "api": 302,
       "approved": 19,
       "candidate": 222,
-      "docs_only": 399,
+      "docs_only": 400,
       "fct": 143,
-      "int": 147,
-      "model": 621,
+      "int": 148,
+      "model": 622,
       "source": 19,
       "stg": 27,
-      "total_nodes": 640
+      "total_nodes": 641
     },
     "mixpanel_ga": {
       "api": 11,
@@ -105943,6 +106188,17 @@
       ],
       "type": "categorical"
     },
+    "via_circles_fee": {
+      "metrics": [],
+      "providers": [
+        {
+          "model": "fct_execution_gnosis_app_users_distinct",
+          "module": "execution",
+          "status": "approved"
+        }
+      ],
+      "type": "categorical"
+    },
     "via_circles_invite_human": {
       "metrics": [],
       "providers": [
@@ -105954,7 +106210,7 @@
       ],
       "type": "categorical"
     },
-    "via_circles_metri_fee": {
+    "via_circles_personal_mint": {
       "metrics": [],
       "providers": [
         {

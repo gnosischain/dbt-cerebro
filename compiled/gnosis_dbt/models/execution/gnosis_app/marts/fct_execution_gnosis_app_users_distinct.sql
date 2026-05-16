@@ -46,10 +46,11 @@ SELECT
     -- users came from Circles trust graph vs invite flow vs Safe
     -- invitation module" without re-pivoting the array.
     has(heuristic_kinds, 'circles_trust')           AS via_circles_trust,
-    has(heuristic_kinds, 'circles_metri_fee')       AS via_circles_metri_fee,
+    has(heuristic_kinds, 'circles_fee')             AS via_circles_fee,
     has(heuristic_kinds, 'circles_profile_update')  AS via_circles_profile_update,
     has(heuristic_kinds, 'circles_invite_human')    AS via_circles_invite_human,
     has(heuristic_kinds, 'circles_register_human')  AS via_circles_register_human,
+    has(heuristic_kinds, 'circles_personal_mint')   AS via_circles_personal_mint,
     has(heuristic_kinds, 'safe_invitation_module')  AS via_safe_invitation_module,
 
     -- Confidence proxy: ≥2 independent heuristics fired for this user.

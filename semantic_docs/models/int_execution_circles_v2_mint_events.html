@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_circles_v2_mint_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_circles_v2_mint_events</h1>
+    <p>Per-event view over int_execution_circles_v2_hub_transfers restricted to mint events (from_address = 0x00…00), tagged with a `mint_kind` to distinguish personal mints, group mints, and V1→V2 migrations. All three look identical at the ERC-1155 layer; classification combines the structural shape of the transfer (`token_address = to_address`) with the avatar registry (`avatar_type`) and a join against top-level V2 Hub `migrate()` calls.
+Classifier:
+  personal  - token_avatar_type = &#x27;Human&#x27; AND token_address = to_address.
+              Human avatar mints their own Circles to themselves —
+              either via a direct personalMint() call or as the
+              unscheduled mint that the Hub performs during a transfer.
+  group     - token_avatar_type = &#x27;Group&#x27;. Group CRC minted; covers both
+              group-to-depositor and group-to-self shapes.
+  migration - tx contains a top-level V2 Hub migrate() call. Historically
+              4 calls, 0 emitted mints; kept in the enum so the
+              classifier remains structurally correct.
+  other     - residual; should be ~0. Presence indicates a missing
+              avatar registration row.
+
+Incremental, monthly partitioned on block_timestamp.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/Circles/intermediate/int_execution_circles_v2_mint_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>circles_v2</span> <span class='pill'>mint_events</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_raw</code></td><td>Nullable(UInt256)</td><td>Raw mint amount in token base units.</td></tr><tr><td><code>batch_index</code></td><td>UInt32</td><td>Index within a TransferBatch (0 for TransferSingle).</td></tr><tr><td><code>block_number</code></td><td>Nullable(UInt32)</td><td>Block number containing the mint event.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime64(0, &#x27;UTC&#x27;)</td><td>UTC timestamp of the mint event.</td></tr><tr><td><code>log_index</code></td><td>Nullable(UInt32)</td><td>Index of the log within the block.</td></tr><tr><td><code>mint_kind</code></td><td>String</td><td>Enum: personal | group | migration | other (see model description).</td></tr><tr><td><code>operator</code></td><td>Nullable(String)</td><td>Address of the operator that initiated the transfer.</td></tr><tr><td><code>to_address</code></td><td>Nullable(String)</td><td>Recipient address of the minted Circles.</td></tr><tr><td><code>token_address</code></td><td>Nullable(String)</td><td>Avatar address whose Circles are being minted.</td></tr><tr><td><code>token_id</code></td><td>Nullable(String)</td><td>ERC-1155 token ID (avatar address encoded as uint256).</td></tr><tr><td><code>transaction_hash</code></td><td>Nullable(String)</td><td>Hash of the transaction (without 0x prefix).</td></tr><tr><td><code>transaction_index</code></td><td>Nullable(UInt32)</td><td>Index of the transaction within the block.</td></tr><tr><td><code>transfer_type</code></td><td>String</td><td>Transfer classification (CrcV2_TransferSingle or CrcV2_TransferBatch).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_circles_registry</code></li><li><code>int_execution_circles_v2_avatars</code></li><li><code>int_execution_circles_v2_hub_transfers</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_execution_circles_v2_avatar_mint_activity_daily</code></li><li><code>int_execution_circles_v2_active_avatars_weekly</code></li><li><code>int_execution_circles_v2_invite_funnel</code></li><li><code>int_execution_circles_v2_inviter_fees</code></li><li><code>int_execution_circles_v2_mints_daily</code></li><li><code>int_execution_circles_v2_transfers_categorised</code></li><li><code>int_execution_gnosis_app_user_events</code></li></ul>
+    
+  </body>
+</html>
