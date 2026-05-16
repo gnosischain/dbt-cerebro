@@ -24,6 +24,7 @@ WITH conv AS (
     SELECT *
     FROM {{ ref('int_execution_gpay_conversions') }}
     WHERE conversion_date < today()
+      AND identity_role != 'delegate'
     {% if start_month and end_month %}
       AND toStartOfMonth(conversion_date) >= toDate('{{ start_month }}')
       AND toStartOfMonth(conversion_date) <= toDate('{{ end_month }}')
@@ -32,11 +33,18 @@ WITH conv AS (
     {% endif %}
 ),
 
+active_users AS (
+    SELECT DISTINCT user_pseudonym, identity_role FROM conv
+),
+
 events AS (
-    SELECT user_pseudonym, identity_role, event_ts, event_kind
-    FROM {{ ref('int_execution_gpay_user_events_unified') }}
-    WHERE event_date >= (SELECT min(conversion_date) FROM conv) - INTERVAL 30 DAY
-      AND event_date < today()
+    SELECT e.user_pseudonym, e.identity_role, e.event_ts, e.event_kind
+    FROM {{ ref('int_execution_gpay_user_events_unified') }} e
+    INNER JOIN active_users u
+        ON e.user_pseudonym = u.user_pseudonym
+        AND e.identity_role = u.identity_role
+    WHERE e.event_date >= (SELECT min(conversion_date) FROM conv) - INTERVAL 30 DAY
+      AND e.event_date <= (SELECT max(conversion_date) FROM conv)
 ),
 
 tracked AS (

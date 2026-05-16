@@ -3,7 +3,7 @@
     materialized='incremental',
     incremental_strategy='delete+insert',
     engine='ReplacingMergeTree()',
-    order_by='(date, wallet_address, position_type, symbol)',
+    order_by='(date, wallet_address, position_type, protocol, symbol)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, wallet_address, position_type, protocol, symbol)',
     settings={ 'allow_nullable_key': 1 },

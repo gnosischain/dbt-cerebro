@@ -109,11 +109,11 @@ SELECT
     t.first_fill_tx                             AS first_fill_tx,
     t.n_fills                                   AS n_fills,
     t.token_bought_address                      AS token_bought_address,
-    t.token_bought_symbol                       AS token_bought_symbol,
+    coalesce(t.token_bought_symbol, wb.symbol)  AS token_bought_symbol,
     t.amount_bought_raw                         AS amount_bought_raw,
     t.amount_bought                             AS amount_bought,
     t.token_sold_address                        AS token_sold_address,
-    t.token_sold_symbol                         AS token_sold_symbol,
+    coalesce(t.token_sold_symbol, ws.symbol)    AS token_sold_symbol,
     t.amount_sold_raw                           AS amount_sold_raw,
     t.amount_sold                               AS amount_sold,
     t.fee_amount_raw                            AS fee_amount_raw,
@@ -124,3 +124,10 @@ FROM cometh_presignatures p
 LEFT JOIN trade_rollup t
     ON t.taker     = p.taker
    AND t.order_uid = p.order_uid
+-- Resolve Circles V2 ERC-20 wrapper symbols (~86% of filled GA swaps sell
+-- a CRC wrapper). wrapper_tokens carries the Dune-labeled symbol where
+-- available and a `CRC-<short>` fallback otherwise.
+LEFT JOIN {{ ref('int_execution_circles_v2_wrapper_tokens') }} wb
+    ON lower(wb.wrapper_address) = lower(t.token_bought_address)
+LEFT JOIN {{ ref('int_execution_circles_v2_wrapper_tokens') }} ws
+    ON lower(ws.wrapper_address) = lower(t.token_sold_address)

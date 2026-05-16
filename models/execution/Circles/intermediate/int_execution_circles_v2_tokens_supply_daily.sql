@@ -5,7 +5,7 @@
 {#
   incremental_strategy resolves to `append` when either start_month
   (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
-  ReplacingMergeTree dedups on (token_address, date). The runner's
+  ReplacingMergeTree dedups on (token_address, date). The runners
   no-overlap slicing guarantees no duplicate keys are produced on the daily
   path, so ALTER ... DELETE mutations are eliminated.
 #}

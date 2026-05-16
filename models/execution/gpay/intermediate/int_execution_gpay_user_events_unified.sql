@@ -3,7 +3,7 @@
     materialized='incremental',
     incremental_strategy=('append' if start_month else 'delete+insert'),
     engine='ReplacingMergeTree()',
-    order_by='(event_date, user_pseudonym, event_ts)',
+    order_by='(event_date, user_pseudonym, event_ts, event_kind, identity_role, event_dedup_key)',
     unique_key='(event_ts, event_kind, user_pseudonym, identity_role, event_dedup_key)',
     partition_by='toStartOfMonth(event_date)',
     settings={'allow_nullable_key': 1},
