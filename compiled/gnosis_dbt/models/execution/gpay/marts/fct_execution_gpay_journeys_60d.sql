@@ -80,14 +80,14 @@ events_window AS (
     
       
       toStartOfMonth(toDate(e.event_date)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -59))
+        SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -59))
         FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x1
         WHERE 1=1 
       )
       AND toDate(e.event_date) >= (
         SELECT
           
-            addDays(max(toDate(x2.event_date)), -59)
+            addDays(max(toDate(x2.conversion_date)), -59)
           
 
         FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x2
