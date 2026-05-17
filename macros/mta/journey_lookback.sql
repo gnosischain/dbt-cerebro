@@ -111,7 +111,7 @@ events_window AS (
     {%- else %}
       {{ apply_monthly_incremental_filter(
             'e.event_date',
-            'event_date',
+            'conversion_date',
             add_and=True,
             lookback_days=lookback_days) }}
     {%- endif %}
