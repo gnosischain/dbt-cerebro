@@ -24,6 +24,7 @@ SELECT
     max(stream_type = 'holdings')                  AS has_holdings,
     max(stream_type = 'sdai')                      AS has_sdai,
     max(stream_type = 'gpay')                      AS has_gpay,
+    max(stream_type = 'gnosis_app')                AS has_gnosis_app,
     uniqExact(stream_type)                         AS n_streams,
     sum(month_fees) >= 0.5                         AS is_revenue_active
 FROM {{ ref('int_revenue_fees_monthly_per_user') }}

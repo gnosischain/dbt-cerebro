@@ -32,11 +32,13 @@ version: 2
 #               Same caveat as above.
 #   gpay        Per-payment fees applied to each Gnosis Pay transaction,
 #               summed per user (EURe / GBPe / USDC.e payment tokens).
+#   gnosis_app  Metri CRC ERC-1155 fees paid to the Gnosis App fee receiver
+#               when users transact via Gnosis App (Cometh ERC-4337). Priced
+#               per avatar token using on-chain DEX data with median fallback.
 #
 # Sectors in the Dune spec NOT yet implemented in dbt
 # ---------------------------------------------------
-#   lending             Lending-fee attribution per user.
-#   gnosis_app_circles  Per-mint CRC fee tracked and translated to USD.
+#   lending     Lending-fee attribution per user.
 # When/if these land, add the source as a new stream_type in
 # int_revenue_fees_weekly_per_user.sql / _monthly_per_user.sql; the
 # downstream cohort+totals marts pick up new streams automatically.
@@ -160,6 +162,35 @@ models:
   - {name: users_cnt,  description: Users with >$0 monthly fees., data_type: UInt64}
   meta: {owner: analytics_team, authoritative: false}
 
+# ---------- Gnosis App ----------
+
+- name: fct_revenue_gnosis_app_cohorts_weekly
+  description: |
+    Gnosis App stream — rolling-52-week Metri CRC fee "potential" revenue
+    by user $-cohort bucket. Each user's cumulative Metri fees (CRC ERC-1155
+    transfers to the Gnosis App fee receiver) over the trailing 52 weeks is
+    bucketed into an annualised $-band. CRC fees are priced per avatar token
+    using on-chain DEX data with a daily-median fallback. "Potential" — the
+    DAO may accrue this stream depending on program terms.
+  columns:
+  - {name: week,                      description: Week start., data_type: Date}
+  - {name: cohort,                    description: Annualised $-bucket., data_type: String}
+  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees for users in this cohort., data_type: Float64}
+  - {name: users_cnt,                 description: Users with >$0 rolling fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: fct_revenue_gnosis_app_cohorts_monthly
+  description: |
+    Gnosis App stream — monthly Metri CRC fee "potential" revenue by user
+    $-cohort bucket. Same source as the weekly table; monthly grain with
+    month-scaled thresholds.
+  columns:
+  - {name: month,      description: First day of the month., data_type: Date}
+  - {name: cohort,     description: Monthly $-bucket., data_type: String}
+  - {name: fees_total, description: Sum of monthly fees., data_type: Float64}
+  - {name: users_cnt,  description: Users with >$0 monthly fees., data_type: UInt64}
+  meta: {owner: analytics_team, authoritative: false}
+
 # ---------- Active users (cross-stream) ----------
 
 - name: fct_revenue_active_users_cohorts_weekly
@@ -225,6 +256,7 @@ models:
   - {name: has_holdings,       description: 1 if user has any rolling fees from the holdings stream.,       data_type: UInt8}
   - {name: has_sdai,           description: 1 if user has any rolling fees from the sDAI stream.,           data_type: UInt8}
   - {name: has_gpay,           description: 1 if user has any rolling fees from the Gnosis Pay stream.,     data_type: UInt8}
+  - {name: has_gnosis_app,     description: 1 if user has any rolling fees from the Gnosis App stream.,     data_type: UInt8}
   - {name: n_streams,          description: Number of distinct streams the user accrued fees in.,           data_type: UInt8}
   - {name: is_revenue_active,  description: 1 iff rolling_fees_total >= $6 (Dune active-user threshold).,   data_type: UInt8}
   meta: {owner: analytics_team, authoritative: false}
@@ -241,6 +273,7 @@ models:
   - {name: has_holdings,       description: 1 if user had holdings-stream fees this month.,            data_type: UInt8}
   - {name: has_sdai,           description: 1 if user had sDAI-stream fees this month.,                data_type: UInt8}
   - {name: has_gpay,           description: 1 if user had Gnosis Pay-stream fees this month.,          data_type: UInt8}
+  - {name: has_gnosis_app,     description: 1 if user had Gnosis App-stream fees this month.,          data_type: UInt8}
   - {name: n_streams,          description: Number of distinct streams contributing in the month.,     data_type: UInt8}
   - {name: is_revenue_active,  description: 1 iff month_fees_total >= $0.50 (month-scaled $6 threshold).,data_type: UInt8}
   meta: {owner: analytics_team, authoritative: false}
@@ -270,6 +303,10 @@ models:
   description: API view over fct_revenue_gpay_cohorts_weekly.
 - name: api_revenue_gpay_cohorts_monthly
   description: API view over fct_revenue_gpay_cohorts_monthly.
+- name: api_revenue_gnosis_app_cohorts_weekly
+  description: API view over fct_revenue_gnosis_app_cohorts_weekly.
+- name: api_revenue_gnosis_app_cohorts_monthly
+  description: API view over fct_revenue_gnosis_app_cohorts_monthly.
 - name: api_revenue_active_users_cohorts_weekly
   description: API view over fct_revenue_active_users_cohorts_weekly.
 - name: api_revenue_active_users_cohorts_monthly
