@@ -66,6 +66,18 @@ mint_events_window AS (
 
 affected_avatars AS (
     SELECT DISTINCT avatar FROM mint_events_window
+    {% if is_incremental() and not (start_month and end_month) %}
+    -- Mirror the balances-daily `prev_balances ∪ deltas` pattern: any avatar
+    -- already present in {{ this }} within the 14-day rolling window must be
+    -- carried forward so its zero-mint rows for the new days get densified
+    -- and `mint_days_14dw` / `mint_14dw` continue to roll. Without this,
+    -- avatars whose latest mint event predates the incremental boundary are
+    -- silently dropped from recent days, collapsing the `<1%` cohort.
+    UNION DISTINCT
+    SELECT DISTINCT avatar
+    FROM {{ this }}
+    WHERE date >= addDays(today(), -14)
+    {% endif %}
 ),
 
 {% if is_incremental() and not (start_month and end_month) %}
