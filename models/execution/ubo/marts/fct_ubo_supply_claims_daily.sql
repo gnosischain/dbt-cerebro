@@ -35,3 +35,10 @@ SELECT date, protocol, container_address, token_address, symbol, token_class,
        ubo_address, balance_raw, balance, balance_usd
 FROM {{ ref('int_ubo_claims_swapr_v3_daily') }}
 WHERE date < today()
+
+UNION ALL
+
+SELECT date, protocol, container_address, token_address, symbol, token_class,
+       ubo_address, balance_raw, balance, balance_usd
+FROM {{ ref('int_ubo_claims_curve_daily') }}
+WHERE date < today()
