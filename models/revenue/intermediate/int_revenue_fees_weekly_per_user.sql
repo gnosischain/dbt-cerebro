@@ -2,14 +2,15 @@
 {% set window_history_weeks  = 52 %}
 
 {% set all_streams = [
-    ('holdings', 'int_revenue_holdings_fees_daily', 'EURe'),
-    ('holdings', 'int_revenue_holdings_fees_daily', 'USDC.e'),
-    ('holdings', 'int_revenue_holdings_fees_daily', 'BRLA'),
-    ('holdings', 'int_revenue_holdings_fees_daily', 'ZCHF'),
-    ('sdai',     'int_revenue_sdai_fees_daily',     'sDAI'),
-    ('gpay',     'int_revenue_gpay_fees_daily',     'EURe'),
-    ('gpay',     'int_revenue_gpay_fees_daily',     'GBPe'),
-    ('gpay',     'int_revenue_gpay_fees_daily',     'USDC.e'),
+    ('holdings',    'int_revenue_holdings_fees_daily',    'EURe'),
+    ('holdings',    'int_revenue_holdings_fees_daily',    'USDC.e'),
+    ('holdings',    'int_revenue_holdings_fees_daily',    'BRLA'),
+    ('holdings',    'int_revenue_holdings_fees_daily',    'ZCHF'),
+    ('sdai',        'int_revenue_sdai_fees_daily',        'sDAI'),
+    ('gpay',        'int_revenue_gpay_fees_daily',        'EURe'),
+    ('gpay',        'int_revenue_gpay_fees_daily',        'GBPe'),
+    ('gpay',        'int_revenue_gpay_fees_daily',        'USDC.e'),
+    ('gnosis_app',  'int_revenue_gnosis_app_fees_daily',  'CRC'),
 ] %}
 
 {# Optional `slice` var (comma-separated) selects which stream_type+symbol

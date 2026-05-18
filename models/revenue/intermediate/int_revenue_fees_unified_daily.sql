@@ -15,5 +15,10 @@ FROM {{ ref('int_revenue_sdai_fees_daily') }}
 
 UNION ALL
 
-SELECT 'gpay'     AS stream_type, date, user, symbol, fees
+SELECT 'gpay'        AS stream_type, date, user, symbol, fees
 FROM {{ ref('int_revenue_gpay_fees_daily') }}
+
+UNION ALL
+
+SELECT 'gnosis_app'  AS stream_type, date, user, symbol, fees
+FROM {{ ref('int_revenue_gnosis_app_fees_daily') }}
