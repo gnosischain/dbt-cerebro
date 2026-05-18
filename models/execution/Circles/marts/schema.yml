@@ -1160,3 +1160,150 @@ models:
   - {name: has_ipfs_profile,  description: 1 if avatar has published an IPFS metadata payload.,      data_type: UInt8}
   - {name: has_display_name,  description: 1 if avatar has a non-empty display name in metadata.,    data_type: UInt8}
   meta: {owner: analytics_team, authoritative: false}
+
+# ---------- Groups: size & token-supply marts ----------
+
+- name: fct_execution_circles_v2_group_size_current
+  description: >
+    Current size of every Circles v2 group, where size = distinct trustees
+    in the group's outgoing trust list. Includes groups with zero members
+    so the size-distribution mart has a real 0-bucket.
+  columns:
+  - {name: group_avatar, description: "Lowercase group avatar address.", data_type: String}
+  - {name: n_members,    description: "Distinct trustees on the group's outgoing trust list.", data_type: UInt64}
+
+- name: api_execution_circles_v2_group_size_distribution
+  description: Histogram of Circles v2 group sizes (members per group).
+  columns:
+  - {name: bucket,       data_type: String}
+  - {name: bucket_order, description: "1..6 ordering for stable stacking.", data_type: UInt8}
+  - {name: n_groups,     data_type: UInt64}
+
+- name: fct_execution_circles_v2_group_token_supply_current
+  description: >
+    Per-group personal-token supply snapshot. One row per Group avatar with
+    supply / wrapped / unwrapped / wrapped_pct and demurraged variants, plus
+    display_name + preview_image_url pre-joined from avatar metadata.
+  columns:
+  - {name: group_avatar,        data_type: String}
+  - {name: supply,              data_type: Float64}
+  - {name: wrapped,             data_type: Float64}
+  - {name: unwrapped,           data_type: Float64}
+  - {name: wrapped_pct,         data_type: Nullable(Float64)}
+  - {name: supply_demurraged,   data_type: Float64}
+  - {name: wrapped_demurraged,  data_type: Float64}
+  - {name: display_name,        data_type: Nullable(String)}
+  - {name: preview_image_url,   data_type: Nullable(String)}
+
+- name: api_execution_circles_v2_group_token_supply_top_latest
+  description: Top 100 Circles v2 groups by personal-token supply (leaderboard view).
+  columns:
+  - {name: rank,                data_type: UInt64}
+  - {name: group_avatar,        data_type: String}
+  - {name: display_name,        data_type: Nullable(String)}
+  - {name: preview_image_url,   data_type: Nullable(String)}
+  - {name: supply,              data_type: Float64}
+  - {name: wrapped,             data_type: Float64}
+  - {name: unwrapped,           data_type: Float64}
+  - {name: wrapped_pct,         data_type: Nullable(Float64)}
+  - {name: supply_demurraged,   data_type: Float64}
+  - {name: n_members,           data_type: UInt64}
+
+- name: fct_execution_circles_v2_group_token_supply_daily
+  description: >
+    Daily aggregate of Circles v2 group-token supply, split between native
+    ERC-1155 and wrapped ERC-20 forms. Aggregated across all group tokens
+    by resolving token_address → issuer through the wrapper registry.
+  columns:
+  - {name: date,                       data_type: Date}
+  - {name: supply_total,               data_type: Float64}
+  - {name: supply_native_erc1155,      data_type: Float64}
+  - {name: supply_wrapped_erc20,       data_type: Float64}
+  - {name: supply_total_demurraged,    data_type: Float64}
+  - {name: supply_native_demurraged,   data_type: Float64}
+  - {name: supply_wrapped_demurraged,  data_type: Float64}
+
+- name: api_execution_circles_v2_group_token_supply_daily
+  description: >
+    Long-format time-series view (one row per (date, label)) over
+    fct_execution_circles_v2_group_token_supply_daily, ready for a stacked-area
+    chart with seriesField='label'. Latest day excluded.
+  columns:
+  - {name: date,             data_type: Date}
+  - {name: label,            description: "'ERC-1155 (native)' or 'ERC-20 (wrapped)'.", data_type: String}
+  - {name: value,            data_type: Float64}
+  - {name: value_demurraged, data_type: Float64}
+
+# ---------- Backing: trust-defined backers (vs depositors) ----------
+
+- name: fct_execution_circles_v2_backers_cumulative_daily
+  description: >
+    Daily cumulative count of trust-defined backers (addresses ever trusted
+    by the backers group avatar var('circles_target_group_address')).
+    Distinct from the depositor population in
+    int_execution_circles_v2_backing_depositors_current.
+  columns:
+  - {name: date,               data_type: Date}
+  - {name: new_backers,        data_type: UInt64}
+  - {name: cumulative_backers, data_type: UInt64}
+
+- name: api_execution_circles_v2_backers_cumulative_daily
+  description: Time-series view of trust-defined cumulative backers; latest day excluded.
+  columns:
+  - {name: date,               data_type: Date}
+  - {name: new_backers,        data_type: UInt64}
+  - {name: cumulative_backers, data_type: UInt64}
+
+# ---------- New KPI tiles (tier 0) ----------
+
+- name: api_execution_circles_v2_kpi_new_groups_7d
+  description: "KPI: groups registered in the last 7 days with WoW change."
+  columns:
+  - {name: value,      data_type: UInt64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_group_token_supply_latest
+  description: "KPI: aggregate group-token supply with 7d change."
+  columns:
+  - {name: value,      data_type: Float64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_group_wrapped_pct_latest
+  description: "KPI: share of group-token supply held as ERC-20 wrappers, with 7d delta."
+  columns:
+  - {name: value,      data_type: Nullable(Float64)}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_avg_members_per_group_latest
+  description: "KPI: average and median members per group."
+  columns:
+  - {name: value,           data_type: Nullable(Float64)}
+  - {name: median_members,  data_type: Float64}
+  - {name: change_pct,      data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_total_backers_latest
+  description: "KPI: total trust-defined backers with 7d change."
+  columns:
+  - {name: value,      data_type: UInt64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_new_backers_7d
+  description: "KPI: backers newly trusted in the last 7 days with WoW change."
+  columns:
+  - {name: value,      data_type: UInt64}
+  - {name: change_pct, data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_total_depositors_latest
+  description: "KPI: total distinct depositors with 7d-new and WoW change."
+  columns:
+  - {name: value,        data_type: UInt64}
+  - {name: new_last_7d,  data_type: UInt64}
+  - {name: change_pct,   data_type: Nullable(Float64)}
+
+- name: api_execution_circles_v2_kpi_depositors_in_backers_pct_latest
+  description: "KPI: % of depositors that ended up trusted by the backers group."
+  columns:
+  - {name: value,                  data_type: Nullable(Float64)}
+  - {name: total_depositors,       data_type: UInt64}
+  - {name: depositors_in_backers,  data_type: UInt64}
+  - {name: change_pct,             data_type: Nullable(Float64)}
