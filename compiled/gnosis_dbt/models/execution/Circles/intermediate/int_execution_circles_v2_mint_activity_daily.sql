@@ -72,6 +72,18 @@ mint_events_window AS (
 
 affected_avatars AS (
     SELECT DISTINCT avatar FROM mint_events_window
+    
+    -- Mirror the balances-daily `prev_balances ∪ deltas` pattern: any avatar
+    -- already present in `dbt`.`int_execution_circles_v2_mint_activity_daily` within the 14-day rolling window must be
+    -- carried forward so its zero-mint rows for the new days get densified
+    -- and `mint_days_14dw` / `mint_14dw` continue to roll. Without this,
+    -- avatars whose latest mint event predates the incremental boundary are
+    -- silently dropped from recent days, collapsing the `<1%` cohort.
+    UNION DISTINCT
+    SELECT DISTINCT avatar
+    FROM `dbt`.`int_execution_circles_v2_mint_activity_daily`
+    WHERE date >= addDays(today(), -14)
+    
 ),
 
 
