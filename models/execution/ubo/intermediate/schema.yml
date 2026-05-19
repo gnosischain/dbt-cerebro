@@ -417,3 +417,92 @@ models:
       tags: [ubo]
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_curve_daily
+  description: >
+    Per-protocol UBO supply claims for Curve 3pool (0x7f90122bf0700f9e7e1f688fe926940e8839f353)
+    on Gnosis Chain. Unwinds both direct x3CRV LP holders and depositors in
+    the x3CRV gauge (0xb721cc32160ab0da2614cc6ab16ed822aeebc101) into a
+    single set of final wallet-level claims. Gauge depositors receive an
+    effective x3CRV allocation proportional to their share of total gauge
+    supply, preserving total conservation (sum of claims = pool reserves).
+    Sourced from contracts_Curve3PoolLP_events and contracts_CurveGauge_events
+    Transfer events; pool reserves from int_execution_tokens_balances_daily.
+    Backfilled from 2021-09-01 (pool deployment) in 6-month batches.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Curve 3pool'.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the Curve 3pool contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of the underlying reserve token (WXDAI, USDC, USDT).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN or OTHERS).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the final beneficial owner (direct LP holder or gauge depositor).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit claim (Int256), proportional share of pool reserve.
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-09-01"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, protocol, container_address, ubo_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_curve_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_curve_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
