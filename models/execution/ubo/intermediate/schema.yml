@@ -1,6 +1,54 @@
 version: 2
 models:
 
+- name: int_ubo_second_level_daily
+  description: >
+    Rows from fct_ubo_supply_claims_daily where ubo_address is itself a known
+    container for the bridge token (container_address). These are the "second-
+    level" rows that fct_ubo_supply_claims_resolved_daily needs to redistribute.
+    Materialized separately so the resolved model can join this tiny table on
+    the right (hash-table) side while streaming the full claims dataset through
+    on the left (probe) side, avoiding loading millions of rows into a hash
+    table. Identical schema and unique key to fct_ubo_supply_claims_daily.
+  meta:
+    owner: analytics_team
+    full_refresh:
+      start_date: "2021-04-21"
+      batch_months: 6
+      stages:
+      - name: all
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+  - name: protocol
+    description: Protocol the claim is sourced from.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the container contract holding the pooled token.
+    data_type: String
+  - name: token_address
+    description: Lowercase address of the underlying token being claimed.
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the second-level container (is itself a known container for container_address).
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: balance_raw
+    description: Raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the claim.
+    data_type: Float64
+
 - name: int_ubo_claims_balancer_v2_daily
   description: >
     Per-protocol UBO supply claims for Balancer V2. Standardized shape: one

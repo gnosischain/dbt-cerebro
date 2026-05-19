@@ -58,7 +58,7 @@ unwound_rows AS (
         c.ubo_address                        AS address,
         c.balance_usd                        AS balance_usd,
         [c.container_address]                AS unwound_from
-    FROM {{ ref('fct_ubo_supply_claims_daily') }} c
+    FROM {{ ref('fct_ubo_supply_claims_resolved_daily') }} c
     CROSS JOIN latest_date ld
     WHERE c.date = ld.d
       AND c.balance > 0

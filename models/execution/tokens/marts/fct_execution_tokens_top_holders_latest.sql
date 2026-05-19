@@ -36,7 +36,7 @@ prev_ubo AS (
     FROM {{ ref('fct_execution_tokens_top_holders_ranked') }} r
     LEFT JOIN (
         SELECT token_address, ubo_address AS address, balance_usd
-        FROM {{ ref('fct_ubo_supply_claims_daily') }}
+        FROM {{ ref('fct_ubo_supply_claims_resolved_daily') }}
         WHERE date = (SELECT d FROM prev_7d_date)
           AND balance > 0
     ) c ON c.token_address = r.token_address AND c.address = r.address

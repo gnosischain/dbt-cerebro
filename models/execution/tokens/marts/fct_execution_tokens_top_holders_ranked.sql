@@ -48,7 +48,7 @@ unwound_rows AS (
         c.balance_usd                        AS balance_usd,
         [c.container_address]                AS unwound_from,
         [c.protocol]                         AS protocols
-    FROM {{ ref('fct_ubo_supply_claims_daily') }} c
+    FROM {{ ref('fct_ubo_supply_claims_resolved_daily') }} c
     WHERE c.date = (SELECT d FROM latest_date)
       AND c.balance > 0
 ),
