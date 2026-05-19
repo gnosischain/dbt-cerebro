@@ -448,7 +448,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: token_address
-    description: Lowercase address of the underlying reserve token (WXDAI, USDC, USDT).
+    description: Lowercase address of the underlying reserve token (WxDAI, USDC, USDT).
     data_type: String
     tests:
     - not_null:
@@ -502,6 +502,95 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - dbt_utils.expression_is_true:
       name: int_ubo_claims_curve_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_sdai_daily
+  description: >
+    Per-protocol UBO supply claims for the sDAI ERC4626 vault
+    (0xaf204776c7245bf4147c2612bf6e5972ee483701) on Gnosis Chain. Each sDAI
+    holder's proportional claim on the WxDAI held by the vault is computed
+    as (sDAI_balance / total_sDAI_supply) × vault_WxDAI_reserve. Holder
+    balances are sourced directly from int_execution_tokens_balances_daily
+    (no Transfer event parsing needed). Affects the WxDAI top-holders view;
+    the sDAI token top-holders view is unaffected. Note: aGnosDAI
+    (0x7a5c38...) appears as a second-level container — its share is left
+    attributed to the aToken address rather than individual Aave lenders.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'sDAI'.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the sDAI vault contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of WxDAI (the vault's underlying asset).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Always 'WxDAI'.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the sDAI token holder.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit WxDAI claim (Int256), proportional share of vault reserves.
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized WxDAI balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the WxDAI balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-09-28"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, container_address, ubo_address, token_address]
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_sdai_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_sdai_daily_non_negative_balance
       expression: "balance >= 0 AND balance_raw >= 0"
       tags: [ubo]
       config:
