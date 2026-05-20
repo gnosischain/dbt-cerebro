@@ -7,10 +7,7 @@
 
 -- Per-token diagnostic: how much of each token's supply is resolved to a
 -- real end-holder (UBO) vs. still sitting in an undecomposed container vs.
--- unclassified. Materialized as a table because the underlying composition
--- (balances_daily LEFT ANTI JOIN known_containers UNION ALL supply_claims,
--- then LEFT JOIN labels over millions of rows) is too heavy for a view to
--- serve interactive queries.
+-- unclassified.
 --
 --   pct_direct_terminal   — direct holders that are label-confirmed terminals
 --                           (EOAs, Safes/AA, bridges, gpay)
@@ -25,12 +22,6 @@
 
 WITH
 
-latest_date AS (
-    SELECT max(date) AS d
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
-    WHERE date < today() AND balance > 0
-),
-
 direct_rows AS (
     SELECT
         b.token_address                      AS token_address,
@@ -40,12 +31,15 @@ direct_rows AS (
         b.balance_usd                        AS balance_usd,
         CAST([] AS Array(String))            AS unwound_from
     FROM {{ ref('int_execution_tokens_balances_daily') }} b
-    CROSS JOIN latest_date ld
     LEFT ANTI JOIN {{ ref('fct_ubo_known_containers_daily') }} k
         ON  k.date                     = b.date
         AND lower(k.token_address)     = lower(b.token_address)
         AND lower(k.container_address) = lower(b.address)
-    WHERE b.date = ld.d
+    WHERE b.date = (
+            SELECT max(date)
+            FROM {{ ref('int_execution_tokens_balances_daily') }}
+            WHERE date < today() AND balance > 0
+          )
       AND b.balance > 0
       AND lower(b.address) != '0x0000000000000000000000000000000000000000'
 ),
@@ -59,8 +53,11 @@ unwound_rows AS (
         c.balance_usd                        AS balance_usd,
         [c.container_address]                AS unwound_from
     FROM {{ ref('fct_ubo_supply_claims_resolved_daily') }} c
-    CROSS JOIN latest_date ld
-    WHERE c.date = ld.d
+    WHERE c.date = (
+            SELECT max(date)
+            FROM {{ ref('int_execution_tokens_balances_daily') }}
+            WHERE date < today() AND balance > 0
+          )
       AND c.balance > 0
 ),
 
@@ -91,14 +88,10 @@ classified AS (
         h.token_class,
         h.balance_usd,
         h.unwound_from,
-        CASE
-            WHEN l.sector IN ('EOAs', 'Wallets & AA', 'Bridges', 'Payments') THEN 1
-            WHEN l.sector IN ('Lending & Yield', 'DEX')                      THEN 0
-            ELSE NULL
-        END AS is_terminal_ubo
+        l.is_terminal_ubo
     FROM per_holder h
-    LEFT JOIN {{ ref('int_crawlers_data_labels') }} l
-        ON lower(l.address) = lower(h.address)
+    LEFT JOIN {{ ref('fct_ubo_address_classification') }} l
+        ON l.address = h.address
 ),
 
 per_token AS (
