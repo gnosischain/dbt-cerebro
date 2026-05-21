@@ -94,11 +94,21 @@ token_id_pool_map AS (
 ),
 
 -- ─── POOL REGISTRY FOR TOKEN ADDRESSES ──────────────────────────────────
+-- EURe migrated from 0xcb444e90... to 0x420ca0f9... at date 19960 (~Aug 2024).
+-- Pools created before migration retain the old address in factory events.
+-- Remap here so the tokens_whitelist date-range join finds the new EURe entry
+-- (date_start=19960, date_end=NULL) for all post-migration claim dates.
+-- The LP model is deliberately NOT remapped — it uses the raw address from
+-- factory events and stg_pools__tokens_meta handles both EURe addresses separately.
 pool_tokens AS (
     SELECT
         pool_address,
-        token0_address,
-        token1_address
+        if(token0_address = '0xcb444e90d8198415266c6a2724b7900fb12fc56e',
+           '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430',
+           token0_address) AS token0_address,
+        if(token1_address = '0xcb444e90d8198415266c6a2724b7900fb12fc56e',
+           '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430',
+           token1_address) AS token1_address
     FROM {{ ref('stg_pools__v3_pool_registry') }}
     WHERE protocol = 'Uniswap V3'
 ),

@@ -15,15 +15,8 @@ uniswap_v3_created AS (
         'Uniswap V3' AS protocol,
         lower(decoded_params['pool']) AS pool_address,
         replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address_no0x,
-        -- EURe migrated from 0xcb444e90... to 0x420ca0f9... at date 19960.
-        -- Pools created before migration retain the old address in factory events;
-        -- remap so downstream whitelist joins work correctly.
-        if(lower(decoded_params['token0']) = '0xcb444e90d8198415266c6a2724b7900fb12fc56e',
-           '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430',
-           lower(decoded_params['token0'])) AS token0_address,
-        if(lower(decoded_params['token1']) = '0xcb444e90d8198415266c6a2724b7900fb12fc56e',
-           '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430',
-           lower(decoded_params['token1'])) AS token1_address,
+        lower(decoded_params['token0']) AS token0_address,
+        lower(decoded_params['token1']) AS token1_address,
         toUInt32OrNull(decoded_params['fee']) AS fee_tier_ppm,
         toInt32OrNull(decoded_params['tickSpacing']) AS tick_spacing,
         block_timestamp AS created_at
