@@ -1342,6 +1342,104 @@ models:
       severity: error
       tags:
       - elementary
+- name: fct_execution_transactions_active_accounts_daily
+  description: Daily unique active accounts (transaction initiators) on Gnosis Chain, using bitmap merge across all projects for accurate deduplication.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2018-10-01"
+      batch_months: 12
+  columns:
+  - name: date
+    description: The calendar date for the aggregated data.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: active_accounts
+    description: True unique count of addresses that initiated at least one transaction on this date.
+    data_type: UInt64
+  tests:
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: api_execution_transactions_active_accounts_daily
+  description: Daily unique initiator accounts on Gnosis Chain. Uses bitmap merge for accurate deduplication — no double-counting across sectors or projects.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: date
+    description: The calendar date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: value
+    description: True unique count of addresses that initiated at least one transaction on this date.
+    data_type: UInt64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: error
+        tags:
+        - elementary
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: error
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: error
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
+
 - name: api_execution_transactions_by_sector_daily
   description: The api_execution_transactions_by_sector_daily model provides daily aggregated counts of API execution transactions categorized by sector, enabling trend analysis and performance monitoring
     over time.
