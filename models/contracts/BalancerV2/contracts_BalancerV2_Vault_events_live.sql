@@ -6,7 +6,7 @@
         order_by='(block_number, transaction_index, log_index)',
         ttl='block_timestamp + INTERVAL 2 HOUR',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'live', 'contracts', 'balancerv2', 'events'],
+        tags=['live', 'contracts', 'balancerv2', 'events'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )
