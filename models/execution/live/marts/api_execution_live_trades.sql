@@ -117,7 +117,7 @@ LEFT JOIN hops_per_tx h
 LEFT JOIN recent_tx tx
     ON tx.transaction_hash = s.transaction_hash
     AND tx.block_number    = s.block_number
-LEFT JOIN {{ ref('int_crawlers_data_labels') }} lbl
+LEFT JOIN {{ ref('int_crawlers_data_labels_dex') }} lbl
     ON lbl.address = concat('0x', lower(replaceAll(coalesce(tx.to_address, ''), '0x', '')))
 WHERE (s.token_sold != '' OR s.token_bought != '')
   AND (s.trade_usd IS NULL OR s.trade_usd >= {{ min_usd }})
