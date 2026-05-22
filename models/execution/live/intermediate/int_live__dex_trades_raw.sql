@@ -10,7 +10,7 @@
     )
 }}
 
-{%- set overlap_minutes = var('live_trades_overlap_minutes', 120) -%}
+{%- set overlap_minutes = var('live_trades_overlap_minutes', 15) -%}
 
 WITH
 

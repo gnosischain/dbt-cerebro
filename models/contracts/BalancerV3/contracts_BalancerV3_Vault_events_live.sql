@@ -7,7 +7,7 @@
     )
 }}
 {%- set src = source('execution_live', 'logs') -%}
-{%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT max(block_timestamp) FROM " ~ src ~ ") - INTERVAL 4 HOUR)" -%}
+{%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT max(block_timestamp) FROM " ~ src ~ ") - INTERVAL 30 MINUTE)" -%}
 
 {{
     decode_logs(
