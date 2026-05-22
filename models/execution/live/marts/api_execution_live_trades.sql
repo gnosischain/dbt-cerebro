@@ -16,7 +16,7 @@ hwm AS (
 
 recent AS (
     SELECT *
-    FROM {{ ref('int_live__dex_trades_raw') }}
+    FROM {{ ref('int_live__dex_trades_raw') }} FINAL
     WHERE block_timestamp >= (SELECT ts FROM hwm) - INTERVAL 30 MINUTE
       AND block_timestamp <= (SELECT ts FROM hwm) - INTERVAL 60 SECOND
 ),
