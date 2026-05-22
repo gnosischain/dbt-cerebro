@@ -110,7 +110,7 @@ SELECT
     s.hops                       AS hops,
     h.hops_detail                AS hops_detail,
     tx.from_address              AS trader,
-    lbl.project                  AS aggregator
+    nullIf(lbl.project, '')      AS aggregator
 FROM tx_summary s
 LEFT JOIN hops_per_tx h
     ON h.transaction_hash = s.transaction_hash

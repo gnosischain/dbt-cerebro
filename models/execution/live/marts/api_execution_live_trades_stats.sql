@@ -44,7 +44,7 @@ SELECT
     count()                                                                          AS trade_count,
     round(sum(s.trade_usd), 0)                                                       AS volume_usd,
     uniqExact(tx.from_address)                                                       AS unique_traders,
-    round(100.0 * countIf(lbl.project IS NOT NULL) / nullIf(count(), 0), 1)         AS aggregator_share_pct,
+    round(100.0 * countIf(lbl.project != '')        / nullIf(count(), 0), 1)         AS aggregator_share_pct,
     round(100.0 * countIf(s.hops > 1)              / nullIf(count(), 0), 1)         AS multihop_share_pct
 FROM tx_summary s
 LEFT JOIN recent_tx tx
