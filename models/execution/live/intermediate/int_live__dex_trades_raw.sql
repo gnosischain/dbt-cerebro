@@ -51,7 +51,7 @@ normalized AS (
       AND s.amount_sold_raw   > 0
       {% if is_incremental() %}
       AND s.block_timestamp >= (
-          SELECT addMinutes(max(block_timestamp), -{{ overlap_minutes }})
+          SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -{{ overlap_minutes }}), now() - INTERVAL 30 MINUTE)
           FROM {{ this }}
       )
       {% else %}

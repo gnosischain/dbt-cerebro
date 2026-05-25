@@ -1,15 +1,19 @@
 #!/bin/bash
 # Continuous live pipeline loop — runs every 45 seconds.
-# On first start it does a full-refresh of all live models (bootstraps the
-# incremental contract event tables), then runs incrementally on each cycle.
+# On first start it runs single-threaded to safely create any missing
+# incremental tables, then switches to --threads 4 for the incremental loop.
 
 # profiles.yml reads CLICKHOUSE_DATABASE; K8s sets CLICKHOUSE_SCHEMA
 export CLICKHOUSE_DATABASE="${CLICKHOUSE_DATABASE:-$CLICKHOUSE_SCHEMA}"
 
 CYCLE_SECONDS=45
 
-echo "[live] Starting bootstrap (full-refresh)..."
-dbt run --select tag:live --threads 4 --full-refresh
+# Run single-threaded on startup so that if any incremental tables are missing,
+# dbt creates them one at a time rather than 4 heavy decode_logs queries in
+# parallel, which overwhelms the ClickHouse memory limit.
+# On restarts the tables already exist, so this is just a fast incremental pass.
+echo "[live] Starting bootstrap (threads=1)..."
+dbt run --select tag:live --threads 1
 echo "[live] Bootstrap complete. Entering incremental loop."
 
 while true; do

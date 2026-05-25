@@ -13,7 +13,7 @@
 }}
 {%- set src = source('execution_live', 'logs') -%}
 {%- if is_incremental() -%}
-{%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT addMinutes(max(block_timestamp), -5) FROM " ~ this ~ "))" -%}
+{%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -5), now() - INTERVAL 30 MINUTE) FROM " ~ this ~ "))" -%}
 {%- else -%}
 {%- set filtered_src = "(SELECT *, insert_version FROM " ~ src ~ " WHERE block_timestamp >= (SELECT max(block_timestamp) FROM " ~ src ~ ") - INTERVAL 30 MINUTE)" -%}
 {%- endif -%}
