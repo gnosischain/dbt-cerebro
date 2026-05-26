@@ -3,7 +3,6 @@
 # On first start it runs single-threaded to safely create any missing
 # incremental tables, then switches to --threads 4 for the incremental loop.
 
-# profiles.yml reads CLICKHOUSE_DATABASE; K8s sets CLICKHOUSE_SCHEMA
 export CLICKHOUSE_DATABASE="${CLICKHOUSE_DATABASE:-$CLICKHOUSE_SCHEMA}"
 
 CYCLE_SECONDS=45

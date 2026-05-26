@@ -51,7 +51,7 @@ batch_trades AS (
         transaction_hash,
         any(solver)                                                                  AS solver,
         count(*)                                                                     AS num_trades,
-        countDistinct(amount_usd)                                                    AS num_priced_trades,
+        countIf(isNotNull(amount_usd))                                               AS num_priced_trades,
         sum(amount_usd)                                                              AS batch_value_usd
     FROM trades
     GROUP BY transaction_hash
