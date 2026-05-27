@@ -52,6 +52,9 @@ LEFT JOIN {{ ref('stg_pools__tokens_meta') }} ts
     AND toDate(s.block_timestamp) >= toDate(ts.date_start)
 WHERE s.amount_bought_raw > 0
   AND s.amount_sold_raw   > 0
-  {% if not (start_month and end_month) %}
+  {% if start_month and end_month %}
+    AND toStartOfMonth(s.block_timestamp) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(s.block_timestamp) <= toDate('{{ end_month }}')
+  {% else %}
     {{ apply_monthly_incremental_filter('s.block_timestamp', 'block_timestamp', 'true') }}
   {% endif %}
