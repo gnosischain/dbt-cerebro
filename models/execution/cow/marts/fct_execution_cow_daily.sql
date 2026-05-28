@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
         engine='ReplacingMergeTree()',
         order_by='(date)',
         unique_key='(date)',
@@ -9,6 +9,9 @@
         tags=['execution', 'cow', 'daily']
     )
 }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month',   none) %}
 
 WITH
 
@@ -21,7 +24,10 @@ trade_daily AS (
         sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd,
         sumIf(solver_value_usd, fee_source = 'api')                                 AS solver_value_usd
     FROM {{ ref('fct_execution_cow_trades') }}
-    {% if is_incremental() %}
+    {% if start_month and end_month %}
+    WHERE toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
+    {% elif is_incremental() %}
     WHERE toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
     )
@@ -38,7 +44,10 @@ batch_daily AS (
         sum(tx_cost_native)                                                          AS total_tx_cost_native,
         countDistinct(solver)                                                        AS active_solvers
     FROM {{ ref('int_execution_cow_batches') }}
-    {% if is_incremental() %}
+    {% if start_month and end_month %}
+    WHERE toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
+    {% elif is_incremental() %}
     WHERE toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
     )
