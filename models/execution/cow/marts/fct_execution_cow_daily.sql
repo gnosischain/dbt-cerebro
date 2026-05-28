@@ -16,7 +16,8 @@ trade_daily AS (
         count(*)                                                                     AS num_trades,
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
-        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd
+        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd,
+        sumIf(solver_value_usd, fee_source = 'api')                                 AS solver_value_usd
     FROM {{ ref('fct_execution_cow_trades') }}
     GROUP BY date
 ),
