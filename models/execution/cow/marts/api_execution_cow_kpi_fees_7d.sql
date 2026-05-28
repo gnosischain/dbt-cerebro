@@ -1,7 +1,7 @@
-{{
+﻿{{
   config(
     materialized='view',
-    tags=['dev','execution','cow','kpi','tier0',
+    tags=['execution','cow','kpi','tier0',
           'api:cow_kpi_fees_7d','granularity:last_7d']
   )
 }}

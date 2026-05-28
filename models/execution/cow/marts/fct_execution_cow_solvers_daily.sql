@@ -1,11 +1,13 @@
 {{
     config(
-        materialized='table',
+        materialized='incremental',
+        incremental_strategy='delete+insert',
         engine='ReplacingMergeTree()',
         order_by='(date, solver)',
+        unique_key='(date, solver)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'cow', 'solvers', 'daily']
+        tags=['execution', 'cow', 'solvers', 'daily']
     )
 }}
 
@@ -21,6 +23,11 @@ solver_trades AS (
         sum(fee_usd)                                                                 AS fees_usd
     FROM {{ ref('fct_execution_cow_trades') }}
     WHERE solver IS NOT NULL
+    {% if is_incremental() %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
+      )
+    {% endif %}
     GROUP BY date, solver
 ),
 
@@ -33,6 +40,11 @@ solver_batches AS (
         sum(tx_cost_native)                                                          AS total_tx_cost_native
     FROM {{ ref('int_execution_cow_batches') }}
     WHERE solver IS NOT NULL
+    {% if is_incremental() %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
+      )
+    {% endif %}
     GROUP BY date, solver
 )
 

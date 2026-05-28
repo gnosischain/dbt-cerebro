@@ -1,4 +1,4 @@
-{{
+﻿{{
     config(
         materialized='incremental',
         incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
@@ -7,7 +7,7 @@
         unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'cow', 'batches', 'intermediate']
+        tags=['execution', 'cow', 'batches', 'intermediate']
     )
 }}
 

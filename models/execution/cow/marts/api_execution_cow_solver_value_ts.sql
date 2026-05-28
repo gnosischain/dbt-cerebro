@@ -1,7 +1,7 @@
-{{
+﻿{{
   config(
     materialized='view',
-    tags=['dev','execution','cow','tier1',
+    tags=['execution','cow','tier1',
           'api:cow_solver_value_ts','granularity:daily']
   )
 }}
