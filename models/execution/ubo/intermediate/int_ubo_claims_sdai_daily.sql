@@ -1,4 +1,4 @@
-{{
+﻿{{
     config(
         materialized='table',
         engine='ReplacingMergeTree()',
@@ -6,7 +6,7 @@
         unique_key='(date, container_address, ubo_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','ubo','claims','sdai']
+        tags=['production','execution','ubo','claims','sdai']
     )
 }}
 

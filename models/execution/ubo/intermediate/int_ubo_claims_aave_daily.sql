@@ -1,4 +1,4 @@
-{{
+﻿{{
     config(
         materialized='incremental',
         incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
@@ -7,7 +7,7 @@
         unique_key='(date, protocol, container_address, ubo_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','ubo','claims','aave','spark']
+        tags=['production','execution','ubo','claims','aave','spark']
     )
 }}
 

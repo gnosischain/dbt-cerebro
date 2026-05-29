@@ -1,4 +1,4 @@
-{{
+﻿{{
     config(
         materialized='incremental',
         incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
@@ -9,7 +9,7 @@
         settings={'allow_nullable_key': 1},
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"],
-        tags=['dev','execution','ubo','claims','balancer']
+        tags=['production','execution','ubo','claims','balancer']
     )
 }}
 

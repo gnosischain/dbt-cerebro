@@ -1,7 +1,7 @@
 {{
   config(
     materialized='table',
-    tags=['dev','execution','ubo','labels'],
+    tags=['production','execution','ubo','labels'],
     engine='MergeTree()',
     order_by=['address'],
     unique_key='address',
