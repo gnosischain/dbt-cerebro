@@ -13,7 +13,7 @@ semantic_models:
     type: categorical
     expr: series
   measures:
-  - name: value_value
+  - name: bridges_cum_netflow_weekly_by_bridge__value_value
     agg: sum
     expr: value
   config:
@@ -50,7 +50,7 @@ semantic_models:
     type: categorical
     expr: direction
   measures:
-  - name: volume_token_value
+  - name: bridges_flows_daily__volume_token_value
     agg: sum
     expr: volume_token
   - name: bridge_flow_volume_daily_value
@@ -82,7 +82,7 @@ semantic_models:
 - name: bridges_kpi_distinct_bridges_all_time
   model: ref('api_bridges_kpi_distinct_bridges_all_time')
   measures:
-  - name: value_value
+  - name: bridges_kpi_distinct_bridges_all_time__value_value
     agg: sum
     expr: value
   config:
@@ -111,10 +111,10 @@ semantic_models:
   - name: bridge_netflow_7d_kpi
     agg: sum
     expr: value
-  - name: prev_value
+  - name: bridges_kpi_netflow_7d__prev_value
     agg: sum
     expr: prev_value
-  - name: change_pct_value
+  - name: bridges_kpi_netflow_7d__change_pct_value
     agg: average
     expr: change_pct
   config:
@@ -156,10 +156,10 @@ semantic_models:
   - name: bridge_volume_7d_kpi
     agg: sum
     expr: value
-  - name: prev_value
+  - name: bridges_kpi_volume_7d__prev_value
     agg: sum
     expr: prev_value
-  - name: change_pct_value
+  - name: bridges_kpi_volume_7d__change_pct_value
     agg: average
     expr: change_pct
   config:
@@ -303,10 +303,10 @@ semantic_models:
     type: categorical
     expr: target
   measures:
-  - name: volume_usd_value
+  - name: bridges_sankey_edges_token_daily__volume_usd_value
     agg: sum
     expr: volume_usd
-  - name: value_value
+  - name: bridges_sankey_edges_token_daily__value_value
     agg: sum
     expr: value
   config:
@@ -337,7 +337,7 @@ semantic_models:
     type: categorical
     expr: target
   measures:
-  - name: value_value
+  - name: bridges_sankey_gnosis_in_by_token_7d__value_value
     agg: sum
     expr: value
   config:
@@ -367,7 +367,7 @@ semantic_models:
     type: categorical
     expr: target
   measures:
-  - name: value_value
+  - name: bridges_sankey_gnosis_in_ranges__value_value
     agg: sum
     expr: value
   config:
@@ -397,7 +397,7 @@ semantic_models:
     type: categorical
     expr: target
   measures:
-  - name: value_value
+  - name: bridges_sankey_gnosis_out_by_token_7d__value_value
     agg: sum
     expr: value
   config:
@@ -427,7 +427,7 @@ semantic_models:
     type: categorical
     expr: target
   measures:
-  - name: value_value
+  - name: bridges_sankey_gnosis_out_ranges__value_value
     agg: sum
     expr: value
   config:
@@ -454,7 +454,7 @@ semantic_models:
     type: categorical
     expr: token
   measures:
-  - name: value_value
+  - name: bridges_token_netflow_daily_by_bridge__value_value
     agg: sum
     expr: value
   - name: bridge_order_value
@@ -485,7 +485,7 @@ semantic_models:
     type: categorical
     expr: token
   measures:
-  - name: value_value
+  - name: fct_bridges_token_netflow_daily_by_bridge__value_value
     agg: sum
     expr: value
   config:
@@ -529,10 +529,10 @@ semantic_models:
     type: categorical
     expr: direction
   measures:
-  - name: volume_usd_value
+  - name: bridges_address_flows_daily__volume_usd_value
     agg: sum
     expr: volume_usd
-  - name: transfer_count_value
+  - name: bridges_address_flows_daily__transfer_count_value
     agg: sum
     expr: transfer_count
   config:
@@ -555,34 +555,12 @@ semantic_models:
           directed: true
           time_column: date
           weight_column: volume_usd
-
-# ═════════════════════════════════════════════════════════════════════
-# METRICS — analyst-facing names that bind to the measures above.
-#
-# Tiering:
-#   candidate  Default for all bridge metrics today. The 7d / all-time
-#              KPI metrics back single-row scalar views (no
-#              dimensions), so the MCP semantic engine cannot aggregate
-#              or group them — keep these as `candidate` and treat them
-#              as dashboard-card displays, not metric-lab metrics. The
-#              daily / weekly flow metrics have real dimensions and can
-#              be promoted to `approved` once the bridges_team reviews
-#              dimension allow-lists.
-#   approved   Requires grain + owner + question_synonyms per
-#              REQUIRED_APPROVED_META in
-#              scripts/semantic/build_registry.py AND at least one
-#              non-empty `allowed_dimensions` entry for the semantic
-#              planner.
-# ═════════════════════════════════════════════════════════════════════
 metrics:
-
-# ---- Headline cross-bridge KPIs (rolling 7-day snapshot) ----
-
 - name: bridge_volume_7d
   label: Bridge Volume (Last 7 Days)
-  description: >
-    Total USD volume bridged across all tracked bridges and chains in
-    the trailing 7 days. Sourced from api_bridges_kpi_volume_7d.
+  description: 'Total USD volume bridged across all tracked bridges and chains in the trailing 7 days. Sourced from api_bridges_kpi_volume_7d.
+
+    '
   type: simple
   type_params:
     measure: bridge_volume_7d_kpi
@@ -593,18 +571,18 @@ metrics:
         grain: snapshot
         owner: bridges_team
         allowed_dimensions: []
-        supported_time_grains: [day, week]
+        supported_time_grains:
+        - day
+        - week
         question_synonyms:
         - bridge volume 7 day
         - last 7 days bridge volume
         - weekly bridge volume
         - how much was bridged last week
-
 - name: bridge_netflow_7d
   label: Bridge Netflow (Last 7 Days)
-  description: >
-    Net USD flow into Gnosis Chain via tracked bridges over the last
-    7 days (inbound − outbound). Positive = net inflow.
+  description: "Net USD flow into Gnosis Chain via tracked bridges over the last 7 days (inbound \u2212 outbound). Positive\
+    \ = net inflow.\n"
   type: simple
   type_params:
     measure: bridge_netflow_7d_kpi
@@ -615,19 +593,18 @@ metrics:
         grain: snapshot
         owner: bridges_team
         allowed_dimensions: []
-        supported_time_grains: [day, week]
+        supported_time_grains:
+        - day
+        - week
         question_synonyms:
         - bridge netflow 7 day
         - net inflow gnosis last week
         - net bridge flow week
-
-# ---- All-time headline totals ----
-
 - name: bridge_volume_total
   label: Bridge Volume (All Time)
-  description: >
-    Cumulative USD volume bridged into and out of Gnosis Chain across
-    all tracked bridges since coverage began.
+  description: 'Cumulative USD volume bridged into and out of Gnosis Chain across all tracked bridges since coverage began.
+
+    '
   type: simple
   type_params:
     measure: bridge_volume_total_kpi
@@ -638,18 +615,19 @@ metrics:
         grain: snapshot
         owner: bridges_team
         allowed_dimensions: []
-        supported_time_grains: [day]
+        supported_time_grains:
+        - day
         question_synonyms:
         - total bridge volume
         - all time bridge volume
         - lifetime bridge volume
         - cumulative bridged usd
-
 - name: bridge_netflow_total
   label: Bridge Netflow (All Time)
-  description: >
-    Cumulative net USD flow into Gnosis Chain across all tracked
-    bridges since coverage began. Positive = net inflow.
+  description: 'Cumulative net USD flow into Gnosis Chain across all tracked bridges since coverage began. Positive = net
+    inflow.
+
+    '
   type: simple
   type_params:
     measure: bridge_netflow_total_kpi
@@ -660,18 +638,18 @@ metrics:
         grain: snapshot
         owner: bridges_team
         allowed_dimensions: []
-        supported_time_grains: [day]
+        supported_time_grains:
+        - day
         question_synonyms:
         - total bridge netflow
         - all time net inflow
         - cumulative net bridge flow
         - lifetime gnosis net inflow
-
 - name: bridge_distinct_chains
   label: Distinct Bridge Chains
-  description: >
-    Number of distinct source/destination chains observed in bridged
-    transfers (cardinality of the bridge graph).
+  description: 'Number of distinct source/destination chains observed in bridged transfers (cardinality of the bridge graph).
+
+    '
   type: simple
   type_params:
     measure: bridge_distinct_chains_kpi
@@ -682,20 +660,18 @@ metrics:
         grain: snapshot
         owner: bridges_team
         allowed_dimensions: []
-        supported_time_grains: [day]
+        supported_time_grains:
+        - day
         question_synonyms:
         - bridge chains count
         - how many chains bridge to gnosis
         - distinct bridge origins
-
-# ---- Daily flow grain — breakable by bridge / token / direction ----
-
 - name: bridge_flow_volume_daily
-  label: Bridge Volume (Daily by Bridge × Token × Direction)
-  description: >
-    Daily USD volume by bridge, token, source/dest chain, and direction.
-    Granular: use this when you need a per-bridge or per-token time
-    series rather than the headline 7d / all-time snapshots.
+  label: "Bridge Volume (Daily by Bridge \xD7 Token \xD7 Direction)"
+  description: 'Daily USD volume by bridge, token, source/dest chain, and direction. Granular: use this when you need a per-bridge
+    or per-token time series rather than the headline 7d / all-time snapshots.
+
+    '
   type: simple
   type_params:
     measure: bridge_flow_volume_daily_value
@@ -705,20 +681,29 @@ metrics:
         quality_tier: candidate
         grain: day
         owner: bridges_team
-        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - bridge
+        - source_chain
+        - dest_chain
+        - token
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - bridge volume daily
         - bridge volume by token
         - bridge volume by chain
         - bridge volume by direction
         - daily bridged usd
-
 - name: bridge_flow_netflow_daily
-  label: Bridge Netflow (Daily by Bridge × Token × Direction)
-  description: >
-    Daily net USD flow by bridge / token / chain / direction. Positive
-    = net inflow into Gnosis. Same source as bridge_flow_volume_daily.
+  label: "Bridge Netflow (Daily by Bridge \xD7 Token \xD7 Direction)"
+  description: 'Daily net USD flow by bridge / token / chain / direction. Positive = net inflow into Gnosis. Same source as
+    bridge_flow_volume_daily.
+
+    '
   type: simple
   type_params:
     measure: bridge_flow_netflow_daily_value
@@ -728,18 +713,26 @@ metrics:
         quality_tier: candidate
         grain: day
         owner: bridges_team
-        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - bridge
+        - source_chain
+        - dest_chain
+        - token
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - bridge netflow daily
         - bridge netflow by token
         - daily bridge inflow outflow
-
 - name: bridge_flow_transfers_daily
-  label: Bridge Transfers (Daily by Bridge × Token × Direction)
-  description: >
-    Daily bridge transfer count broken down by bridge / token /
-    chain / direction.
+  label: "Bridge Transfers (Daily by Bridge \xD7 Token \xD7 Direction)"
+  description: 'Daily bridge transfer count broken down by bridge / token / chain / direction.
+
+    '
   type: simple
   type_params:
     measure: bridge_flow_transfers_daily_value
@@ -749,24 +742,29 @@ metrics:
         quality_tier: candidate
         grain: day
         owner: bridges_team
-        allowed_dimensions: [date, bridge, source_chain, dest_chain, token, direction]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - bridge
+        - source_chain
+        - dest_chain
+        - token
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - bridge transfers daily
         - bridge transaction count
         - daily bridge transfers count
         - how many bridge transactions
-
-# ---- Weekly netflow per bridge ----
-
 - name: bridge_netflow_weekly_by_bridge
   label: Bridge Netflow (Weekly by Bridge)
-  description: >
-    Weekly net USD flow per bridge (positive = net inflow into Gnosis
-    Chain). Sourced from fct_bridges_netflow_weekly_by_bridge. Use this
-    for per-bridge market-share trend charts and for cross-sector
-    composition with other weekly metrics (revenue active users,
-    revenue potential total) via the dim_time_spine_weekly bridge.
+  description: 'Weekly net USD flow per bridge (positive = net inflow into Gnosis Chain). Sourced from fct_bridges_netflow_weekly_by_bridge.
+    Use this for per-bridge market-share trend charts and for cross-sector composition with other weekly metrics (revenue
+    active users, revenue potential total) via the dim_time_spine_weekly bridge.
+
+    '
   type: simple
   type_params:
     measure: bridge_netflow_weekly_value
@@ -776,11 +774,877 @@ metrics:
         quality_tier: approved
         grain: week
         owner: bridges_team
-        allowed_dimensions: [week, bridge]
-        supported_time_grains: [week, month]
+        allowed_dimensions:
+        - week
+        - bridge
+        supported_time_grains:
+        - week
+        - month
         question_synonyms:
         - weekly bridge netflow
         - weekly netflow by bridge
         - bridge weekly market share
         - bridge inflow per week
         - net usd bridged per week
+- name: bridges_cum_netflow_weekly_by_bridge__value_value
+  label: Bridges Cum Netflow Weekly By Bridge - Value
+  description: bridges cum netflow weekly by bridge - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_cum_netflow_weekly_by_bridge__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - series
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges cum netflow weekly by bridge value
+        - value
+- name: bridges_flows_daily__volume_token_value
+  label: Bridges Flows Daily - Volume Token
+  description: bridges flows daily - volume token (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: bridges_flows_daily__volume_token_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bridge
+        - source_chain
+        - dest_chain
+        - token
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges flows daily volume token
+        - volume token
+- name: bridges_kpi_distinct_bridges_all_time__value_value
+  label: Bridges Kpi Distinct Bridges All Time - Value
+  description: bridges kpi distinct bridges all time - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_kpi_distinct_bridges_all_time__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - bridges kpi distinct bridges all time value
+        - value
+- name: bridges_kpi_netflow_7d__prev_value
+  label: Bridges Kpi Netflow 7D - Prev
+  description: bridges kpi netflow 7d - prev (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: bridges_kpi_netflow_7d__prev_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - bridges kpi netflow 7d prev
+        - prev
+- name: bridges_kpi_netflow_7d__change_pct_value
+  label: Bridges Kpi Netflow 7D - Change Pct
+  description: bridges kpi netflow 7d - change pct (average). Read this as an average over the grain; do NOT sum it across
+    rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: bridges_kpi_netflow_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - bridges kpi netflow 7d change pct
+        - change pct
+- name: bridges_kpi_volume_7d__prev_value
+  label: Bridges Kpi Volume 7D - Prev
+  description: bridges kpi volume 7d - prev (sum). Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: bridges_kpi_volume_7d__prev_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - bridges kpi volume 7d prev
+        - prev
+- name: bridges_kpi_volume_7d__change_pct_value
+  label: Bridges Kpi Volume 7D - Change Pct
+  description: bridges kpi volume 7d - change pct (average). Read this as an average over the grain; do NOT sum it across
+    rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: bridges_kpi_volume_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - bridges kpi volume 7d change pct
+        - change pct
+- name: cum_vol_usd_value
+  label: Bridges Kpis Snapshot - Cum Vol Usd
+  description: bridges kpis snapshot - cum vol usd (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: cum_vol_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot cum vol usd
+        - cum vol usd
+- name: cum_net_usd_value
+  label: Bridges Kpis Snapshot - Cum Net Usd
+  description: bridges kpis snapshot - cum net usd (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: cum_net_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot cum net usd
+        - cum net usd
+- name: cum_txs_value
+  label: Bridges Kpis Snapshot - Cum Txs
+  description: bridges kpis snapshot - cum txs (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: cum_txs_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot cum txs
+        - cum txs
+- name: vol_7d_value
+  label: Bridges Kpis Snapshot - Vol 7D
+  description: bridges kpis snapshot - vol 7d (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: vol_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot vol 7d
+        - vol 7d
+- name: net_7d_value
+  label: Bridges Kpis Snapshot - Net 7D
+  description: bridges kpis snapshot - net 7d (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: net_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot net 7d
+        - net 7d
+- name: txs_7d_value
+  label: Bridges Kpis Snapshot - Txs 7D
+  description: bridges kpis snapshot - txs 7d (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: txs_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot txs 7d
+        - txs 7d
+- name: vol_prev_7d_value
+  label: Bridges Kpis Snapshot - Vol Prev 7D
+  description: bridges kpis snapshot - vol prev 7d (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: vol_prev_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot vol prev 7d
+        - vol prev 7d
+- name: net_prev_7d_value
+  label: Bridges Kpis Snapshot - Net Prev 7D
+  description: bridges kpis snapshot - net prev 7d (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: net_prev_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot net prev 7d
+        - net prev 7d
+- name: txs_prev_7d_value
+  label: Bridges Kpis Snapshot - Txs Prev 7D
+  description: bridges kpis snapshot - txs prev 7d (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: txs_prev_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot txs prev 7d
+        - txs prev 7d
+- name: rate_7d_value
+  label: Bridges Kpis Snapshot - Rate 7D
+  description: bridges kpis snapshot - rate 7d (sum). Read this as an average over the grain; do NOT sum it across rows or
+    periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: rate_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot rate 7d
+        - rate 7d
+- name: rate_prev_7d_value
+  label: Bridges Kpis Snapshot - Rate Prev 7D
+  description: bridges kpis snapshot - rate prev 7d (sum). Read this as an average over the grain; do NOT sum it across rows
+    or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: rate_prev_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot rate prev 7d
+        - rate prev 7d
+- name: chg_vol_7d_value
+  label: Bridges Kpis Snapshot - Chg Vol 7D
+  description: bridges kpis snapshot - chg vol 7d (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: chg_vol_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot chg vol 7d
+        - chg vol 7d
+- name: chg_net_7d_value
+  label: Bridges Kpis Snapshot - Chg Net 7D
+  description: bridges kpis snapshot - chg net 7d (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: chg_net_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot chg net 7d
+        - chg net 7d
+- name: chg_rate_7d_value
+  label: Bridges Kpis Snapshot - Chg Rate 7D
+  description: bridges kpis snapshot - chg rate 7d (sum). Read this as an average over the grain; do NOT sum it across rows
+    or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: chg_rate_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot chg rate 7d
+        - chg rate 7d
+- name: distinct_bridges_value
+  label: Bridges Kpis Snapshot - Distinct Bridges
+  description: bridges kpis snapshot - distinct bridges (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: distinct_bridges_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot distinct bridges
+        - distinct bridges
+- name: distinct_chains_value
+  label: Bridges Kpis Snapshot - Distinct Chains
+  description: bridges kpis snapshot - distinct chains (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: distinct_chains_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges kpis snapshot distinct chains
+        - distinct chains
+- name: cum_netflow_usd_value
+  label: Bridges Netflow Weekly By Bridge - Cum Netflow Usd
+  description: bridges netflow weekly by bridge - cum netflow usd (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: cum_netflow_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - bridge
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges netflow weekly by bridge cum netflow usd
+        - cum netflow usd
+- name: bridges_sankey_edges_token_daily__volume_usd_value
+  label: Bridges Sankey Edges Token Daily - Volume Usd
+  description: bridges sankey edges token daily - volume usd (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_edges_token_daily__volume_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - source_chain
+        - dest_chain
+        - bridge
+        - token
+        - direction
+        - side
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey edges token daily volume usd
+        - volume usd
+- name: bridges_sankey_edges_token_daily__value_value
+  label: Bridges Sankey Edges Token Daily - Value
+  description: bridges sankey edges token daily - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_edges_token_daily__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - source_chain
+        - dest_chain
+        - bridge
+        - token
+        - direction
+        - side
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey edges token daily value
+        - value
+- name: bridges_sankey_gnosis_in_by_token_7d__value_value
+  label: Bridges Sankey Gnosis In By Token 7D - Value
+  description: bridges sankey gnosis in by token 7d - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_gnosis_in_by_token_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - token
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey gnosis in by token 7d value
+        - value
+- name: bridges_sankey_gnosis_in_ranges__value_value
+  label: Bridges Sankey Gnosis In Ranges - Value
+  description: bridges sankey gnosis in ranges - value (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_gnosis_in_ranges__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - range
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey gnosis in ranges value
+        - value
+- name: bridges_sankey_gnosis_out_by_token_7d__value_value
+  label: Bridges Sankey Gnosis Out By Token 7D - Value
+  description: bridges sankey gnosis out by token 7d - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_gnosis_out_by_token_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - token
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey gnosis out by token 7d value
+        - value
+- name: bridges_sankey_gnosis_out_ranges__value_value
+  label: Bridges Sankey Gnosis Out Ranges - Value
+  description: bridges sankey gnosis out ranges - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_sankey_gnosis_out_ranges__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - d
+        - range
+        - source
+        - target
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges sankey gnosis out ranges value
+        - value
+- name: bridges_token_netflow_daily_by_bridge__value_value
+  label: Bridges Token Netflow Daily By Bridge - Value
+  description: bridges token netflow daily by bridge - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_token_netflow_daily_by_bridge__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bridge
+        - token
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges token netflow daily by bridge value
+        - value
+- name: bridge_order_value
+  label: Bridges Token Netflow Daily By Bridge - Bridge Order
+  description: bridges token netflow daily by bridge - bridge order (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: bridge_order_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bridge
+        - token
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges token netflow daily by bridge bridge order
+        - bridge order
+- name: fct_bridges_token_netflow_daily_by_bridge__value_value
+  label: Bridges Token Netflow Daily By Bridge - Value
+  description: bridges token netflow daily by bridge - value (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: fct_bridges_token_netflow_daily_by_bridge__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bridge
+        - token
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges token netflow daily by bridge value
+        - value
+- name: bridges_address_flows_daily__volume_usd_value
+  label: Bridges Address Flows Daily - Volume Usd
+  description: bridges address flows daily - volume usd (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_address_flows_daily__volume_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: bridges_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - user_address
+        - bridge_contract
+        - bridge_name
+        - token_address
+        - symbol
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges address flows daily volume usd
+        - volume usd
+- name: bridges_address_flows_daily__transfer_count_value
+  label: Bridges Address Flows Daily - Transfer Count
+  description: bridges address flows daily - transfer count (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: bridges_address_flows_daily__transfer_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: bridges_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - user_address
+        - bridge_contract
+        - bridge_name
+        - token_address
+        - symbol
+        - direction
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - bridges address flows daily transfer count
+        - transfer count

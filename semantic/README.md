@@ -39,9 +39,13 @@ The user-keyed marts referenced by `semantic/authoring/` live in:
 
 ## Five invariants (skim before authoring)
 
-1. **Measure names are globally unique.** Convention:
-   `<metric_name>_value`. Two `value_value` measures in two
-   semantic_models is a build error.
+1. **Measure names are globally unique.** Convention: `<column>_value`, or
+   `<semantic_model_name>__<measure>` when that collides. Two same-named
+   measures across semantic_models is a build error *once a metric references
+   them* (`ambiguous_measure_binding`). `scripts/semantic/scaffold_metrics.py`
+   enforces this automatically: it rewrites only collided names and emits a
+   candidate metric for every eligible measure, so a measure-without-a-metric
+   (invisible to `discover_metrics`) should not exist.
 2. **Root semantic_model's `quality_tier` matches the metric's.** A
    metric tagged `approved` against a `candidate` root model appears
    in `discover_metrics` but `query_metrics` rejects it at runtime.
@@ -57,6 +61,8 @@ The user-keyed marts referenced by `semantic/authoring/` live in:
 ```bash
 # 1. Edit semantic/authoring/<module>/semantic_models.yml
 # 2. Edit semantic/relationships/*.yml if cross-sector
+# 2b. (re)generate metrics + uniquify measures for any new measures
+python3 scripts/semantic/scaffold_metrics.py --target-dir target --write
 # 3. Build the registry locally
 python3 scripts/semantic/build_registry.py --target-dir target --validate
 

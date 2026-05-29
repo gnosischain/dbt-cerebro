@@ -1,26 +1,4 @@
-# ═════════════════════════════════════════════════════════════════════
-# COW PROTOCOL — semantic layer (Phase B)
-# ═════════════════════════════════════════════════════════════════════
-#
-# CoW Protocol is Gnosis Chain's batch-auction DEX. Traders are real
-# EOAs (no UBO indirection — orders are signed directly), so unlike
-# lending / LP analytics there's no protocol-address aliasing to
-# correct for. Trader / solver counts here are authoritative.
-#
-# Coverage in this file:
-#   * fct_execution_cow_daily        — headline daily fact (volume,
-#                                      trades, traders, fees, batches,
-#                                      CoW ratio, gas, active solvers)
-#   * api_execution_cow_top_pairs_weekly — weekly trading-pair rollup
-#
-# Skipped (single-row scalar KPI cards — querying scalars via the
-# semantic layer isn't useful; use execute_query directly):
-#   * api_execution_cow_kpi_volume_7d / fees_7d / trades_7d / traders_7d
-#   * api_execution_cow_kpi_active_solvers
-# ═════════════════════════════════════════════════════════════════════
-
 semantic_models:
-
 - name: execution_cow_daily
   model: ref('fct_execution_cow_daily')
   defaults:
@@ -75,7 +53,6 @@ semantic_models:
         - cow trading daily
         - cow batch auction daily
         - dex activity cow
-
 - name: execution_cow_top_pairs_weekly
   model: ref('api_execution_cow_top_pairs_weekly')
   defaults:
@@ -111,19 +88,11 @@ semantic_models:
         - cow pair volume
         - top dex pairs cow
         - most traded cow pairs
-
-# ═════════════════════════════════════════════════════════════════════
-# METRICS — analyst-facing names that bind to the measures above.
-# All approved; CoW data is well-vetted production dashboard input.
-# ═════════════════════════════════════════════════════════════════════
 metrics:
-
 - name: cow_volume_usd
   label: CoW Protocol Volume (USD, Daily)
-  description: >
-    Daily traded USD volume on CoW Protocol — Gnosis Chain's
-    batch-auction DEX. Composable with bridges / revenue / consensus
-    weekly metrics via the dim_time_spine_weekly upcast (PR 5).
+  description: "Daily traded USD volume on CoW Protocol \u2014 Gnosis Chain's batch-auction DEX. Composable with bridges /\
+    \ revenue / consensus weekly metrics via the dim_time_spine_weekly upcast (PR 5).\n"
   type: simple
   type_params:
     measure: execution_cow_volume_usd_value
@@ -133,19 +102,23 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow volume
         - cowswap volume
         - cow protocol volume
         - dex volume cow
         - daily cow volume
-
 - name: cow_fees_usd
   label: CoW Protocol Fees (USD, Daily)
-  description: >
-    Daily protocol fees collected on CoW Protocol settlements.
+  description: 'Daily protocol fees collected on CoW Protocol settlements.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_fees_usd_value
@@ -155,18 +128,22 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow fees
         - cowswap fees
         - cow protocol fees
         - cow daily fees
-
 - name: cow_trades
   label: CoW Protocol Trade Count (Daily)
-  description: >
-    Daily count of individual trades (orders matched) on CoW Protocol.
+  description: 'Daily count of individual trades (orders matched) on CoW Protocol.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_trades_value
@@ -176,21 +153,21 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow trades
         - cowswap trades
         - cow trade count
         - how many cow trades
-
 - name: cow_unique_traders
   label: CoW Protocol Unique Traders (Daily)
-  description: >
-    Daily distinct trader (signer EOA) count on CoW Protocol. Real-EOA
-    data — no UBO indirection required (orders are signed directly by
-    the trader; protocol-address aliasing doesn't apply here, unlike
-    in lending / LP analytics).
+  description: "Daily distinct trader (signer EOA) count on CoW Protocol. Real-EOA data \u2014 no UBO indirection required\
+    \ (orders are signed directly by the trader; protocol-address aliasing doesn't apply here, unlike in lending / LP analytics).\n"
   type: simple
   type_params:
     measure: execution_cow_unique_traders_value
@@ -200,21 +177,22 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow traders
         - cow unique traders
         - daily cow traders
         - cowswap unique users
         - how many cow users
-
 - name: cow_ratio
   label: CoW Ratio (Peer-to-Peer Matching Share)
-  description: >
-    Share of batches settled via pure Coincidence of Wants (peer-to-peer
-    matching, no AMM interactions). The defining characteristic of
-    CoW Protocol — higher cow_ratio = more direct peer matching.
+  description: "Share of batches settled via pure Coincidence of Wants (peer-to-peer matching, no AMM interactions). The defining\
+    \ characteristic of CoW Protocol \u2014 higher cow_ratio = more direct peer matching.\n"
   type: simple
   type_params:
     measure: execution_cow_cow_ratio_value
@@ -224,20 +202,23 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow ratio
         - peer to peer matching share
         - cow direct matching rate
         - cowswap p2p rate
-
 - name: cow_active_solvers
   label: CoW Active Solvers (Daily)
-  description: >
-    Distinct solvers that settled batches on this day. Solvers compete
-    in the batch-auction to win settlement rights; this measures the
-    competitive intensity of the solver ecosystem.
+  description: 'Distinct solvers that settled batches on this day. Solvers compete in the batch-auction to win settlement
+    rights; this measures the competitive intensity of the solver ecosystem.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_active_solvers_value
@@ -247,19 +228,22 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - cow solvers
         - cow active solvers
         - cowswap solver competition
         - solver count cow
-
 - name: cow_top_pairs_volume
   label: CoW Volume by Trading Pair (Weekly)
-  description: >
-    Weekly USD volume per trading pair on CoW Protocol. Group by `pair`
-    for top-N pair rankings.
+  description: 'Weekly USD volume per trading pair on CoW Protocol. Group by `pair` for top-N pair rankings.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_pair_volume_value
@@ -269,10 +253,110 @@ metrics:
         quality_tier: approved
         grain: week
         owner: analytics_team
-        allowed_dimensions: [week, pair]
-        supported_time_grains: [week, month]
+        allowed_dimensions:
+        - week
+        - pair
+        supported_time_grains:
+        - week
+        - month
         question_synonyms:
         - cow pair volume
         - cow top pairs
         - top traded cow pairs
         - cow volume by token pair
+- name: execution_cow_batches_value
+  label: Execution Cow Daily - Execution Cow Batches
+  description: execution cow daily - execution cow batches (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_cow_batches_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution cow daily execution cow batches
+        - execution cow batches
+- name: execution_cow_cow_batches_value
+  label: Execution Cow Daily - Execution Cow Cow Batches
+  description: execution cow daily - execution cow cow batches (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_cow_cow_batches_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution cow daily execution cow cow batches
+        - execution cow cow batches
+- name: execution_cow_gas_native_value
+  label: Execution Cow Daily - Execution Cow Gas Native
+  description: execution cow daily - execution cow gas native (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_cow_gas_native_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution cow daily execution cow gas native
+        - execution cow gas native
+- name: execution_cow_pair_trades_value
+  label: Execution Cow Top Pairs Weekly - Execution Cow Pair Trades
+  description: execution cow top pairs weekly - execution cow pair trades (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_cow_pair_trades_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - pair
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution cow top pairs weekly execution cow pair trades
+        - execution cow pair trades

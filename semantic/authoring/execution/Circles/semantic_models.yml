@@ -1,11 +1,4 @@
 semantic_models:
-
-# ── User-overlap entry: Circles HUMAN avatars ─────────────────────
-# Cross-sector join target on `user_pseudonym`. Filtered to Humans
-# only — Groups / Orgs are excluded because they're not user-grain
-# entities. Pairs with revenue / gpay / gnosis_app / mixpanel to
-# support overlap questions ("Circles humans who are also revenue-
-# active" etc.).
 - name: execution_circles_human_avatars_distinct
   model: ref('fct_execution_circles_human_avatars_distinct')
   entities:
@@ -49,7 +42,6 @@ semantic_models:
         - circles registered users
         - circles user identities
         - circles
-
 - name: execution_circles_avatars
   model: ref('api_execution_circles_v2_avatars')
   defaults:
@@ -64,10 +56,10 @@ semantic_models:
     type: categorical
     expr: avatar_type
   measures:
-  - name: cnt_value
+  - name: execution_circles_avatars__cnt_value
     agg: sum
     expr: cnt
-  - name: total_value
+  - name: execution_circles_avatars__total_value
     agg: sum
     expr: total
   config:
@@ -102,10 +94,10 @@ semantic_models:
     type: categorical
     expr: avatar_type
   measures:
-  - name: cnt_value
+  - name: fct_execution_circles_avatars__cnt_value
     agg: sum
     expr: cnt
-  - name: total_value
+  - name: fct_execution_circles_avatars__total_value
     agg: sum
     expr: total
   config:
@@ -126,7 +118,7 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: cnt_value
+  - name: int_execution_circles_backing__cnt_value
     agg: sum
     expr: cnt
   config:
@@ -140,10 +132,10 @@ semantic_models:
 - name: execution_circles_groups_cnt_latest
   model: ref('api_execution_circles_v2_groups_cnt_latest')
   measures:
-  - name: total_value
+  - name: execution_circles_groups_cnt_latest__total_value
     agg: sum
     expr: total
-  - name: change_pct_value
+  - name: execution_circles_groups_cnt_latest__change_pct_value
     agg: average
     expr: change_pct
   config:
@@ -156,10 +148,10 @@ semantic_models:
 - name: execution_circles_humans_cnt_latest
   model: ref('api_execution_circles_v2_humans_cnt_latest')
   measures:
-  - name: total_value
+  - name: execution_circles_humans_cnt_latest__total_value
     agg: sum
     expr: total
-  - name: change_pct_value
+  - name: execution_circles_humans_cnt_latest__change_pct_value
     agg: average
     expr: change_pct
   config:
@@ -172,10 +164,10 @@ semantic_models:
 - name: execution_circles_orgs_cnt_latest
   model: ref('api_execution_circles_v2_orgs_cnt_latest')
   measures:
-  - name: total_value
+  - name: execution_circles_orgs_cnt_latest__total_value
     agg: sum
     expr: total
-  - name: change_pct_value
+  - name: execution_circles_orgs_cnt_latest__change_pct_value
     agg: average
     expr: change_pct
   config:
@@ -245,7 +237,7 @@ semantic_models:
     type: categorical
     expr: source_table
   measures:
-  - name: cnt_value
+  - name: execution_circles_v2_avatars__cnt_value
     agg: sum
     expr: cnt
   config:
@@ -356,7 +348,7 @@ semantic_models:
     type: categorical
     expr: toString(is_wrapped)
   measures:
-  - name: balance_value
+  - name: execution_circles_v2_avatar_balances_latest__balance_value
     agg: sum
     expr: balance
   config:
@@ -378,18 +370,12 @@ semantic_models:
           weight_column: balance
           node_enrichment_model: api_execution_circles_v2_avatar_metadata
           node_enrichment_key: avatar
-# ═════════════════════════════════════════════════════════════════════
-# METRICS — Circles human-avatar user-overlap entry
-# ═════════════════════════════════════════════════════════════════════
 metrics:
-
 - name: circles_distinct_human_users
   label: Circles Distinct Human Users
-  description: >
-    Total distinct human avatar count (Groups / Orgs excluded). The
-    `user_pseudonym` join key here is in the same hash space as
-    revenue / gpay / gnosis_app / Mixpanel — use semantic-layer joins
-    on `user_pseudonym` for cross-sector overlap questions.
+  description: "Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same\
+    \ hash space as revenue / gpay / gnosis_app / Mixpanel \u2014 use semantic-layer joins on `user_pseudonym` for cross-sector\
+    \ overlap questions.\n"
   type: simple
   type_params:
     measure: execution_circles_human_avatars_distinct_count
@@ -399,7 +385,10 @@ metrics:
         quality_tier: approved
         grain: user
         owner: analytics_team
-        allowed_dimensions: [user_pseudonym, was_invited, has_ipfs_profile, has_display_name]
+        allowed_dimensions:
+        - was_invited
+        - has_ipfs_profile
+        - has_display_name
         supported_time_grains: []
         question_synonyms:
         - circles humans
@@ -408,12 +397,12 @@ metrics:
         - how many circles humans
         - circles human avatars count
         - circles
-
 - name: circles_humans_with_ipfs_profile
   label: Circles Humans With Published IPFS Profile
-  description: >
-    Subset of human avatars who have published an IPFS metadata
-    payload (stronger engagement signal than mere registration).
+  description: 'Subset of human avatars who have published an IPFS metadata payload (stronger engagement signal than mere
+    registration).
+
+    '
   type: simple
   type_params:
     measure: execution_circles_human_avatars_with_profile
@@ -423,10 +412,307 @@ metrics:
         quality_tier: approved
         grain: user
         owner: analytics_team
-        allowed_dimensions: [user_pseudonym, was_invited, has_display_name]
+        allowed_dimensions:
+        - was_invited
+        - has_display_name
         supported_time_grains: []
         question_synonyms:
         - circles humans with profile
         - circles engaged users
         - circles profile completion
         - circles humans who published metadata
+- name: execution_circles_avatars__cnt_value
+  label: Execution Circles Avatars - Cnt
+  description: execution circles avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: execution_circles_avatars__cnt_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - avatar_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles avatars cnt
+        - cnt
+- name: execution_circles_avatars__total_value
+  label: Execution Circles Avatars - Total
+  description: execution circles avatars - total (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: execution_circles_avatars__total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - avatar_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles avatars total
+        - total
+- name: fct_execution_circles_avatars__cnt_value
+  label: Execution Circles Avatars - Cnt
+  description: execution circles avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: fct_execution_circles_avatars__cnt_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - min_date
+        - max_date
+        - date
+        - avatar_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles avatars cnt
+        - cnt
+- name: fct_execution_circles_avatars__total_value
+  label: Execution Circles Avatars - Total
+  description: execution circles avatars - total (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: fct_execution_circles_avatars__total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - min_date
+        - max_date
+        - date
+        - avatar_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles avatars total
+        - total
+- name: int_execution_circles_backing__cnt_value
+  label: Execution Circles Backing - Cnt
+  description: execution circles backing - cnt (sum). Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: int_execution_circles_backing__cnt_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles backing cnt
+        - cnt
+- name: execution_circles_groups_cnt_latest__total_value
+  label: Execution Circles Groups Cnt Latest - Total
+  description: execution circles groups cnt latest - total (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_groups_cnt_latest__total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles groups cnt latest total
+        - total
+- name: execution_circles_groups_cnt_latest__change_pct_value
+  label: Execution Circles Groups Cnt Latest - Change Pct
+  description: execution circles groups cnt latest - change pct (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_groups_cnt_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles groups cnt latest change pct
+        - change pct
+- name: execution_circles_humans_cnt_latest__total_value
+  label: Execution Circles Humans Cnt Latest - Total
+  description: execution circles humans cnt latest - total (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_humans_cnt_latest__total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles humans cnt latest total
+        - total
+- name: execution_circles_humans_cnt_latest__change_pct_value
+  label: Execution Circles Humans Cnt Latest - Change Pct
+  description: execution circles humans cnt latest - change pct (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_humans_cnt_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles humans cnt latest change pct
+        - change pct
+- name: execution_circles_orgs_cnt_latest__total_value
+  label: Execution Circles Orgs Cnt Latest - Total
+  description: execution circles orgs cnt latest - total (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_orgs_cnt_latest__total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles orgs cnt latest total
+        - total
+- name: execution_circles_orgs_cnt_latest__change_pct_value
+  label: Execution Circles Orgs Cnt Latest - Change Pct
+  description: execution circles orgs cnt latest - change pct (average). Read this as an average over the grain; do NOT sum
+    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_orgs_cnt_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - execution circles orgs cnt latest change pct
+        - change pct
+- name: execution_circles_v2_avatars__cnt_value
+  label: Execution Circles V2 Avatars - Cnt
+  description: execution circles v2 avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_avatars__cnt_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - avatar_type
+        - block_timestamp
+        - event_name
+        - transaction_hash
+        - from_address
+        - to_address
+        - registration_event_id
+        - source_table
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 avatars cnt
+        - cnt
+- name: active_trusts_value
+  label: Execution Circles V2 Trust Relations Current - Active Trusts
+  description: execution circles v2 trust relations current - active trusts (count). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: active_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: circles_team
+        grain: day
+        allowed_dimensions:
+        - truster
+        - trustee
+        - valid_from
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trust relations current active trusts
+        - active trusts
+- name: execution_circles_v2_avatar_balances_latest__balance_value
+  label: Execution Circles V2 Avatar Balances Latest - Balance
+  description: execution circles v2 avatar balances latest - balance (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_avatar_balances_latest__balance_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: circles_team
+        allowed_dimensions:
+        - avatar
+        - token_address
+        - is_wrapped
+        question_synonyms:
+        - execution circles v2 avatar balances latest balance
+        - balance

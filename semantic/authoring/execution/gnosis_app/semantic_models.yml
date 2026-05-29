@@ -1,41 +1,4 @@
-# ═════════════════════════════════════════════════════════════════════
-# GNOSIS APP — ON-CHAIN domain (semantic layer)
-# ═════════════════════════════════════════════════════════════════════
-#
-# This file covers ON-CHAIN behaviour of Gnosis App (app.gnosis.io)
-# users. The web/mobile-analytics side of the same app lives in
-# `semantic/authoring/mixpanel_ga/semantic_models.yml`.
-#
-# Cross-sector philosophy
-# -----------------------
-# When an analyst asks "Gnosis App ..." they typically don't care
-# whether the answer comes from the web-analytics domain (Mixpanel) or
-# the on-chain domain (this module) — they want both. The
-# `question_synonyms` on entries here intentionally overlap with the
-# Mixpanel side, and the two domains share the SAME `user_pseudonym`
-# hash space, so joins work transparently across them via the
-# `user_pseudonym` entity.
-#
-# User-pseudonym graph
-# --------------------
-# `execution_gnosis_app_users_distinct` declares `user_pseudonym` as a
-# PRIMARY entity. Existing siblings on the graph:
-#   - revenue_per_user_weekly / _monthly (revenue side)
-#   - execution_gpay_users_distinct (gpay side)
-# Three-way overlaps (revenue × gnosis_app × gpay) become composable
-# via `query_metrics(metrics=[...], dimensions=[...])` once the
-# relationships in `semantic/relationships/user_pseudonym.yml` are in
-# place.
-# ═════════════════════════════════════════════════════════════════════
-
 semantic_models:
-
-# ── On-chain activity time series ───────────────────────────────────
-# Daily breakdown of Gnosis App on-chain actions (onboard, swap, topup,
-# marketplace_buy, etc.). Composable with revenue / bridges weekly
-# metrics via the dim_time_spine_daily / _weekly upcast (cerebro-mcp
-# PR 5) since this carries a `date` column at day grain.
-
 - name: execution_gnosis_app_activity_by_action_daily
   model: ref('api_execution_gnosis_app_activity_by_action_daily')
   defaults:
@@ -77,7 +40,6 @@ semantic_models:
         - app activity onboard swap topup
         - gnosis app
         - app gnosis io activity
-
 - name: execution_gnosis_app_users_distinct
   model: ref('fct_execution_gnosis_app_users_distinct')
   entities:
@@ -115,11 +77,6 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  # fct_execution_gnosis_app_users_distinct is already 1 row per
-  # user_pseudonym, so simple `count` = distinct-user count and
-  # ClickHouse doesn't need uniqExact translation (sidesteps the
-  # historical `count_distinct` planner-emit bug, also fixed in
-  # cerebro-mcp PR 1).
   - name: execution_gnosis_app_users_distinct_count
     agg: count
     expr: user_pseudonym
@@ -133,7 +90,6 @@ semantic_models:
         quality_tier: approved
         grain: user
         question_synonyms:
-        # On-chain identifiers
         - gnosis app users
         - gnosis app on-chain users
         - gnosis app identified users
@@ -142,29 +98,18 @@ semantic_models:
         - how many gnosis app users
         - distinct gnosis app users
         - gnosis app reach
-        # Bridges to the Mixpanel/web side so a search for these
-        # surfaces THIS metric alongside Mixpanel ones
         - gnosis app
         - app gnosis io users
-        # On-chain identification path
         - users identified via circles
         - circles app users
-
-# ═════════════════════════════════════════════════════════════════════
-# METRICS
-# ═════════════════════════════════════════════════════════════════════
 metrics:
-
-# ── On-chain activity time series ──────────────────────────────────
-
 - name: gnosis_app_activity_events_daily
   label: Gnosis App On-Chain Activity Events (Daily)
-  description: >
-    Daily count of on-chain Gnosis App actions broken down by
-    `activity_kind` (onboard / swap_filled / topup / marketplace_buy /
-    token_offer_claim / ...). With cerebro-mcp PR 5's time-spine
-    upcasts in place, this metric composes with weekly revenue /
-    bridges metrics through `dim_time_spine_weekly` automatically.
+  description: 'Daily count of on-chain Gnosis App actions broken down by `activity_kind` (onboard / swap_filled / topup /
+    marketplace_buy / token_offer_claim / ...). With cerebro-mcp PR 5''s time-spine upcasts in place, this metric composes
+    with weekly revenue / bridges metrics through `dim_time_spine_weekly` automatically.
+
+    '
   type: simple
   type_params:
     measure: execution_gnosis_app_activity_events
@@ -174,24 +119,24 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date, activity_kind]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - activity_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app activity events
         - gnosis app daily actions
         - gnosis app actions by kind
         - gnosis app onboard swap topup count
         - gnosis app
-
 - name: gnosis_app_activity_users_daily
   label: Gnosis App Active Users By Action (Daily)
-  description: >
-    Daily distinct-user count per `activity_kind`. Use to size
-    feature-specific engagement (e.g. "how many users swapped on the
-    app last week" vs "how many topped up"). NB: summing across
-    activity_kinds DOUBLE-COUNTS users who did multiple actions —
-    aggregate at the action level if you need a true daily-active-user
-    figure.
+  description: "Daily distinct-user count per `activity_kind`. Use to size feature-specific engagement (e.g. \"how many users\
+    \ swapped on the app last week\" vs \"how many topped up\"). NB: summing across activity_kinds DOUBLE-COUNTS users who\
+    \ did multiple actions \u2014 aggregate at the action level if you need a true daily-active-user figure.\n"
   type: simple
   type_params:
     measure: execution_gnosis_app_activity_users
@@ -201,20 +146,22 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date, activity_kind]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - activity_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app users by action
         - gnosis app active users by feature
         - daily gnosis app users per action
         - gnosis app feature usage
-
 - name: gnosis_app_activity_amount_usd
   label: Gnosis App On-Chain Activity Volume (USD)
-  description: >
-    Daily USD value associated with on-chain Gnosis App actions (where
-    the action has a value — swaps, topups, marketplace purchases).
-    NULL amounts are summed as 0.
+  description: "Daily USD value associated with on-chain Gnosis App actions (where the action has a value \u2014 swaps, topups,\
+    \ marketplace purchases). NULL amounts are summed as 0.\n"
   type: simple
   type_params:
     measure: execution_gnosis_app_activity_amount_usd
@@ -224,25 +171,24 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date, activity_kind]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - activity_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app volume
         - gnosis app activity usd
         - gnosis app on-chain volume
         - gnosis app swap volume topup volume
         - gnosis app
-
-# ── User-overlap entry (the cross-sector join key) ─────────────────
-
 - name: gnosis_app_distinct_users
   label: Gnosis App Distinct Users (On-Chain)
-  description: >
-    Distinct user_pseudonym count identified on-chain as Gnosis App
-    users (via Circles activity, Safe invitation module, etc.). Pairs
-    with the Mixpanel-side `mixpanel_ga_overview_daily.dau_value`
-    measure for the web/mobile usage view of the same app — join on
-    `user_pseudonym` for cross-domain overlap.
+  description: "Distinct user_pseudonym count identified on-chain as Gnosis App users (via Circles activity, Safe invitation\
+    \ module, etc.). Pairs with the Mixpanel-side `mixpanel_ga_overview_daily.dau_value` measure for the web/mobile usage\
+    \ view of the same app \u2014 join on `user_pseudonym` for cross-domain overlap.\n"
   type: simple
   type_params:
     measure: execution_gnosis_app_users_distinct_count
@@ -253,7 +199,6 @@ metrics:
         grain: user
         owner: analytics_team
         allowed_dimensions:
-        - user_pseudonym
         - is_high_confidence
         - via_circles_trust
         - via_circles_fee
@@ -273,15 +218,11 @@ metrics:
         - gnosis app reach
         - gnosis app
         - app gnosis io users
-
 - name: gnosis_app_high_confidence_users
   label: Gnosis App High-Confidence Users
-  description: >
-    Subset of on-chain Gnosis App users with `n_distinct_heuristics >= 2`
-    — multiple independent signals confirm their participation. Use as
-    a stricter denominator when measuring true Gnosis App reach (the
-    weaker single-heuristic users may include incidental Circles
-    interactions).
+  description: "Subset of on-chain Gnosis App users with `n_distinct_heuristics >= 2` \u2014 multiple independent signals\
+    \ confirm their participation. Use as a stricter denominator when measuring true Gnosis App reach (the weaker single-heuristic\
+    \ users may include incidental Circles interactions).\n"
   type: simple
   type_params:
     measure: execution_gnosis_app_high_confidence_count
@@ -292,7 +233,6 @@ metrics:
         grain: user
         owner: analytics_team
         allowed_dimensions:
-        - user_pseudonym
         - via_circles_trust
         - via_circles_fee
         - via_circles_profile_update

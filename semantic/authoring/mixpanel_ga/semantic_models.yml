@@ -1,32 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────
-# PRIVACY POLICY — two tiers:
-#
-#   cerebro-api : NONE of these models are exposed. Enforced via
-#                 `meta.api.exclude_from_api: true` set at both project
-#                 level (dbt_project.yml: models.gnosis_dbt.mixpanel_ga)
-#                 AND per-model in models/mixpanel_ga/marts/schema.yml.
-#                 CI test: tests/test_mixpanel_privacy.py.
-#
-#   MCP / semantic registry : aggregate-only views are accessible
-#                 (`quality_tier: candidate`). Views that expose hashed
-#                 user identifiers at per-user grain — or any view
-#                 carrying raw addresses — are either kept out of this
-#                 file (invisible by omission) or set
-#                 `quality_tier: blocked` and
-#                 `meta.expose_to_mcp: false` in the dbt schema.
-#
-# All views currently registered here are aggregate-only (daily counts,
-# rates, breakdowns by dimension). gpay_crossdomain_daily is included
-# because it exposes only matched-user *counts*, not any address or
-# user_id_hash; the underlying fct_*_crossdomain_daily reads identity
-# data but the api_* projection drops every PII column.
-#
-# Not registered here at all — must not be added without a privacy
-# review:
-#   - api_mixpanel_ga_users_daily   (per-user_id_hash grain)
-#   - api_mixpanel_ga_pages_daily   (per-path)
-#   - api_mixpanel_ga_usage_patterns_daily  (hour-of-day; low value via MCP)
-# ─────────────────────────────────────────────────────────────────────
 semantic_models:
 - name: mixpanel_ga_overview_daily
   model: ref('api_mixpanel_ga_overview_daily')
@@ -45,10 +16,10 @@ semantic_models:
   - name: mixpanel_gnosis_app_dau_value
     agg: sum
     expr: dau
-  - name: unique_devices_value
+  - name: mixpanel_ga_overview_daily__unique_devices_value
     agg: sum
     expr: unique_devices
-  - name: new_users_value
+  - name: mixpanel_ga_overview_daily__new_users_value
     agg: sum
     expr: new_users
   - name: distinct_countries_value
@@ -72,7 +43,6 @@ semantic_models:
         - gnosis app new users
         - gnosis app cumulative users
         grain: day
-
 - name: mixpanel_ga_events_daily
   model: ref('api_mixpanel_ga_events_daily')
   defaults:
@@ -90,13 +60,13 @@ semantic_models:
     type: categorical
     expr: event_category
   measures:
-  - name: event_count_value
+  - name: mixpanel_ga_events_daily__event_count_value
     agg: sum
     expr: event_count
-  - name: unique_users_value
+  - name: mixpanel_ga_events_daily__unique_users_value
     agg: sum
     expr: unique_users
-  - name: unique_devices_value
+  - name: mixpanel_ga_events_daily__unique_devices_value
     agg: sum
     expr: unique_devices
   config:
@@ -115,7 +85,6 @@ semantic_models:
         - gnosis app button clicks
         - pageview counts gnosis app
         grain: day
-
 - name: mixpanel_ga_traffic_daily
   model: ref('api_mixpanel_ga_traffic_daily')
   defaults:
@@ -130,10 +99,10 @@ semantic_models:
     type: categorical
     expr: referrer_domain
   measures:
-  - name: event_count_value
+  - name: mixpanel_ga_traffic_daily__event_count_value
     agg: sum
     expr: event_count
-  - name: unique_users_value
+  - name: mixpanel_ga_traffic_daily__unique_users_value
     agg: sum
     expr: unique_users
   config:
@@ -148,7 +117,6 @@ semantic_models:
         - where do gnosis app users come from
         - gnosis app organic vs referral traffic
         grain: day
-
 - name: mixpanel_ga_geo_daily
   model: ref('api_mixpanel_ga_geo_daily')
   defaults:
@@ -163,10 +131,10 @@ semantic_models:
     type: categorical
     expr: country_code
   measures:
-  - name: event_count_value
+  - name: mixpanel_ga_geo_daily__event_count_value
     agg: sum
     expr: event_count
-  - name: unique_users_value
+  - name: mixpanel_ga_geo_daily__unique_users_value
     agg: sum
     expr: unique_users
   config:
@@ -181,7 +149,6 @@ semantic_models:
         - gnosis app users by region
         - where are gnosis app users located
         grain: day
-
 - name: mixpanel_ga_tech_daily
   model: ref('api_mixpanel_ga_tech_daily')
   defaults:
@@ -202,10 +169,10 @@ semantic_models:
     type: categorical
     expr: device_type
   measures:
-  - name: event_count_value
+  - name: mixpanel_ga_tech_daily__event_count_value
     agg: sum
     expr: event_count
-  - name: unique_users_value
+  - name: mixpanel_ga_tech_daily__unique_users_value
     agg: sum
     expr: unique_users
   config:
@@ -220,7 +187,6 @@ semantic_models:
         - gnosis app mobile vs desktop
         - gnosis app iOS Android users
         grain: day
-
 - name: mixpanel_ga_gpay_crossdomain_daily
   model: ref('api_mixpanel_ga_gpay_crossdomain_daily')
   defaults:
@@ -256,7 +222,6 @@ semantic_models:
         - gnosis pay card users on gnosis app
         - how many gnosis pay users use the app
         grain: day
-
 - name: mixpanel_ga_modals_daily
   model: ref('api_mixpanel_ga_modals_daily')
   defaults:
@@ -274,10 +239,10 @@ semantic_models:
   - name: mixpanel_gnosis_app_modal_opens_value
     agg: sum
     expr: open_count
-  - name: unique_users_value
+  - name: mixpanel_ga_modals_daily__unique_users_value
     agg: sum
     expr: unique_users
-  - name: unique_devices_value
+  - name: mixpanel_ga_modals_daily__unique_devices_value
     agg: sum
     expr: unique_devices
   config:
@@ -294,7 +259,6 @@ semantic_models:
         - swap modal opens
         - gnosis app UX funnels modals
         grain: day
-
 - name: mixpanel_ga_funnel_daily
   model: ref('api_mixpanel_ga_funnel_daily')
   defaults:
@@ -352,7 +316,6 @@ semantic_models:
         - how many users complete swap
         - gnosis app activation rate
         grain: day
-
 - name: mixpanel_ga_gpay_acquisition_weekly
   model: ref('api_mixpanel_ga_gpay_acquisition_weekly')
   defaults:
@@ -373,10 +336,10 @@ semantic_models:
     type: categorical
     expr: utm_campaign
   measures:
-  - name: new_accounts_value
+  - name: mixpanel_ga_gpay_acquisition_weekly__new_accounts_value
     agg: sum
     expr: new_accounts
-  - name: cumulative_accounts_value
+  - name: mixpanel_ga_gpay_acquisition_weekly__cumulative_accounts_value
     agg: sum
     expr: cumulative_accounts
   config:
@@ -393,12 +356,6 @@ semantic_models:
         - gnosis pay acquisition by utm campaign
         - new gnosis pay accounts by campaign weekly
         grain: week
-  # NOTE on filtering: this model carries BOTH attribution_model values
-  # (first_touch, last_touch) and BOTH event_type values (funded,
-  # first_payment) in one long table. Always filter attribution_model and
-  # event_type to a single value before summing new_accounts, otherwise the
-  # measure double-counts across the two attribution windows.
-
 - name: mixpanel_ga_gnosis_app_acquisition_weekly
   model: ref('api_mixpanel_ga_gnosis_app_acquisition_weekly')
   defaults:
@@ -419,10 +376,10 @@ semantic_models:
     type: categorical
     expr: utm_campaign
   measures:
-  - name: new_accounts_value
+  - name: mixpanel_ga_gnosis_app_acquisition_weekly__new_accounts_value
     agg: sum
     expr: new_accounts
-  - name: cumulative_accounts_value
+  - name: mixpanel_ga_gnosis_app_acquisition_weekly__cumulative_accounts_value
     agg: sum
     expr: cumulative_accounts
   config:
@@ -440,40 +397,11 @@ semantic_models:
         - marketplace buys by campaign
         - new gnosis app accounts by campaign weekly
         grain: week
-  # NOTE on filtering: this model carries BOTH attribution_model values
-  # (first_touch, last_touch) and all four conversion_kind values in one long
-  # table. Always filter attribution_model and conversion_kind to a single
-  # value before summing new_accounts, otherwise the measure double-counts
-  # across the two attribution windows.
-
-# ═════════════════════════════════════════════════════════════════════
-# METRICS — Mixpanel-side Gnosis App web/mobile analytics
-# ═════════════════════════════════════════════════════════════════════
-#
-# These are deliberately tagged with "gnosis app" synonyms so a generic
-# analyst query for "Gnosis App users" or "Gnosis App DAU" surfaces
-# BOTH this Mixpanel-side data AND the on-chain side
-# (semantic/authoring/execution/gnosis_app/) — the two views of the
-# same app's users.
-#
-# Privacy: these metrics back the aggregate-only Mixpanel views. They
-# carry no user_id_hash or address. cerebro-api blanket-exclusion via
-# meta.api.exclude_from_api: true still applies — these are MCP /
-# semantic-layer only. See file header for the full policy.
-#
-# Quality tier: `approved` here because the underlying views are
-# production-stable and analyst-reviewed via the dashboard. Adding new
-# Mixpanel metrics should start at `candidate` until promoted.
-# ═════════════════════════════════════════════════════════════════════
 metrics:
-
 - name: gnosis_app_mixpanel_dau
   label: Gnosis App DAU (Mixpanel / Web)
-  description: >
-    Daily active users on app.gnosis.io as measured by Mixpanel.
-    Headline web/mobile-side companion to the on-chain
-    `gnosis_app_distinct_users` metric — same app, different domains.
-    Source: api_mixpanel_ga_overview_daily.dau column.
+  description: "Daily active users on app.gnosis.io as measured by Mixpanel. Headline web/mobile-side companion to the on-chain\
+    \ `gnosis_app_distinct_users` metric \u2014 same app, different domains. Source: api_mixpanel_ga_overview_daily.dau column.\n"
   type: simple
   type_params:
     measure: mixpanel_gnosis_app_dau_value
@@ -483,8 +411,12 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app DAU
         - gnosis app daily active users
@@ -496,13 +428,10 @@ metrics:
         - mixpanel DAU
         - web DAU
         - website daily active users
-
 - name: gnosis_app_mixpanel_total_events
   label: Gnosis App Events (Mixpanel / Web)
-  description: >
-    Total Mixpanel events fired on app.gnosis.io per day. Headline
-    web-side engagement signal — pageviews, clicks, custom events,
-    modal opens all included.
+  description: "Total Mixpanel events fired on app.gnosis.io per day. Headline web-side engagement signal \u2014 pageviews,\
+    \ clicks, custom events, modal opens all included.\n"
   type: simple
   type_params:
     measure: mixpanel_gnosis_app_total_events_value
@@ -512,8 +441,12 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app events
         - gnosis app daily events
@@ -521,14 +454,12 @@ metrics:
         - app gnosis io events
         - gnosis app
         - gnosis app activity web
-
 - name: gnosis_app_mixpanel_modal_opens
   label: Gnosis App Modal Opens (Mixpanel / Web)
-  description: >
-    Daily count of modal / bottom-sheet opens per component. Groupable
-    by `bottom_sheet` to see which onboarding / feature entry points
-    users engage with (PasskeyStepsModal, ModalJoin, SelectSwapAsset,
-    ModalReceive, ModalSend, CardActivationStepsModal).
+  description: 'Daily count of modal / bottom-sheet opens per component. Groupable by `bottom_sheet` to see which onboarding
+    / feature entry points users engage with (PasskeyStepsModal, ModalJoin, SelectSwapAsset, ModalReceive, ModalSend, CardActivationStepsModal).
+
+    '
   type: simple
   type_params:
     measure: mixpanel_gnosis_app_modal_opens_value
@@ -538,8 +469,13 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date, bottom_sheet]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        - bottom_sheet
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app modal opens
         - gnosis app bottom sheet opens
@@ -548,14 +484,13 @@ metrics:
         - swap modal opens
         - gnosis app
         - gnosis app feature engagement
-
 - name: gnosis_app_mixpanel_passkey_logins
   label: Gnosis App Passkey Logins (Mixpanel / Web)
-  description: >
-    Daily count of distinct users who completed a passkey login on
-    app.gnosis.io. Identification signal that pairs with the on-chain
-    `gnosis_app_distinct_users` view: passkey-authenticated Mixpanel
-    sessions are the most-likely-to-be-identified visitors.
+  description: 'Daily count of distinct users who completed a passkey login on app.gnosis.io. Identification signal that pairs
+    with the on-chain `gnosis_app_distinct_users` view: passkey-authenticated Mixpanel sessions are the most-likely-to-be-identified
+    visitors.
+
+    '
   type: simple
   type_params:
     measure: mixpanel_gnosis_app_passkey_logins_value
@@ -565,22 +500,25 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app passkey logins
         - gnosis app authenticated users
         - passkey signins
         - gnosis app sign in
         - gnosis app
-
 - name: gnosis_app_mixpanel_identified_users
   label: Gnosis App Identified Users (Mixpanel / Web)
-  description: >
-    Daily count of distinct Mixpanel users who reached a wallet-identified
-    state on app.gnosis.io (Mixpanel `distinct_id` set to a wallet
-    address, not the anonymous `$device:uuid`). The closest Mixpanel
-    proxy for the on-chain `gnosis_app_distinct_users` metric.
+  description: 'Daily count of distinct Mixpanel users who reached a wallet-identified state on app.gnosis.io (Mixpanel `distinct_id`
+    set to a wallet address, not the anonymous `$device:uuid`). The closest Mixpanel proxy for the on-chain `gnosis_app_distinct_users`
+    metric.
+
+    '
   type: simple
   type_params:
     measure: mixpanel_gnosis_app_identified_users_value
@@ -590,10 +528,786 @@ metrics:
         quality_tier: approved
         grain: day
         owner: analytics_team
-        allowed_dimensions: [date]
-        supported_time_grains: [day, week, month]
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
         question_synonyms:
         - gnosis app identified users
         - gnosis app wallet-identified users
         - gnosis app signed in users
         - gnosis app
+- name: mixpanel_ga_overview_daily__unique_devices_value
+  label: Mixpanel Ga Overview Daily - Unique Devices
+  description: mixpanel ga overview daily - unique devices (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_overview_daily__unique_devices_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga overview daily unique devices
+        - unique devices
+- name: mixpanel_ga_overview_daily__new_users_value
+  label: Mixpanel Ga Overview Daily - New Users
+  description: mixpanel ga overview daily - new users (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_overview_daily__new_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga overview daily new users
+        - new users
+- name: distinct_countries_value
+  label: Mixpanel Ga Overview Daily - Distinct Countries
+  description: mixpanel ga overview daily - distinct countries (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: distinct_countries_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga overview daily distinct countries
+        - distinct countries
+- name: avg_events_per_user_value
+  label: Mixpanel Ga Overview Daily - Avg Events Per User
+  description: mixpanel ga overview daily - avg events per user (avg). Read this as an average over the grain; do NOT sum
+    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: avg_events_per_user_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga overview daily avg events per user
+        - avg events per user
+- name: mixpanel_ga_events_daily__event_count_value
+  label: Mixpanel Ga Events Daily - Event Count
+  description: mixpanel ga events daily - event count (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_events_daily__event_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        - event_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga events daily event count
+        - event count
+- name: mixpanel_ga_events_daily__unique_users_value
+  label: Mixpanel Ga Events Daily - Unique Users
+  description: mixpanel ga events daily - unique users (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_events_daily__unique_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        - event_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga events daily unique users
+        - unique users
+- name: mixpanel_ga_events_daily__unique_devices_value
+  label: Mixpanel Ga Events Daily - Unique Devices
+  description: mixpanel ga events daily - unique devices (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_events_daily__unique_devices_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        - event_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga events daily unique devices
+        - unique devices
+- name: mixpanel_ga_traffic_daily__event_count_value
+  label: Mixpanel Ga Traffic Daily - Event Count
+  description: mixpanel ga traffic daily - event count (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_traffic_daily__event_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - referrer_domain
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga traffic daily event count
+        - event count
+- name: mixpanel_ga_traffic_daily__unique_users_value
+  label: Mixpanel Ga Traffic Daily - Unique Users
+  description: mixpanel ga traffic daily - unique users (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_traffic_daily__unique_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - referrer_domain
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga traffic daily unique users
+        - unique users
+- name: mixpanel_ga_geo_daily__event_count_value
+  label: Mixpanel Ga Geo Daily - Event Count
+  description: mixpanel ga geo daily - event count (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_geo_daily__event_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - country_code
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga geo daily event count
+        - event count
+- name: mixpanel_ga_geo_daily__unique_users_value
+  label: Mixpanel Ga Geo Daily - Unique Users
+  description: mixpanel ga geo daily - unique users (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_geo_daily__unique_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - country_code
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga geo daily unique users
+        - unique users
+- name: mixpanel_ga_tech_daily__event_count_value
+  label: Mixpanel Ga Tech Daily - Event Count
+  description: mixpanel ga tech daily - event count (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_tech_daily__event_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - browser
+        - os
+        - device_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga tech daily event count
+        - event count
+- name: mixpanel_ga_tech_daily__unique_users_value
+  label: Mixpanel Ga Tech Daily - Unique Users
+  description: mixpanel ga tech daily - unique users (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_tech_daily__unique_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - browser
+        - os
+        - device_type
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga tech daily unique users
+        - unique users
+- name: mp_dau_value
+  label: Mixpanel Ga Gpay Crossdomain Daily - Mp Dau
+  description: mixpanel ga gpay crossdomain daily - mp dau (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: mp_dau_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay crossdomain daily mp dau
+        - mp dau
+- name: onchain_active_users_value
+  label: Mixpanel Ga Gpay Crossdomain Daily - Onchain Active Users
+  description: mixpanel ga gpay crossdomain daily - onchain active users (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: onchain_active_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay crossdomain daily onchain active users
+        - onchain active users
+- name: matched_users_value
+  label: Mixpanel Ga Gpay Crossdomain Daily - Matched Users
+  description: mixpanel ga gpay crossdomain daily - matched users (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: matched_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay crossdomain daily matched users
+        - matched users
+- name: match_rate_pct_value
+  label: Mixpanel Ga Gpay Crossdomain Daily - Match Rate Pct
+  description: mixpanel ga gpay crossdomain daily - match rate pct (avg). Read this as an average over the grain; do NOT sum
+    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: match_rate_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay crossdomain daily match rate pct
+        - match rate pct
+- name: mixpanel_ga_modals_daily__unique_users_value
+  label: Mixpanel Ga Modals Daily - Unique Users
+  description: mixpanel ga modals daily - unique users (sum). Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_modals_daily__unique_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bottom_sheet
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga modals daily unique users
+        - unique users
+- name: mixpanel_ga_modals_daily__unique_devices_value
+  label: Mixpanel Ga Modals Daily - Unique Devices
+  description: mixpanel ga modals daily - unique devices (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_modals_daily__unique_devices_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - bottom_sheet
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga modals daily unique devices
+        - unique devices
+- name: welcome_visitors_value
+  label: Mixpanel Ga Funnel Daily - Welcome Visitors
+  description: mixpanel ga funnel daily - welcome visitors (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: welcome_visitors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily welcome visitors
+        - welcome visitors
+- name: onboarding_conversion_rate_value
+  label: Mixpanel Ga Funnel Daily - Onboarding Conversion Rate
+  description: mixpanel ga funnel daily - onboarding conversion rate (avg). Read this as an average over the grain; do NOT
+    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: onboarding_conversion_rate_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily onboarding conversion rate
+        - onboarding conversion rate
+- name: swap_page_visitors_value
+  label: Mixpanel Ga Funnel Daily - Swap Page Visitors
+  description: mixpanel ga funnel daily - swap page visitors (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: swap_page_visitors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily swap page visitors
+        - swap page visitors
+- name: swap_completions_value
+  label: Mixpanel Ga Funnel Daily - Swap Completions
+  description: mixpanel ga funnel daily - swap completions (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: swap_completions_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily swap completions
+        - swap completions
+- name: swap_conversion_rate_value
+  label: Mixpanel Ga Funnel Daily - Swap Conversion Rate
+  description: mixpanel ga funnel daily - swap conversion rate (avg). Read this as an average over the grain; do NOT sum it
+    across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: swap_conversion_rate_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily swap conversion rate
+        - swap conversion rate
+- name: circles_visitors_value
+  label: Mixpanel Ga Funnel Daily - Circles Visitors
+  description: mixpanel ga funnel daily - circles visitors (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: circles_visitors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily circles visitors
+        - circles visitors
+- name: circles_mints_value
+  label: Mixpanel Ga Funnel Daily - Circles Mints
+  description: mixpanel ga funnel daily - circles mints (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: circles_mints_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily circles mints
+        - circles mints
+- name: circles_conversion_rate_value
+  label: Mixpanel Ga Funnel Daily - Circles Conversion Rate
+  description: mixpanel ga funnel daily - circles conversion rate (avg). Read this as an average over the grain; do NOT sum
+    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: circles_conversion_rate_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga funnel daily circles conversion rate
+        - circles conversion rate
+- name: mixpanel_ga_gpay_acquisition_weekly__new_accounts_value
+  label: Mixpanel Ga Gpay Acquisition Weekly - New Accounts
+  description: mixpanel ga gpay acquisition weekly - new accounts (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_acquisition_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - event_type
+        - attribution_model
+        - utm_campaign
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay acquisition weekly new accounts
+        - new accounts
+- name: mixpanel_ga_gpay_acquisition_weekly__cumulative_accounts_value
+  label: Mixpanel Ga Gpay Acquisition Weekly - Cumulative Accounts
+  description: 'mixpanel ga gpay acquisition weekly - cumulative accounts (sum). This is a cumulative/running-total measure:
+    read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote before
+    relying on it.'
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_acquisition_weekly__cumulative_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - event_type
+        - attribution_model
+        - utm_campaign
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gpay acquisition weekly cumulative accounts
+        - cumulative accounts
+- name: mixpanel_ga_gnosis_app_acquisition_weekly__new_accounts_value
+  label: Mixpanel Ga Gnosis App Acquisition Weekly - New Accounts
+  description: mixpanel ga gnosis app acquisition weekly - new accounts (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gnosis_app_acquisition_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - conversion_kind
+        - attribution_model
+        - utm_campaign
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gnosis app acquisition weekly new accounts
+        - new accounts
+- name: mixpanel_ga_gnosis_app_acquisition_weekly__cumulative_accounts_value
+  label: Mixpanel Ga Gnosis App Acquisition Weekly - Cumulative Accounts
+  description: 'mixpanel ga gnosis app acquisition weekly - cumulative accounts (sum). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gnosis_app_acquisition_weekly__cumulative_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - conversion_kind
+        - attribution_model
+        - utm_campaign
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga gnosis app acquisition weekly cumulative accounts
+        - cumulative accounts
