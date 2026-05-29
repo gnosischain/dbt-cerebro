@@ -353,6 +353,99 @@ semantic_models:
         - gnosis app activation rate
         grain: day
 
+- name: mixpanel_ga_gpay_acquisition_weekly
+  model: ref('api_mixpanel_ga_gpay_acquisition_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: event_type
+    type: categorical
+    expr: event_type
+  - name: attribution_model
+    type: categorical
+    expr: attribution_model
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  measures:
+  - name: new_accounts_value
+    agg: sum
+    expr: new_accounts
+  - name: cumulative_accounts_value
+    agg: sum
+    expr: cumulative_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - first funded accounts by campaign
+        - gnosis pay card signups by utm
+        - weekly funded accounts by campaign
+        - first card transactions by campaign
+        - card transactions by marketing campaign
+        - gnosis pay acquisition by utm campaign
+        - new gnosis pay accounts by campaign weekly
+        grain: week
+  # NOTE on filtering: this model carries BOTH attribution_model values
+  # (first_touch, last_touch) and BOTH event_type values (funded,
+  # first_payment) in one long table. Always filter attribution_model and
+  # event_type to a single value before summing new_accounts, otherwise the
+  # measure double-counts across the two attribution windows.
+
+- name: mixpanel_ga_gnosis_app_acquisition_weekly
+  model: ref('api_mixpanel_ga_gnosis_app_acquisition_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: conversion_kind
+    type: categorical
+    expr: conversion_kind
+  - name: attribution_model
+    type: categorical
+    expr: attribution_model
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  measures:
+  - name: new_accounts_value
+    agg: sum
+    expr: new_accounts
+  - name: cumulative_accounts_value
+    agg: sum
+    expr: cumulative_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosis app conversions by campaign
+        - gnosis app first conversions by utm
+        - gnosis app acquisition by utm campaign
+        - app topups by marketing campaign
+        - app swaps by campaign weekly
+        - token offer claims by campaign
+        - marketplace buys by campaign
+        - new gnosis app accounts by campaign weekly
+        grain: week
+  # NOTE on filtering: this model carries BOTH attribution_model values
+  # (first_touch, last_touch) and all four conversion_kind values in one long
+  # table. Always filter attribution_model and conversion_kind to a single
+  # value before summing new_accounts, otherwise the measure double-counts
+  # across the two attribution windows.
+
 # ═════════════════════════════════════════════════════════════════════
 # METRICS — Mixpanel-side Gnosis App web/mobile analytics
 # ═════════════════════════════════════════════════════════════════════
