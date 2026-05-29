@@ -23,7 +23,7 @@ solver_trades AS (
         count(*)                                                                     AS num_trades,
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
-        sum(fee_usd)                                                                 AS fees_usd
+        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd
     FROM {{ ref('fct_execution_cow_trades') }}
     WHERE solver IS NOT NULL
     {% if start_month and end_month %}
