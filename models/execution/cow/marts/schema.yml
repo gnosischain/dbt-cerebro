@@ -333,15 +333,15 @@ models:
     description: Daily USD volume for this solver group.
     data_type: Nullable(Float64)
 
-- name: api_execution_cow_batch_metrics_ts
+- name: api_execution_cow_batch_routing_ts
   description: >
-    Daily share of CoW Protocol settlement batches by routing type.
-    Three labels: "Pure CoW" (multi-trade batch with zero AMM
-    interactions — true Coincidence of Wants), "Partial CoW" (multi-trade
-    batch where num_trades > num_interactions, indicating at least some
-    peer matching happened), "Pure DEX" (single-trade batches plus
-    multi-trade batches fully routed through AMMs). Pure CoW peaked at
-    ~34% in Oct 2021 and is near zero on Gnosis Chain since 2022.
+    Daily share of CoW Protocol settlement batches by routing type, as
+    percentages of total daily batches. Three labels: "Pure CoW" (multi-trade
+    batch with zero AMM interactions — true Coincidence of Wants), "Partial
+    CoW" (multi-trade batch with some AMM interactions, meaning at least some
+    peer matching happened), "Pure DEX" (single-trade batches or all trades
+    routed through AMMs). Pure CoW peaked at ~34% in Sep 2021 and is near
+    zero on Gnosis Chain since mid-2022.
   columns:
   - name: date
     data_type: Date
@@ -349,7 +349,22 @@ models:
     description: "'Pure CoW' | 'Partial CoW' | 'Pure DEX'."
     data_type: String
   - name: value
-    description: Daily share for this category as a percentage (0–100).
+    description: Percentage of daily batches in this routing category (0–100).
+    data_type: Float64
+
+- name: api_execution_cow_batch_metrics_ts
+  description: >
+    Daily average number of trades settled per CoW Protocol batch. Values
+    above 1.0 indicate days where the solver matched multiple orders in a
+    single settlement. On Gnosis Chain this peaked at ~2.8 in mid-2021 and
+    has been near 1.0 since 2022, reflecting that most batches now contain
+    a single trade routed through external DEX liquidity. Superseded by
+    api_execution_cow_batch_routing_ts for routing-type breakdown.
+  columns:
+  - name: date
+    data_type: Date
+  - name: value
+    description: Average trades per batch on this day.
     data_type: Float64
 
 - name: api_execution_cow_top_pairs_weekly
