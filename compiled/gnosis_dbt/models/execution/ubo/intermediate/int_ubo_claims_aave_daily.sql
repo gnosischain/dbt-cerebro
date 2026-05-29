@@ -49,5 +49,30 @@ WHERE u.date < today()
   
     
   
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(u.date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_ubo_claims_aave_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(u.date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`int_ubo_claims_aave_daily` AS x2
+        WHERE 1=1 
+      )
+    
+  
 
   

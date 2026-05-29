@@ -80,6 +80,14 @@ WITH raw AS (
             JSONExtractString(properties, '$initial_referring_domain')
         )                                                                   AS initial_referrer_domain,
 
+        -- ── marketing attribution (UTM) ──────────────────────────────────
+        JSONExtractString(properties, 'utm_campaign')                       AS utm_campaign,
+        JSONExtractString(properties, 'utm_source')                         AS utm_source,
+        JSONExtractString(properties, 'utm_medium')                         AS utm_medium,
+        JSONExtractString(properties, 'utm_content')                        AS utm_content,
+        JSONExtractString(properties, 'utm_term')                           AS utm_term,
+        JSONExtractString(properties, 'utm_id')                             AS utm_id,
+
         -- ── geography (no city – privacy) ────────────────────────────────
         JSONExtractString(properties, 'mp_country_code')                    AS country_code,
         JSONExtractString(properties, '$region')                            AS region,
@@ -166,6 +174,12 @@ SELECT
     is_production,
     referrer_domain,
     initial_referrer_domain,
+    utm_campaign,
+    utm_source,
+    utm_medium,
+    utm_content,
+    utm_term,
+    utm_id,
     country_code,
     region,
     browser,

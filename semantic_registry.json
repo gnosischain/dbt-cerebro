@@ -62,16 +62,16 @@
         "total_nodes": 660
       },
       "mixpanel_ga": {
-        "api": 11,
+        "api": 13,
         "approved": 3,
-        "candidate": 5,
-        "docs_only": 21,
-        "fct": 6,
-        "int": 10,
-        "model": 28,
+        "candidate": 7,
+        "docs_only": 26,
+        "fct": 8,
+        "int": 13,
+        "model": 35,
         "source": 1,
         "stg": 1,
-        "total_nodes": 29
+        "total_nodes": 36
       },
       "p2p": {
         "api": 9,
@@ -119,17 +119,17 @@
     "relationship_count": 51,
     "semantic_status_counts": {
       "approved": 33,
-      "candidate": 340,
-      "docs_only": 715
+      "candidate": 342,
+      "docs_only": 720
     }
   },
   "metadata": {
-    "catalog_hash": "d5e72a2dd33c4b0414076636d705167e3cfcb9cc0fd8f8745850bc728028825a",
-    "generated_at": "2026-05-21T09:53:12.047518+00:00",
-    "manifest_hash": "5297821c99312c2b952228b782a210bfb3ee11a27c94a4f8c88ea67dc9da5283",
-    "model_count": 1012,
+    "catalog_hash": "a7649d58d8973f5fb3e815989272d3c7125b79f778ba375b231a0777b33951e1",
+    "generated_at": "2026-05-29T09:59:44.458206+00:00",
+    "manifest_hash": "c18df22cba19f8be097b023ed3f86c4198fdf2bbb785c043fd9027085af41b70",
+    "model_count": 1019,
     "project_name": "gnosis_dbt",
-    "semantic_manifest_hash": "0fc958ddd2c3ed91c46af9dc9753218d320e3684bdb94b6f79f8ed99bb5f0604",
+    "semantic_manifest_hash": "a0216aa5bf0ddeb98c82800696a022b65979f952b5ff715762affbbf8dbf2a12",
     "source_count": 76
   },
   "metrics": {
@@ -31103,6 +31103,253 @@
         "production",
         "tier3",
         "granularity:daily"
+      ]
+    },
+    "api_mixpanel_ga_gnosis_app_acquisition_weekly": {
+      "columns": {
+        "attribution_model": {
+          "data_type": "String",
+          "description": "UTM attribution window. 'first_touch' credits the campaign on the account's EARLIEST utm-tagged Mixpanel event; 'last_touch' the LATEST. UTM rides only on entry/landing hits (~3% of events), so each account's tagged hits are collapsed to one first/last campaign by ordering on event_time. BOTH windows are stacked long \u2014 ALWAYS filter to a single value before summing new_accounts, or counts double.\n",
+          "name": "attribution_model"
+        },
+        "conversion_kind": {
+          "data_type": "String",
+          "description": "topup, swap_filled, token_offer_claim, or marketplace_buy.",
+          "name": "conversion_kind"
+        },
+        "cumulative_accounts": {
+          "data_type": "UInt64",
+          "description": "Running total within (conversion_kind, attribution_model, utm_campaign).",
+          "name": "cumulative_accounts"
+        },
+        "new_accounts": {
+          "data_type": "UInt64",
+          "description": "New accounts of this conversion_kind in the week.",
+          "name": "new_accounts"
+        },
+        "utm_campaign": {
+          "data_type": "String",
+          "description": "Marketing campaign, 'unknown' if unmatched.",
+          "name": "utm_campaign"
+        },
+        "week": {
+          "data_type": "Date",
+          "description": "ISO week start (Monday, UTC).",
+          "name": "week"
+        }
+      },
+      "description": "Not exposed via cerebro-api; accessible to the internal MCP / semantic\nlayer. Aggregate-only pass-through view over\nfct_mixpanel_ga_gnosis_app_acquisition_weekly (campaign-level counts only,\nno user_pseudonym / user_id_hash). Weekly first Gnosis App conversions by\nUTM campaign, for the growth team.\n\nattribution_model selects the window: 'first_touch' = campaign on the\naccount's earliest utm-tagged Mixpanel event, 'last_touch' = latest\n(derived per user by ordering events on event_time). 70-83% of converters\nexist in Mixpanel but UTM rides only on entry/landing hits (~3% of\nevents), so only ~2-4% carry a campaign; the rest are 'unknown'. Both\nwindows are stacked long \u2014 filter attribution_model to one value before\nsumming new_accounts.\n",
+      "dimensions": [
+        {
+          "expr": "week",
+          "name": "week",
+          "type": "time",
+          "type_params": {
+            "time_granularity": "week"
+          }
+        },
+        {
+          "expr": "conversion_kind",
+          "name": "conversion_kind",
+          "type": "categorical"
+        },
+        {
+          "expr": "attribution_model",
+          "name": "attribution_model",
+          "type": "categorical"
+        },
+        {
+          "expr": "utm_campaign",
+          "name": "utm_campaign",
+          "type": "categorical"
+        }
+      ],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "marts",
+        "api_mixpanel_ga_gnosis_app_acquisition_weekly"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "fct_mixpanel_ga_gnosis_app_acquisition_weekly"
+        ]
+      },
+      "materialized": "view",
+      "measures": [
+        {
+          "agg": "sum",
+          "expr": "new_accounts",
+          "name": "new_accounts_value"
+        },
+        {
+          "agg": "sum",
+          "expr": "cumulative_accounts",
+          "name": "cumulative_accounts_value"
+        }
+      ],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "api_mixpanel_ga_gnosis_app_acquisition_weekly",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/marts/api_mixpanel_ga_gnosis_app_acquisition_weekly.sql",
+      "quality_tier": "candidate",
+      "relation_name": "`dbt`.`api_mixpanel_ga_gnosis_app_acquisition_weekly`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {
+          "agg_time_dimension": "week"
+        },
+        "meta": {
+          "grain": "week",
+          "owner": "analytics_team",
+          "quality_tier": "candidate",
+          "question_synonyms": [
+            "gnosis app conversions by campaign",
+            "gnosis app first conversions by utm",
+            "gnosis app acquisition by utm campaign",
+            "app topups by marketing campaign",
+            "app swaps by campaign weekly",
+            "token offer claims by campaign",
+            "marketplace buys by campaign",
+            "new gnosis app accounts by campaign weekly"
+          ]
+        }
+      },
+      "semantic_source_file": "authoring/mixpanel_ga/semantic_models.yml",
+      "semantic_status": "candidate",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gnosis_app",
+        "granularity:weekly"
+      ]
+    },
+    "api_mixpanel_ga_gpay_acquisition_weekly": {
+      "columns": {
+        "attribution_model": {
+          "data_type": "String",
+          "description": "UTM attribution window. 'first_touch' credits the campaign on the account's EARLIEST utm-tagged Mixpanel event; 'last_touch' the LATEST. UTM rides only on entry/landing hits (~3% of events), so each account's tagged hits are collapsed to one first/last campaign by ordering on event_time. BOTH windows are stacked long \u2014 ALWAYS filter to a single value before summing new_accounts, or counts double.\n",
+          "name": "attribution_model"
+        },
+        "cumulative_accounts": {
+          "data_type": "UInt64",
+          "description": "Running total within (event_type, attribution_model, utm_campaign).",
+          "name": "cumulative_accounts"
+        },
+        "event_type": {
+          "data_type": "String",
+          "description": "'funded' or 'first_payment'.",
+          "name": "event_type"
+        },
+        "new_accounts": {
+          "data_type": "UInt64",
+          "description": "New accounts of this type in the week.",
+          "name": "new_accounts"
+        },
+        "utm_campaign": {
+          "data_type": "String",
+          "description": "Marketing campaign, 'unknown' if unmatched.",
+          "name": "utm_campaign"
+        },
+        "week": {
+          "data_type": "Date",
+          "description": "ISO week start (Monday, UTC).",
+          "name": "week"
+        }
+      },
+      "description": "Not exposed via cerebro-api; accessible to the internal MCP / semantic\nlayer. Aggregate-only pass-through view over\nfct_mixpanel_ga_gpay_acquisition_weekly (campaign-level counts only, no\nuser_pseudonym / user_id_hash). Weekly first-funded accounts and first\ncard transactions by UTM campaign, for the growth team.\n\nattribution_model selects the window: 'first_touch' = campaign on the\naccount's earliest utm-tagged Mixpanel event, 'last_touch' = latest\n(derived per user by ordering events on event_time). UTM is sparse\n(~3% of events, entry/landing only); unattributed accounts are 'unknown'.\nBoth windows are stacked long \u2014 filter attribution_model to one value\nbefore summing new_accounts.\n",
+      "dimensions": [
+        {
+          "expr": "week",
+          "name": "week",
+          "type": "time",
+          "type_params": {
+            "time_granularity": "week"
+          }
+        },
+        {
+          "expr": "event_type",
+          "name": "event_type",
+          "type": "categorical"
+        },
+        {
+          "expr": "attribution_model",
+          "name": "attribution_model",
+          "type": "categorical"
+        },
+        {
+          "expr": "utm_campaign",
+          "name": "utm_campaign",
+          "type": "categorical"
+        }
+      ],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "marts",
+        "api_mixpanel_ga_gpay_acquisition_weekly"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "fct_mixpanel_ga_gpay_acquisition_weekly"
+        ]
+      },
+      "materialized": "view",
+      "measures": [
+        {
+          "agg": "sum",
+          "expr": "new_accounts",
+          "name": "new_accounts_value"
+        },
+        {
+          "agg": "sum",
+          "expr": "cumulative_accounts",
+          "name": "cumulative_accounts_value"
+        }
+      ],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "api_mixpanel_ga_gpay_acquisition_weekly",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/marts/api_mixpanel_ga_gpay_acquisition_weekly.sql",
+      "quality_tier": "candidate",
+      "relation_name": "`dbt`.`api_mixpanel_ga_gpay_acquisition_weekly`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {
+          "agg_time_dimension": "week"
+        },
+        "meta": {
+          "grain": "week",
+          "owner": "analytics_team",
+          "quality_tier": "candidate",
+          "question_synonyms": [
+            "first funded accounts by campaign",
+            "gnosis pay card signups by utm",
+            "weekly funded accounts by campaign",
+            "first card transactions by campaign",
+            "card transactions by marketing campaign",
+            "gnosis pay acquisition by utm campaign",
+            "new gnosis pay accounts by campaign weekly"
+          ]
+        }
+      },
+      "semantic_source_file": "authoring/mixpanel_ga/semantic_models.yml",
+      "semantic_status": "candidate",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gpay",
+        "granularity:weekly"
       ]
     },
     "api_mixpanel_ga_gpay_crossdomain_daily": {
@@ -68811,6 +69058,80 @@
         "production"
       ]
     },
+    "fct_mixpanel_ga_gnosis_app_acquisition_weekly": {
+      "columns": {
+        "attribution_model": {
+          "data_type": "String",
+          "description": "UTM attribution window. 'first_touch' credits the campaign on the account's EARLIEST utm-tagged Mixpanel event; 'last_touch' credits the LATEST. UTM tags ride only on entry/landing hits (~3% of events), so each account's scattered tagged hits are collapsed to one first/last campaign by ordering on event_time (argMin/argMax over non-null utm_campaign, in int_mixpanel_ga_user_acquisition). The table stacks BOTH windows long \u2014 ALWAYS filter attribution_model to a single value before summing new_accounts, or counts double across the two windows.\n",
+          "name": "attribution_model"
+        },
+        "conversion_kind": {
+          "data_type": "String",
+          "description": "First-conversion type: topup, swap_filled, token_offer_claim, or marketplace_buy.",
+          "name": "conversion_kind"
+        },
+        "cumulative_accounts": {
+          "data_type": "UInt64",
+          "description": "Running total of new_accounts over weeks within (conversion_kind, attribution_model, utm_campaign).",
+          "name": "cumulative_accounts"
+        },
+        "new_accounts": {
+          "data_type": "UInt64",
+          "description": "Count of accounts with their first conversion of this kind in this week.",
+          "name": "new_accounts"
+        },
+        "utm_campaign": {
+          "data_type": "String",
+          "description": "Marketing campaign, 'unknown' for accounts with no Mixpanel UTM match.",
+          "name": "utm_campaign"
+        },
+        "week": {
+          "data_type": "Date",
+          "description": "ISO week start (Monday, UTC) of the account's first conversion.",
+          "name": "week"
+        }
+      },
+      "description": "Weekly progression of first Gnosis App conversions, broken down by\nMixpanel UTM campaign. Tidy/long shape: one row per\n(week, conversion_kind, attribution_model, utm_campaign). conversion_kind\nis one of topup / swap_filled / token_offer_claim / marketplace_buy;\nattribution_model is 'first_touch' or 'last_touch'.\n\nAttribution logic: an account's UTM comes from joining its on-chain\npseudonym to Mixpanel (user_pseudonym == user_id_hash) and reading the\nper-user first/last-touch campaign from int_mixpanel_ga_user_acquisition.\nFirst-touch = campaign on the account's earliest utm-tagged event,\nlast-touch = latest, derived by ordering each user's events on event_time.\nNote the two-layer coverage: 70-83% of App converters exist in Mixpanel,\nbut UTM rides only on entry/landing hits (~3% of events), so only ~2-4% of\nconverters carry an actual campaign; the rest fall to 'unknown'.\n\nAggregate-only (campaign-level counts, no user identifiers). Not exposed\nvia cerebro-api (inherited exclusion); accessible to the MCP / semantic\nlayer via the api_ view.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "marts",
+        "fct_mixpanel_ga_gnosis_app_acquisition_weekly"
+      ],
+      "lineage": {
+        "downstream": [
+          "api_mixpanel_ga_gnosis_app_acquisition_weekly"
+        ],
+        "upstream": [
+          "int_mixpanel_ga_gnosis_app_first_events"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "fct_mixpanel_ga_gnosis_app_acquisition_weekly",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/marts/fct_mixpanel_ga_gnosis_app_acquisition_weekly.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`fct_mixpanel_ga_gnosis_app_acquisition_weekly`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gnosis_app"
+      ]
+    },
     "fct_mixpanel_ga_gnosis_app_daily": {
       "columns": {
         "cumulative_mp_matched": {
@@ -68992,6 +69313,80 @@
         "mixpanel_ga",
         "production",
         "gnosis_app"
+      ]
+    },
+    "fct_mixpanel_ga_gpay_acquisition_weekly": {
+      "columns": {
+        "attribution_model": {
+          "data_type": "String",
+          "description": "UTM attribution window. 'first_touch' credits the campaign on the account's EARLIEST utm-tagged Mixpanel event; 'last_touch' credits the LATEST. UTM tags ride only on entry/landing hits (~3% of events), so each account's scattered tagged hits are collapsed to one first/last campaign by ordering on event_time (argMin/argMax over non-null utm_campaign, in int_mixpanel_ga_user_acquisition). The table stacks BOTH windows long \u2014 ALWAYS filter attribution_model to a single value before summing new_accounts, or counts double across the two windows.\n",
+          "name": "attribution_model"
+        },
+        "cumulative_accounts": {
+          "data_type": "UInt64",
+          "description": "Running total of new_accounts over weeks within (event_type, attribution_model, utm_campaign).",
+          "name": "cumulative_accounts"
+        },
+        "event_type": {
+          "data_type": "String",
+          "description": "'funded' (first Safe inflow) or 'first_payment' (first card Payment).",
+          "name": "event_type"
+        },
+        "new_accounts": {
+          "data_type": "UInt64",
+          "description": "Count of accounts with their first event of this type in this week.",
+          "name": "new_accounts"
+        },
+        "utm_campaign": {
+          "data_type": "String",
+          "description": "Marketing campaign, 'unknown' for accounts with no Mixpanel UTM match.",
+          "name": "utm_campaign"
+        },
+        "week": {
+          "data_type": "Date",
+          "description": "ISO week start (Monday, UTC) of the account's first event.",
+          "name": "week"
+        }
+      },
+      "description": "Weekly progression of Gnosis Pay first-funded accounts and first card\ntransactions, broken down by Mixpanel UTM campaign. Tidy/long shape:\none row per (week, event_type, attribution_model, utm_campaign).\nevent_type is 'funded' or 'first_payment'; attribution_model is\n'first_touch' or 'last_touch'.\n\nAttribution logic: an account's UTM comes from joining its on-chain\npseudonym to Mixpanel (user_pseudonym == user_id_hash) and reading the\nper-user first/last-touch campaign from int_mixpanel_ga_user_acquisition.\nFirst-touch = campaign on the account's earliest utm-tagged event,\nlast-touch = latest, derived by ordering each user's events on event_time\n(UTM is sparse \u2014 only ~3% of events carry it, on entry/landing hits).\nAccounts with no Mixpanel UTM fall to 'unknown' so totals reconcile to the\nfull funnel.\n\nAggregate-only (campaign-level counts, no user identifiers). Not exposed\nvia cerebro-api (inherited exclusion); accessible to the MCP / semantic\nlayer via the api_ view.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "marts",
+        "fct_mixpanel_ga_gpay_acquisition_weekly"
+      ],
+      "lineage": {
+        "downstream": [
+          "api_mixpanel_ga_gpay_acquisition_weekly"
+        ],
+        "upstream": [
+          "int_mixpanel_ga_gpay_first_events"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "fct_mixpanel_ga_gpay_acquisition_weekly",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/marts/fct_mixpanel_ga_gpay_acquisition_weekly.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`fct_mixpanel_ga_gpay_acquisition_weekly`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gpay"
       ]
     },
     "fct_mixpanel_ga_gpay_crossdomain_daily": {
@@ -80684,7 +81079,8 @@
           "fct_execution_gnosis_app_journeys_30d",
           "fct_execution_gnosis_app_journeys_60d",
           "fct_execution_gnosis_app_journeys_7d",
-          "int_execution_gnosis_app_coverage_daily"
+          "int_execution_gnosis_app_coverage_daily",
+          "int_mixpanel_ga_gnosis_app_first_events"
         ],
         "upstream": [
           "int_execution_gnosis_app_gpay_topups",
@@ -83536,7 +83932,8 @@
           "fct_execution_gpay_journeys_30d",
           "fct_execution_gpay_journeys_60d",
           "fct_execution_gpay_journeys_7d",
-          "int_execution_gpay_coverage_daily"
+          "int_execution_gpay_coverage_daily",
+          "int_mixpanel_ga_gpay_first_events"
         ],
         "upstream": [
           "int_execution_gpay_activity",
@@ -91252,6 +91649,150 @@
         "production"
       ]
     },
+    "int_mixpanel_ga_gnosis_app_first_events": {
+      "columns": {
+        "conversion_kind": {
+          "data_type": "String",
+          "description": "First-conversion type: topup, swap_filled, token_offer_claim, or marketplace_buy.",
+          "name": "conversion_kind"
+        },
+        "first_date": {
+          "data_type": "Date",
+          "description": "Date of the account's first conversion of this kind.",
+          "name": "first_date"
+        },
+        "first_touch_campaign": {
+          "data_type": "String",
+          "description": "Account's first-touch utm_campaign from Mixpanel, 'unknown' if unmatched.",
+          "name": "first_touch_campaign"
+        },
+        "last_touch_campaign": {
+          "data_type": "String",
+          "description": "Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.",
+          "name": "last_touch_campaign"
+        },
+        "user_pseudonym": {
+          "data_type": "UInt64",
+          "description": "Gnosis App account pseudonym (UInt64), same hash space as Mixpanel user_id_hash.",
+          "name": "user_pseudonym"
+        }
+      },
+      "description": "INTERNAL ONLY. One row per Gnosis App account (user_pseudonym) per\nfirst-conversion type, with the account's Mixpanel UTM attribution\nattached via user_pseudonym == user_id_hash. conversion_kind is one of\ntopup / swap_filled / token_offer_claim / marketplace_buy. Unlike the GP\nside, App conversions match the Mixpanel identified-user set 70-83%.\nAccounts with no Mixpanel match get 'unknown' campaigns. Carries\nuser_pseudonym \u2014 never exposed to cerebro-api or MCP.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "intermediate",
+        "int_mixpanel_ga_gnosis_app_first_events"
+      ],
+      "lineage": {
+        "downstream": [
+          "fct_mixpanel_ga_gnosis_app_acquisition_weekly"
+        ],
+        "upstream": [
+          "int_execution_gnosis_app_conversions",
+          "int_mixpanel_ga_user_acquisition"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "int_mixpanel_ga_gnosis_app_first_events",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/intermediate/int_mixpanel_ga_gnosis_app_first_events.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_mixpanel_ga_gnosis_app_first_events`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gnosis_app",
+        "internal_only",
+        "privacy:tier_internal"
+      ]
+    },
+    "int_mixpanel_ga_gpay_first_events": {
+      "columns": {
+        "event_type": {
+          "data_type": "String",
+          "description": "'funded' (first Safe inflow) or 'first_payment' (first card Payment).",
+          "name": "event_type"
+        },
+        "first_date": {
+          "data_type": "Date",
+          "description": "Date of the account's first event of this type.",
+          "name": "first_date"
+        },
+        "first_touch_campaign": {
+          "data_type": "String",
+          "description": "Account's first-touch utm_campaign from Mixpanel, 'unknown' if unmatched.",
+          "name": "first_touch_campaign"
+        },
+        "last_touch_campaign": {
+          "data_type": "String",
+          "description": "Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.",
+          "name": "last_touch_campaign"
+        },
+        "user_pseudonym": {
+          "data_type": "UInt64",
+          "description": "Gnosis Pay initial_owner pseudonym (UInt64), same hash space as Mixpanel user_id_hash.",
+          "name": "user_pseudonym"
+        }
+      },
+      "description": "INTERNAL ONLY. One row per Gnosis Pay account (identity_role=initial_owner)\nper first-event type, with the account's Mixpanel UTM attribution attached\nvia user_pseudonym == user_id_hash. event_type is 'funded' (first\ngpay_funded inflow) or 'first_payment' (first gpay_payment). Accounts with\nno Mixpanel match get 'unknown' campaigns so totals reconcile to the full\nGP funnel. Carries user_pseudonym \u2014 never exposed to cerebro-api or MCP.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "intermediate",
+        "int_mixpanel_ga_gpay_first_events"
+      ],
+      "lineage": {
+        "downstream": [
+          "fct_mixpanel_ga_gpay_acquisition_weekly"
+        ],
+        "upstream": [
+          "int_execution_gpay_conversions",
+          "int_mixpanel_ga_user_acquisition"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "int_mixpanel_ga_gpay_first_events",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/intermediate/int_mixpanel_ga_gpay_first_events.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_mixpanel_ga_gpay_first_events`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "gpay",
+        "internal_only",
+        "privacy:tier_internal"
+      ]
+    },
     "int_mixpanel_ga_modals_daily": {
       "columns": {
         "bottom_sheet": {
@@ -91601,6 +92142,92 @@
         "privacy:mixpanel_ga",
         "mixpanel_ga",
         "production"
+      ]
+    },
+    "int_mixpanel_ga_user_acquisition": {
+      "columns": {
+        "first_seen_at": {
+          "data_type": "DateTime",
+          "description": "Earliest event_time observed for the user.",
+          "name": "first_seen_at"
+        },
+        "first_touch_campaign": {
+          "data_type": "String",
+          "description": "Earliest non-empty utm_campaign for the user (query string stripped), 'unknown' if none.",
+          "name": "first_touch_campaign"
+        },
+        "first_touch_medium": {
+          "data_type": "String",
+          "description": "Earliest non-empty utm_medium for the user, 'unknown' if none.",
+          "name": "first_touch_medium"
+        },
+        "first_touch_source": {
+          "data_type": "String",
+          "description": "Earliest non-empty utm_source for the user, 'unknown' if none.",
+          "name": "first_touch_source"
+        },
+        "last_touch_campaign": {
+          "data_type": "String",
+          "description": "Latest non-empty utm_campaign for the user (query string stripped), 'unknown' if none.",
+          "name": "last_touch_campaign"
+        },
+        "last_touch_medium": {
+          "data_type": "String",
+          "description": "Latest non-empty utm_medium for the user, 'unknown' if none.",
+          "name": "last_touch_medium"
+        },
+        "last_touch_source": {
+          "data_type": "String",
+          "description": "Latest non-empty utm_source for the user, 'unknown' if none.",
+          "name": "last_touch_source"
+        },
+        "user_id_hash": {
+          "data_type": "UInt64",
+          "description": "Mixpanel user pseudonym (UInt64). Same hash space as int_execution_gpay_safe_identities.user_pseudonym.",
+          "name": "user_id_hash"
+        }
+      },
+      "description": "INTERNAL ONLY. Per-user (user_id_hash) marketing attribution. Collapses\neach identified production user's sparse UTM hits into one stable\nfirst-touch and last-touch campaign/source/medium, derived by ordering on\nevent_time (no initial_utm_* super-properties exist in the raw data).\nMissing values default to 'unknown'. Carries user_id_hash \u2014 never exposed\nto cerebro-api (inherited exclusion) or MCP (expose_to_mcp: false).\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "mixpanel_ga",
+        "intermediate",
+        "int_mixpanel_ga_user_acquisition"
+      ],
+      "lineage": {
+        "downstream": [
+          "int_mixpanel_ga_gnosis_app_first_events",
+          "int_mixpanel_ga_gpay_first_events"
+        ],
+        "upstream": [
+          "stg_mixpanel_ga__events"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "mixpanel_ga",
+      "name": "int_mixpanel_ga_user_acquisition",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/mixpanel_ga/intermediate/int_mixpanel_ga_user_acquisition.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_mixpanel_ga_user_acquisition`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "privacy:mixpanel_ga",
+        "mixpanel_ga",
+        "production",
+        "internal_only",
+        "privacy:tier_internal"
       ]
     },
     "int_mixpanel_ga_user_lifecycle": {
@@ -94720,7 +95347,7 @@
         },
         "properties": {
           "data_type": "String",
-          "description": "JSON string containing all event properties (browser, OS, geo, referrer, page, etc.).",
+          "description": "JSON string containing all event properties (browser, OS, geo, referrer, page, etc.). Also carries marketing-attribution UTM parameters on entry/landing hits: utm_campaign, utm_source, utm_medium, utm_content, utm_term, utm_id (no initial_utm_* first-touch super-properties are tracked).",
           "name": "properties"
         }
       },
@@ -99067,6 +99694,36 @@
           "data_type": "UInt64",
           "description": "Keyed pseudonym of distinct_id (sipHash64 over a salted + lowercased input; salt from env_var CEREBRO_PII_SALT).  Non-reversible without the salt.  Safe to join with pseudonyms of on-chain wallet addresses produced by the same macros/pseudonymize_address.sql macro, which enables cross-sector metrics without exposing raw addresses.\n",
           "name": "user_id_hash"
+        },
+        "utm_campaign": {
+          "data_type": "String",
+          "description": "Marketing campaign name from the utm_campaign URL parameter. Present on ~3.6% of events (entry/landing hits only); empty string otherwise. Collapsed into stable per-user first/last-touch attribution in int_mixpanel_ga_user_acquisition.\n",
+          "name": "utm_campaign"
+        },
+        "utm_content": {
+          "data_type": "String",
+          "description": "Ad/creative variant from the utm_content URL parameter. Empty if absent.",
+          "name": "utm_content"
+        },
+        "utm_id": {
+          "data_type": "String",
+          "description": "Ad-platform campaign/ad-set numeric ID from the utm_id URL parameter (matches numeric utm_campaign values like \"120245171828300356\"). Empty if absent.\n",
+          "name": "utm_id"
+        },
+        "utm_medium": {
+          "data_type": "String",
+          "description": "Marketing medium from the utm_medium URL parameter (e.g. \"cpc\", \"referral\"). Empty if absent.",
+          "name": "utm_medium"
+        },
+        "utm_source": {
+          "data_type": "String",
+          "description": "Traffic source from the utm_source URL parameter (e.g. \"ig\", \"google\"). Empty if absent.",
+          "name": "utm_source"
+        },
+        "utm_term": {
+          "data_type": "String",
+          "description": "Paid keyword from the utm_term URL parameter. Empty if absent.",
+          "name": "utm_term"
         }
       },
       "description": "Incremental staging table over raw Mixpanel events tracking Gnosis App\n(app.gnosis.io) user interactions. Extracts all useful JSON properties\ninto typed columns with privacy transformations applied: distinct_id\nand device_id are replaced with keyed pseudonyms via\nmacros/pseudonymize_address.sql (salted with env_var CEREBRO_PII_SALT,\nso the hash is not reversible via rainbow tables against the public\non-chain address space), city-level geo is excluded, and full URLs are\nreduced to path-only. Materialized as a table (not a view) so\ndownstream intermediate models read lightweight typed columns instead\nof re-parsing the heavy JSON properties blob on every query.\n\nStructure: a `raw` CTE extracts all JSON properties and computes\nboolean flags. event_category is computed in the outer SELECT so it\ncan reference is_autocapture (a derived column) without a self-join.\nTo change classifications, edit macros/mixpanel_ga_event_category.sql.\n\nPrivacy notes: the keyed pseudonym macro is salted so hashes cannot\nbe reversed via rainbow tables against the public on-chain address\nspace. The same macro must be used on on-chain addresses for any\ncross-domain join. The is_production flag identifies events from\napp.gnosis.io (~89% of traffic; the remainder is deploy previews\nand localhost).\n\nNew columns added for domain context:\n  is_identified  \u2014 1 if the user connected a wallet (distinct_id != '$device:*')\n  is_production  \u2014 1 if the event originated from app.gnosis.io (not preview/localhost)\n  event_category \u2014 derived classification via macros/mixpanel_ga_event_category.sql\n  event_amount, event_sku, event_seller, event_value, event_asset_id\n                 \u2014 feature-specific custom properties for Circles/Marketplace/Swap events\n",
@@ -99092,6 +99749,7 @@
           "int_mixpanel_ga_tech_daily",
           "int_mixpanel_ga_traffic_daily",
           "int_mixpanel_ga_usage_patterns_daily",
+          "int_mixpanel_ga_user_acquisition",
           "int_mixpanel_ga_user_lifecycle",
           "int_mixpanel_ga_users_daily"
         ],
@@ -101234,16 +101892,16 @@
       "total_nodes": 660
     },
     "mixpanel_ga": {
-      "api": 11,
+      "api": 13,
       "approved": 3,
-      "candidate": 5,
-      "docs_only": 21,
-      "fct": 6,
-      "int": 10,
-      "model": 28,
+      "candidate": 7,
+      "docs_only": 26,
+      "fct": 8,
+      "int": 13,
+      "model": 35,
       "source": 1,
       "stg": 1,
-      "total_nodes": 29
+      "total_nodes": 36
     },
     "p2p": {
       "api": 9,
@@ -101548,6 +102206,22 @@
         }
       ],
       "type": "time"
+    },
+    "attribution_model": {
+      "metrics": [],
+      "providers": [
+        {
+          "model": "api_mixpanel_ga_gnosis_app_acquisition_weekly",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        },
+        {
+          "model": "api_mixpanel_ga_gpay_acquisition_weekly",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        }
+      ],
+      "type": "categorical"
     },
     "avatar": {
       "metrics": [],
@@ -102345,6 +103019,17 @@
         {
           "model": "int_esg_carbon_intensity_ensemble",
           "module": "ESG",
+          "status": "candidate"
+        }
+      ],
+      "type": "categorical"
+    },
+    "conversion_kind": {
+      "metrics": [],
+      "providers": [
+        {
+          "model": "api_mixpanel_ga_gnosis_app_acquisition_weekly",
+          "module": "mixpanel_ga",
           "status": "candidate"
         }
       ],
@@ -103760,6 +104445,17 @@
         },
         {
           "model": "api_mixpanel_ga_events_daily",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        }
+      ],
+      "type": "categorical"
+    },
+    "event_type": {
+      "metrics": [],
+      "providers": [
+        {
+          "model": "api_mixpanel_ga_gpay_acquisition_weekly",
           "module": "mixpanel_ga",
           "status": "candidate"
         }
@@ -107253,6 +107949,22 @@
       ],
       "type": "primary"
     },
+    "utm_campaign": {
+      "metrics": [],
+      "providers": [
+        {
+          "model": "api_mixpanel_ga_gnosis_app_acquisition_weekly",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        },
+        {
+          "model": "api_mixpanel_ga_gpay_acquisition_weekly",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        }
+      ],
+      "type": "categorical"
+    },
     "v_30d": {
       "metrics": [],
       "providers": [
@@ -107609,6 +108321,16 @@
         {
           "model": "fct_execution_transactions_by_sector_weekly",
           "module": "execution",
+          "status": "candidate"
+        },
+        {
+          "model": "api_mixpanel_ga_gnosis_app_acquisition_weekly",
+          "module": "mixpanel_ga",
+          "status": "candidate"
+        },
+        {
+          "model": "api_mixpanel_ga_gpay_acquisition_weekly",
+          "module": "mixpanel_ga",
           "status": "candidate"
         },
         {
