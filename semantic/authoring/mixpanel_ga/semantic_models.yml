@@ -397,6 +397,83 @@ semantic_models:
         - marketplace buys by campaign
         - new gnosis app accounts by campaign weekly
         grain: week
+- name: mixpanel_ga_gpay_users
+  model: ref('fct_mixpanel_ga_gpay_users')
+  description: 'Per-user fact joining Mixpanel-identified users to Gnosis Pay
+
+    Safes via the keyed-pseudonym identity bridge. One row per
+
+    (user_id_hash, gp_safe) match. Exposes user_pseudonym so the
+
+    web/Mixpanel side joins the cross-sector user-pseudonym graph
+
+    (user_pseudonym = user_id_hash, same hash space).
+
+    '
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_id_hash)
+  measures:
+  - name: mixpanel_ga_gpay_users_value
+    agg: count
+    expr: user_id_hash
+  - name: mixpanel_ga_gpay_users_spends_last_30d_value
+    agg: sum
+    expr: spends_last_30d
+  - name: mixpanel_ga_gpay_users_delay_txs_last_30d_value
+    agg: sum
+    expr: delay_txs_last_30d
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - mixpanel users with a gnosis pay safe
+        - gpay users seen on the website
+        - web-identified gnosis pay users
+        - mixpanel to gnosis pay identity matches
+- name: mixpanel_ga_gnosis_app_users
+  model: ref('fct_mixpanel_ga_gnosis_app_users')
+  description: 'Per-user fact for the Gnosis App sector with Mixpanel as a
+
+    CHECK on on-chain identities. One row per gnosis_app
+
+    user_pseudonym; matched_mp flags whether Mixpanel has >=1
+
+    identified production event for that pseudonym. Exposes
+
+    user_pseudonym for the cross-sector user-pseudonym graph.
+
+    '
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: matched_mp
+    type: categorical
+    expr: matched_mp
+  measures:
+  - name: mixpanel_ga_gnosis_app_users_value
+    agg: count
+    expr: user_pseudonym
+  - name: mixpanel_ga_gnosis_app_matched_mp_users_value
+    agg: sum
+    expr: matched_mp
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - gnosis app users matched to mixpanel
+        - gnosis app web vs onchain identity overlap
+        - mixpanel-confirmed gnosis app users
+        - gnosis app user pseudonyms with web activity
 metrics:
 - name: gnosis_app_mixpanel_dau
   label: Gnosis App DAU (Mixpanel / Web)
@@ -1311,3 +1388,87 @@ metrics:
         question_synonyms:
         - mixpanel ga gnosis app acquisition weekly cumulative accounts
         - cumulative accounts
+- name: mixpanel_ga_gpay_users_spends_last_30d_value
+  label: Mixpanel Ga Gpay Users - Mixpanel Ga Gpay Users Spends Last 30D
+  description: mixpanel ga gpay users - mixpanel ga gpay users spends last 30d (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_users_spends_last_30d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: user
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga gpay users mixpanel ga gpay users spends last 30d
+        - mixpanel ga gpay users spends last 30d
+- name: mixpanel_ga_gpay_users_delay_txs_last_30d_value
+  label: Mixpanel Ga Gpay Users - Mixpanel Ga Gpay Users Delay Txs Last 30D
+  description: mixpanel ga gpay users - mixpanel ga gpay users delay txs last 30d (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_users_delay_txs_last_30d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: user
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga gpay users mixpanel ga gpay users delay txs last 30d
+        - mixpanel ga gpay users delay txs last 30d
+- name: mixpanel_ga_gnosis_app_users_value
+  label: Mixpanel Ga Gnosis App Users - Mixpanel Ga Gnosis App Users
+  description: mixpanel ga gnosis app users - mixpanel ga gnosis app users (count). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gnosis_app_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: user
+        allowed_dimensions:
+        - matched_mp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga gnosis app users mixpanel ga gnosis app users
+        - mixpanel ga gnosis app users
+- name: mixpanel_ga_gnosis_app_matched_mp_users_value
+  label: Mixpanel Ga Gnosis App Users - Mixpanel Ga Gnosis App Matched Mp Users
+  description: mixpanel ga gnosis app users - mixpanel ga gnosis app matched mp users (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gnosis_app_matched_mp_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: user
+        allowed_dimensions:
+        - matched_mp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga gnosis app users mixpanel ga gnosis app matched mp users
+        - mixpanel ga gnosis app matched mp users

@@ -15,11 +15,15 @@ version: 1
 #   - revenue     (fct_revenue_per_user_weekly / monthly)
 #   - gpay        (fct_execution_gpay_users_distinct)
 #   - gnosis_app  (fct_execution_gnosis_app_users_distinct) — ON-CHAIN
-#                 side of the app; the Mixpanel/web side lives in
-#                 mixpanel_ga and joins via the same user_pseudonym
-#                 hash space but isn't currently exposed as a
-#                 user-keyed semantic_model (aggregate-only views
-#                 only — per the mixpanel privacy policy).
+#                 side of the app.
+#   - mixpanel_ga (fct_mixpanel_ga_gpay_users,
+#                 fct_mixpanel_ga_gnosis_app_users) — the WEB/Mixpanel
+#                 side of gpay and gnosis_app. Joins via the same
+#                 user_pseudonym hash space (user_pseudonym =
+#                 user_id_hash, same sipHash64 salt). Now exposed as
+#                 user-keyed semantic_models and bridged to the on-chain
+#                 marts below (no PII leakage: both sides are already
+#                 pseudonymised in the shared hash space).
 #
 # Add a new module: build a user-keyed mart, declare `user_pseudonym` as
 # a primary entity in its semantic_model, then add a relationship block
@@ -449,6 +453,43 @@ relationships:
   join_semantics: inner
   via_entity: user_pseudonym
   preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+# ── Mixpanel (web) × on-chain identities ──────────────────────────
+# Bridges the WEB/Mixpanel side of gpay and gnosis_app into the
+# user-pseudonym graph. user_pseudonym = user_id_hash (same sipHash64
+# salt space), so these are true equi-joins on the pseudonym. The
+# gpay web mart is grained per (user, safe) so it's many_to_many to
+# the on-chain identity set; the gnosis_app web mart is one row per
+# pseudonym (one_to_one). Once bound, the planner reaches revenue,
+# circles, validators, etc. transitively via the on-chain marts.
+
+- name: mixpanel_gpay_users_to_gpay_identity
+  left_model: fct_mixpanel_ga_gpay_users
+  right_model: fct_execution_gpay_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: many_to_many
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: false
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: mixpanel_gnosis_app_users_to_gnosis_app_identity
+  left_model: fct_mixpanel_ga_gnosis_app_users
+  right_model: fct_execution_gnosis_app_users_distinct
+  left_keys: [user_pseudonym]
+  right_keys: [user_pseudonym]
+  cardinality: one_to_one
+  join_semantics: inner
+  via_entity: user_pseudonym
+  preferred_bridge: false
   safe_for_dimension_enrichment: true
   aggregate_then_join_only: false
   allow_any_join: false

@@ -331,6 +331,31 @@ semantic_models:
         question_synonyms:
         - circles avatar profile
         - circles avatar identity
+        - circles invitation graph
+        - who invited whom
+        - circles invite tree
+        graph:
+          enabled: true
+          profile: circles_invitation
+          source_column: invited_by
+          target_column: avatar
+          source_kind: circles_avatar
+          target_kind: circles_avatar
+          directed: true
+          time_column: registered_at
+          node_enrichment_model: api_execution_circles_v2_avatar_metadata
+          node_enrichment_key: avatar
+          evidence_model: api_execution_circles_v2_avatar_metadata
+          evidence_source_column: invited_by
+          evidence_target_column: avatar
+          # invited_by is NULL/empty for Groups & Orgs (self-registered, no
+          # inviter) and 0x0000…0000 for genesis/migration avatars. Without a
+          # guard the neighbors query emits a bogus empty node and a giant
+          # zero-address hub. `valid_address` drops NULL/empty AND the zero
+          # address. Honored by build_neighbors_sql / build_sample_sql via
+          # _default_filter_clauses.
+          default_filters:
+            invited_by: valid_address
 - name: execution_circles_v2_avatar_balances_latest
   model: ref('fct_execution_circles_v2_avatar_balances_latest')
   entities:
