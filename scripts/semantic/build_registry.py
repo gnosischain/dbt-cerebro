@@ -522,7 +522,17 @@ def validate_registry(
             continue
         if model["semantic_status"] == "approved":
             semantic_meta = model.get("semantic", {}).get("meta", {})
-            for field in REQUIRED_APPROVED_META:
+            # `grain` describes the time aggregation of a model. Point-in-time /
+            # "_latest" snapshot models have no time dimension, so a grain is
+            # semantically meaningless for them — exempt them from the grain
+            # requirement rather than forcing a sentinel value.
+            has_time_dimension = any(
+                dim.get("type") == "time" for dim in model.get("dimensions", []) or []
+            )
+            required_meta = REQUIRED_APPROVED_META
+            if not has_time_dimension:
+                required_meta = tuple(f for f in required_meta if f != "grain")
+            for field in required_meta:
                 value = semantic_meta.get(field)
                 if value in ("", None, []):
                     errors.append(
@@ -606,7 +616,11 @@ def validate_registry(
             # Expression form (e.g. substring(...)) — skip column existence check.
             if "(" in col or " " in col:
                 continue
-            if col not in columns:
+            # Graph meta keeps ClickHouse identifier quoting (e.g. `from`, `to`)
+            # because the column name is interpolated verbatim into generated
+            # SQL and those are reserved words. The catalog stores the bare
+            # name, so strip backticks before checking membership.
+            if col.strip("`") not in columns:
                 errors.append(
                     {
                         "code": "graph_meta_unknown_column",

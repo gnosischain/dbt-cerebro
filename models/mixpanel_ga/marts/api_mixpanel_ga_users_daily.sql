@@ -1,7 +1,8 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'mixpanel_ga', 'tier3', 'granularity:daily']
+    tags=['production', 'mixpanel_ga', 'tier3', 'granularity:daily'],
+    meta={'expose_to_mcp': False, 'privacy_tier': 'internal'}
   )
 }}
 

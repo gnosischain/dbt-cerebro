@@ -41,6 +41,9 @@ IDENTITY_BRIDGE_MODELS = {
 # `meta.expose_to_mcp: false`.
 MCP_BLOCKED_MIXPANEL_MODELS = {
     "api_mixpanel_ga_users_daily",
+    "int_mixpanel_ga_user_acquisition",
+    "int_mixpanel_ga_gpay_first_events",
+    "int_mixpanel_ga_gnosis_app_first_events",
 }
 
 

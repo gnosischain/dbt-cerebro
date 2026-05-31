@@ -51,6 +51,29 @@ from typing import Any
 _TIME_SPINE_AXES = {"day", "week", "month"}
 
 
+# Raw-HTML block mounted into ``graph.md`` (md_in_html is enabled in the
+# MkDocs site). ``semantic-graph.js`` initialises cytoscape on the
+# ``#sg-canvas`` div, fetching the absolute-path sidecar. The sector
+# filter chips are populated by the script from the fetched data.
+#
+# NOTE: the canvas id must NOT be ``semantic-graph`` — MkDocs slugifies the
+# page's "Semantic graph" heading to that same id, and getElementById would
+# return the heading instead of this div.
+_INTERACTIVE_CONTAINER = """<div class="semantic-graph-explorer">
+  <div class="sg-toolbar">
+    <div class="sg-legend">
+      <span class="sg-legend-item"><span class="sg-swatch sg-swatch--pseudo"></span>user_pseudonym</span>
+      <span class="sg-legend-item"><span class="sg-swatch sg-swatch--spine"></span>time-spine</span>
+      <span class="sg-legend-item"><span class="sg-swatch sg-swatch--other"></span>other axis</span>
+    </div>
+    <div class="sg-filters" id="semantic-graph-filters"></div>
+    <button type="button" class="sg-reset" id="semantic-graph-reset">Reset view</button>
+  </div>
+  <div id="sg-canvas" data-src="/data-pipeline/transformation/semantic-layer/graph_data.json"></div>
+  <p class="sg-hint" markdown="0">Drag to pan, scroll to zoom, click a node to focus its neighbourhood; click empty space to clear. Toggle sector chips to filter. If the interactive graph does not load, the static diagram below is always current.</p>
+</div>"""
+
+
 def _short_node(name: str) -> str:
     """Sanitize a model name for use as a Mermaid node id."""
     return name.replace(".", "_").replace("-", "_")
@@ -351,6 +374,118 @@ def _emit_unified_network(
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Graph model for the interactive (cytoscape) explorer
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _node_kind(name: str) -> str:
+    if name.startswith("dim_time_spine_"):
+        return "spine"
+    if name.startswith("api_"):
+        return "api"
+    return "model"
+
+
+def build_graph_model(
+    rels: list[dict[str, Any]],
+    models: dict[str, dict],
+    metrics: dict[str, dict],
+    *,
+    production_only: bool = True,
+    focused: bool = True,
+) -> dict[str, Any]:
+    """Pure node/edge extraction for the interactive graph explorer.
+
+    Mirrors the filtering of the headline *Unified semantic network*
+    Mermaid view (``production_only`` + ``focused``) so the cytoscape
+    graph and the static fallback show the same set of nodes and edges.
+
+    Deterministic: same registry → byte-identical JSON (nodes and edges
+    are sorted). Reuses the same helpers as ``_emit_unified_network``
+    (``_is_production_mart``, ``_is_focused_node``, ``_module_of``,
+    ``_label``, ``_axis_class``, the metric-count / tier counters and the
+    ``(l, r, axis)`` edge dedup) so the two views can never drift.
+    """
+    if production_only:
+        rels = [
+            r for r in rels
+            if _is_production_mart(r["left_model"])
+            and _is_production_mart(r["right_model"])
+        ]
+
+    # Metric counts + dominant tier per model (identical logic to the
+    # Mermaid emitter so node badges match).
+    metric_counts: Counter[str] = Counter()
+    metric_tier: dict[str, str] = {}
+    for _mname, m in metrics.items():
+        root = m.get("root_model") or m.get("model")
+        if not root:
+            continue
+        metric_counts[root] += 1
+        if m.get("quality_tier") == "approved" or metric_tier.get(root) != "approved":
+            metric_tier[root] = m.get("quality_tier", "candidate")
+
+    pseudo_nodes_set: set[str] = {
+        m
+        for rel in rels
+        if rel.get("via_entity") == "user_pseudonym"
+        for m in (rel["left_model"], rel["right_model"])
+    }
+    spine_nodes_set: set[str] = {
+        m
+        for rel in rels
+        for m in (rel["left_model"], rel["right_model"])
+        if m.startswith("dim_time_spine_")
+    }
+
+    if focused:
+        rels = [
+            r for r in rels
+            if _is_focused_node(r["left_model"], pseudo_nodes_set,
+                                spine_nodes_set, metric_counts)
+            and _is_focused_node(r["right_model"], pseudo_nodes_set,
+                                 spine_nodes_set, metric_counts)
+        ]
+
+    node_module: dict[str, str] = {}
+    for rel in rels:
+        for m in (rel["left_model"], rel["right_model"]):
+            node_module[m] = _module_of(m, models)
+
+    nodes = [
+        {
+            "id": _short_node(n),
+            "name": n,
+            "label": _label(n),
+            "sector": node_module[n],
+            "kind": _node_kind(n),
+            "metric_count": metric_counts.get(n, 0),
+            "quality_tier": metric_tier.get(n, ""),
+        }
+        for n in sorted(node_module)
+    ]
+
+    seen: set[tuple[str, str, str]] = set()
+    edges: list[dict[str, Any]] = []
+    for rel in rels:
+        l, r = sorted((rel["left_model"], rel["right_model"]))
+        axis = rel.get("via_entity", "")
+        key = (l, r, axis)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append({
+            "source": _short_node(l),
+            "target": _short_node(r),
+            "type": _axis_class(axis),
+            "axis": axis,
+        })
+    edges.sort(key=lambda e: (e["source"], e["target"], e["axis"]))
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Focused subgraph: user_pseudonym
 # ──────────────────────────────────────────────────────────────────────
 
@@ -490,7 +625,10 @@ def render(registry: dict[str, Any]) -> str:
     parts.append(
         "Auto-generated by `scripts/semantic/generate_graph_diagram.py` from "
         "`target/semantic_registry.json`. Do not edit by hand — re-run the "
-        "generator after `build_registry.py`."
+        "generator after `build_registry.py`. The interactive explorer below "
+        "reads the companion `graph_data.json` sidecar (emitted alongside this "
+        "page); the static Mermaid diagrams render the same data and are always "
+        "current as a no-JavaScript fallback."
     )
     parts.append("")
     parts.append("## Coverage at a glance")
@@ -530,11 +668,19 @@ def render(registry: dict[str, Any]) -> str:
         "shaped; user-keyed marts are tinted green."
     )
     parts.append("")
+    parts.append(_INTERACTIVE_CONTAINER)
+    parts.append("")
+    parts.append(
+        "<details><summary>Static diagram (no-JavaScript fallback)</summary>"
+    )
+    parts.append("")
     parts.append(_emit_unified_network(
         rels, models, metrics,
         production_only=True,
         focused=True,
     ))
+    parts.append("")
+    parts.append("</details>")
     parts.append("")
     parts.append(
         "> Filtered to production marts that either expose at least one "
@@ -621,6 +767,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="Directory containing semantic_registry.json")
     parser.add_argument("--output", default=None,
                         help="Output markdown path. Defaults to stdout.")
+    parser.add_argument(
+        "--json-output", default=None,
+        help="Output path for the interactive explorer's graph_data.json. "
+             "Defaults to a sibling 'graph_data.json' next to --output. "
+             "Skipped when writing the markdown to stdout.")
     args = parser.parse_args(argv)
 
     registry_path = Path(args.target_dir) / "semantic_registry.json"
@@ -632,11 +783,42 @@ def main(argv: list[str] | None = None) -> int:
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
 
     body = render(registry)
+    graph_model = build_graph_model(
+        registry.get("relationships", []) or [],
+        registry.get("models", {}) or {},
+        registry.get("metrics", {}) or {},
+    )
+
     if args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(body, encoding="utf-8")
         print(f"Wrote {out_path}", file=sys.stderr)
+
+        json_path = (
+            Path(args.json_output) if args.json_output
+            else out_path.with_name("graph_data.json")
+        )
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
+            json.dumps(graph_model, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            f"Wrote {json_path} "
+            f"({len(graph_model['nodes'])} nodes, "
+            f"{len(graph_model['edges'])} edges)",
+            file=sys.stderr,
+        )
+    elif args.json_output:
+        json_path = Path(args.json_output)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
+            json.dumps(graph_model, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Wrote {json_path}", file=sys.stderr)
+        sys.stdout.write(body)
     else:
         sys.stdout.write(body)
     return 0

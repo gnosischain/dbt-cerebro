@@ -875,3 +875,200 @@ models:
       - name: circles_conversion_rate
         description: circles_mints / greatest(circles_visitors, 1).
         data_type: Float64
+
+  - name: fct_mixpanel_ga_gpay_acquisition_weekly
+    description: |
+      Weekly progression of Gnosis Pay first-funded accounts and first card
+      transactions, broken down by Mixpanel UTM campaign. Tidy/long shape:
+      one row per (week, event_type, attribution_model, utm_campaign).
+      event_type is 'funded' or 'first_payment'; attribution_model is
+      'first_touch' or 'last_touch'.
+
+      Attribution logic: an account's UTM comes from joining its on-chain
+      pseudonym to Mixpanel (user_pseudonym == user_id_hash) and reading the
+      per-user first/last-touch campaign from int_mixpanel_ga_user_acquisition.
+      First-touch = campaign on the account's earliest utm-tagged event,
+      last-touch = latest, derived by ordering each user's events on event_time
+      (UTM is sparse — only ~3% of events carry it, on entry/landing hits).
+      Accounts with no Mixpanel UTM fall to 'unknown' so totals reconcile to the
+      full funnel.
+
+      Aggregate-only (campaign-level counts, no user identifiers). Not exposed
+      via cerebro-api (inherited exclusion); accessible to the MCP / semantic
+      layer via the api_ view.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC) of the account's first event.
+        data_type: Date
+      - name: event_type
+        description: "'funded' (first Safe inflow) or 'first_payment' (first card Payment)."
+        data_type: String
+      - name: attribution_model
+        description: >
+          UTM attribution window. 'first_touch' credits the campaign on the
+          account's EARLIEST utm-tagged Mixpanel event; 'last_touch' credits the
+          LATEST. UTM tags ride only on entry/landing hits (~3% of events), so
+          each account's scattered tagged hits are collapsed to one first/last
+          campaign by ordering on event_time (argMin/argMax over non-null
+          utm_campaign, in int_mixpanel_ga_user_acquisition). The table stacks
+          BOTH windows long — ALWAYS filter attribution_model to a single value
+          before summing new_accounts, or counts double across the two windows.
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' for accounts with no Mixpanel UTM match.
+        data_type: String
+      - name: new_accounts
+        description: Count of accounts with their first event of this type in this week.
+        data_type: UInt64
+      - name: cumulative_accounts
+        description: Running total of new_accounts over weeks within (event_type, attribution_model, utm_campaign).
+        data_type: UInt64
+
+  - name: api_mixpanel_ga_gpay_acquisition_weekly
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_gpay_acquisition_weekly (campaign-level counts only, no
+      user_pseudonym / user_id_hash). Weekly first-funded accounts and first
+      card transactions by UTM campaign, for the growth team.
+
+      attribution_model selects the window: 'first_touch' = campaign on the
+      account's earliest utm-tagged Mixpanel event, 'last_touch' = latest
+      (derived per user by ordering events on event_time). UTM is sparse
+      (~3% of events, entry/landing only); unattributed accounts are 'unknown'.
+      Both windows are stacked long — filter attribution_model to one value
+      before summing new_accounts.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: event_type
+        description: "'funded' or 'first_payment'."
+        data_type: String
+      - name: attribution_model
+        description: >
+          UTM attribution window. 'first_touch' credits the campaign on the
+          account's EARLIEST utm-tagged Mixpanel event; 'last_touch' the LATEST.
+          UTM rides only on entry/landing hits (~3% of events), so each account's
+          tagged hits are collapsed to one first/last campaign by ordering on
+          event_time. BOTH windows are stacked long — ALWAYS filter to a single
+          value before summing new_accounts, or counts double.
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' if unmatched.
+        data_type: String
+      - name: new_accounts
+        description: New accounts of this type in the week.
+        data_type: UInt64
+      - name: cumulative_accounts
+        description: Running total within (event_type, attribution_model, utm_campaign).
+        data_type: UInt64
+
+  - name: fct_mixpanel_ga_gnosis_app_acquisition_weekly
+    description: |
+      Weekly progression of first Gnosis App conversions, broken down by
+      Mixpanel UTM campaign. Tidy/long shape: one row per
+      (week, conversion_kind, attribution_model, utm_campaign). conversion_kind
+      is one of topup / swap_filled / token_offer_claim / marketplace_buy;
+      attribution_model is 'first_touch' or 'last_touch'.
+
+      Attribution logic: an account's UTM comes from joining its on-chain
+      pseudonym to Mixpanel (user_pseudonym == user_id_hash) and reading the
+      per-user first/last-touch campaign from int_mixpanel_ga_user_acquisition.
+      First-touch = campaign on the account's earliest utm-tagged event,
+      last-touch = latest, derived by ordering each user's events on event_time.
+      Note the two-layer coverage: 70-83% of App converters exist in Mixpanel,
+      but UTM rides only on entry/landing hits (~3% of events), so only ~2-4% of
+      converters carry an actual campaign; the rest fall to 'unknown'.
+
+      Aggregate-only (campaign-level counts, no user identifiers). Not exposed
+      via cerebro-api (inherited exclusion); accessible to the MCP / semantic
+      layer via the api_ view.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC) of the account's first conversion.
+        data_type: Date
+      - name: conversion_kind
+        description: "First-conversion type: topup, swap_filled, token_offer_claim, or marketplace_buy."
+        data_type: String
+      - name: attribution_model
+        description: >
+          UTM attribution window. 'first_touch' credits the campaign on the
+          account's EARLIEST utm-tagged Mixpanel event; 'last_touch' credits the
+          LATEST. UTM tags ride only on entry/landing hits (~3% of events), so
+          each account's scattered tagged hits are collapsed to one first/last
+          campaign by ordering on event_time (argMin/argMax over non-null
+          utm_campaign, in int_mixpanel_ga_user_acquisition). The table stacks
+          BOTH windows long — ALWAYS filter attribution_model to a single value
+          before summing new_accounts, or counts double across the two windows.
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' for accounts with no Mixpanel UTM match.
+        data_type: String
+      - name: new_accounts
+        description: Count of accounts with their first conversion of this kind in this week.
+        data_type: UInt64
+      - name: cumulative_accounts
+        description: Running total of new_accounts over weeks within (conversion_kind, attribution_model, utm_campaign).
+        data_type: UInt64
+
+  - name: api_mixpanel_ga_gnosis_app_acquisition_weekly
+    description: |
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_gnosis_app_acquisition_weekly (campaign-level counts only,
+      no user_pseudonym / user_id_hash). Weekly first Gnosis App conversions by
+      UTM campaign, for the growth team.
+
+      attribution_model selects the window: 'first_touch' = campaign on the
+      account's earliest utm-tagged Mixpanel event, 'last_touch' = latest
+      (derived per user by ordering events on event_time). 70-83% of converters
+      exist in Mixpanel but UTM rides only on entry/landing hits (~3% of
+      events), so only ~2-4% carry a campaign; the rest are 'unknown'. Both
+      windows are stacked long — filter attribution_model to one value before
+      summing new_accounts.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: conversion_kind
+        description: "topup, swap_filled, token_offer_claim, or marketplace_buy."
+        data_type: String
+      - name: attribution_model
+        description: >
+          UTM attribution window. 'first_touch' credits the campaign on the
+          account's EARLIEST utm-tagged Mixpanel event; 'last_touch' the LATEST.
+          UTM rides only on entry/landing hits (~3% of events), so each account's
+          tagged hits are collapsed to one first/last campaign by ordering on
+          event_time. BOTH windows are stacked long — ALWAYS filter to a single
+          value before summing new_accounts, or counts double.
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' if unmatched.
+        data_type: String
+      - name: new_accounts
+        description: New accounts of this conversion_kind in the week.
+        data_type: UInt64
+      - name: cumulative_accounts
+        description: Running total within (conversion_kind, attribution_model, utm_campaign).
+        data_type: UInt64

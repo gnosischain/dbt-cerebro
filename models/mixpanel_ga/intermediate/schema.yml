@@ -466,3 +466,106 @@ models:
     - elementary.schema_changes:
         severity: warn
         tags: [elementary]
+
+  - name: int_mixpanel_ga_user_acquisition
+    description: |
+      INTERNAL ONLY. Per-user (user_id_hash) marketing attribution. Collapses
+      each identified production user's sparse UTM hits into one stable
+      first-touch and last-touch campaign/source/medium, derived by ordering on
+      event_time (no initial_utm_* super-properties exist in the raw data).
+      Missing values default to 'unknown'. Carries user_id_hash — never exposed
+      to cerebro-api (inherited exclusion) or MCP (expose_to_mcp: false).
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      expose_to_mcp: false
+      api:
+        exclude_from_api: true
+    columns:
+      - name: user_id_hash
+        description: Mixpanel user pseudonym (UInt64). Same hash space as int_execution_gpay_safe_identities.user_pseudonym.
+        data_type: UInt64
+      - name: first_touch_campaign
+        description: Earliest non-empty utm_campaign for the user (query string stripped), 'unknown' if none.
+        data_type: String
+      - name: last_touch_campaign
+        description: Latest non-empty utm_campaign for the user (query string stripped), 'unknown' if none.
+        data_type: String
+      - name: first_touch_source
+        description: Earliest non-empty utm_source for the user, 'unknown' if none.
+        data_type: String
+      - name: last_touch_source
+        description: Latest non-empty utm_source for the user, 'unknown' if none.
+        data_type: String
+      - name: first_touch_medium
+        description: Earliest non-empty utm_medium for the user, 'unknown' if none.
+        data_type: String
+      - name: last_touch_medium
+        description: Latest non-empty utm_medium for the user, 'unknown' if none.
+        data_type: String
+      - name: first_seen_at
+        description: Earliest event_time observed for the user.
+        data_type: DateTime
+
+  - name: int_mixpanel_ga_gpay_first_events
+    description: |
+      INTERNAL ONLY. One row per Gnosis Pay account (identity_role=initial_owner)
+      per first-event type, with the account's Mixpanel UTM attribution attached
+      via user_pseudonym == user_id_hash. event_type is 'funded' (first
+      gpay_funded inflow) or 'first_payment' (first gpay_payment). Accounts with
+      no Mixpanel match get 'unknown' campaigns so totals reconcile to the full
+      GP funnel. Carries user_pseudonym — never exposed to cerebro-api or MCP.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      expose_to_mcp: false
+      api:
+        exclude_from_api: true
+    columns:
+      - name: event_type
+        description: "'funded' (first Safe inflow) or 'first_payment' (first card Payment)."
+        data_type: String
+      - name: first_date
+        description: Date of the account's first event of this type.
+        data_type: Date
+      - name: user_pseudonym
+        description: Gnosis Pay initial_owner pseudonym (UInt64), same hash space as Mixpanel user_id_hash.
+        data_type: UInt64
+      - name: first_touch_campaign
+        description: Account's first-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+        data_type: String
+      - name: last_touch_campaign
+        description: Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+        data_type: String
+
+  - name: int_mixpanel_ga_gnosis_app_first_events
+    description: |
+      INTERNAL ONLY. One row per Gnosis App account (user_pseudonym) per
+      first-conversion type, with the account's Mixpanel UTM attribution
+      attached via user_pseudonym == user_id_hash. conversion_kind is one of
+      topup / swap_filled / token_offer_claim / marketplace_buy. Unlike the GP
+      side, App conversions match the Mixpanel identified-user set 70-83%.
+      Accounts with no Mixpanel match get 'unknown' campaigns. Carries
+      user_pseudonym — never exposed to cerebro-api or MCP.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      expose_to_mcp: false
+      api:
+        exclude_from_api: true
+    columns:
+      - name: conversion_kind
+        description: "First-conversion type: topup, swap_filled, token_offer_claim, or marketplace_buy."
+        data_type: String
+      - name: first_date
+        description: Date of the account's first conversion of this kind.
+        data_type: Date
+      - name: user_pseudonym
+        description: Gnosis App account pseudonym (UInt64), same hash space as Mixpanel user_id_hash.
+        data_type: UInt64
+      - name: first_touch_campaign
+        description: Account's first-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+        data_type: String
+      - name: last_touch_campaign
+        description: Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+        data_type: String

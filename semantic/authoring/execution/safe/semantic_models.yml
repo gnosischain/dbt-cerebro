@@ -47,22 +47,13 @@ semantic_models:
           time_column: became_owner_at
 - name: execution_safe_owner_pseudonyms
   model: ref('fct_execution_safe_owner_pseudonyms')
-  description: |
-    Chain-wide Safe → owner pseudonym bridge. The cross-sector route
-    that lets any Safe-keyed sector mart (gpay pay_wallets, validator
-    Safes, gnosis_app AA wallets, Circles avatar Safes, ...) fan out
-    to the underlying human owner(s) and re-enter the user_pseudonym
-    graph. See `models/execution/safe/marts/fct_execution_safe_owner_
-    pseudonyms.sql` for the long-form rationale.
+  description: "Chain-wide Safe \u2192 owner pseudonym bridge. The cross-sector route\nthat lets any Safe-keyed sector mart\
+    \ (gpay pay_wallets, validator\nSafes, gnosis_app AA wallets, Circles avatar Safes, ...) fan out\nto the underlying human\
+    \ owner(s) and re-enter the user_pseudonym\ngraph. See `models/execution/safe/marts/fct_execution_safe_owner_\npseudonyms.sql`\
+    \ for the long-form rationale.\n"
   defaults:
     agg_time_dimension: became_owner_at
   entities:
-  # Both pseudonym columns are first-class `user_pseudonym` entities so
-  # the planner can equi-join from either side. The "primary" is the
-  # safe side because that's the typical lookup direction (given a
-  # Safe-keyed activity row, find its owners); the owner side is
-  # declared as a `foreign` user_pseudonym so it composes with any
-  # other user-keyed mart in the graph.
   - name: safe_user_pseudonym
     type: primary
     expr: safe_user_pseudonym
@@ -85,10 +76,13 @@ semantic_models:
   - name: safe_owner_links_value
     agg: count
     expr: safe_user_pseudonym
-    description: |
-      Count of (safe, owner) link rows. Use with the `safe_user_pseudonym`
+    description: 'Count of (safe, owner) link rows. Use with the `safe_user_pseudonym`
+
       or `owner_user_pseudonym` dimension to get distinct safes / owners
+
       respectively via `count_distinct`.
+
+      '
   - name: safe_owner_links_distinct_safes_value
     agg: count_distinct
     expr: safe_user_pseudonym
@@ -106,10 +100,9 @@ semantic_models:
         - safe to owner cross-sector fanout
         - how many EOAs own this safe
         - how many safes does this user own
-
 metrics:
 - name: safe_owner_links_total
-  label: Safe ↔ Owner Links (Total)
+  label: "Safe \u2194 Owner Links (Total)"
   type: simple
   type_params:
     measure: safe_owner_links_value
@@ -120,7 +113,6 @@ metrics:
         question_synonyms:
         - safe owner link count
         - total safe-owner pairs
-
 - name: safe_owner_distinct_safes
   label: Distinct Safes With at Least One Owner
   type: simple
@@ -134,7 +126,6 @@ metrics:
         - distinct safes
         - how many safes have owners
         - safe wallet count
-
 - name: safe_owner_distinct_owners
   label: Distinct Owners Across All Safes
   type: simple
@@ -148,3 +139,55 @@ metrics:
         - distinct safe owners
         - unique EOAs owning safes
         - safe ownership unique humans
+- name: current_threshold_value
+  label: Execution Safes Current Owners - Current Threshold
+  description: execution safes current owners - current threshold (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: current_threshold_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - owner
+        - became_owner_at
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution safes current owners current threshold
+        - current threshold
+- name: owner_count_value
+  label: Execution Safes Current Owners - Owner Count
+  description: execution safes current owners - owner count (count). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: owner_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - owner
+        - became_owner_at
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution safes current owners owner count
+        - owner count
