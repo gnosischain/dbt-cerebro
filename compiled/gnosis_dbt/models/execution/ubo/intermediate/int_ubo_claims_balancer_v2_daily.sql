@@ -34,6 +34,31 @@ daily_deltas AS (
       
         
   
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(liq.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_ubo_claims_balancer_v2_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(liq.block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`int_ubo_claims_balancer_v2_daily` AS x2
+        WHERE 1=1 
+      )
+    
+  
 
       
     GROUP BY date, ubo_address, symbol
@@ -47,24 +72,54 @@ overall_max_date AS (
 ),
 
 
+current_partition AS (
+    SELECT max(date) AS max_date
+    FROM `dbt`.`int_ubo_claims_balancer_v2_daily`
+    WHERE date < yesterday()
+),
+prev_balances AS (
+    SELECT
+        t1.ubo_address,
+        tw.symbol,
+        t1.balance_raw
+    FROM `dbt`.`int_ubo_claims_balancer_v2_daily` t1
+    CROSS JOIN current_partition t2
+    INNER JOIN `dbt`.`tokens_whitelist` tw
+        ON lower(tw.address) = lower(t1.token_address)
+    WHERE t1.date = t2.max_date
+),
 
+
+
+keys AS (
+    SELECT DISTINCT ubo_address, symbol
+    FROM (
+        SELECT ubo_address, symbol FROM prev_balances
+        UNION ALL
+        SELECT ubo_address, symbol FROM daily_deltas
+    )
+),
 
 calendar AS (
     SELECT
-        ubo_address,
-        symbol,
-        addDays(min_date, offset) AS date
-    FROM (
-        SELECT
-            d.ubo_address,
-            d.symbol,
-            min(d.date)                                   AS min_date,
-            dateDiff('day', min(d.date), any(o.max_date)) AS num_days
-        FROM daily_deltas d
-        CROSS JOIN overall_max_date o
-        GROUP BY d.ubo_address, d.symbol
-    )
-    ARRAY JOIN range(num_days + 1) AS offset
+        k.ubo_address,
+        k.symbol,
+        
+            addDays(cp.max_date, offset + 1) AS date
+        
+    FROM keys k
+    
+    CROSS JOIN current_partition cp
+    
+    CROSS JOIN overall_max_date o
+    ARRAY JOIN range(
+        toUInt32(dateDiff('day',
+            
+                cp.max_date,
+            
+            o.max_date
+        ))
+    ) AS offset
 ),
 
 
@@ -79,12 +134,18 @@ balances AS (
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
         
+            + coalesce(p.balance_raw, toInt256(0))
+        
         AS balance_raw
     FROM calendar c
     LEFT JOIN daily_deltas d
         ON  d.ubo_address = c.ubo_address
         AND d.symbol      = c.symbol
         AND d.date        = c.date
+    
+    LEFT JOIN prev_balances p
+        ON  p.ubo_address = c.ubo_address
+        AND p.symbol      = c.symbol
     
 )
 

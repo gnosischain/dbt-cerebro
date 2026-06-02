@@ -32,6 +32,31 @@ WHERE date < today()
   
     
   
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`fct_ubo_supply_claims_daily` AS x2
+        WHERE 1=1 
+      )
+    
+  
 
   
 
@@ -51,6 +76,31 @@ SELECT
 FROM `dbt`.`int_ubo_claims_balancer_v2_daily`
 WHERE date < today()
   
+    
+  
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`fct_ubo_supply_claims_daily` AS x2
+        WHERE 1=1 
+      )
     
   
 
