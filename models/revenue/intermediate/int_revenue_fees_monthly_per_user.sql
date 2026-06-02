@@ -4,11 +4,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(month, stream_type, symbol, user)',
     partition_by='toStartOfYear(month)',
-    unique_key='(month, stream_type, symbol, user)',
     settings={'allow_nullable_key': 1},
     tags=['production','revenue','revenue_cross']
   )

@@ -40,6 +40,17 @@ clean-targets:
 
 models:
   gnosis_dbt:
+    # Incremental write policy (enforced by scripts/checks/no_delete_insert.py):
+    #   - Default strategy is insert_overwrite: partition replace is mutation-free
+    #     (no ALTER DELETE) and duplicate-free (a partition holds one computed
+    #     version). Requires partition_by on every incremental model.
+    #   - Append-only event/decode streams override to 'append' + 'microbatch'
+    #     tag, which routes them through the strict no-overlap watermark.
+    # delete+insert is banned project-wide.
+    +incremental_strategy: insert_overwrite
+    contracts:
+      +incremental_strategy: append
+      +engine: "ReplacingMergeTree()"
     # Mixpanel privacy policy (two tiers):
     #   API : ALL mixpanel models are excluded from cerebro-api uniformly
     #         (enforced here via api.exclude_from_api: true).

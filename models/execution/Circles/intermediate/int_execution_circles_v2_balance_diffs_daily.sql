@@ -1,7 +1,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, account, token_address)',

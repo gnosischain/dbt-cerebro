@@ -14,10 +14,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, validator_index)',
-        unique_key='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "validators_snapshots", "microbatch"]
     )

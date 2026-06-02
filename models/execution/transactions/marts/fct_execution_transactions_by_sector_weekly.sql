@@ -1,10 +1,9 @@
 {{ config(
   materialized='incremental',
-  incremental_strategy='delete+insert',
+  incremental_strategy='insert_overwrite',
   engine='ReplacingMergeTree()',
   order_by='(week, sector)',
   partition_by='toYYYYMM(week)',
-  unique_key='(week, sector)',
   settings={ 'allow_nullable_key': 1 },
   tags=['production','execution','transactions']
 ) }}

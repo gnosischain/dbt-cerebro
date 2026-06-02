@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, group_address, token_id, batch_index, transaction_hash, log_index, event_name)',
-        unique_key='(transaction_hash, log_index, batch_index, group_address, token_id, event_name)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'circles_v2', 'groups']

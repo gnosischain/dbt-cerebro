@@ -41,6 +41,18 @@ models:
       start_date: "2021-09-01"
       batch_months: 6
 
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_CurveGauge_events
   description: |
     Decoded event log stream from the Curve x3CRV gauge deposit contract
@@ -80,3 +92,15 @@ models:
     full_refresh:
       start_date: "2021-09-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

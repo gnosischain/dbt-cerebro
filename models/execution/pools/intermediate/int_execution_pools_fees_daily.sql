@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, pool_address, token_address)',
-        unique_key='(date, protocol, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'pools', 'fees', 'accrued', 'intermediate', 'refill_append'],

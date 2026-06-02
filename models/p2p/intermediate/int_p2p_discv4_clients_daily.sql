@@ -1,10 +1,9 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, metric, label)',
-        unique_key='(date, metric, label)',
         partition_by='toStartOfMonth(date)',
         settings={
             'allow_nullable_key': 1

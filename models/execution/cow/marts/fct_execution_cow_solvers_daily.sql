@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, solver)',
-        unique_key='(date, solver)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['execution', 'cow', 'solvers', 'daily']

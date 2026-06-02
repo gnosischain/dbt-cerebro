@@ -12,10 +12,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(token_address, date)',
-        unique_key='(token_address, date)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'circles_v2', 'supply_daily', 'microbatch']

@@ -1,6 +1,7 @@
 {{
     config(
         materialized='incremental',
+        incremental_strategy='delete+insert',
         engine='MergeTree()',
         order_by='(date, bridge_contract, user_address)',
         unique_key=['date', 'bridge_contract', 'user_address', 'token_address', 'direction'],

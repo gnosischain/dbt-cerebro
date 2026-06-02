@@ -1,7 +1,6 @@
 {{
     config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
+        materialized='table',
         engine='ReplacingMergeTree()',
         order_by='(date, balance_bucket)',
         partition_by='toStartOfMonth(date)',

@@ -2,8 +2,7 @@ version: 2
 models:
 
 - name: api_execution_transactions_7d
-  description: The api_execution_transactions_7d model provides a snapshot of the total number of API execution transactions and their percentage change over the last seven days, supporting operational
-    and performance monitoring.
+  description: The api_execution_transactions_7d model provides a snapshot of the total number of API execution transactions and their percentage change over the last seven days, supporting operational and performance monitoring.
   columns:
 
   - name: value
@@ -60,8 +59,7 @@ models:
       tags:
       - elementary
 - name: api_execution_transactions_active_accounts_total
-  description: The `api_execution_transactions_active_accounts_total` model provides a snapshot of the total number of active accounts involved in API execution transactions over all time, supporting business
-    insights into account engagement levels.
+  description: The `api_execution_transactions_active_accounts_total` model provides a snapshot of the total number of active accounts involved in API execution transactions over all time, supporting business insights into account engagement levels.
   columns:
 
   - name: value
@@ -102,8 +100,7 @@ models:
       tags:
       - elementary
 - name: api_execution_transactions_active_accounts_by_sector_weekly
-  description: This view provides weekly counts of active accounts involved in API execution transactions, segmented by sector, to support monitoring and analysis of transaction activity across different
-    business sectors.
+  description: This view provides weekly counts of active accounts involved in API execution transactions, segmented by sector, to support monitoring and analysis of transaction activity across different business sectors.
   columns:
 
   - name: date
@@ -496,8 +493,7 @@ models:
       tags:
       - elementary
 - name: api_execution_transactions_fees_native_7d
-  description: The api_execution_transactions_fees_native_7d model provides a snapshot of native transaction fees and their percentage change over the last 7 days, supporting analysis of fee trends and
-    performance metrics.
+  description: The api_execution_transactions_fees_native_7d model provides a snapshot of native transaction fees and their percentage change over the last 7 days, supporting analysis of fee trends and performance metrics.
   columns:
 
   - name: value
@@ -694,8 +690,7 @@ models:
       tags:
       - elementary
 - name: api_execution_transactions_fees_native_total
-  description: The `api_execution_transactions_fees_native_total` model aggregates total native execution transaction fees over all time periods for analytical purposes, supporting business insights into
-    fee accumulation.
+  description: The `api_execution_transactions_fees_native_total` model aggregates total native execution transaction fees over all time periods for analytical purposes, supporting business insights into fee accumulation.
   columns:
 
   - name: value
@@ -710,8 +705,7 @@ models:
       tags:
       - elementary
 - name: api_execution_transactions_gas_share_by_project_daily
-  description: This view calculates the daily share of gas used by each project in relation to the total gas consumption across all projects, providing insights into project-specific gas usage patterns
-    over time.
+  description: This view calculates the daily share of gas used by each project in relation to the total gas consumption across all projects, providing insights into project-specific gas usage patterns over time.
   columns:
 
   - name: date
@@ -940,8 +934,7 @@ models:
       tags:
       - elementary
 - name: fct_execution_transactions_by_project_monthly_top5
-  description: This model aggregates and ranks execution transactions by project on a monthly basis, highlighting the top 5 projects per month based on transaction volume and related metrics for business
-    analysis.
+  description: This model aggregates and ranks execution transactions by project on a monthly basis, highlighting the top 5 projects per month based on transaction volume and related metrics for business analysis.
   columns:
 
   - name: month
@@ -1061,8 +1054,7 @@ models:
       tags:
       - elementary
 - name: fct_execution_transactions_by_sector_weekly
-  description: The fct_execution_transactions_by_sector_weekly model aggregates weekly transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across different
-    sectors.
+  description: The fct_execution_transactions_by_sector_weekly model aggregates weekly transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across different sectors.
   columns:
 
   - name: week
@@ -1107,6 +1099,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - week
+      - sector
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(week) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: api_execution_transactions_by_project_ranges_top20
   description: This view aggregates the top 20 API transaction counts per project within specified time ranges, providing insights into transaction volume distribution and identifying less active projects.
   columns:
@@ -1375,6 +1373,11 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: api_execution_transactions_active_accounts_daily
   description: Daily unique initiator accounts on Gnosis Chain. Uses bitmap merge for accurate deduplication — no double-counting across sectors or projects.
   meta:
@@ -1441,8 +1444,7 @@ models:
       - elementary
 
 - name: api_execution_transactions_by_sector_daily
-  description: The api_execution_transactions_by_sector_daily model provides daily aggregated counts of API execution transactions categorized by sector, enabling trend analysis and performance monitoring
-    over time.
+  description: The api_execution_transactions_by_sector_daily model provides daily aggregated counts of API execution transactions categorized by sector, enabling trend analysis and performance monitoring over time.
   meta:
     owner: analytics_team
     authoritative: false
@@ -1582,8 +1584,7 @@ models:
       tags:
       - elementary
 - name: fct_execution_transactions_by_sector_daily
-  description: The fct_execution_transactions_by_sector_daily model aggregates daily execution transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across
-    different sectors.
+  description: The fct_execution_transactions_by_sector_daily model aggregates daily execution transaction data by sector to support business analysis of transaction volume, gas consumption, and fees across different sectors.
   meta:
     owner: analytics_team
     authoritative: false
@@ -1631,3 +1632,9 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - sector
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

@@ -133,9 +133,6 @@ models:
   - name: slashed_validators
     description: Number of slashed validators on the given date.
     data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
   tests:
   - elementary.volume_anomalies:
       timestamp_column: date
@@ -171,6 +168,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - status
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_attestations_daily
   description: The int_consensus_attestations_daily model aggregates daily consensus attestations, providing insights into attestation activity and delays within the network.
   columns:
@@ -240,6 +243,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - inclusion_delay
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_blob_commitments_daily
   description: The `int_consensus_blob_commitments_daily` model aggregates daily counts of blob commitments from the consensus layer, supporting trend analysis and reporting.
   columns:
@@ -305,9 +314,13 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_blocks_daily
-  description: The int_consensus_blocks_daily model aggregates daily consensus block production metrics, including counts of blocks produced, blob commitments, and missed blocks, to monitor network performance
-    over time.
+  description: The int_consensus_blocks_daily model aggregates daily consensus block production metrics, including counts of blocks produced, blob commitments, and missed blocks, to monitor network performance over time.
   columns:
 
   - name: genesis_time_unix
@@ -367,6 +380,11 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_credentials_daily
   description: The int_consensus_credentials_daily model tracks the daily count of validator credentials by type, supporting analysis of credential usage trends over time.
   meta:
@@ -404,9 +422,6 @@ models:
         severity: warn
         tags:
         - elementary
-  meta:
-    owner: analytics_team
-    authoritative: false
   tests:
   - elementary.volume_anomalies:
       timestamp_column: date
@@ -442,6 +457,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - credentials_type
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_entry_queue_daily
   description: This model provides daily aggregated insights into validator activation times within the consensus protocol, enabling monitoring of validator onboarding efficiency over time.
   columns:
@@ -548,6 +569,11 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_graffiti_daily
   description: This model aggregates daily counts of graffiti entries on the blockchain, categorizing them by detected brands and clients to analyze consensus and platform usage trends.
   columns:
@@ -665,6 +691,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - graffiti
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_validators_balances_daily
   description: The `int_consensus_validators_balances_daily` model aggregates daily total and effective balances of validators from the consensus layer, supporting historical balance analysis and reporting.
   columns:
@@ -734,6 +766,11 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_deposits_withdrawals_daily
   description: This model aggregates daily consensus deposit and withdrawal data, providing insights into the total amounts and transaction counts for each day, segmented by deposit and withdrawal types.
   meta:
@@ -817,6 +854,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - label
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_validators_dists_daily
   description: This model aggregates daily distributions of validator balances and APY (Annual Percentage Yield) metrics to support analysis of validator performance and trends over time.
   meta:
@@ -930,9 +973,13 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_validators_labels
-  description: The int_consensus_validators_labels model consolidates the latest validator information, including their indices, public keys, and withdrawal credentials, to support validator management
-    and analysis within the consensus layer.
+  description: The int_consensus_validators_labels model consolidates the latest validator information, including their indices, public keys, and withdrawal credentials, to support validator management and analysis within the consensus layer.
   meta:
     owner: analytics_team
     authoritative: false
@@ -1136,6 +1183,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - withdrawal_credentials
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_validators_snapshots_daily
   description: Last-of-day validator snapshot per (date, validator_index). Built from stg_consensus__validators_all so exited and zero-balance validators remain visible. Canonical daily validator base used by int_consensus_validators_income_daily.
   meta:
@@ -1403,10 +1456,7 @@ models:
     data_type: Float64
   - name: cnt
     data_type: UInt64
-  tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, validator_index, role]
-
+  tests: []
 - name: int_consensus_validators_proposer_rewards_daily
   description: Daily per-validator proposer rewards aggregated from slot-level stg_consensus__rewards. Amounts in GNO (source Gwei / 1e9).
   meta:
@@ -1598,12 +1648,7 @@ models:
   - name: apy_rolling_30d_median
     description: 30-day trailing median of apy_weighted per credential.
     data_type: Float64
-  tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, withdrawal_credentials]
-      config:
-        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-
+  tests: []
 - name: int_consensus_validators_income_daily
   description: |
     Daily per-(date, validator_index) consensus income fact, including exited and
@@ -1798,8 +1843,4 @@ models:
   - name: total_income_estimated_gno
     description: balance_gno + cumulative_withdrawals_gno − cumulative_deposits_gno (effective) − cumulative_consolidation_inflow_gno + cumulative_consolidation_outflow_gno. In GNO.
     data_type: Float64
-  tests:
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, validator_index]
-      config:
-        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  tests: []

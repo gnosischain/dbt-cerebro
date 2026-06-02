@@ -1,7 +1,6 @@
 {{
   config(
-    materialized='incremental',
-    incremental_strategy='delete+insert',
+    materialized='table',
     engine='ReplacingMergeTree()',
     order_by='address',
     unique_key='address',

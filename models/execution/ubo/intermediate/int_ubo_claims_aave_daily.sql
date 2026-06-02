@@ -1,10 +1,9 @@
 ﻿{{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, container_address, ubo_address)',
-        unique_key='(date, protocol, container_address, ubo_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production','execution','ubo','claims','aave','spark']

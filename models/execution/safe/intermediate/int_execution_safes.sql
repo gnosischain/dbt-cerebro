@@ -4,11 +4,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(safe_address)',
     partition_by='toStartOfMonth(block_timestamp)',
-    unique_key='(safe_address)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','safe'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],

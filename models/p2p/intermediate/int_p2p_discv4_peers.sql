@@ -1,10 +1,9 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(visit_ended_at, peer_id)',
-        unique_key='(visit_ended_at, peer_id)',
         partition_by='toStartOfMonth(visit_ended_at)',
         tags=['production','p2p','discv4'],
         pre_hook=["SET allow_experimental_json_type = 1"],

@@ -1,13 +1,13 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+    incremental_strategy='append',
     engine='ReplacingMergeTree()',
     order_by='(safe_address, block_timestamp, log_index)',
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(transaction_hash, log_index, owner)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','safe'],
+    tags=['production','execution','safe', 'microbatch'],
     pre_hook=[
         "SYSTEM DROP MARK CACHE",
         "SYSTEM DROP UNCOMPRESSED CACHE",
@@ -19,7 +19,7 @@
     post_hook=["SET allow_experimental_json_type = 0", "SET join_algorithm = 'default'"],
     query_settings={
         'max_threads': '1',
-        'max_memory_usage': '2000000000',
+        'max_memory_usage': '4000000000',
         'memory_usage_overcommit_max_wait_microseconds': '60000000',
         'group_by_two_level_threshold': '1',
         'group_by_two_level_threshold_bytes': '1',

@@ -11,15 +11,19 @@ models:
       start_date: "2020-07-01"
       batch_months: 1
   columns:
-    - name: address
-      tests: [not_null]
-    - name: date
-      tests: [not_null]
-    - name: total_balance_usd
-    - name: tokens_held
+  - name: address
+    tests: [not_null]
+  - name: date
+    tests: [not_null]
+  - name: total_balance_usd
+  - name: tokens_held
   tests:
-    - dbt_utils.unique_combination_of_columns:
-        combination_of_columns: [address, date]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - address
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_account_token_movements_in_daily
   description: |
@@ -38,18 +42,24 @@ models:
         date_column: date
         batch_days: 1
   columns:
-    - name: date
-      tests: [not_null]
-    - name: address
-      tests: [not_null]
-    - name: counterparty
-    - name: direction
-      tests:
-        - accepted_values:
-            values: ['in']
+  - name: date
+    tests: [not_null]
+  - name: address
+    tests: [not_null]
+  - name: counterparty
+  - name: direction
+    tests:
+    - accepted_values:
+        values: ['in']
   tests:
-    - dbt_utils.unique_combination_of_columns:
-        combination_of_columns: [date, address, counterparty, token_address]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - address
+      - date
+      - counterparty
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_account_token_movements_out_daily
   description: |
@@ -61,15 +71,21 @@ models:
       start_date: "2020-07-01"
       batch_months: 1
   columns:
-    - name: date
-      tests: [not_null]
-    - name: address
-      tests: [not_null]
-    - name: counterparty
-    - name: direction
-      tests:
-        - accepted_values:
-            values: ['out']
+  - name: date
+    tests: [not_null]
+  - name: address
+    tests: [not_null]
+  - name: counterparty
+  - name: direction
+    tests:
+    - accepted_values:
+        values: ['out']
   tests:
-    - dbt_utils.unique_combination_of_columns:
-        combination_of_columns: [date, address, counterparty, token_address]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - address
+      - date
+      - counterparty
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

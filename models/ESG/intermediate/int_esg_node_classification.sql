@@ -1,7 +1,6 @@
 {{ 
     config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
+        materialized='table',
         unique_key='(date, node_category)',
         order_by='(date, node_category)',
         partition_by='toStartOfMonth(date)',

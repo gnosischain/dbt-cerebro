@@ -1,3 +1,21 @@
+{#
+  IMPORTANT — strategy-aware duplicate/data safety. Three branches:
+
+  1. insert_overwrite (partition replace): emits a WHOLE-PARTITION (month-
+     granular) filter. dbt-clickhouse replaces every partition present in the
+     incremental result; if the filter returned only the last N days the
+     replace would wipe the rest of the month. So under insert_overwrite the
+     filter must return COMPLETE months (toStartOfMonth lower bound only, no
+     day-level restriction) — the recompute is lossless.
+
+  2. microbatch append (incremental_end_date set): strict no-overlap
+     `> max(date)` ... `<= incr_end`. Exact-once append, no duplicates.
+
+  3. legacy delete+insert (day-granular lookback): re-pulls the last N days;
+     delete+insert removes the matching unique_key rows first, so the narrow
+     window is safe. NEVER use this branch with `append` (it would duplicate)
+     — append models use a strict block_number/date watermark instead.
+#}
 {% macro apply_monthly_incremental_filter(source_field, destination_field=None, add_and=False, lookback_days=1, lookback_res='day', filters_sql='') %}
   {% if is_incremental() %}
     {% set dest_field = destination_field if destination_field is not none else source_field %}
@@ -9,9 +27,18 @@
     {% set effective_lookback = var('price_lookback_days', lookback_days) | int %}
     {% set lb_days = effective_lookback - 1 %}
     {% set incr_end = var('incremental_end_date', none) %}
+    {% set strategy = config.get('incremental_strategy') %}
 
     {{ "AND " if add_and else "WHERE " }}
-    {% if incr_end is not none %}
+    {% if incr_end is none and strategy == 'insert_overwrite' %}
+      {# Whole-partition recompute: return complete months so REPLACE PARTITION
+         is lossless. No day-level lower bound here on purpose. #}
+      toStartOfMonth(toDate({{ source_field }})) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.{{ dest_field }})), -{{ lb_days }}))
+        FROM {{ this }} AS x1
+        WHERE 1=1 {{ filters_sql }}
+      )
+    {% elif incr_end is not none %}
       {# No-overlap microbatch path: strict > max(target_date), <= incr_end.
          Lookback is intentionally suppressed — the microbatch runner is the
          authority on what's been processed. Allowing the macro's lookback

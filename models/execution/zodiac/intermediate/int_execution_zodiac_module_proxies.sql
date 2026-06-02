@@ -1,13 +1,13 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+    incremental_strategy='append',
     engine='ReplacingMergeTree()',
     order_by='(proxy_address)',
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(proxy_address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','execution','zodiac'],
+    tags=['production','execution','zodiac', 'microbatch'],
     pre_hook=["SET allow_experimental_json_type = 1"],
     post_hook=["SET allow_experimental_json_type = 0"]
   )

@@ -231,6 +231,7 @@ WHERE {{ abi_filter }}
 {% set sql_body %}
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
 
 {# ---------------------------------------------------------------
    Auto-detect whether `tx_table` points at `execution.traces`. When
@@ -298,9 +299,19 @@ WITH
           AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
         {% endif %}
 
+        {# Daily no-overlap watermark. block_number is strictly monotonic and
+           immutable, so `> max(block_number)` appends each block exactly once
+           with no anti-join (memory-light) and no shared-timestamp boundary
+           that block_timestamp would hit. Reorg/late corrections go through a
+           targeted --full-refresh, never the daily path. #}
         {% if incremental_column and not flags.FULL_REFRESH %}
-          AND {{ incremental_column }} >
-              (SELECT coalesce(max({{ incremental_column }}), '1970-01-01') FROM {{ this }})
+          AND block_number > (SELECT coalesce(max(block_number), -1) FROM {{ this }})
+          {# Microbatch upper bound: runner advances incremental_end_date one day
+             at a time so each slice reads only that day's new blocks (bounded
+             memory for catch-up). No-op on the plain daily path. #}
+          {% if incr_end is not none %}
+            AND toDate({{ incremental_column }}) <= toDate('{{ incr_end }}')
+          {% endif %}
         {% endif %}
         AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
     )

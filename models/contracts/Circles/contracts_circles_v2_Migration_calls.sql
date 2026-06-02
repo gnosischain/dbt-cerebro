@@ -1,13 +1,13 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='append',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, trace_address)',
         unique_key='(block_timestamp, transaction_hash, trace_address)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'contracts', 'circles_v2', 'calls'],
+        tags=['production', 'contracts', 'circles_v2', 'calls', 'microbatch'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )

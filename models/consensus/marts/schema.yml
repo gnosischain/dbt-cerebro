@@ -284,8 +284,7 @@ models:
       tags:
       - elementary
 - name: api_consensus_credentials_latest
-  description: The api_consensus_credentials_latest model provides a snapshot of the most recent count of different credential types used in the API consensus system, supporting real-time monitoring and
-    analysis.
+  description: The api_consensus_credentials_latest model provides a snapshot of the most recent count of different credential types used in the API consensus system, supporting real-time monitoring and analysis.
   columns:
 
   - name: credentials_type
@@ -553,8 +552,7 @@ models:
       tags:
       - elementary
 - name: api_consensus_graffiti_cloud
-  description: The api_consensus_graffiti_cloud model aggregates consensus data related to graffiti labels and their associated values, facilitating analysis of graffiti patterns and trends at a granular
-    level.
+  description: The api_consensus_graffiti_cloud model aggregates consensus data related to graffiti labels and their associated values, facilitating analysis of graffiti patterns and trends at a granular level.
   columns:
 
   - name: label
@@ -780,8 +778,7 @@ models:
     owner: analytics_team
     authoritative: false
 - name: api_consensus_validators_active_daily
-  description: The api_consensus_validators_active_daily model provides a daily snapshot of the number of validators that are actively participating in the consensus process, supporting monitoring and analysis
-    of validator activity trends.
+  description: The api_consensus_validators_active_daily model provides a daily snapshot of the number of validators that are actively participating in the consensus process, supporting monitoring and analysis of validator activity trends.
   columns:
 
   - name: date
@@ -991,8 +988,7 @@ models:
       tags:
       - elementary
 - name: api_consensus_validators_status_daily
-  description: The api_consensus_validators_status_daily model provides a daily summary of validator statuses, excluding ongoing active and withdrawal completed states, to monitor validator health and transitions
-    over time.
+  description: The api_consensus_validators_status_daily model provides a daily summary of validator statuses, excluding ongoing active and withdrawal completed states, to monitor validator health and transitions over time.
   columns:
 
   - name: date
@@ -1182,8 +1178,7 @@ models:
     data_type: DateTime64
 
 - name: fct_consensus_forks
-  description: The fct_consensus_forks model provides a consolidated view of consensus fork details, including their identifiers, versions, and activation times, to support analysis of network upgrades
-    and protocol changes.
+  description: The fct_consensus_forks model provides a consolidated view of consensus fork details, including their identifiers, versions, and activation times, to support analysis of network upgrades and protocol changes.
   columns:
 
   - name: fork_digest
@@ -1253,8 +1248,7 @@ models:
       tags:
       - elementary
 - name: fct_consensus_info_latest
-  description: The fct_consensus_info_latest model aggregates the most recent and 7-day summary metrics related to deposits, withdrawals, validator APY, validator status, and staked balances, providing
-    a comprehensive snapshot of consensus-related financial activity and validator health.
+  description: The fct_consensus_info_latest model aggregates the most recent and 7-day summary metrics related to deposits, withdrawals, validator APY, validator status, and staked balances, providing a comprehensive snapshot of consensus-related financial activity and validator health.
   columns:
 
   - name: label
@@ -1801,6 +1795,12 @@ models:
     description: Share with inclusion_delay > 1. Range [0, 1].
     data_type: Float64
 
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: api_consensus_validators_performance_daily
   description: Public API view joining daily income and proposer-reward facts at (date, validator_index). Filterable by validator_index, pubkey, withdrawal_credentials, withdrawal_address, date_from, date_to.
   columns:
@@ -2155,6 +2155,13 @@ models:
       (N>1) and a clean rolling-median line (N=1 → solo credential) on the APY chart.
     data_type: UInt64
 
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - withdrawal_credentials
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: fct_consensus_validators_explorer_members_table
   description: |
     Members table for the Validator Explorer tab: one row per validator under the
@@ -2297,7 +2304,7 @@ models:
     BLS pubkey hashes, not EVM addresses — can't be projected into the
     pseudonym space). See model description for the full caveat list.
   columns:
-  - {name: user_pseudonym,           description: Cross-sector pseudonym (sipHash64 of withdrawal address).,                  data_type: UInt64}
-  - {name: n_validators_controlled,  description: Count of 0x01-credential validators controlled by this withdrawal address., data_type: UInt64}
-  - {name: concentration_tier,       description: "Bucket: 'single' / 'small (2-10)' / 'medium (11-100)' / 'large (101-1000)' / 'whale (>1000)'.", data_type: String}
+  - {name: user_pseudonym, description: Cross-sector pseudonym (sipHash64 of withdrawal address)., data_type: UInt64}
+  - {name: n_validators_controlled, description: Count of 0x01-credential validators controlled by this withdrawal address., data_type: UInt64}
+  - {name: concentration_tier, description: "Bucket: 'single' / 'small (2-10)' / 'medium (11-100)' / 'large (101-1000)' / 'whale (>1000)'.", data_type: String}
   meta: {owner: consensus_team, authoritative: false}

@@ -13,11 +13,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     partition_by='toStartOfMonth(date)',
     order_by='(address, date, counterparty, token_address)',
-    unique_key='(date, address, counterparty, token_address)',
     settings={ 'allow_nullable_key': 1 },
     pre_hook=[
       "SET max_threads = 1",

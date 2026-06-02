@@ -68,7 +68,8 @@
         output_json_type=false,
         incremental_column='block_timestamp',
         address_column='address',
-        start_blocktime=null  
+        start_blocktime=null,
+        event_name_filter=none
 ) %}
 
 {# Check if using ref model (new way) or address list (old way) #}
@@ -163,9 +164,24 @@ FROM {{ ref('event_signatures') }}
 WHERE {{ abi_filter }}
 {% endset %}
 
+{# — Optional pre-decode topic0 filter — #}
+{# When event_name_filter is supplied, resolve those event names to their
+   topic0 signatures from the event_signatures seed and push the filter into
+   the logs CTE *before* the dedup window and the decode arrayMaps. This avoids
+   decoding every log just to keep a few rare event types. #}
+{% set topic0_filter = "" %}
+{% if event_name_filter %}
+  {% set ev_quoted = [] %}
+  {% for ev in event_name_filter %}
+    {% set _ = ev_quoted.append("'" ~ ev ~ "'") %}
+  {% endfor %}
+  {% set topic0_filter = "AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM " ~ ref('event_signatures') ~ " WHERE event_name IN (" ~ ev_quoted | join(', ') ~ "))" %}
+{% endif %}
+
 {% set sql_body %}
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
 
 WITH
 
@@ -179,6 +195,10 @@ logs AS (
     FROM {{ source_table }}
     WHERE {{ addr_filter }}
 
+      {% if topic0_filter %}
+        {{ topic0_filter }}
+      {% endif %}
+
       {% if start_blocktime is not none and start_blocktime|trim != '' %}
         AND {{ incremental_column }} >= toDateTime('{{ start_blocktime }}')
       {% endif %}
@@ -189,10 +209,20 @@ logs AS (
         AND {{ incremental_column }} <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
       {% endif %}
 
+      {# Daily no-overlap watermark. block_number is strictly monotonic and
+         immutable, so `> max(block_number)` appends each block exactly once
+         with no anti-join (memory-light) and no shared-timestamp boundary
+         that block_timestamp would hit. Reorg/late corrections go through a
+         targeted --full-refresh, never the daily path. #}
       {% if incremental_column and not flags.FULL_REFRESH %}
-        AND {{ incremental_column }} >
-          (SELECT coalesce(max({{ incremental_column }}),'1970-01-01')
-           FROM {{ this }})
+        AND block_number > (SELECT coalesce(max(block_number), -1) FROM {{ this }})
+        {# Microbatch upper bound: the runner advances incremental_end_date one
+           day at a time, so each slice only reads that day's new blocks. This
+           lets a model that's far behind catch up in bounded, low-memory slices
+           instead of one giant backlog read. No-op on the plain daily path. #}
+        {% if incr_end is not none %}
+          AND toDate({{ incremental_column }}) <= toDate('{{ incr_end }}')
+        {% endif %}
       {% endif %}
   )
   WHERE _dedup_rn = 1

@@ -4,11 +4,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     partition_by='toStartOfMonth(date)',
     order_by='(address, date)',
-    unique_key='(address, date)',
     settings={ 'allow_nullable_key': 1 },
     pre_hook=[
       "SET max_threads = 1",

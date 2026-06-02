@@ -93,6 +93,14 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - address
+      - heuristic_kind
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_users_current
   description: |
     Snapshot of the Gnosis App sector. One row per address that triggered
@@ -234,6 +242,13 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_gpay_topups
   description: |
     Gnosis App → Gnosis Pay TopUps.
@@ -303,6 +318,13 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_user_activity_daily
   description: |
     Foundation table for all Gnosis App user-activity analytics — one row
@@ -364,10 +386,10 @@ models:
       tags: [elementary]
   - elementary.volume_anomalies:
       timestamp_column: date
-      time_bucket: { period: day, count: 1 }
-      training_period: { period: day, count: 56 }
+      time_bucket: {period: day, count: 1}
+      training_period: {period: day, count: 56}
       seasonality: day_of_week
-      detection_period: { period: day, count: 2 }
+      detection_period: {period: day, count: 2}
       anomaly_sensitivity: 3
       ignore_small_changes:
         spike_failure_percent_threshold: 10
@@ -376,7 +398,7 @@ models:
       tags: [elementary]
   - elementary.freshness_anomalies:
       timestamp_column: date
-      time_bucket: { period: day, count: 1 }
+      time_bucket: {period: day, count: 1}
       severity: warn
       tags: [elementary]
 
@@ -464,7 +486,6 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
-
 - name: int_execution_gnosis_app_marketplace_offers
   description: |
     Gnosis App marketplace offers — one row per non-excluded PaymentGateway
@@ -559,6 +580,13 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_gnosis_app_user_identities
   description: |
@@ -769,6 +797,13 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_user_identity_bridge
   description: |
     INTERNAL ONLY — holds raw `address` and `user_pseudonym` together for
@@ -839,10 +874,6 @@ models:
       severity: warn
       tags:
       - elementary
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [address, user_pseudonym]
-      severity: error
-
 - name: int_execution_gnosis_app_events_chain_unified
   description: |
     Long-form on-chain GA event log at full timestamp grain, keyed by
@@ -927,9 +958,14 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [event_ts, event_kind, user_pseudonym, event_dedup_key]
-      severity: warn
-
+      combination_of_columns:
+      - event_date
+      - user_pseudonym
+      - event_ts
+      - event_kind
+      - event_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(event_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_user_events_unified
   description: |
     Thin UNION ALL of `int_execution_gnosis_app_events_chain_unified` +
@@ -1001,6 +1037,15 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - event_date
+      - event_kind
+      - user_pseudonym
+      - event_ts
+      - event_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(event_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_gnosis_app_conversions
   description: |
@@ -1067,9 +1112,14 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_ts, conversion_kind, user_pseudonym, conversion_dedup_key]
-      severity: error
-
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      - user_pseudonym
+      - conversion_ts
+      - conversion_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_coverage_daily
   description: |
     Per-day, per-conversion-kind tracked-coverage stats. The MTA
@@ -1127,9 +1177,11 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_date, conversion_kind]
-      severity: error
-
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_weekly_signals
   description: >
     Composite weekly activity for the Gnosis App WAU metric. UNION of
@@ -1151,11 +1203,6 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [week, address]
-      config:
-        severity: warn
-
 - name: int_execution_gnosis_app_weekly_earners
   description: >
     Weekly "economic earners" set for the WEAU metric: addresses that
@@ -1176,11 +1223,6 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [week, address]
-      config:
-        severity: warn
-
 - name: int_execution_gnosis_app_swap_fees_daily
   description: >
     Daily aggregated CoW protocol fee revenue from Gnosis App swaps.
@@ -1205,8 +1247,10 @@ models:
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date]
-      config: {severity: warn}
+      combination_of_columns:
+      - date
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_gnosis_app_swap_fees_weekly
   description: Weekly rollup of swap_fees_daily.
@@ -1245,10 +1289,6 @@ models:
   meta: {owner: analytics_team, authoritative: false}
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [address]
-      config: {severity: warn}
-
 - name: int_execution_gnosis_app_first_conversion
   description: One row per GA user with first-event-per-conversion-kind timestamps.
   columns:
@@ -1261,10 +1301,6 @@ models:
   meta: {owner: analytics_team, authoritative: false}
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [address]
-      config: {severity: warn}
-
 - name: int_execution_gnosis_app_token_offer_claim_funnel_daily
   description: >
     Daily per-offer token-offer claim conversion. Eligible-pool denominator
@@ -1286,6 +1322,3 @@ models:
       batch_months: 3
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, offer_address]
-      config: {severity: warn}

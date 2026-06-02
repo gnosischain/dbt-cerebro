@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized            = 'incremental',
-        incremental_strategy    = ('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='append',
         engine                  = 'ReplacingMergeTree()',
         order_by                = '(contract_address, block_timestamp, transaction_hash, log_index)',
         unique_key              = '(contract_address, transaction_hash, log_index)',
@@ -9,7 +9,7 @@
         settings                = { 
                                     'allow_nullable_key': 1 
                                 },
-        tags                    = ['production','contracts','uniswapv3','events'],
+        tags                    = ['production','contracts','uniswapv3','events', 'microbatch'],
         pre_hook=["SET allow_experimental_json_type = 1", "SET max_block_size = 5000"],
         post_hook=["SET allow_experimental_json_type = 0", "SET max_block_size = 65505"]
     )

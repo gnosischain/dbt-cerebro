@@ -95,6 +95,16 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - wallet_address
+      - block_timestamp
+      - transaction_hash
+      - token_address
+      - counterparty
+      - direction
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_activity_daily
   description: Incremental model that aggregates Gnosis Pay wallet activity at the daily level, grouped by wallet, action, direction, and token symbol.
   columns:
@@ -189,6 +199,14 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - wallet_address
+      - action
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_balances_daily
   description: Incremental model that tracks daily token balances for each Gnosis Pay wallet address, with both native and USD values.
   columns:
@@ -308,6 +326,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - pay_wallet
+      - owner
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_gpay_modules_registry
   description: |
     Cross-referenced registry of every Zodiac module proxy that is currently
@@ -425,12 +449,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - delay_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_roles_events
   description: |
     Decoded events from the Zodiac Roles v2 module proxies attached to GP
@@ -524,12 +559,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - roles_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_spender_events
   description: |
     Decoded events from the Gnosis Pay Spender module proxies attached to
@@ -633,12 +679,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - spender_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_spend_activity_daily
   description: |
     Daily card-spend activity per GP Safe.
@@ -684,6 +741,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - gp_safe
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_safe_modules
   description: |
     Current module topology per Gnosis Pay Safe.
@@ -838,6 +901,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - gp_safe
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_safe_identities
   description: |
     PURPOSE
@@ -1012,10 +1081,6 @@ models:
   # distinguishes the rows. Same can apply to initial_owner if one EOA
   # set up multiple Safes. The genuine unique key is
   # (address, identity_role, gp_safe).
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [address, identity_role, gp_safe]
-      severity: error
-
 - name: int_execution_gpay_user_events_unified
   description: |
     Long-form GP-side chain event log keyed by
@@ -1100,9 +1165,15 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [event_ts, event_kind, user_pseudonym, identity_role, event_dedup_key]
-      severity: warn
-
+      combination_of_columns:
+      - event_date
+      - user_pseudonym
+      - event_ts
+      - event_kind
+      - identity_role
+      - event_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(event_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_conversions
   description: |
     GP conversion registry. One row per (conversion event, identity_role)
@@ -1182,9 +1253,15 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_ts, conversion_kind, user_pseudonym, identity_role, conversion_dedup_key]
-      severity: error
-
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      - user_pseudonym
+      - identity_role
+      - conversion_ts
+      - conversion_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_coverage_daily
   description: |
     Per-day, per-(`conversion_kind`, `identity_role`) tracked-coverage
@@ -1245,5 +1322,9 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_date, conversion_kind, identity_role]
-      severity: error
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      - identity_role
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

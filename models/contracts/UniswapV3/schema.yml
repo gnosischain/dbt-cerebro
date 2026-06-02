@@ -40,6 +40,18 @@ models:
       start_date: "2022-04-22"
       batch_months: 6
 
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_UniswapV3_Pool_events
   description: |
     Decoded event log stream from Uniswap V3 Pool contracts on Gnosis. Pool
@@ -55,6 +67,19 @@ models:
       start_date: "2022-04-22"
       batch_months: 6
 
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - contract_address
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_UniswapV3_NonfungiblePositionManager_events
   description: |
     Decoded events from the Uniswap V3 NonfungiblePositionManager contract
@@ -69,6 +94,18 @@ models:
       start_date: "2022-04-22"
       batch_months: 1
 
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_UniswapV3_Pool_events_live
   description: >
     Plain view over `execution_live.logs` that decodes Uniswap V3 Pool events
@@ -80,3 +117,15 @@ models:
     — before the dedup window function and ABI join — which is the only position
     where ClickHouse can use it for partition/granule skipping.
   columns: *event_columns
+  meta:
+    full_refresh:
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_number
+      - transaction_index
+      - log_index

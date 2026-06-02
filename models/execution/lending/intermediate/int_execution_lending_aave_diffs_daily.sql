@@ -1,7 +1,6 @@
 {{
     config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
+        materialized='table',
         on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, reserve_address, user_address)',

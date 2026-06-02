@@ -58,6 +58,17 @@ models:
     full_refresh:
       start_date: "2021-01-13"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_Realitio_v2_1_events
   description: The `contracts_Realitio_v2_1_events` model captures and processes event logs related to Realitio V2.1 contract interactions, enabling analysis of contract activity over time.
   columns:
@@ -123,3 +134,14 @@ models:
     full_refresh:
       start_date: "2021-01-13"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

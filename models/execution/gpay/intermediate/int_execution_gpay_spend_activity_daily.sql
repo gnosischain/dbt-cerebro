@@ -1,11 +1,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, gp_safe)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, gp_safe)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','gpay']
   )

@@ -58,6 +58,17 @@ models:
     full_refresh:
       start_date: "2023-09-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_wxdai_calls
   description: The `contracts_wxdai_calls` model captures and decodes call interactions with the specified wxDai contract, providing detailed insights into transaction activity over time.
   columns:
@@ -115,6 +126,17 @@ models:
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_wxdai_events
   description: The `contracts_wxdai_events` model captures and processes event logs related to the specified contract address, enabling analysis of contract interactions on a monthly incremental basis.
   columns:
@@ -156,3 +178,14 @@ models:
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

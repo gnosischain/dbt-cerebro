@@ -6,11 +6,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, user)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, user)',
     settings={'allow_nullable_key': 1},
     tags=['production', 'revenue', 'revenue_gnosis_app']
   )

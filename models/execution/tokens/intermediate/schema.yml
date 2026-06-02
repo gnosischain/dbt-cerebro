@@ -2,8 +2,7 @@ version: 2
 models:
 
 - name: int_execution_tokens_address_diffs_daily
-  description: This model calculates daily net address-level token transfer deltas, capturing inflows and outflows for each address to support analysis of token movement patterns and address activity over
-    time.
+  description: This model calculates daily net address-level token transfer deltas, capturing inflows and outflows for each address to support analysis of token movement patterns and address activity over time.
   columns:
 
   - name: date
@@ -52,6 +51,13 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      - address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_tokens_balances_native_daily
   description: Daily cumulative native-token balances per address. Holds the heavy running-sum compute; does not include USD pricing so price backfills do not trigger recomputation here.
   columns:
@@ -211,9 +217,15 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      - address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_tokens_transfers_daily
-  description: The int_execution_tokens_transfers_daily model aggregates daily transfer metrics for tokens, providing insights into token transfer volumes, counts, and user activity for analytics and reporting
-    purposes.
+  description: The int_execution_tokens_transfers_daily model aggregates daily transfer metrics for tokens, providing insights into token transfer volumes, counts, and user activity for analytics and reporting purposes.
   columns:
 
   - name: date
@@ -277,6 +289,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_tokens_supply_holders_daily
   description: Daily supply and holder counts aggregated by token.
   meta:
@@ -314,6 +332,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_tokens_balance_cohorts_daily
   description: Daily token balance cohort distributions, segmenting holders into balance buckets.
   meta:

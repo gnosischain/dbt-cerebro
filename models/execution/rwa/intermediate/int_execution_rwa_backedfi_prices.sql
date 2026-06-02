@@ -1,10 +1,9 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, bticker)',
-        unique_key='(date, bticker)',
         partition_by='toStartOfMonth(date)',
         tags=['production','execution','rwa','backedfi','prices']
     )
