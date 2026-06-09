@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'mta', 'execution', 'gnosis_app', 'tier1',
-          'api:gnosis_app_attribution_30d', 'granularity:rolling_180d']
+    tags=['production', 'mta', 'execution', 'gnosis_app', 'tier1', 'api:gnosis_app_attribution', 'granularity:rolling_180d', 'window:30d']
   )
 }}
 

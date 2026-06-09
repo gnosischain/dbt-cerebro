@@ -26,7 +26,7 @@
        re-pull the wider window without per-model edits or a tag registry. #}
     {% set effective_lookback = var('price_lookback_days', lookback_days) | int %}
     {% set lb_days = effective_lookback - 1 %}
-    {% set incr_end = var('incremental_end_date', none) %}
+    {% set incr_end = mb_var('incremental_end_date') %}
     {% set strategy = config.get('incremental_strategy') %}
 
     {{ "AND " if add_and else "WHERE " }}

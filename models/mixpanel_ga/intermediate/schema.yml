@@ -564,11 +564,18 @@ models:
 - name: int_mixpanel_ga_gpay_first_events
   description: |
     INTERNAL ONLY. One row per Gnosis Pay account (identity_role=initial_owner)
-    per first-event type, with the account's Mixpanel UTM attribution attached
-    via user_pseudonym == user_id_hash. event_type is 'funded' (first
-    gpay_funded inflow) or 'first_payment' (first gpay_payment). Accounts with
-    no Mixpanel match get 'unknown' campaigns so totals reconcile to the full
-    GP funnel. Carries user_pseudonym — never exposed to cerebro-api or MCP.
+    per first-event type. event_type is 'funded' (first gpay_funded inflow) or
+    'first_payment' (first gpay_payment).
+
+    UTM is resolved via two paths, GA-controller wins: for app-onboarded Safes
+    the initial_owner that signed Safe setup is the Cometh relayer (never matches
+    Mixpanel), so we prefer the campaign of the Gnosis App user enabled on the
+    Safe's Delay module (int_execution_gnosis_app_gpay_wallets.first_ga_owner_address,
+    pseudonymized), falling back to the direct initial_owner pseudonym match,
+    then 'unknown'. Only the campaign assignment changes; the account count per
+    event_type is unchanged. Accounts with no signal get 'unknown' so totals
+    reconcile to the full GP funnel. Carries user_pseudonym — never exposed to
+    cerebro-api or MCP.
   meta:
     owner: analytics_team
     privacy_tier: internal
@@ -586,10 +593,16 @@ models:
     description: Gnosis Pay initial_owner pseudonym (UInt64), same hash space as Mixpanel user_id_hash.
     data_type: UInt64
   - name: first_touch_campaign
-    description: Account's first-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+    description: Account's first-touch utm_campaign (GA controller preferred, else initial_owner), 'unknown' if no signal.
     data_type: String
   - name: last_touch_campaign
-    description: Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
+    description: Account's last-touch utm_campaign (GA controller preferred, else initial_owner), 'unknown' if no signal.
+    data_type: String
+  - name: first_touch_attribution_path
+    description: "INTERNAL audit: which identity supplied first_touch_campaign — 'ga_controller' (via App<>GP link), 'initial_owner' (direct match), or 'unknown'. Not propagated to the weekly mart or any api_ view."
+    data_type: String
+  - name: last_touch_attribution_path
+    description: "INTERNAL audit: which identity supplied last_touch_campaign — 'ga_controller', 'initial_owner', or 'unknown'. Resolves independently of first_touch. Not propagated to the weekly mart or any api_ view."
     data_type: String
 
 - name: int_mixpanel_ga_gnosis_app_first_events

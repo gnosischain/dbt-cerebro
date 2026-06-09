@@ -7,6 +7,14 @@
         order_by='(date, protocol, container_address, ubo_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
+        pre_hook=[
+            "SET max_memory_usage = 6000000000",
+            "SET max_bytes_before_external_sort = 2000000000"
+        ],
+        post_hook=[
+            "SET max_memory_usage = 0",
+            "SET max_bytes_before_external_sort = 0"
+        ],
         tags=['production','execution','ubo','claims','supply_claims']
     )
 }}

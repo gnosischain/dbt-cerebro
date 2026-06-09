@@ -39,6 +39,59 @@ models:
       severity: warn
       tags: [elementary]
 
+- name: fct_execution_gnosis_app_gpay_volume_daily
+  description: |
+    Gnosis-App-scoped Gnosis Pay funding & spend volume, daily, split by
+    onboarding class. Backing fact table for api_execution_gnosis_app_gpay_volume_daily.
+
+    Counts only activity from int_execution_gpay_activity on GA-controlled
+    Safes, gated to block_timestamp >= first_ga_owner_at (exact post-link
+    attribution; matters for `imported` wallets). This is the real funding/spend
+    picture the narrow int_execution_gnosis_app_gpay_topups model (in-app
+    swap-to-card flow only) does not capture.
+
+      funded_volume_usd — inflows (Fiat Top Up + Crypto Deposit). Loaded volume,
+                          NOT current/remaining balance.
+      spend_usd         — card payments (action='Payment').
+  columns:
+  - name: date
+    data_type: Date
+    tests: [not_null]
+  - name: onboarding_class
+    description: "'onboarded_via_ga' or 'imported'."
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['onboarded_via_ga', 'imported']
+  - name: funded_volume_usd
+    description: USD inflows (Fiat Top Up + Crypto Deposit) on GA-controlled Safes on this date.
+    data_type: Float64
+  - name: spend_usd
+    description: USD card payments (action='Payment') on GA-controlled Safes on this date.
+    data_type: Float64
+  - name: spend_count
+    description: Number of card Payment transactions on this date.
+    data_type: UInt64
+  - name: spending_wallets
+    description: Distinct GA-controlled Safes that made a card payment on this date.
+    data_type: UInt64
+  - name: funded_volume_cumulative_usd
+    description: Running total of funded_volume_usd within onboarding_class up to and including this date.
+    data_type: Float64
+  - name: spend_cumulative_usd
+    description: Running total of spend_usd within onboarding_class up to and including this date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [date, onboarding_class]
+
 - name: fct_execution_gnosis_app_swaps_daily
   description: |
     Daily Gnosis App swap activity, derived from int_execution_gnosis_app_swaps.
@@ -131,6 +184,37 @@ models:
     data_type: UInt64
   - name: n_ga_wallets_cumulative
     data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+
+- name: api_execution_gnosis_app_gpay_volume_daily
+  description: |
+    FastAPI endpoint view of fct_execution_gnosis_app_gpay_volume_daily.
+    GA-controlled Gnosis Pay funding (funded_volume_usd) and card spend
+    (spend_usd) per day, split by onboarding_class, with cumulative series.
+    Supports query params: onboarding_class, start_date, end_date.
+  columns:
+  - name: date
+    data_type: Date
+  - name: onboarding_class
+    data_type: String
+  - name: funded_volume_usd
+    data_type: Float64
+  - name: spend_usd
+    data_type: Float64
+  - name: spend_count
+    data_type: UInt64
+  - name: spending_wallets
+    data_type: UInt64
+  - name: funded_volume_cumulative_usd
+    data_type: Float64
+  - name: spend_cumulative_usd
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false

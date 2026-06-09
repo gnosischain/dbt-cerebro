@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'mta', 'execution', 'gpay', 'tier1',
-          'api:gpay_attribution_30d', 'granularity:rolling_180d']
+    tags=['production', 'mta', 'execution', 'gpay', 'tier1', 'api:gpay_attribution', 'granularity:rolling_180d', 'window:30d']
   )
 }}
 

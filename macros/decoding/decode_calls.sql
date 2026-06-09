@@ -231,7 +231,7 @@ WHERE {{ abi_filter }}
 {% set sql_body %}
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
-{% set incr_end    = var('incremental_end_date', none) %}
+{% set incr_end    = mb_var('incremental_end_date') %}
 
 {# ---------------------------------------------------------------
    Auto-detect whether `tx_table` points at `execution.traces`. When

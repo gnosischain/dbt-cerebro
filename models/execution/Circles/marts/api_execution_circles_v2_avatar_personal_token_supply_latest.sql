@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier1','api:circles_v2_avatar_personal_token_supply_latest','granularity:latest']
+        tags=['production', 'execution', 'tier1', 'api:circles_v2_avatar_personal_token_supply', 'granularity:latest']
     )
 }}
 

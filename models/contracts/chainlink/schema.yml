@@ -1,0 +1,58 @@
+version: 2
+
+# Chainlink price-feed AnswerUpdated events on Gnosis Chain, all feeds decoded in a
+# single pass (one model for all aggregators, so execution.logs is scanned once per
+# month rather than once per feed). decoded_params['current'] is the answer:
+#   - USD / forex feeds: 8 decimals  -> price = current / 1e8
+#   - wstETH-ETH exchange rate: 18 decimals, denominated in ETH
+# contract_address identifies the feed (mapped to a token symbol in
+# int_execution_prices_oracle_daily).
+
+models:
+
+- name: contracts_chainlink_feeds_events
+  description: >
+    Decoded Chainlink price-feed AnswerUpdated events for all aggregators used on
+    Gnosis (GNO/USD, ETH/USD, WBTC/USD, EUR/USD, CHF/USD, wstETH-ETH, USDC/USD,
+    USDT/USD, DAI/USD; both phase aggregators per feed). Single-pass decode of the
+    address set; contract_address identifies the feed.
+  columns:
+  - name: block_number
+    description: Block number containing the event.
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: Block timestamp (UTC) when the event was emitted.
+    data_type: DateTime64(0, 'UTC')
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: Nullable(String)
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: Nullable(UInt32)
+  - name: log_index
+    description: Index of the log within the block.
+    data_type: Nullable(UInt32)
+  - name: contract_address
+    description: Address of the aggregator contract emitting the event (identifies the feed).
+    data_type: Nullable(String)
+  - name: event_name
+    description: Decoded event name (e.g. 'AnswerUpdated').
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameters; decoded_params['current'] is the answer.
+    data_type: Map(String, String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-01-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [block_timestamp, log_index]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','gpay','api:gpay_user_top_wallets','granularity:snapshot']
+        tags=['production', 'execution', 'gpay', 'api:gpay_user_top_wallets', 'granularity:snapshot', 'tier1']
     )
 }}
 

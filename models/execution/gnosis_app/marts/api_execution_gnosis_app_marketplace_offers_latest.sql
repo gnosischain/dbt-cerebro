@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','marketplace','tier1',
-          'api:gnosis_app_marketplace_offers_latest','granularity:snapshot'],
+    tags=['production', 'execution', 'gnosis_app', 'marketplace', 'tier1', 'api:gnosis_app_marketplace_offers', 'granularity:snapshot'],
     meta={
       "api": {
         "methods": ["GET"],

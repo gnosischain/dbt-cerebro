@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','tier0','api:circles_v2_kpi_mints_7d','granularity:last_7d']
+    tags=['production', 'execution', 'tier0', 'api:circles_v2_kpi_mints', 'granularity:last_7d', 'window:7d']
   )
 }}
 

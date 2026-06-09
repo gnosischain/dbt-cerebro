@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','gpay','topups','tier1',
-          'api:gnosis_app_gpay_topups_weekly','granularity:weekly'],
+    tags=['production', 'execution', 'gnosis_app', 'gpay', 'topups', 'tier1', 'api:gnosis_app_gpay_topups', 'granularity:weekly'],
     meta={
       "api": {
         "methods": ["GET"],

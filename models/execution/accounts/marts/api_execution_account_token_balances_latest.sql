@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'execution', 'accounts', 'portfolio', 'tier1', 'api:account_token_balances_latest', 'granularity:latest'],
+    tags=['production', 'execution', 'accounts', 'portfolio', 'tier1', 'api:account_token_balances', 'granularity:latest'],
     meta={
       "api": {
         "methods": ["GET", "POST"],

@@ -1,8 +1,8 @@
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
-{% set incr_end = var('incremental_end_date', none) %}
-{% set validator_index_start = var('validator_index_start', none) %}
-{% set validator_index_end = var('validator_index_end', none) %}
+{% set incr_end = mb_var('incremental_end_date') %}
+{% set validator_index_start = mb_var('validator_index_start') %}
+{% set validator_index_end = mb_var('validator_index_end') %}
 
 {#
   incremental_strategy resolves to `append` when either start_month
@@ -273,6 +273,13 @@ network_state AS (
         toStartOfDay(date) AS date
         ,effective_balance AS network_effective_balance_gno
     FROM {{ ref('int_consensus_validators_balances_daily') }}
+    WHERE date < today()
+    {% if start_month and end_month %}
+      AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('date', 'date', 'true', lookback_days=3) }}
+    {% endif %}
 ),
 
 -- Join every per-validator row with the day's network state so each row carries

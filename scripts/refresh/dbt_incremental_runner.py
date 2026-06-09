@@ -673,17 +673,22 @@ def run_one_slice(
     profiles_dir: Path,
     threads: int | None,
 ) -> int:
-    vars_payload = {
-        "incremental_end_date": end_date.isoformat(),
-        **(stage.get("vars") or {}),
-    }
+    # Pass the slice date + stage vars via DBT_MB_* env vars rather than --vars.
+    # dbt treats ANY --vars change as a global manifest invalidation (full
+    # re-parse of the whole project, ~20s/slice); env vars used in model/macro
+    # SQL are tracked per-file by dbt's partial parser, so changing them between
+    # slices re-parses only the affected files (~5s). The models/macros read
+    # these via mb_var() (macros/db/mb_var.sql), which falls back to --vars so
+    # scripts/full_refresh/refresh.py historical backfills keep working unchanged.
+    env = dict(os.environ)
+    env["DBT_MB_INCREMENTAL_END_DATE"] = end_date.isoformat()
+    for k, v in (stage.get("vars") or {}).items():
+        env["DBT_MB_" + k.upper()] = str(v)
     cmd = [
         "dbt",
         "run",
         "--select",
         model,
-        "--vars",
-        json.dumps(vars_payload),
         "--project-dir",
         str(project_dir),
         "--profiles-dir",
@@ -692,7 +697,7 @@ def run_one_slice(
     if threads is not None:
         cmd.extend(["--threads", str(threads)])
     cmd.extend(defer_args)
-    return subprocess.run(cmd).returncode
+    return subprocess.run(cmd, env=env).returncode
 
 
 def run_passthrough(

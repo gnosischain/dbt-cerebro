@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','revenue','revenue_holdings','api:revenue_holdings_cohorts_monthly','granularity:monthly'],
+    tags=['production', 'revenue', 'revenue_holdings', 'api:revenue_holdings_cohorts', 'granularity:monthly', 'tier1'],
     meta={
       "api": {
         "methods": ["GET"],

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','revenue','revenue_cross','tier3','api:revenue_per_user_monthly','granularity:monthly'],
+    tags=['production', 'revenue', 'revenue_cross', 'tier3', 'api:revenue_per_user', 'granularity:monthly'],
     meta={
       "api": {
         "methods": ["GET"],

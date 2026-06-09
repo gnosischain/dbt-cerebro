@@ -467,19 +467,30 @@ def run_model_batched(
                 # even when our own query is bounded by max_memory_usage.
                 # When that happens, the failure is independent of our batch
                 # — wait briefly and retry.
-                TRANSIENT_PATTERNS = (
-                    "Code: 241",          # MEMORY_LIMIT_EXCEEDED / OvercommitTracker victim
+                # Network/timeout errors are genuinely transient — full retry.
+                NETWORK_TRANSIENT = (
                     "Code: 159",          # SOCKET_TIMEOUT
                     "Code: 209",          # NETWORK_ERROR
                     "Code: 210",          # NETWORK_ERROR
                     "TIMEOUT_EXCEEDED",
+                    "SOCKET_TIMEOUT",
                     "NETWORK_ERROR",
-                    "MEMORY_LIMIT_EXCEEDED",
-                    "OvercommitTracker",
+                    "SSLError",
+                    "UNEXPECTED_EOF_WHILE_READING",
+                    "HTTPSConnectionPool",
+                    "RemoteDisconnected",
+                    "ConnectionResetError",
+                    "Broken pipe",
                 )
-                MAX_TRANSIENT_RETRIES = 5
+                # A memory error (Code 241 / MEMORY_LIMIT_EXCEEDED) is DETERMINISTIC
+                # for our own query — retrying the identical batch re-OOMs and only
+                # wastes the backoff window. The ONE exception is when the cluster
+                # OvercommitTracker picked us as a cross-tenant victim (shared
+                # ceiling), which is independent of our batch — retry that once.
+                MAX_NETWORK_RETRIES = 5
+                MAX_MEMORY_RETRIES = 3
                 BACKOFF_SECONDS = (30, 60, 120, 240, 480)
-                for attempt in range(MAX_TRANSIENT_RETRIES + 1):
+                for attempt in range(MAX_NETWORK_RETRIES + 1):
                     try:
                         # capture=True so we can inspect e.stdout / e.stderr to
                         # classify the failure. We tee the captured output back
@@ -505,16 +516,30 @@ def run_model_batched(
                         if e.stderr:
                             print(e.stderr, end="")
                         err_blob = (e.stdout or "") + (e.stderr or "")
-                        is_transient = any(p in err_blob for p in TRANSIENT_PATTERNS)
-                        if is_transient and attempt < MAX_TRANSIENT_RETRIES:
-                            wait = BACKOFF_SECONDS[attempt]
+                        is_network = any(p in err_blob for p in NETWORK_TRANSIENT)
+                        is_memory = ("Code: 241" in err_blob) or ("MEMORY_LIMIT_EXCEEDED" in err_blob)
+                        is_overcommit_victim = is_memory and ("OvercommitTracker" in err_blob)
+                        # Network → full retries; OvercommitTracker victim → 1 retry;
+                        # a bare OOM (our query too big) → 0 retries (fail fast).
+                        retry_cap = (
+                            MAX_NETWORK_RETRIES if is_network
+                            else MAX_MEMORY_RETRIES if is_overcommit_victim
+                            else 0
+                        )
+                        if attempt < retry_cap:
+                            wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+                            kind = "network" if is_network else "overcommit-victim"
                             print(
-                                f"\n    [transient] dbt run hit ClickHouse "
-                                f"transient error; retry {attempt + 1}/"
-                                f"{MAX_TRANSIENT_RETRIES} after {wait}s"
+                                f"\n    [transient:{kind}] dbt run hit a retryable "
+                                f"ClickHouse error; retry {attempt + 1}/{retry_cap} "
+                                f"after {wait}s"
                             )
                             time.sleep(wait)
                             continue
+                        if is_memory and not is_overcommit_victim:
+                            print(f"\n    [permanent] memory limit exceeded (not an "
+                                  f"OvercommitTracker victim) — not retrying; needs a "
+                                  f"bounded build / memory hooks.")
                         print(f"\n    ERROR: dbt run failed!")
                         print(f"    Command: dbt {' '.join(cmd)}")
                         return False

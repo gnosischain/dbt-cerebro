@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','revenue','revenue_gnosis_app','api:revenue_gnosis_app_cohorts_weekly','granularity:weekly'],
+    tags=['production', 'revenue', 'revenue_gnosis_app', 'api:revenue_gnosis_app_cohorts', 'granularity:weekly', 'tier1'],
     meta={
       "api": {
         "methods": ["GET"],

@@ -95,6 +95,14 @@ jobs:
           dbt parse
           python scripts/checks/no_delete_insert.py
 
+      - name: Enforce API tag/schema convention
+        # api: endpoints must be grain/window-free (grain -> granularity:, window ->
+        # window:), carry granularity + tier, and have complete typed column schemas.
+        # See scripts/checks/check_api_tags.py (+ check_api_tags.allow for staged cleanup).
+        run: |
+          dbt parse
+          python scripts/checks/check_api_tags.py
+
       - name: Install test dependencies
         # pytest is only needed for the semantic-registry guard tests below;
         # not part of the production image so we install it inline here.

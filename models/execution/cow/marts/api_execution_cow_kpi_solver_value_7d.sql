@@ -1,8 +1,7 @@
 ﻿{{
   config(
     materialized='view',
-    tags=['execution','cow','kpi','tier0',
-          'api:cow_kpi_solver_value_7d','granularity:last_7d']
+    tags=['execution', 'cow', 'kpi', 'tier0', 'api:cow_kpi_solver_value', 'granularity:last_7d', 'window:7d']
   )
 }}
 

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier0','api:gpay_cashback_7d','granularity:7d']
+    tags=['production', 'execution', 'gpay', 'tier0', 'api:gpay_cashback', 'granularity:7d', 'window:7d']
   )
 }}
 

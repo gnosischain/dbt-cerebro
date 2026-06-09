@@ -21,12 +21,23 @@ import sys
 from pathlib import Path
 
 
+# NOTE: Code 241 / MEMORY_LIMIT_EXCEEDED are intentionally NOT transient.
+# An OOM is deterministic — retrying the identical query re-OOMs (wasted the
+# `dbt-run:retry-transient` step in the 2026-06-08 run). The real fix is a
+# bounded build / memory hooks, not a retry. Connection drops (SSL EOF,
+# HTTPSConnectionPool, RemoteDisconnected, broken pipe) ARE genuine transients
+# and were previously misclassified as permanent (no retry).
 TRANSIENT_RE = re.compile(
-    r"Code:\s*(?:241|159|209|210)\b"
-    r"|MEMORY_LIMIT_EXCEEDED"
+    r"Code:\s*(?:159|209|210)\b"
     r"|TIMEOUT_EXCEEDED"
     r"|SOCKET_TIMEOUT"
-    r"|NETWORK_ERROR",
+    r"|NETWORK_ERROR"
+    r"|SSLError"
+    r"|UNEXPECTED_EOF_WHILE_READING"
+    r"|HTTPSConnectionPool"
+    r"|RemoteDisconnected"
+    r"|ConnectionResetError"
+    r"|Broken pipe",
     re.IGNORECASE,
 )
 
@@ -47,7 +58,14 @@ def classify_run_results(path: Path) -> tuple[set[str], set[str]]:
         if not unique_id:
             continue
         message = result.get("message") or ""
-        if TRANSIENT_RE.search(message):
+        # A memory error (Code 241 / MEMORY_LIMIT_EXCEEDED) is deterministic for
+        # our own query (do NOT retry) UNLESS the cluster OvercommitTracker picked
+        # us as a cross-tenant victim — that is independent of our batch and clears
+        # on retry. Mirrors the policy in scripts/full_refresh/refresh.py.
+        is_overcommit_victim = "OvercommitTracker" in message and (
+            "Code: 241" in message or "MEMORY_LIMIT_EXCEEDED" in message
+        )
+        if TRANSIENT_RE.search(message) or is_overcommit_victim:
             transient.add(unique_id)
         else:
             permanent.add(unique_id)

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier1','api:gpay_payments_by_token_monthly','granularity:monthly'],
+    tags=['production', 'execution', 'gpay', 'tier1', 'api:gpay_payments_by_token', 'granularity:monthly'],
     meta={
       "api": {
         "methods": ["GET"],

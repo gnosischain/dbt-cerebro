@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier1','api:gpay_cashback_dist_weekly','granularity:weekly']
+    tags=['production', 'execution', 'gpay', 'tier1', 'api:gpay_cashback_dist', 'granularity:weekly']
   )
 }}
 
