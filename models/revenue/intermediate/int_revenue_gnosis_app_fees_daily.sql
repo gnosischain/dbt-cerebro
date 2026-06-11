@@ -15,7 +15,12 @@
   )
 }}
 
-WITH metri_transfers AS (
+-- Users are EOAs and Safes only (see int_execution_accounts_non_user_contracts).
+WITH non_users AS (
+    SELECT address FROM {{ ref('int_execution_accounts_non_user_contracts') }}
+),
+
+metri_transfers AS (
     SELECT
         toDate(block_timestamp)      AS date,
         from_address                 AS user,
@@ -23,6 +28,7 @@ WITH metri_transfers AS (
         toFloat64(amount_raw) / 1e18 AS fee_native
     FROM {{ ref('int_execution_circles_v2_hub_transfers') }}
     WHERE to_address = '{{ metri_address }}'
+      AND lower(from_address) NOT IN (SELECT address FROM non_users)
       AND block_timestamp >= toDateTime('{{ start_date }}')
       AND block_timestamp < today()
       {% if start_month and end_month %}

@@ -47,12 +47,39 @@ safe_setup AS (
     WHERE event_kind = 'safe_setup'
       AND safe_address IN (SELECT pay_wallet FROM activated_wallets)
     GROUP BY safe_address
+),
+
+base AS (
+    SELECT
+        s.safe_address    AS address,
+        a.activation_date AS activation_date,
+        s.creation_time   AS creation_time
+    FROM safe_setup s
+    INNER JOIN activated_wallets a
+        ON a.pay_wallet = s.safe_address
+),
+
+-- June 2026 post-exploit migration: NEW Safes inherit the OLD Safe's
+-- activation_date so cohort/retention dates do not reset; creation_time
+-- is the migration completion. New Safes whose old Safe never activated
+-- stay out (the registry remains payment-gated, same as before).
+migrated_in AS (
+    SELECT
+        lower(m.new_safe_address)                                 AS address,
+        b.activation_date                                         AS activation_date,
+        toDateTime64(parseDateTimeBestEffort(m.completedAt), 0, 'UTC') AS creation_time
+    FROM {{ ref('gp_migrated_safes') }} m
+    INNER JOIN base b
+        ON b.address = lower(m.old_safe_address)
 )
 
 SELECT
-    s.safe_address   AS address,
-    a.activation_date AS activation_date,
-    s.creation_time AS creation_time
-FROM safe_setup s
-INNER JOIN activated_wallets a
-    ON a.pay_wallet = s.safe_address
+    address,
+    min(activation_date) AS activation_date,
+    min(creation_time)   AS creation_time
+FROM (
+    SELECT address, activation_date, creation_time FROM base
+    UNION ALL
+    SELECT address, activation_date, creation_time FROM migrated_in
+)
+GROUP BY address

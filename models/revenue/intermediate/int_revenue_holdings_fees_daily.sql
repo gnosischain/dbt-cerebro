@@ -18,7 +18,14 @@
   )
 }}
 
-WITH base AS (
+-- Users are EOAs and Safes only. Protocol/token contracts (pools, vaults,
+-- aTokens, routers) hold balances but are not fee-paying users; aToken
+-- contracts in particular would double count the Aave look-through branch.
+WITH non_users AS (
+    SELECT address FROM {{ ref('int_execution_accounts_non_user_contracts') }}
+),
+
+base AS (
     -- Native ERC20 balances. svZCHF gets folded into ZCHF below.
     SELECT
         date,
@@ -32,6 +39,7 @@ WITH base AS (
     WHERE date < today()
       AND balance_usd > 0
       AND address IS NOT NULL
+      AND address NOT IN (SELECT address FROM non_users)
       AND symbol IN ('EURe','USDC.e','BRLA','ZCHF','svZCHF')
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
@@ -54,6 +62,7 @@ WITH base AS (
     WHERE date < today()
       AND balance_usd > 0
       AND user_address IS NOT NULL
+      AND user_address NOT IN (SELECT address FROM non_users)
       AND protocol = 'Aave V3'
       AND symbol IN ('EURe','USDC.e','BRLA','ZCHF')
       {% if start_month and end_month %}

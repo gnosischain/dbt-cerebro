@@ -19,7 +19,12 @@
   )
 }}
 
-WITH transfers AS (
+-- Users are EOAs and Safes only (see int_execution_accounts_non_user_contracts).
+WITH non_users AS (
+    SELECT address FROM {{ ref('int_execution_accounts_non_user_contracts') }}
+),
+
+transfers AS (
     SELECT
         t.date,
         lower(t."from") AS user,
@@ -41,6 +46,7 @@ WITH transfers AS (
       AND t.symbol IN ('EURe','GBPe','USDC.e')
       AND t.amount_raw IS NOT NULL
       AND t."from" IS NOT NULL
+      AND lower(t."from") NOT IN (SELECT address FROM non_users)
       {% if start_month and end_month %}
         AND toStartOfMonth(t.date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(t.date) <= toDate('{{ end_month }}')
@@ -56,14 +62,20 @@ prices AS (
     WHERE price IS NOT NULL
 )
 
+-- user is canonicalized through the June 2026 Safe migration: payments
+-- made from a migrated OLD Safe are attributed to its NEW (canonical)
+-- Safe so per-user fee series stay continuous. CH LEFT JOIN fills ''
+-- on misses, hence the empty-string guard.
 SELECT
-    tr.date,
-    tr.user,
-    tr.symbol,
+    tr.date   AS date,
+    if(c.canonical_address != '', c.canonical_address, tr.user) AS user,
+    tr.symbol AS symbol,
     round(sum(tr.amount_native * tr.fee_rate), 8)           AS fees_native,
     round(sum(tr.amount_native * tr.fee_rate * p.price), 8) AS fees,
     round(sum(tr.amount_native * p.price), 6)               AS volume_usd
 FROM transfers tr
 LEFT JOIN prices p
     ON p.date = tr.date AND p.symbol = tr.symbol
-GROUP BY tr.date, tr.user, tr.symbol
+LEFT JOIN {{ ref('int_execution_gpay_safe_canonical') }} c
+    ON c.address = tr.user
+GROUP BY tr.date, if(c.canonical_address != '', c.canonical_address, tr.user), tr.symbol

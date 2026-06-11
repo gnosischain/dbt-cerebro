@@ -89,3 +89,20 @@ models:
       - token_address
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_accounts_non_user_contracts
+  description: |
+    Deployed contracts that are NOT Safe proxies: the exclusion set that
+    defines the per-user "user" universe (users = EOAs + Safes). Built from
+    execution.contracts creation traces minus contracts_safe_registry.
+    Used by the revenue per-user streams (holdings, sdai) to keep token,
+    pool, vault, aToken and router contracts out of user attribution.
+  columns:
+  - name: address
+    description: Contract address (lowercase), known not to be a Safe.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  meta:
+    owner: analytics_team
