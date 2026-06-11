@@ -6,6 +6,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_gnosis_app_user_activity_daily') }}) AS as_of_date
+FROM (
 SELECT
     anyIf(retention_pct, months_since = 1
                      AND cohort_month = (
@@ -16,3 +18,4 @@ SELECT
     )                                                  AS value,
     CAST(NULL AS Nullable(Float64))                    AS change_pct
 FROM {{ ref('fct_execution_gnosis_app_retention_monthly') }}
+) AS sub

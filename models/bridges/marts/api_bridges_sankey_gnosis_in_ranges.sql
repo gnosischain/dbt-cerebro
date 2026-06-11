@@ -4,6 +4,8 @@
     tags=['production','bridges', 'tier0', 'api:inflow', 'granularity:in_ranges']) 
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_bridges_sankey_edges_token_daily') }}) AS as_of_date
+FROM (
 WITH mx AS (SELECT max(date) AS d FROM {{ ref('fct_bridges_sankey_edges_token_daily') }}),
 mn AS (SELECT min(date) AS m FROM {{ ref('fct_bridges_sankey_edges_token_daily') }}),
 ranges AS (
@@ -26,3 +28,4 @@ WHERE e.direction = 'in'
 GROUP BY r.range, e.source, e.target, r.range_order
 HAVING value > 0
 ORDER BY r.range_order, value DESC, e.source ASC, e.target ASC
+) AS sub

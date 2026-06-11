@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_pools_daily') }}) AS as_of_date
+FROM (
 WITH latest_date AS (
     SELECT max(date) AS max_date
     FROM {{ ref('fct_execution_pools_daily') }}
@@ -23,3 +25,4 @@ WHERE f.date = d.max_date
   AND f.tvl_usd IS NOT NULL
   AND f.tvl_usd > 0
 ORDER BY f.token, f.tvl_usd DESC
+) AS sub

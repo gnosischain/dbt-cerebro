@@ -6,6 +6,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(month)) FROM {{ ref('fct_execution_gnosis_app_users_monthly') }}) AS as_of_date
+FROM (
 WITH months AS (
     SELECT month, active_users
     FROM {{ ref('fct_execution_gnosis_app_users_monthly') }}
@@ -21,3 +23,4 @@ SELECT
     round((anyIf(active_users, rn = 1) - anyIf(active_users, rn = 2))
           / nullIf(anyIf(active_users, rn = 2), 0) * 100, 1)                     AS change_pct
 FROM ranked
+) AS sub

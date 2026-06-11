@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 -- Leaderboard of top inviters by humans invited. Passthrough over
 -- fct_execution_circles_v2_inviters_ranking, which pre-joins the inviter's
 -- display name, preview image URL, and current blacklist flag.
@@ -20,3 +22,4 @@ SELECT
     last_invite_ts
 FROM {{ ref('fct_execution_circles_v2_inviters_ranking') }}
 ORDER BY rank
+) AS sub

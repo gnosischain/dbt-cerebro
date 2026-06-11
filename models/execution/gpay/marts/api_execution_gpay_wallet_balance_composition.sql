@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_gpay_balances_by_token_daily') }}) AS as_of_date
+FROM (
 WITH latest AS (
     SELECT symbol, balance_usd
     FROM {{ ref('fct_execution_gpay_balances_by_token_daily') }}
@@ -31,3 +33,4 @@ SELECT name, round(toFloat64(sum(value)), 2) AS value
 FROM labeled
 GROUP BY name
 ORDER BY value DESC
+) AS sub

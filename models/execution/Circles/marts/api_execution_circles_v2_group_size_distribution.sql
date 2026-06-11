@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 -- Bucketed histogram of Circles v2 group sizes (members per group).
 -- One row per bucket; buckets ordered low → high via bucket_order.
 
@@ -33,3 +35,4 @@ SELECT
 FROM {{ ref('fct_execution_circles_v2_group_size_current') }}
 GROUP BY bucket, bucket_order
 ORDER BY bucket_order
+) AS sub

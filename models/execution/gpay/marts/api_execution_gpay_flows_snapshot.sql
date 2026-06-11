@@ -27,6 +27,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_transfers_whitelisted_daily') }}) AS as_of_date
+FROM (
 SELECT
   window
   ,symbol
@@ -35,4 +37,5 @@ SELECT
   ,amount_usd
   ,tf_cnt
 FROM {{ ref('fct_execution_gpay_flows_snapshot') }}
-ORDER BY days ASC 
+ORDER BY days ASC
+) AS sub

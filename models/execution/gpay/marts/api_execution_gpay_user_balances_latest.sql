@@ -18,6 +18,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_gpay_balances_daily') }}) AS as_of_date
+FROM (
 SELECT
   wallet_address,
   token,
@@ -25,4 +27,4 @@ SELECT
   value_native,
   date
 FROM {{ ref('fct_execution_gpay_user_balances_latest') }}
-
+) AS sub

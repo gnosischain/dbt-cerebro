@@ -3,7 +3,7 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(date, symbol)',
-    partition_by='toStartOfMonth(date)',
+    partition_by='toStartOfYear(date)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','prices','daily']
   )

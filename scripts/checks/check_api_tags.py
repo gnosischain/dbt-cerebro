@@ -24,6 +24,10 @@ ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check_api_tags
 GRAIN_SUFFIXES = ("_daily", "_weekly", "_monthly", "_hourly", "_latest", "_snapshot", "_quarterly")
 WINDOW_RE = re.compile(r"_\d+d$")
 TIER_RE = re.compile(r"^tier\d+$")
+POINT_GRANS = {"latest", "snapshot", "all_time", "total", "history", "last_7d", "last_30d",
+               "last_day", "last_week", "last_month", "in_ranges", "7d", "30d", "60d", "rolling_180d"}
+GRAIN_COL = {"daily": {"date", "block_date", "day"}, "weekly": {"week"}, "monthly": {"month"},
+             "quarterly": {"quarter"}, "hourly": {"hour", "ts"}}
 
 
 def load_allow():
@@ -82,6 +86,16 @@ def main():
             untyped = [c for c, meta in cols.items() if not (meta.get("data_type"))]
             if untyped:
                 fail("columns_untyped", f"{len(untyped)} column(s) missing data_type, e.g. {untyped[:3]}")
+
+        # 5. granularity-aware freshness column
+        gtag = gran[0][len("granularity:"):].lower() if len(gran) == 1 else ""
+        colset = {c.lower() for c in cols}
+        FRESH_POINT = {"as_of_date", "snapshot_date", "date", "block_date",
+                       "block_timestamp", "ts", "timestamp", "day"}
+        if gtag in POINT_GRANS and not (colset & FRESH_POINT):
+            fail("no_as_of_date", "point-in-time endpoint needs as_of_date (or date/snapshot_date)")
+        elif gtag in GRAIN_COL and not (colset & GRAIN_COL[gtag]):
+            fail("no_grain_col", f"{gtag} endpoint must expose a grain column {sorted(GRAIN_COL[gtag])}")
 
     if violations:
         print(f"API tag/schema convention: {len(violations)} violation(s):\n")

@@ -84,7 +84,11 @@ ga_acq AS (
     SELECT
         l.gp_safe,
         a.first_touch_campaign AS ga_first_touch_campaign,
-        a.last_touch_campaign  AS ga_last_touch_campaign
+        a.last_touch_campaign  AS ga_last_touch_campaign,
+        a.first_touch_source   AS ga_first_touch_source,
+        a.last_touch_source    AS ga_last_touch_source,
+        a.first_touch_medium   AS ga_first_touch_medium,
+        a.last_touch_medium    AS ga_last_touch_medium
     FROM ga_link l
     INNER JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
         ON a.user_id_hash = l.ga_user_pseudonym
@@ -104,6 +108,26 @@ SELECT
         nullIf(d.last_touch_campaign,    'unknown'),
         'unknown'
     )                                             AS last_touch_campaign,
+    coalesce(
+        nullIf(g.ga_first_touch_source, 'unknown'),
+        nullIf(d.first_touch_source,    'unknown'),
+        'unknown'
+    )                                             AS first_touch_source,
+    coalesce(
+        nullIf(g.ga_last_touch_source, 'unknown'),
+        nullIf(d.last_touch_source,    'unknown'),
+        'unknown'
+    )                                             AS last_touch_source,
+    coalesce(
+        nullIf(g.ga_first_touch_medium, 'unknown'),
+        nullIf(d.first_touch_medium,    'unknown'),
+        'unknown'
+    )                                             AS first_touch_medium,
+    coalesce(
+        nullIf(g.ga_last_touch_medium, 'unknown'),
+        nullIf(d.last_touch_medium,    'unknown'),
+        'unknown'
+    )                                             AS last_touch_medium,
     multiIf(
         nullIf(g.ga_first_touch_campaign, 'unknown') IS NOT NULL, 'ga_controller',
         nullIf(d.first_touch_campaign,    'unknown') IS NOT NULL, 'initial_owner',

@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_backing') }}) AS as_of_date
+FROM (
 -- KPI tile: total distinct depositors (addresses that have emitted a
 -- CirclesBackingInitiated event). Distinct from "backers" — see
 -- int_execution_circles_v2_backers_current. The 7-day delta counts
@@ -24,3 +26,4 @@ SELECT
     new_last_7d                                                      AS new_last_7d,
     round((new_last_7d - new_prior_7d) / nullIf(new_prior_7d, 0) * 100, 1) AS change_pct
 FROM base
+) AS sub

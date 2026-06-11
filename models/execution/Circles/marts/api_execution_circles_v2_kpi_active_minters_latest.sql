@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_circles_v2_active_minters_daily') }}) AS as_of_date
+FROM (
 -- KPI tile: latest-day Active Minters count with week-over-week change.
 
 WITH current AS (
@@ -23,3 +25,4 @@ SELECT
     round((c.value - p.value) / nullIf(p.value, 0) * 100, 1) AS change_pct
 FROM current c
 CROSS JOIN prior p
+) AS sub

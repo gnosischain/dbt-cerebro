@@ -32,6 +32,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_date)) FROM {{ ref('int_execution_safes') }}) AS as_of_date
+FROM (
 -- Reverse lookup: "which Safes does this address own?" One row per
 -- (owner, safe) pair enriched with that safe's threshold, owner count, and
 -- deployment date so the Account Portfolio Safe section can render a full
@@ -49,3 +51,4 @@ SELECT
     creation_version,
     deployment_date
 FROM {{ ref('fct_execution_account_safes_latest') }}
+) AS sub

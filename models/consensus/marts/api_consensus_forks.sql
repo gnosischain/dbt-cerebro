@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, today() AS as_of_date
+FROM (
 SELECT
   fork_name
   ,fork_version 
@@ -12,3 +14,4 @@ SELECT
   ,fork_epoch 
 FROM {{ ref('fct_consensus_forks') }}
 ORDER BY fork_version ASC
+) AS sub

@@ -67,6 +67,9 @@
     )
 }}
 
+SELECT sub.*, today() AS as_of_date
+FROM (
 SELECT
     *
 FROM {{ ref('fct_consensus_validators_status_latest') }}
+) AS sub

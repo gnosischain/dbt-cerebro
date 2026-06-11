@@ -1509,6 +1509,12 @@ models:
   - name: amount
     description: Fee amount in CRC (raw / 1e18).
     data_type: Float64
+  - name: is_gnosis_app_tx
+    description: >
+      1 if the personal-mint tx carrying this fee was routed through an active
+      Gnosis App (Cometh 4337) relayer — the canonical "action taken in-app"
+      predicate. 0 for fees produced by other apps or direct on-chain flows.
+    data_type: UInt8
   meta:
     owner: analytics_team
     authoritative: false
@@ -1523,6 +1529,48 @@ models:
       - log_index
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_execution_circles_v2_economically_active_avatars_weekly
+  description: >
+    Circles-first ECONOMICALLY ACTIVE avatars, ecosystem-wide — one row per
+    (week, avatar, earning_kind) where the avatar earned >= 1 unit of a
+    Circles reward that week: gcrc_cashback (>= 1 gCRC from the cashback
+    wallet) or inviter_fee (>= 1 CRC of invitation fees). Deliberately NOT
+    filtered to any app: the Gnosis App WEAU derives from this layer
+    downstream by filtering to in-app users/actions
+    (int_execution_gnosis_app_weekly_earners).
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: avatar
+    description: Lowercase avatar address that earned the reward.
+    data_type: String
+  - name: earning_kind
+    description: Reward stream — 'gcrc_cashback' or 'inviter_fee'.
+    data_type: String
+  - name: amount
+    description: Amount earned that week in the stream's unit (gCRC or CRC).
+    data_type: Float64
+  - name: any_in_app_tx
+    description: >
+      1 if at least one contributing event that week originated from a Gnosis
+      App relayer tx. Only meaningful for inviter_fee; always 0 for
+      gcrc_cashback (payouts carry no tx-origin attribution).
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags: [elementary]
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - week
+      - avatar
+      - earning_kind
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(week) >= today() - {{ var('test_lookback_days', 7) }} - 7{% endif %}"
 - name: int_execution_circles_v2_gcrc_cashback_recipients_weekly
   description: >
     Weekly gCRC cashback recipients — addresses that received >= 1 gCRC

@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_tokens_balances_daily') }}) AS as_of_date
+FROM (
 SELECT
     token_address,
     symbol,
@@ -18,3 +20,4 @@ SELECT
     pct_unwound_total
 FROM {{ ref('fct_execution_tokens_ubo_coverage_latest') }}
 ORDER BY total_usd DESC
+) AS sub

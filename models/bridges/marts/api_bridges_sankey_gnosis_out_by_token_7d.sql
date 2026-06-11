@@ -4,6 +4,8 @@
     tags=['production','bridges', 'tier0', 'api:outflow_per_token', 'granularity:last_7d']) 
   }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_bridges_sankey_edges_token_daily') }}) AS as_of_date
+FROM (
 WITH mx AS (SELECT max(date) AS d FROM {{ ref('fct_bridges_sankey_edges_token_daily') }})
 
 SELECT token, source, target, sum(value) AS value
@@ -13,3 +15,4 @@ WHERE direction = 'out'
 GROUP BY token, source, target
 HAVING value > 0
 ORDER BY token, value DESC, source ASC, target ASC
+) AS sub

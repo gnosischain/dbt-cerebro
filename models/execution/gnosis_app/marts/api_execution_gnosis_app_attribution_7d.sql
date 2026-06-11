@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_gnosis_app_gpay_topups') }}) AS as_of_date
+FROM (
 -- API view passthrough over fct_execution_gnosis_app_attribution_7d.
 -- Tier1 endpoint, requires X-API-Key.
 
@@ -20,3 +22,4 @@ SELECT
   computed_at
 FROM {{ ref('fct_execution_gnosis_app_attribution_7d') }}
 ORDER BY conversion_kind, linear DESC
+) AS sub

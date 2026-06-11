@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_pools_dex_liquidity_events') }}) AS as_of_date
+FROM (
 WITH
 
 uni_swapr_lps AS (
@@ -48,3 +50,4 @@ SELECT wallet_address
 FROM combined
 ORDER BY priority
 LIMIT 50
+) AS sub

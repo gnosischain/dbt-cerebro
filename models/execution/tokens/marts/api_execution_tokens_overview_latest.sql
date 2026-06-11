@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_tokens_metrics_daily') }}) AS as_of_date
+FROM (
 SELECT
     token_class,
     label,
@@ -12,3 +14,4 @@ SELECT
     change_pct
 FROM {{ ref('fct_execution_tokens_overview_by_class_latest') }}
 ORDER BY token_class, label
+) AS sub

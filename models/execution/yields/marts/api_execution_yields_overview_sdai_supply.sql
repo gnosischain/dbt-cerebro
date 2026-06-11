@@ -5,9 +5,12 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_pools_daily') }}) AS as_of_date
+FROM (
 SELECT
     value,
     change_pct,
     label
 FROM {{ ref('fct_execution_yields_overview_snapshot') }}
 WHERE metric = 'sdai_supply_total'
+) AS sub

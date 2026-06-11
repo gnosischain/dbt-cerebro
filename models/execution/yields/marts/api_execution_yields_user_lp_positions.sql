@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_pools_dex_liquidity_events') }}) AS as_of_date
+FROM (
 SELECT
     provider,
     pool_address,
@@ -21,3 +23,4 @@ SELECT
     entry_date,
     last_action_date
 FROM {{ ref('int_execution_yields_user_lp_positions') }}
+) AS sub

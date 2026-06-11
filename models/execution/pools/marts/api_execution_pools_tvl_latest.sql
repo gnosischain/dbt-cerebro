@@ -5,7 +5,8 @@
     )
 }}
 
-
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_pools_daily') }}) AS as_of_date
+FROM (
 SELECT
     token,
     value,
@@ -13,3 +14,4 @@ SELECT
 FROM {{ ref('fct_execution_pools_snapshots') }}
 WHERE metric = 'TVL_Latest'
 ORDER BY value DESC
+) AS sub

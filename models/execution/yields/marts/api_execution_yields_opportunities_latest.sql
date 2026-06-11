@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('contracts_Swapr_v3_AlgebraPool_events') }}) AS as_of_date
+FROM (
 SELECT
     type,
     token,
@@ -26,3 +28,4 @@ SELECT
     fee_pct
 FROM {{ ref('fct_execution_yields_opportunities_latest') }}
 ORDER BY COALESCE(yield_apr, yield_apy) DESC
+) AS sub

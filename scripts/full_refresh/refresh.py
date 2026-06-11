@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -63,8 +64,61 @@ def clear_state() -> None:
 # dbt Integration
 # ============================================================================
 
+# In-process engine (opt-in via --inprocess / REFRESH_INPROCESS=1).
+#
+# The subprocess engine pays a full dbt startup + project re-parse (~14s on this
+# project) on EVERY batch, because each batch is a fresh `dbt` process and the
+# changing --vars invalidate the partial-parse cache. Across a ~1000-batch
+# backfill that is hours of pure parsing. dbt's programmatic dbtRunner accepts a
+# pre-parsed manifest, so we parse ONCE and reuse it for every batch.
+#
+# Safe because the batch vars (start_month/end_month/stage vars) are referenced
+# in model BODIES, which render at execution time per invocation. CAVEAT: any
+# var() used at PARSE time (inside config() blocks / model selection) is frozen
+# at the initial parse — do not use --inprocess with parse-time vars.
+_DBT_MANIFEST = None
+
+def _run_dbt_inprocess(args: List[str], capture: bool = False) -> subprocess.CompletedProcess:
+    global _DBT_MANIFEST
+    from dbt.cli.main import dbtRunner
+
+    prev_cwd = os.getcwd()
+    os.chdir(PROJECT_ROOT)
+    try:
+        if _DBT_MANIFEST is None:
+            print("    [inprocess] parsing project once (manifest will be reused)...")
+            res = dbtRunner().invoke(["parse"])
+            if not res.success or res.result is None:
+                raise RuntimeError(f"initial dbt parse failed: {res.exception}")
+            _DBT_MANIFEST = res.result
+        res = dbtRunner(manifest=_DBT_MANIFEST).invoke(args)
+    finally:
+        os.chdir(prev_cwd)
+
+    # Synthesize a CompletedProcess so the caller's success/transient-error
+    # handling works identically for both engines.
+    output = ""
+    try:
+        for node_res in getattr(res.result, "results", []) or []:
+            if getattr(node_res, "message", None):
+                output += str(node_res.message) + "\n"
+    except Exception:
+        pass
+    if not res.success:
+        if res.exception and not output:
+            output = str(res.exception)
+        raise subprocess.CalledProcessError(1, ["dbt"] + args, output=output, stderr=output)
+    return subprocess.CompletedProcess(["dbt"] + args, 0, stdout=output, stderr="")
+
+
 def run_dbt_command(args: List[str], capture: bool = False) -> subprocess.CompletedProcess:
     """Execute a dbt command from project root."""
+    # In-process engine handles `run` only: its synthesized stdout carries node
+    # result messages, which is what the run-batch error handling needs. `ls`
+    # (model selection, parsed from stdout) and other commands stay subprocess —
+    # they happen once per invocation, so the re-parse cost is negligible.
+    if os.environ.get("REFRESH_INPROCESS") == "1" and args and args[0] == "run":
+        return _run_dbt_inprocess(args, capture)
     cmd = ["dbt"] + args
     return subprocess.run(
         cmd,
@@ -619,6 +673,13 @@ Examples:
         help="Resume from last saved state"
     )
     parser.add_argument(
+        "--inprocess",
+        action="store_true",
+        help="Run batches via in-process dbtRunner with a single shared parse "
+             "(skips the ~14s per-batch dbt startup/re-parse). Batch vars must "
+             "be execution-time only (model bodies), not parse-time."
+    )
+    parser.add_argument(
         "--incremental-only",
         action="store_true",
         help="Skip --full-refresh flag (append data only, don't destroy existing)"
@@ -652,6 +713,9 @@ Examples:
     )
     
     args = parser.parse_args()
+
+    if args.inprocess:
+        os.environ["REFRESH_INPROCESS"] = "1"
     
     # Build defer flags to forward to every dbt run command
     defer_args: List[str] = []

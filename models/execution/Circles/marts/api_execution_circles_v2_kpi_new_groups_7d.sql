@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_circles_v2_groups_overview_daily') }}) AS as_of_date
+FROM (
 -- KPI tile: new Circles v2 groups registered in the last 7 days, with
 -- week-over-week change. Sourced from int_execution_circles_v2_groups_overview_daily
 -- (rather than the api_ view) so the source-of-truth aggregate isn't
@@ -22,3 +24,4 @@ SELECT
     value                                                                   AS value,
     round((value - prior_value) / nullIf(prior_value, 0) * 100, 1)          AS change_pct
 FROM windowed
+) AS sub

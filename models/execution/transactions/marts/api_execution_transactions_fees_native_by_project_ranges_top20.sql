@@ -4,6 +4,8 @@
     tags=['production','execution', 'tier0', 'api:transactions_fees_per_project_top20', 'granularity:in_ranges']) 
   }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_transactions_by_project_daily') }}) AS as_of_date
+FROM (
 WITH base AS (
   SELECT
     t.window,
@@ -33,3 +35,4 @@ ORDER BY
   multiIf(range = 'All', 1, range = '90D', 2, range = '30D', 3, range = '7D', 4, 5),
   value DESC,
   label ASC
+) AS sub

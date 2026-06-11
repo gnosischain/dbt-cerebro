@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 -- Lightweight (avatar, display_name) lookup used by the dashboard
 -- global filter to support searching avatars by display name OR
 -- address. Two columns, one row per registered Circles v2 avatar.
@@ -21,3 +23,4 @@ SELECT
     )                                                   AS display_name
 FROM {{ ref('api_execution_circles_v2_avatar_metadata') }}
 WHERE avatar IS NOT NULL
+) AS sub

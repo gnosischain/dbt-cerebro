@@ -6,6 +6,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(week)) FROM {{ ref('fct_execution_gnosis_app_weekly_active_users') }}) AS as_of_date
+FROM (
 -- Latest complete week's Weekly Active Users (non-blacklisted only) plus
 -- WoW change pct. Mirrors api_execution_gnosis_app_kpi_mau_latest shape.
 
@@ -27,3 +29,4 @@ SELECT
     round((anyIf(cnt, rn = 1) - anyIf(cnt, rn = 2))
           / nullIf(anyIf(cnt, rn = 2), 0) * 100, 1)                      AS change_pct
 FROM ranked
+) AS sub

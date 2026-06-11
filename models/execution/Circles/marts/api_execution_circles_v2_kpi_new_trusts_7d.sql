@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_circles_v2_trusts_daily') }}) AS as_of_date
+FROM (
 -- KPI tile: new trusts granted in the last 7 full days vs prior 7 days.
 
 WITH recent AS (
@@ -30,3 +32,4 @@ SELECT
           / nullIf(toFloat64(p.n_new), 0) * 100, 1)                     AS change_pct
 FROM recent r
 CROSS JOIN prior p
+) AS sub

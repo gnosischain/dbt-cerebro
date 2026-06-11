@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_lending_aave_user_balances_daily') }}) AS as_of_date
+FROM (
 -- "Active lenders" = unique wallets currently holding a positive supply balance in a
 -- lending market on Gnosis (Aave V3, SparkLend). This is a STOCK measure (point-in-time
 -- count), not a flow measure (users who supplied within a window). Protocol-scoped rows
@@ -73,3 +75,4 @@ combined AS (
 )
 
 SELECT token, protocol, value, change_pct FROM combined
+) AS sub

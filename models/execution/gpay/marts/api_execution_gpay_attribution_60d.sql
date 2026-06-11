@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_gpay_activity') }}) AS as_of_date
+FROM (
 -- API view passthrough over fct_execution_gpay_attribution_60d.
 -- Tier1 endpoint, requires X-API-Key. The `identity_role` column lets
 -- callers filter to owner-grain (`initial_owner`), treasury-grain
@@ -23,3 +25,4 @@ SELECT
   computed_at
 FROM {{ ref('fct_execution_gpay_attribution_60d') }}
 ORDER BY conversion_kind, identity_role, linear DESC
+) AS sub

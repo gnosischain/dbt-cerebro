@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 WITH current AS (
     SELECT total AS value
     FROM {{ ref('fct_execution_circles_v2_avatars') }}
@@ -21,3 +23,4 @@ SELECT
     round((c.value - p.value) / p.value * 100, 1) AS change_pct
 FROM current c
 CROSS JOIN prior p
+) AS sub
