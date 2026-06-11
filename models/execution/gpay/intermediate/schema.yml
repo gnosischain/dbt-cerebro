@@ -1402,12 +1402,12 @@ models:
 
 - name: int_execution_gpay_safe_switchover
   description: |
-    One row per June 2026 migrated pair with switch_at: the time from which
-    the NEW safe is the user's wallet and the OLD safe is no longer counted.
-    Refunded (is_lost) pairs switch at the first refund from the verified
-    distributor 0xbb897a56...; non-refunded pairs switch at the new safe's
-    on-chain deployment. is_lost + switch_at are the reusable lost-safes
-    filter.
+    One row per June 2026 migrated pair. Refunded (is_lost) pairs are
+    excluded from user holdings from first_refund_at (the first refund from
+    the verified distributor 0xbb897a56...); non-refunded pairs have no
+    cutover - their old safe counts until the user moves the funds.
+    is_lost + first_refund_at are the reusable lost-safes filter;
+    new_safe_deployed_at is informational.
   columns:
   - name: old_safe
     description: Migrated OLD Safe address (lowercase).
@@ -1429,11 +1429,6 @@ models:
   - name: is_lost
     description: 1 when the pair received a refund (old-safe funds were lost and made whole).
     data_type: UInt8
-  - name: switch_at
-    description: Date from which the NEW safe is used and the OLD safe stops counting.
-    data_type: Date
-    tests:
-    - not_null
   meta:
     owner: analytics_team
 
@@ -1441,10 +1436,12 @@ models:
   description: |
     User-holdings view over int_execution_gpay_balances_daily that is
     safe to aggregate across the June 2026 Safe migration without double
-    counting: an old Safe's rows (all tokens) count only before the pair's
-    switch_at from int_execution_gpay_safe_switchover. Per-Safe marts that
-    report actual on-chain balances (fct_execution_gpay_user_balances_latest)
-    must keep reading int_execution_gpay_balances_daily directly.
+    counting: refunded (is_lost) pairs' old-safe rows count only before
+    first_refund_at; non-refunded pairs have no cutover - their old safe
+    counts until the user moves the funds. All user-holdings consumers
+    (balance aggregates and fct_execution_gpay_user_balances_latest) read
+    this view; raw on-chain per-Safe balances remain in
+    int_execution_gpay_balances_daily.
   columns:
   - name: date
     data_type: Date

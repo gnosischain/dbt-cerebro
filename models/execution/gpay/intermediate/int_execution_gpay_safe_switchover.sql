@@ -8,12 +8,13 @@
   )
 }}
 
--- One row per migrated pair with the time from which the NEW safe is the
--- user's wallet and the OLD safe must no longer be counted:
---   refunded ("lost") pairs  -> switch_at = first refund from the verified
---                               distributor (refunds landed after deployment)
---   non-refunded pairs       -> switch_at = new safe deployment (nothing was
---                               lost; the pair simply migrated)
+-- One row per migrated pair. Cutover applies ONLY to refunded ("lost")
+-- pairs: the refund injects replacement funds while the old safe may keep
+-- residuals, which are recovery-entitled from first_refund_at onward.
+-- Non-exploited pairs have NO cutover - their funds count wherever they
+-- physically sit, and the old safe drains naturally when the user moves
+-- them (many pairs have a deployed new safe but funds not yet moved).
+-- new_safe_deployed_at is informational.
 -- CH LEFT JOIN fills '' / zero-date on misses, hence the explicit guards.
 
 WITH pairs AS (
@@ -43,11 +44,7 @@ SELECT
     if(d.deployed_at != toDateTime64(0, 0, 'UTC'), d.deployed_at, p.completed_at)
                                                                       AS new_safe_deployed_at,
     if(r.first_refund_date != toDate(0), r.first_refund_date, NULL)   AS first_refund_at,
-    toUInt8(r.first_refund_date != toDate(0))                         AS is_lost,
-    if(r.first_refund_date != toDate(0),
-       r.first_refund_date,
-       toDate(if(d.deployed_at != toDateTime64(0, 0, 'UTC'), d.deployed_at, p.completed_at)))
-                                                                      AS switch_at
+    toUInt8(r.first_refund_date != toDate(0))                         AS is_lost
 FROM pairs p
 LEFT JOIN deployments d ON d.new_safe = p.new_safe
 LEFT JOIN refunds r     ON r.new_safe = p.new_safe
