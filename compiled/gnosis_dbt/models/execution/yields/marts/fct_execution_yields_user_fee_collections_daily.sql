@@ -24,6 +24,7 @@ WHERE event_type IN ('collect', 'burn')
     
     
     
+    
 
     AND 
     
@@ -31,15 +32,6 @@ WHERE event_type IN ('collect', 'burn')
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`fct_execution_yields_user_fee_collections_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`fct_execution_yields_user_fee_collections_daily` AS x2
         WHERE 1=1 
       )
     

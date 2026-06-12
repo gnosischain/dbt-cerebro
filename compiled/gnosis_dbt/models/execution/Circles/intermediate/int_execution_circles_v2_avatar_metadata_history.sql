@@ -45,6 +45,7 @@ WITH new_events AS (
     
     
     
+    
 
     AND 
     

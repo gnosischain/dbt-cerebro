@@ -20,11 +20,53 @@
 --
 -- Amount threshold (>= 1 CRC) is applied downstream by the weekly-earners
 -- aggregation, keeping this event-grain model incremental-safe.
+--
+-- is_gnosis_app_tx flags fees whose mint tx was routed through an active
+-- Gnosis App (Cometh 4337) relayer — the canonical "action taken in-app"
+-- predicate (same as int_execution_gnosis_app_user_events). The heuristic
+-- itself stays ecosystem-wide: any app implementing the same invitation-fee
+-- pattern still produces rows, with the flag distinguishing origin so the
+-- circles-first economically-active layer can expose both scopes.
 
 
 
 
 WITH
+gnosis_app_txs AS (
+    SELECT transaction_hash
+    FROM `execution`.`transactions` tx
+    WHERE tx.to_address = '0000000071727de22e5e9d8baf0edac6f37da032'
+      AND lower(tx.from_address) IN (
+          SELECT lower(replaceAll(address, '0x', ''))
+          FROM `dbt`.`gnosis_app_relayers`
+          WHERE is_active = 1
+      )
+      AND tx.block_timestamp >= toDateTime('2025-11-12')
+      AND tx.block_timestamp < today()
+      
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(tx.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
+        WHERE 1=1 
+      )
+    
+  
+
+      
+),
+
 invitee_inviter AS (
     SELECT
         avatar      AS invitee,
@@ -49,6 +91,7 @@ mint_txs AS (
     
     
     
+    
 
     AND 
     
@@ -56,15 +99,6 @@ mint_txs AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x2
         WHERE 1=1 
       )
     
@@ -93,6 +127,7 @@ wrapper_transfers AS (
     
     
     
+    
 
     AND 
     
@@ -100,15 +135,6 @@ wrapper_transfers AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x2
         WHERE 1=1 
       )
     
@@ -125,10 +151,13 @@ SELECT
     t.token_address                         AS token_address,
     t.from_address                          AS invitee,
     t.to_address                            AS inviter,
-    toFloat64(t.amount_raw) / pow(10, 18)   AS amount
+    toFloat64(t.amount_raw) / pow(10, 18)   AS amount,
+    toUInt8(g.transaction_hash != '')       AS is_gnosis_app_tx
 FROM wrapper_transfers t
 INNER JOIN mint_txs m
     ON m.transaction_hash = t.transaction_hash
 INNER JOIN invitee_inviter ii
     ON ii.invitee = t.from_address
    AND ii.inviter = t.to_address
+LEFT JOIN gnosis_app_txs g
+    ON concat('0x', g.transaction_hash) = t.transaction_hash

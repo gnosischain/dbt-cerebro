@@ -65,6 +65,7 @@ daily_deltas AS (
     
     
     
+    
 
     AND 
     

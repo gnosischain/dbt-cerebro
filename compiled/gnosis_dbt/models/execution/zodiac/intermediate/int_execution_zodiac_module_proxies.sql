@@ -32,6 +32,11 @@ WITH decoded AS (
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -45,6 +50,8 @@ logs AS (
     WHERE address = '000000000000addb49795b0f9ba5bc298cdda236'
 
       
+
+      
         AND block_timestamp >= toDateTime('2021-01-01')
       
 
@@ -52,9 +59,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`int_execution_zodiac_module_proxies`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46661149
+        AND block_timestamp >= toDateTime('2026-06-12 16:04:05')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

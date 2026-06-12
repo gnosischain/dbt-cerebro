@@ -27,6 +27,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -40,6 +45,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
 
       
+
+      
         AND block_timestamp >= toDateTime('2022-03-01')
       
 
@@ -47,9 +54,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46658478
+        AND block_timestamp >= toDateTime('2026-06-12 12:16:35')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

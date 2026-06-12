@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_safes_owner_events`) AS as_of_date
+FROM (
 -- Per-Safe current owners (add-only snapshot from the owner-events log).
 -- One row per (safe, owner) pair where the last observed event for that pair
 -- is `safe_setup` or `added_owner`. Matches the shape of every other latest
@@ -17,3 +19,4 @@ SELECT
     became_owner_at,
     current_threshold
 FROM `dbt`.`int_execution_safes_current_owners`
+) AS sub

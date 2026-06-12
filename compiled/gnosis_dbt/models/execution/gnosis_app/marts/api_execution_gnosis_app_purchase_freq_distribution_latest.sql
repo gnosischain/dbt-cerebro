@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_execution_gnosis_app_user_activity_daily`) AS as_of_date
+FROM (
 -- Distribution of repeat-purchase intensity over the last 30 days.
 -- Buckets: 1 / 2 / 3 / 4-5 / 6-10 / 11+. Each row gives the count of
 -- distinct users falling in that bucket.
@@ -32,3 +34,4 @@ SELECT
 FROM bucketed
 GROUP BY bucket_order, bucket
 ORDER BY bucket_order
+) AS sub

@@ -42,6 +42,7 @@ WITH deltas AS (
     
     
     
+    
 
     AND 
     

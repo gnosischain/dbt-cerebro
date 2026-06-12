@@ -33,6 +33,7 @@ WITH conversions AS (
     
     
     
+    
 
     AND 
     
@@ -40,15 +41,6 @@ WITH conversions AS (
       toStartOfMonth(toDate(conversion_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(conversion_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x2
         WHERE 1=1 
       )
     
@@ -75,6 +67,7 @@ events_window AS (
     
     
     
+    
 
     AND 
     
@@ -82,15 +75,6 @@ events_window AS (
       toStartOfMonth(toDate(e.event_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -59))
         FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.event_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -59)
-          
-
-        FROM `dbt`.`fct_execution_gpay_journeys_60d` AS x2
         WHERE 1=1 
       )
     

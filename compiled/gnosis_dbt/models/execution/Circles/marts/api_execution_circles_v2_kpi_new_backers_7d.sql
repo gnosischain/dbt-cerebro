@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_execution_circles_v2_backers_cumulative_daily`) AS as_of_date
+FROM (
 -- KPI tile: backers newly trusted by the backers group in the last 7 days,
 -- with week-over-week change.
 
@@ -15,3 +17,4 @@ SELECT
     value                                                            AS value,
     round((value - prior_value) / nullIf(prior_value, 0) * 100, 1)   AS change_pct
 FROM windowed
+) AS sub

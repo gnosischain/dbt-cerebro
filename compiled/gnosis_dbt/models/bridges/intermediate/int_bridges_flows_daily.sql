@@ -23,6 +23,7 @@ WITH base AS (
     
     
     
+    
 
     AND 
     
@@ -30,15 +31,6 @@ WITH base AS (
       toStartOfMonth(toDate(timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_bridges_flows_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_bridges_flows_daily` AS x2
         WHERE 1=1 
       )
     

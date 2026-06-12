@@ -15,18 +15,18 @@
   <body>
     
     <h1>fct_execution_tokens_top_holders_ranked</h1>
-    <p>Latest-day snapshot of token holders ranked by USD balance with pct_of_total, filtered to top 500 per token. Composes int_execution_tokens_balances_daily with fct_ubo_supply_claims_daily + fct_ubo_known_containers_daily so pool contracts (Aave/Spark in Phase 1; Balancer/Curve in Phase 2) are replaced with individual UBOs before ranking. Materialized as a table to decouple the unwind work from the lightweight joins in fct_execution_tokens_top_holders_latest.
+    <p>Latest-day snapshot of top-500 token holders per token ranked by USD balance. Combines int_execution_tokens_balances_daily (direct holders, with known containers excluded via LEFT ANTI JOIN on fct_ubo_known_containers_daily) and fct_ubo_supply_claims_daily (UBO-unwound holders) for the single latest date. Uses scalar subqueries in WHERE for partition pruning rather than CROSS JOIN, keeping the scan to one date partition. Materialized as a table so fct_execution_tokens_top_holders_latest can drive its 7d-ago lookup from this small result set instead of re-scanning all holders.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> docs_only</p>
     <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/execution/tokens/marts/fct_execution_tokens_top_holders_ranked.sql</code></p>
-    <p><strong>Tags:</strong> <span class='pill'>dev</span> <span class='pill'>execution</span> <span class='pill'>tokens</span> <span class='pill'>top_holders</span> <span class='pill'>ranked</span></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>tokens</span> <span class='pill'>top_holders</span> <span class='pill'>ranked</span></p>
     <h2>Columns</h2>
     <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>Holder wallet or contract address. For Aave/Spark unwound rows this is the individual lender, not the aToken contract.</td></tr><tr><td><code>balance</code></td><td>Float64</td><td>Token balance in native units.</td></tr><tr><td><code>balance_usd</code></td><td>Float64</td><td>Token balance in USD.</td></tr><tr><td><code>pct_of_total</code></td><td>Float64</td><td>Holder&#x27;s balance as percentage of total token supply by USD.</td></tr><tr><td><code>rank</code></td><td>UInt64</td><td>Holder rank within token, ordered by balance_usd descending (1 = largest).</td></tr><tr><td><code>symbol</code></td><td>String</td><td>Token symbol.</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Contract address of the token.</td></tr><tr><td><code>token_class</code></td><td>String</td><td>Token classification.</td></tr><tr><td><code>unwound_from</code></td><td>Array(String)</td><td>Array of container addresses this row was unwound from. Empty for direct holders.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>fct_ubo_known_containers_daily</code></li><li><code>fct_ubo_supply_claims_daily</code></li><li><code>int_execution_tokens_balances_daily</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_ubo_known_containers_daily</code></li><li><code>fct_ubo_supply_claims_resolved_daily</code></li><li><code>int_execution_tokens_balances_daily</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_execution_tokens_top_holders_latest</code></li></ul>
     
   </body>

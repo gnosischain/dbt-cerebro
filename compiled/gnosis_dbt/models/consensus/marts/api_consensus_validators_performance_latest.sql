@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_consensus_validators_income_daily`) AS as_of_date
+FROM (
 WITH
 
 latest_income AS (
@@ -64,3 +66,4 @@ FROM latest_income l
 LEFT JOIN income_30d i30 ON i30.validator_index = l.validator_index
 LEFT JOIN proposer_30d p30 ON p30.validator_index = l.validator_index
 LEFT JOIN proposer_lifetime pl ON pl.validator_index = l.validator_index
+) AS sub

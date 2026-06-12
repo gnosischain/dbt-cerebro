@@ -73,6 +73,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -86,6 +91,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN ('5671b0b8ac13dc7813d36b99c21c53f6cd376a14', '629d562e92fed431122e865cc650bc6bde6b96b0', '9ee4271e17e3a427678344fd2ee64663cb78b4be', 'c9fe2d32e96bb364c7d29f3663ed3b27e30767bb', 'e877b96caf9f180916bf2b5ce7ea8069e0123182', '5850d127a04ed0b4f1fcdfb051b3409fb9fe6b90', 'a34db0ee8f84c4b90ed268df5abbe7dcd3c277ec', '08b0caebe352c3613302774cd9b82d08afd7bdc4', '6dc304337bf3eb397241d1889cae7da638e6e782')
 
       
+
+      
         AND block_timestamp >= toDateTime('2023-10-06')
       
 
@@ -93,9 +100,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_spark_AToken_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46660235
+        AND block_timestamp >= toDateTime('2026-06-12 14:46:25')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

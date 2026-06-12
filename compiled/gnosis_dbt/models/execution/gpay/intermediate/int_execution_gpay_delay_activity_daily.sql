@@ -20,6 +20,7 @@ events_filtered AS (
     
     
     
+    
 
     AND 
     
@@ -27,15 +28,6 @@ events_filtered AS (
       toStartOfMonth(toDate(d.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_gpay_delay_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(d.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gpay_delay_activity_daily` AS x2
         WHERE 1=1 
       )
     

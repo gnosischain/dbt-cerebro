@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '0b98057ea310f4d31f2a452b414647007d1645d9'
 
       
+
+      
         AND block_timestamp >= toDateTime('2021-12-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_GBCDeposit_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46656465
+        AND block_timestamp >= toDateTime('2026-06-12 09:25:55')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

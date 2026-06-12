@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_circles_v2_avatar_metadata_targets`) AS as_of_date
+FROM (
 -- Historical timeline of every Circles v2 avatar metadata change.
 -- One row per (avatar, metadata_digest) ever announced, with
 -- valid_from / valid_to / is_current so the dashboard can render
@@ -25,3 +27,4 @@ SELECT
     metadata_fetched_at
 FROM `dbt`.`int_execution_circles_v2_avatar_metadata_history`
 WHERE avatar IS NOT NULL
+) AS sub

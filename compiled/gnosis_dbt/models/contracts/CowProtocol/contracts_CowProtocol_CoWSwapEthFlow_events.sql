@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'ba3cb449bd2b4adddbc894d8697f5170800eadec'
 
       
+
+      
         AND block_timestamp >= toDateTime('2023-01-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_CowProtocol_CoWSwapEthFlow_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46651158
+        AND block_timestamp >= toDateTime('2026-06-12 01:51:55')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

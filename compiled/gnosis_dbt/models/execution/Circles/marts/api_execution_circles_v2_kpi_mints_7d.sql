@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_execution_circles_v2_mints_daily`) AS as_of_date
+FROM (
 -- KPI tile: mints in the last 7 full days vs the prior 7 days.
 -- Value = total mint events (count); change_pct vs prior 7d window.
 
@@ -27,3 +29,4 @@ SELECT
           / nullIf(toFloat64(p.n_events), 0) * 100, 1)                 AS change_pct
 FROM recent r
 CROSS JOIN prior p
+) AS sub

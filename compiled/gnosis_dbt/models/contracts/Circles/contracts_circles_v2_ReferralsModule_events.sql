@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '12105a9b291af2abb0591001155a75949b062ce5'
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-11-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_ReferralsModule_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46656175
+        AND block_timestamp >= toDateTime('2026-06-12 09:00:40')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

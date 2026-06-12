@@ -33,6 +33,7 @@ topup_rows AS (
     
     
     
+    
 
     AND 
     
@@ -40,15 +41,6 @@ topup_rows AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_conversions` AS x2
         WHERE 1=1 
       )
     
@@ -80,6 +72,7 @@ swap_filled_rows AS (
     
     
     
+    
 
     AND 
     
@@ -87,15 +80,6 @@ swap_filled_rows AS (
       toStartOfMonth(toDate(s.first_fill_at)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(s.first_fill_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_conversions` AS x2
         WHERE 1=1 
       )
     
@@ -125,6 +109,7 @@ claim_rows AS (
     
     
     
+    
 
     AND 
     
@@ -132,15 +117,6 @@ claim_rows AS (
       toStartOfMonth(toDate(tc.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(tc.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_conversions` AS x2
         WHERE 1=1 
       )
     
@@ -170,6 +146,7 @@ marketplace_rows AS (
     
     
     
+    
 
     AND 
     
@@ -177,15 +154,6 @@ marketplace_rows AS (
       toStartOfMonth(toDate(mp.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(mp.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_conversions` AS x2
         WHERE 1=1 
       )
     

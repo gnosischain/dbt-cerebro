@@ -1,14 +1,5 @@
+﻿
 
-
--- Per-protocol UBO supply claims for Aave V3 + SparkLend.
---
--- This is the standardized "who can withdraw what" projection of
--- int_execution_lending_aave_user_balances_daily — same per-user balances,
--- reshaped into the protocol-agnostic supply-claim schema that
--- fct_ubo_supply_claims_daily unions across protocols.
---
--- Phase 2 protocols (Balancer, Curve, …) will each have their own sibling
--- int_ubo_claims_<protocol>_daily model contributing rows in the same shape.
 
 
 
@@ -54,6 +45,7 @@ WHERE u.date < today()
     
     
     
+    
 
     AND 
     
@@ -61,15 +53,6 @@ WHERE u.date < today()
       toStartOfMonth(toDate(u.date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_ubo_claims_aave_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(u.date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_ubo_claims_aave_daily` AS x2
         WHERE 1=1 
       )
     

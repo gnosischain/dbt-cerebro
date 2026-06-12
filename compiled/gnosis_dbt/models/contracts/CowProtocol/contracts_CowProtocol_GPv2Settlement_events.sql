@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '9008d19f58aabd9ed0d60971565aa8510560ab41'
 
       
+
+      
         AND block_timestamp >= toDateTime('2021-04-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_CowProtocol_GPv2Settlement_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46658477
+        AND block_timestamp >= toDateTime('2026-06-12 12:16:30')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

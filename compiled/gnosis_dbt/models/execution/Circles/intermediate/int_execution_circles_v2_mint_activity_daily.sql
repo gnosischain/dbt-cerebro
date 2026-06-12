@@ -46,6 +46,7 @@ mint_events_window AS (
     
     
     
+    
 
     AND 
     

@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -20,6 +20,7 @@ trades AS (
     
     
     
+    
 
     WHERE 
     
@@ -27,15 +28,6 @@ trades AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_cow_batches` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_cow_batches` AS x2
         WHERE 1=1 
       )
     
@@ -61,7 +53,7 @@ batch_trades AS (
         transaction_hash,
         any(solver)                                                                  AS solver,
         count(*)                                                                     AS num_trades,
-        countDistinct(amount_usd)                                                    AS num_priced_trades,
+        countIf(isNotNull(amount_usd))                                               AS num_priced_trades,
         sum(amount_usd)                                                              AS batch_value_usd
     FROM trades
     GROUP BY transaction_hash

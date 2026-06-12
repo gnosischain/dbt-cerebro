@@ -133,6 +133,7 @@ WITH raw AS (
     
     
     
+    
 
     AND 
     
@@ -140,15 +141,6 @@ WITH raw AS (
       toStartOfMonth(toDate(event_time)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`stg_mixpanel_ga__events` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(event_time) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`stg_mixpanel_ga__events` AS x2
         WHERE 1=1 
       )
     

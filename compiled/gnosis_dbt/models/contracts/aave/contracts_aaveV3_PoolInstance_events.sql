@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'b50201558b00496a145fe76f7424749556e326d8'
 
       
+
+      
         AND block_timestamp >= toDateTime('2023-10-04')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_aaveV3_PoolInstance_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46657199
+        AND block_timestamp >= toDateTime('2026-06-12 10:28:10')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

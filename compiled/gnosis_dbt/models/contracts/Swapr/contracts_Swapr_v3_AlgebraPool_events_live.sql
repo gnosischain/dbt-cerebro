@@ -26,6 +26,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -35,14 +40,17 @@ logs AS (
         PARTITION BY block_number, transaction_index, log_index
         ORDER BY insert_version DESC
       ) AS _dedup_rn
-    FROM (SELECT *, insert_version FROM `execution_live`.`logs` WHERE block_timestamp >= (SELECT max(block_timestamp) FROM `execution_live`.`logs`) - INTERVAL 4 HOUR)
+    FROM (SELECT *, insert_version FROM `execution_live`.`logs` WHERE block_timestamp >= (SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -5), now() - INTERVAL 30 MINUTE) FROM `dbt`.`contracts_Swapr_v3_AlgebraPool_events_live`))
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
 
       
 
       
+
+      
       
 
+      
       
   )
   WHERE _dedup_rn = 1

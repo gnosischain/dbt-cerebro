@@ -17,8 +17,6 @@ WITH latest_observations AS (
         AND crawl_error IS NULL
         AND toStartOfDay(visit_ended_at) < today()
         
-            AND toDate(visit_ended_at) > (SELECT MAX(date) FROM `dbt`.`int_esg_node_classification`)
-        
     GROUP BY observation_date, peer_id
 ),
 
@@ -88,8 +86,6 @@ chao1_data AS (
         p.connection_success_rate_pct
     FROM `dbt`.`int_esg_node_population_chao1` p
     WHERE 1=1
-        
-            AND p.observation_date > (SELECT MAX(date) FROM `dbt`.`int_esg_node_classification`)
         
 ),
 

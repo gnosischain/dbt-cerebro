@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_execution_account_token_movements_daily`) AS as_of_date
+FROM (
 SELECT
   source,
   target,
@@ -10,3 +12,4 @@ SELECT
   raw_volume,
   last_seen_date
 FROM `dbt`.`fct_execution_account_counterparty_edges_latest`
+) AS sub

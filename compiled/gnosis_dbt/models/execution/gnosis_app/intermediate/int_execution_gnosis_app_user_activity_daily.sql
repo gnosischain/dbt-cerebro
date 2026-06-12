@@ -17,31 +17,6 @@ WITH onboard_rows AS (
     
       
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(first_seen_at)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(first_seen_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
     
 ),
@@ -59,31 +34,6 @@ heuristic_rows AS (
     
       
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
     
     GROUP BY toDate(block_timestamp), address, heuristic_kind
@@ -99,31 +49,6 @@ swap_signed_rows AS (
     FROM `dbt`.`int_execution_gnosis_app_swaps`
     
     WHERE block_timestamp < today()
-    
-  
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
     
   
 
@@ -149,31 +74,6 @@ swap_filled_rows AS (
     
       
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(first_fill_at)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(first_fill_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
     
     GROUP BY toDate(assumeNotNull(first_fill_at)), taker
@@ -189,31 +89,6 @@ topup_rows AS (
     FROM `dbt`.`int_execution_gnosis_app_gpay_topups`
     
     WHERE 1=1 
-  
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
-    
   
 
     
@@ -232,31 +107,6 @@ marketplace_rows AS (
     WHERE block_timestamp < today()
     
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
     
     GROUP BY toDate(block_timestamp), payer
@@ -272,31 +122,6 @@ token_offer_claim_rows AS (
     FROM `dbt`.`int_execution_gnosis_app_token_offer_claims`
     
     WHERE block_timestamp < today()
-    
-  
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_activity_daily` AS x2
-        WHERE 1=1 
-      )
     
   
 

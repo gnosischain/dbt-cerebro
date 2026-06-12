@@ -25,6 +25,7 @@ WHERE event_name = 'PaymentReceived'
     
     
     
+    
 
     AND 
     
@@ -32,15 +33,6 @@ WHERE event_name = 'PaymentReceived'
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_payments` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_payments` AS x2
         WHERE 1=1 
       )
     

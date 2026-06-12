@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_circles_v2_backing`) AS as_of_date
+FROM (
 -- KPI tile: % of distinct depositors that are also trust-defined backers
 -- (i.e. were eventually trusted by the backers group). The diagnostic
 -- single number for the depositors-vs-backers gap.
@@ -24,3 +26,4 @@ SELECT
     depositors_in_backers                                               AS depositors_in_backers,
     toFloat64(NULL)                                                     AS change_pct
 FROM overlap
+) AS sub

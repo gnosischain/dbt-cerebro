@@ -27,31 +27,6 @@ WITH active_pool_daily AS (
               
                 
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(date)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_token_offer_claim_funnel_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_token_offer_claim_funnel_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
               
         ) d
@@ -74,31 +49,6 @@ claims_daily AS (
     WHERE block_timestamp < today()
       
         
-  
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_execution_gnosis_app_token_offer_claim_funnel_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_token_offer_claim_funnel_daily` AS x2
-        WHERE 1=1 
-      )
-    
   
 
       

@@ -43,6 +43,7 @@ uniswap_v3_swap_fees_token AS (
     
     
     
+    
 
     AND 
     
@@ -50,15 +51,6 @@ uniswap_v3_swap_fees_token AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_fees_daily` AS x2
         WHERE 1=1 
       )
     
@@ -86,6 +78,7 @@ uniswap_v3_flash_fees_token AS (
     
     
     
+    
 
     AND 
     
@@ -93,15 +86,6 @@ uniswap_v3_flash_fees_token AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_fees_daily` AS x2
         WHERE 1=1 
       )
     
@@ -167,6 +151,7 @@ swapr_v3_swaps_with_fee AS (
     
     
     
+    
 
     AND 
     
@@ -174,15 +159,6 @@ swapr_v3_swaps_with_fee AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_fees_daily` AS x2
         WHERE 1=1 
       )
     
@@ -232,6 +208,7 @@ swapr_v3_flash_fees_token AS (
     
     
     
+    
 
     AND 
     
@@ -239,15 +216,6 @@ swapr_v3_flash_fees_token AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_fees_daily` AS x2
         WHERE 1=1 
       )
     
@@ -288,6 +256,7 @@ balancer_v3_swap_fees AS (
     
     
     
+    
 
     AND 
     
@@ -295,15 +264,6 @@ balancer_v3_swap_fees AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_fees_daily` AS x2
         WHERE 1=1 
       )
     

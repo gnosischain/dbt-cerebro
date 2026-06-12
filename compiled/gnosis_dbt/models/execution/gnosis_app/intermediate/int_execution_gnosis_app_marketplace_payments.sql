@@ -42,6 +42,7 @@ payment_events AS (
     
     
     
+    
 
     AND 
     
@@ -49,15 +50,6 @@ payment_events AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
         WHERE 1=1 
       )
     
@@ -82,6 +74,7 @@ cometh_txs AS (
     
     
     
+    
 
     AND 
     
@@ -89,15 +82,6 @@ cometh_txs AS (
       toStartOfMonth(toDate(tx.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(tx.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x2
         WHERE 1=1 
       )
     

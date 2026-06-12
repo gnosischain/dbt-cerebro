@@ -47,6 +47,7 @@ activity AS (
     
     
     
+    
 
     AND 
     
@@ -54,15 +55,6 @@ activity AS (
       toStartOfMonth(toDate(a.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gpay_conversions` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(a.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gpay_conversions` AS x2
         WHERE 1=1 
       )
     
@@ -77,6 +69,7 @@ payments AS (
         a.conversion_date,
         b.user_pseudonym,
         b.identity_role,
+        a.gp_safe                                                     AS gp_safe,
         'gpay_payment'                                                AS conversion_kind,
         toFloat64OrNull(toString(a.amount_usd))                       AS conversion_amount_usd,
         a.symbol                                                      AS conversion_token,
@@ -93,6 +86,7 @@ cashback_claims AS (
         a.conversion_date,
         b.user_pseudonym,
         b.identity_role,
+        a.gp_safe                                                     AS gp_safe,
         'gpay_cashback_claim'                                         AS conversion_kind,
         toFloat64OrNull(toString(a.amount_usd))                       AS conversion_amount_usd,
         a.symbol                                                      AS conversion_token,
@@ -128,6 +122,7 @@ funded AS (
         toDate(fi.first_inflow_ts)                                    AS conversion_date,
         b.user_pseudonym,
         b.identity_role,
+        fi.gp_safe                                                    AS gp_safe,
         'gpay_funded'                                                 AS conversion_kind,
         toFloat64OrNull(toString(fi.first_inflow_amount_usd))         AS conversion_amount_usd,
         fi.first_inflow_symbol                                        AS conversion_token,

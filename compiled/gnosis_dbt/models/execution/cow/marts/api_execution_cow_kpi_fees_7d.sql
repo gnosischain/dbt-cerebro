@@ -1,4 +1,4 @@
-
+﻿
 
 -- 7-day CoW Protocol revenue, filtered to fee_source = 'api' (surplus-based
 -- fees, Sep 2024+). On-chain feeAmount values pre-Sep 2024 reflect signed

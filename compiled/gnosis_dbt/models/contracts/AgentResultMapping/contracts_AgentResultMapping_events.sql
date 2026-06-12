@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '99c43743a2dbd406160cc43cf08113b17178789c'
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-06-10')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_AgentResultMapping_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46619058
+        AND block_timestamp >= toDateTime('2026-06-10 04:16:40')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

@@ -29,6 +29,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -42,6 +47,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_circles_registry` cw WHERE cw.contract_type = 'PaymentGatewayRuntime')
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-12-01')
       
 
@@ -49,9 +56,16 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_PaymentGateway_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

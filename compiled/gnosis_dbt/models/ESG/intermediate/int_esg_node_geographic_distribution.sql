@@ -11,8 +11,6 @@ WITH node_classification AS (
         geographic_distribution
     FROM `dbt`.`int_esg_node_classification`
     
-        WHERE date > (SELECT MAX(date) FROM `dbt`.`int_esg_node_geographic_distribution`)
-    
 ),
 
 -- Parse geographic distribution JSON

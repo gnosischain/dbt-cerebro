@@ -47,6 +47,7 @@ WHERE was_filled = 1
     
     
     
+    
 
     AND 
     
@@ -54,15 +55,6 @@ WHERE was_filled = 1
       toStartOfMonth(toDate(first_fill_at)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_swap_fees_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(first_fill_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_swap_fees_daily` AS x2
         WHERE 1=1 
       )
     

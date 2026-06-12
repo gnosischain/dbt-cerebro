@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_date)) FROM `dbt`.`int_execution_safes`) AS as_of_date
+FROM (
 -- Per-address merge on top of fct_execution_address_resolver. The fct table
 -- carries one row per (address × source) signal — we collapse them into a
 -- single row per address here, at query time, with an indexed point-lookup
@@ -49,3 +51,4 @@ FROM (
   FROM `dbt`.`fct_execution_address_resolver`
   GROUP BY address
 )
+) AS sub

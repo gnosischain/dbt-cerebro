@@ -43,6 +43,7 @@ deltas AS (
     
     
     
+    
 
     AND 
     

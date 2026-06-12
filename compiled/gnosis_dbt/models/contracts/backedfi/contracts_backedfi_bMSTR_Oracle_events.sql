@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'c8429803dcda7df86822ab173ea285c10bf1eb66'
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-01-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_backedfi_bMSTR_Oracle_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46656169
+        AND block_timestamp >= toDateTime('2026-06-12 09:00:10')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

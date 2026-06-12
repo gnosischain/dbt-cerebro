@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'ba1333333333a1ba1108e8412f11850a5c319ba9'
 
       
+
+      
         AND block_timestamp >= toDateTime('2024-01-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_BalancerV3_Vault_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46658478
+        AND block_timestamp >= toDateTime('2026-06-12 12:16:35')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_execution_circles_v2_group_token_supply_daily`) AS as_of_date
+FROM (
 -- KPI tile: share of aggregate Circles v2 group-token supply currently held
 -- as ERC-20 wrappers (versus native ERC-1155). 7-day pct-point delta vs.
 -- the same point a week ago.
@@ -27,3 +29,4 @@ SELECT
     round(c.value - p.value, 2)            AS change_pct
 FROM current c
 CROSS JOIN prior p
+) AS sub

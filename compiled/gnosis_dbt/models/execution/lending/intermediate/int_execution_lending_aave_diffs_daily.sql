@@ -58,6 +58,7 @@ reserve_index_by_tx AS (
     
     
     
+    
 
     AND 
     
@@ -65,15 +66,6 @@ reserve_index_by_tx AS (
       toStartOfMonth(toDate(e.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(e.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -105,6 +97,7 @@ pool_events AS (
     
     
     
+    
 
     AND 
     
@@ -112,15 +105,6 @@ pool_events AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -152,6 +136,7 @@ pool_events AS (
     
     
     
+    
 
     AND 
     
@@ -159,15 +144,6 @@ pool_events AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -200,6 +176,7 @@ pool_events AS (
     
     
     
+    
 
     AND 
     
@@ -207,15 +184,6 @@ pool_events AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -248,6 +216,7 @@ pool_events AS (
     
     
     
+    
 
     AND 
     
@@ -255,15 +224,6 @@ pool_events AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -345,6 +305,7 @@ transfer_deltas AS (
     
     
     
+    
 
     AND 
     
@@ -352,15 +313,6 @@ transfer_deltas AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -392,6 +344,7 @@ transfer_deltas AS (
     
     
     
+    
 
     AND 
     
@@ -399,15 +352,6 @@ transfer_deltas AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     
@@ -460,6 +404,7 @@ treasury_mint_deltas AS (
     
     
     
+    
 
     AND 
     
@@ -467,15 +412,6 @@ treasury_mint_deltas AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x2
         WHERE 1=1 
       )
     

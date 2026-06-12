@@ -30,6 +30,7 @@ WITH single_rows AS (
     
     
     
+    
 
     AND 
     
@@ -37,15 +38,6 @@ WITH single_rows AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x2
         WHERE 1=1 
       )
     
@@ -76,6 +68,7 @@ batch_rows AS (
     
     
     
+    
 
     AND 
     
@@ -83,15 +76,6 @@ batch_rows AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x2
         WHERE 1=1 
       )
     

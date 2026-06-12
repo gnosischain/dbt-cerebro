@@ -21,6 +21,7 @@ WITH conv AS (
     
     
     
+    
 
     AND 
     
@@ -28,15 +29,6 @@ WITH conv AS (
       toStartOfMonth(toDate(conversion_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.conversion_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_coverage_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(conversion_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.conversion_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_coverage_daily` AS x2
         WHERE 1=1 
       )
     

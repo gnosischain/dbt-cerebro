@@ -7,7 +7,7 @@ hwm AS (
 
 recent AS (
     SELECT *
-    FROM `dbt`.`int_live__dex_trades_raw`
+    FROM `dbt`.`int_live__dex_trades_raw` FINAL
     WHERE block_timestamp >= (SELECT ts FROM hwm) - INTERVAL 30 MINUTE
       AND block_timestamp <= (SELECT ts FROM hwm) - INTERVAL 60 SECOND
 ),
@@ -101,7 +101,7 @@ SELECT
     s.hops                       AS hops,
     h.hops_detail                AS hops_detail,
     tx.from_address              AS trader,
-    lbl.project                  AS aggregator
+    nullIf(lbl.project, '')      AS aggregator
 FROM tx_summary s
 LEFT JOIN hops_per_tx h
     ON h.transaction_hash = s.transaction_hash

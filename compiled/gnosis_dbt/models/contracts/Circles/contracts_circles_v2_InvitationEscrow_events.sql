@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '8f8b74fa13eaaff4176d061a0f98ad5c8e19c903'
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-09-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_InvitationEscrow_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46275910
+        AND block_timestamp >= toDateTime('2026-05-20 18:46:00')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

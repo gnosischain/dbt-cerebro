@@ -19,6 +19,7 @@ WITH deltas AS (
     
     
     
+    
 
     AND 
     

@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '83183da839ce8228e31ae41222ead9edbb5cdcf1'
 
       
+
+      
         AND block_timestamp >= toDateTime('2024-10-08')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_Seer_MarketFactory_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46621869
+        AND block_timestamp >= toDateTime('2026-06-10 08:16:55')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

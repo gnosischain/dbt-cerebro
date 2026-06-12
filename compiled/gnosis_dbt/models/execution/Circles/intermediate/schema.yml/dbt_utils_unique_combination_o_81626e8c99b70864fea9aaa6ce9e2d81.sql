@@ -8,7 +8,7 @@ with validation_errors as (
 
     select
         date
-    from `dbt`.`int_execution_circles_v2_trusts_daily`
+    from (select * from `dbt`.`int_execution_circles_v2_trusts_daily` where toDate(date) >= today() - 7) dbt_subquery
     group by date
     having count(*) > 1
 

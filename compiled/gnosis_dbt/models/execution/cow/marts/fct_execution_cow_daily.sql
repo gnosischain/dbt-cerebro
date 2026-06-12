@@ -1,5 +1,8 @@
 
 
+
+
+
 WITH
 
 trade_daily AS (
@@ -8,8 +11,14 @@ trade_daily AS (
         count(*)                                                                     AS num_trades,
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
-        sum(fee_usd)                                                                 AS fees_usd
+        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd,
+        sumIf(solver_value_usd, fee_source = 'api')                                 AS solver_value_usd
     FROM `dbt`.`fct_execution_cow_trades`
+    
+    WHERE toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(date), -3)) FROM `dbt`.`fct_execution_cow_daily`
+    )
+    
     GROUP BY date
 ),
 
@@ -22,6 +31,11 @@ batch_daily AS (
         sum(tx_cost_native)                                                          AS total_tx_cost_native,
         countDistinct(solver)                                                        AS active_solvers
     FROM `dbt`.`int_execution_cow_batches`
+    
+    WHERE toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(date), -3)) FROM `dbt`.`fct_execution_cow_daily`
+    )
+    
     GROUP BY date
 )
 
@@ -31,6 +45,7 @@ SELECT
     t.unique_traders,
     t.volume_usd,
     t.fees_usd,
+    t.solver_value_usd,
     b.num_batches,
     b.num_cow_batches,
     if(b.num_batches > 0, toFloat64(b.num_cow_batches) / b.num_batches, 0)           AS cow_ratio,

@@ -43,6 +43,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -56,6 +61,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN ('76a42aebb2c54d7e259b1c7e4eb0cadf5897a7de', 'b3129372e52b910b6994eaef77bbc1892ea48779', '68e2c29feed2a4d0f22cc6d271e2b25124d99892')
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-09-01')
       
 
@@ -63,9 +70,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_ERC20TokenOfferCycle_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46658292
+        AND block_timestamp >= toDateTime('2026-06-12 12:00:50')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

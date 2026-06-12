@@ -1,4 +1,4 @@
-
+﻿
 
 WITH pair_weekly AS (
     SELECT

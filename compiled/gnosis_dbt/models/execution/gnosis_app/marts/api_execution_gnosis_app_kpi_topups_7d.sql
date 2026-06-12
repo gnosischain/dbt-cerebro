@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_execution_gnosis_app_gpay_topups_by_token_daily`) AS as_of_date
+FROM (
 WITH days AS (
     SELECT date, sum(n_topups) AS n_topups
     FROM `dbt`.`fct_execution_gnosis_app_gpay_topups_by_token_daily`
@@ -13,3 +15,4 @@ SELECT
     (SELECT v FROM recent)                                                AS value,
     round(((SELECT v FROM recent) - (SELECT v FROM prior))
           / nullIf((SELECT v FROM prior), 0) * 100, 1)                    AS change_pct
+) AS sub

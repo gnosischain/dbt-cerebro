@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_circles_v2_avatars`) AS as_of_date
+FROM (
 -- Per-avatar identity for Circles v2: on-chain registration metadata
 -- joined to the most recently fetched IPFS profile (display name,
 -- preview/image URL, description). Backs the "Avatar Identity" panel
@@ -25,3 +27,4 @@ FROM `dbt`.`int_execution_circles_v2_avatars` a
 LEFT JOIN `dbt`.`int_execution_circles_v2_avatar_metadata` m
     ON a.avatar = m.avatar
 WHERE a.avatar IS NOT NULL
+) AS sub

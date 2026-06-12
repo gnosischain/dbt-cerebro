@@ -22,6 +22,7 @@ WHERE country_code != ''
     
     
     
+    
 
     AND 
     
@@ -29,15 +30,6 @@ WHERE country_code != ''
       toStartOfMonth(toDate(event_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_mixpanel_ga_geo_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(event_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_mixpanel_ga_geo_daily` AS x2
         WHERE 1=1 
       )
     

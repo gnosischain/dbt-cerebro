@@ -14,6 +14,21 @@ FROM `dbt`.`int_execution_safes_current_owners` co
 INNER JOIN gpay_safes gs
     ON co.safe_address = gs.pay_wallet
 
-WHERE co.became_owner_at > (
-    SELECT coalesce(max(block_timestamp), toDateTime('1970-01-01')) FROM `dbt`.`int_execution_gpay_wallet_owners`
-)
+  
+    
+    
+    
+    
+    
+    
+
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(co.became_owner_at)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_gpay_wallet_owners` AS x1
+        WHERE 1=1 
+      )
+    
+  

@@ -36,6 +36,7 @@ raw_deltas AS (
     
     
     
+    
 
     AND 
     

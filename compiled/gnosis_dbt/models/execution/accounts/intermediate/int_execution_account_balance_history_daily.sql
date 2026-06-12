@@ -27,6 +27,7 @@ WITH balances AS (
     
     
     
+    
 
     AND 
     
@@ -34,15 +35,6 @@ WITH balances AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
         FROM `dbt`.`int_execution_account_balance_history_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -1)
-          
-
-        FROM `dbt`.`int_execution_account_balance_history_daily` AS x2
         WHERE 1=1 
       )
     

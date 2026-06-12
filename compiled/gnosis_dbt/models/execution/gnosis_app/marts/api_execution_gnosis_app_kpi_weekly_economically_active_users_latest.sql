@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(week)) FROM `dbt`.`fct_execution_gnosis_app_weekly_economically_active_users`) AS as_of_date
+FROM (
 -- Latest complete week's Weekly Economically Active Users (non-blacklisted only)
 -- plus WoW change pct.
 
@@ -21,3 +23,4 @@ SELECT
     round((anyIf(cnt, rn = 1) - anyIf(cnt, rn = 2))
           / nullIf(anyIf(cnt, rn = 2), 0) * 100, 1)                      AS change_pct
 FROM ranked
+) AS sub

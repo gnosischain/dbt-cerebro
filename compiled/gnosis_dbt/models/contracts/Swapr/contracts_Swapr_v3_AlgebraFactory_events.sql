@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'a0864cca6e114013ab0e27cbd5b6f4c8947da766'
 
       
+
+      
         AND block_timestamp >= toDateTime('2022-03-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_Swapr_v3_AlgebraFactory_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46622707
+        AND block_timestamp >= toDateTime('2026-06-10 09:28:30')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

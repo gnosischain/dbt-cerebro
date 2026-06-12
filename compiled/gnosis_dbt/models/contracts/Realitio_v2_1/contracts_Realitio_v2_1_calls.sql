@@ -51,8 +51,19 @@ WITH
         
 
         
-          AND block_timestamp >
-              (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_Realitio_v2_1_calls`)
+        
+          
+          
+            
+            
+            
+          
+          
+          AND block_number > 46625300
+          AND block_timestamp >= toDateTime('2026-06-10 13:10:20')
+          
+          
+          
         
         AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
     )

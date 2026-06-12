@@ -31,6 +31,7 @@ WHERE b.date < today()
     
     
     
+    
 
     AND 
     
@@ -38,15 +39,6 @@ WHERE b.date < today()
       toStartOfMonth(toDate(b.date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(b.date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x2
         WHERE 1=1 
       )
     

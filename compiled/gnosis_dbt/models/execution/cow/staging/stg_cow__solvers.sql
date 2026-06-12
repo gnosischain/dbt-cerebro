@@ -1,4 +1,4 @@
-
+﻿
 
 SELECT
     e.block_number,

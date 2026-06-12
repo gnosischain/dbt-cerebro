@@ -1,16 +1,5 @@
+﻿
 
-
--- Per-user UBO supply claims for Balancer V2.
---
--- Balancer V2 uses a single Vault contract that custodies ALL pool tokens.
--- Each LP's net token position is the cumulative sum of their PoolBalanceChanged
--- deltas across all pools for that token. container_address is therefore the
--- Vault address for every row; token_address is the canonical address per
--- tokens_whitelist on that date.
---
--- Tracking is keyed by (ubo_address, symbol) through the cumsum so that token
--- migrations (e.g. EURe V1 → V2) collapse into a single continuous series.
--- The canonical token_address is resolved at the final SELECT via tokens_whitelist.
 
 
 
@@ -34,6 +23,7 @@ daily_deltas AS (
       
         
   
+    
     
     
     
@@ -82,7 +72,7 @@ prev_balances AS (
         t1.ubo_address,
         tw.symbol,
         t1.balance_raw
-    FROM `dbt`.`int_ubo_claims_balancer_v2_daily` t1
+    FROM (SELECT ubo_address, token_address, balance_raw, date FROM `dbt`.`int_ubo_claims_balancer_v2_daily`) t1
     CROSS JOIN current_partition t2
     INNER JOIN `dbt`.`tokens_whitelist` tw
         ON lower(tw.address) = lower(t1.token_address)

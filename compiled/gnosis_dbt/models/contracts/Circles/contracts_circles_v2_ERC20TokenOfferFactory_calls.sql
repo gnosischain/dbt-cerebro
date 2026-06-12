@@ -51,8 +51,19 @@ WITH
         
 
         
-          AND block_timestamp >
-              (SELECT coalesce(max(block_timestamp), '1970-01-01') FROM `dbt`.`contracts_circles_v2_ERC20TokenOfferFactory_calls`)
+        
+          
+          
+            
+            
+            
+          
+          
+          AND block_number > 41870646
+          AND block_timestamp >= toDateTime('2025-08-30 16:32:30')
+          
+          
+          
         
         AND length(replaceAll(coalesce(input,''),'0x','')) >= 8
     )

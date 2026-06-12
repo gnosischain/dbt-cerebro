@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_execution_gnosis_app_user_activity_daily`) AS as_of_date
+FROM (
 WITH base AS (
     SELECT
         address,
@@ -19,3 +21,4 @@ SELECT
     )                                                 AS value,
     CAST(NULL AS Nullable(Float64))                   AS change_pct
 FROM base
+) AS sub

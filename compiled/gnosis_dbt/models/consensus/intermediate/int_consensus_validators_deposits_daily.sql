@@ -38,6 +38,7 @@ beacon_deposits AS (
     
     
     
+    
 
     AND 
     
@@ -45,17 +46,6 @@ beacon_deposits AS (
       toStartOfMonth(toDate(d.slot_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
         FROM `dbt`.`int_consensus_validators_deposits_daily` AS x1
-        WHERE 1=1 
-  
-
-      )
-      AND toDate(d.slot_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -1)
-          
-
-        FROM `dbt`.`int_consensus_validators_deposits_daily` AS x2
         WHERE 1=1 
   
 
@@ -86,6 +76,7 @@ request_deposits AS (
     
     
     
+    
 
     AND 
     
@@ -93,17 +84,6 @@ request_deposits AS (
       toStartOfMonth(toDate(r.slot_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
         FROM `dbt`.`int_consensus_validators_deposits_daily` AS x1
-        WHERE 1=1 
-  
-
-      )
-      AND toDate(r.slot_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -1)
-          
-
-        FROM `dbt`.`int_consensus_validators_deposits_daily` AS x2
         WHERE 1=1 
   
 

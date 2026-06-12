@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_bridges_sankey_edges_token_daily`) AS as_of_date
+FROM (
 WITH mx AS (SELECT max(date) AS d FROM `dbt`.`fct_bridges_sankey_edges_token_daily`)
 
 SELECT token, source, target, sum(value) AS value
@@ -9,3 +11,4 @@ WHERE direction = 'in'
 GROUP BY token, source, target
 HAVING value > 0
 ORDER BY token, value DESC, source ASC, target ASC
+) AS sub

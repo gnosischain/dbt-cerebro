@@ -44,6 +44,7 @@ events_base AS (
     
     
     
+    
 
     AND 
     
@@ -51,15 +52,6 @@ events_base AS (
       toStartOfMonth(toDate(l.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_pools_dex_liquidity_events` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(l.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_pools_dex_liquidity_events` AS x2
         WHERE 1=1 
       )
     

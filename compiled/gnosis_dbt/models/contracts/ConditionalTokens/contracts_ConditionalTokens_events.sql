@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'ceafdd6bc0bef976fdcd1112955828e00543c0ce'
 
       
+
+      
         AND block_timestamp >= toDateTime('2020-09-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_ConditionalTokens_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46656386
+        AND block_timestamp >= toDateTime('2026-06-12 09:19:20')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

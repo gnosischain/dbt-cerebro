@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_circles_v2_avatars`) AS as_of_date
+FROM (
 -- Trust-network edge list for the Circles v2 Avatar Trust Network
 -- panel.
 --
@@ -108,3 +110,4 @@ FROM edges e
 LEFT JOIN meta src ON src.avatar = e.source_id
 LEFT JOIN meta tgt ON tgt.avatar = e.target_id
 ORDER BY e.direction_order, e.source_id, e.target_id
+) AS sub

@@ -37,7 +37,7 @@ SELECT
     ) AS apy
     ,SUM(i.deposits_amount_gno) AS deposits_amount_gno
     ,SUM(i.withdrawals_amount_gno) AS withdrawals_amount_gno
-    ,SUM(i.consolidation_inflow_gno) AS consolidation_inflow_gno
+    ,coalesce(SUM(i.consolidation_inflow_gno), 0) AS consolidation_inflow_gno
     ,SUM(i.consolidation_outflow_gno) AS consolidation_outflow_gno
     ,SUM(COALESCE(p.proposer_reward_total_gno, 0)) AS proposer_reward_total_gno
     ,SUM(COALESCE(p.proposed_blocks_count, 0)) AS proposed_blocks_count
@@ -60,6 +60,7 @@ WHERE 1=1
     
     
     
+    
 
     AND 
     
@@ -67,15 +68,6 @@ WHERE 1=1
       toStartOfMonth(toDate(i.date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
         FROM `dbt`.`fct_consensus_validators_explorer_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(i.date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -2)
-          
-
-        FROM `dbt`.`fct_consensus_validators_explorer_daily` AS x2
         WHERE 1=1 
       )
     

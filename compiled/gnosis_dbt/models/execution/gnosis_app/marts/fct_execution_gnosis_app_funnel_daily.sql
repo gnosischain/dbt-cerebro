@@ -38,6 +38,7 @@ WITH events AS (
     
     
     
+    
 
     AND 
     
@@ -45,15 +46,6 @@ WITH events AS (
       toStartOfMonth(toDate(event_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`fct_execution_gnosis_app_funnel_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(event_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`fct_execution_gnosis_app_funnel_daily` AS x2
         WHERE 1=1 
       )
     

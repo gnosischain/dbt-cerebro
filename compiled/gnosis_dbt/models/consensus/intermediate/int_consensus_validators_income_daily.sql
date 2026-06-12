@@ -141,6 +141,7 @@ snapshots AS (
     
     
     
+    
 
     AND 
     
@@ -182,6 +183,7 @@ deposits AS (
     
     
     
+    
 
     AND 
     
@@ -218,6 +220,7 @@ withdrawals AS (
     
       
   
+    
     
     
     
@@ -310,6 +313,38 @@ network_state AS (
         toStartOfDay(date) AS date
         ,effective_balance AS network_effective_balance_gno
     FROM `dbt`.`int_consensus_validators_balances_daily`
+    WHERE date < today()
+    
+      
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
+        FROM `dbt`.`int_consensus_validators_income_daily` AS x1
+        WHERE 1=1 
+      )
+      AND toDate(date) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -2)
+          
+
+        FROM `dbt`.`int_consensus_validators_income_daily` AS x2
+        WHERE 1=1 
+      )
+    
+  
+
+    
 ),
 
 -- Join every per-validator row with the day's network state so each row carries

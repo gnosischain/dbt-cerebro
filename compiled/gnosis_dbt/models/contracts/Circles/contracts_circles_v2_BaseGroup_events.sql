@@ -29,6 +29,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -42,6 +47,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_circles_registry` cw WHERE cw.contract_type = 'BaseGroupRuntime')
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-04-01')
       
 
@@ -49,9 +56,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_BaseGroup_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46640670
+        AND block_timestamp >= toDateTime('2026-06-11 11:00:10')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

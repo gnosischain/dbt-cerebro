@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`fct_execution_gnosis_app_marketplace_buys_daily`) AS as_of_date
+FROM (
 WITH days AS (
     SELECT date, sum(n_buys) AS n_buys
     FROM `dbt`.`fct_execution_gnosis_app_marketplace_buys_daily`
@@ -13,3 +15,4 @@ SELECT
     (SELECT v FROM recent)                                                AS value,
     round(((SELECT v FROM recent) - (SELECT v FROM prior))
           / nullIf((SELECT v FROM prior), 0) * 100, 1)                    AS change_pct
+) AS sub

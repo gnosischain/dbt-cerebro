@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_execution_lending_aave_user_balances_daily`) AS as_of_date
+FROM (
 WITH latest_date AS (
     SELECT max(date) AS max_date
     FROM `dbt`.`int_execution_lending_aave_user_balances_daily`
@@ -17,3 +19,4 @@ WHERE b.date = d.max_date
   AND b.balance_usd > 0
 GROUP BY b.protocol, b.symbol
 ORDER BY value DESC
+) AS sub

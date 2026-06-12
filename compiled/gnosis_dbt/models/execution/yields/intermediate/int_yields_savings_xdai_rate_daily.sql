@@ -48,31 +48,6 @@ vault_exchange_events AS (
       AND block_timestamp < today()
       
   
-    
-    
-    
-    
-    
-
-    AND 
-    
-      
-      toStartOfMonth(toDate(block_timestamp)) >= (
-        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
-        FROM `dbt`.`int_yields_savings_xdai_rate_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_yields_savings_xdai_rate_daily` AS x2
-        WHERE 1=1 
-      )
-    
-  
 
 ),
 

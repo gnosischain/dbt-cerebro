@@ -22,6 +22,7 @@ WITH token_edges AS (
     
     
     
+    
 
     AND 
     
@@ -29,15 +30,6 @@ WITH token_edges AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
         FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -1)
-          
-
-        FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x2
         WHERE 1=1 
       )
     
@@ -67,6 +59,7 @@ gpay_edges AS (
     
     
     
+    
 
     AND 
     
@@ -74,15 +67,6 @@ gpay_edges AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -1))
         FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -1)
-          
-
-        FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x2
         WHERE 1=1 
       )
     

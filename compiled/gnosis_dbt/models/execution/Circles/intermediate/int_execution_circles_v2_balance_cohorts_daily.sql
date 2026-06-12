@@ -11,8 +11,6 @@ WITH balances AS (
       AND balance_raw > toInt256(0)
       AND date < today()
       
-        AND date >= (SELECT max(date) - 1 FROM `dbt`.`int_execution_circles_v2_balance_cohorts_daily`)
-      
 ),
 bucketed AS (
     SELECT

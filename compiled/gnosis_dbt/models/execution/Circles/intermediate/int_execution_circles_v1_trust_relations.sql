@@ -61,6 +61,7 @@ WHERE valid_to IS NULL OR valid_to > valid_from
     
     
     
+    
 
     AND 
     

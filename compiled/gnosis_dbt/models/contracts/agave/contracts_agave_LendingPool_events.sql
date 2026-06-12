@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '5e15d5e33d318dced84bfe3f4eace07909be6d9c'
 
       
+
+      
         AND block_timestamp >= toDateTime('2022-04-19')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_agave_LendingPool_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46647773
+        AND block_timestamp >= toDateTime('2026-06-11 21:03:00')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

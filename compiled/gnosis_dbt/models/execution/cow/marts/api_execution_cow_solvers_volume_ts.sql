@@ -1,4 +1,4 @@
-
+﻿
 
 WITH top_solvers AS (
     SELECT solver

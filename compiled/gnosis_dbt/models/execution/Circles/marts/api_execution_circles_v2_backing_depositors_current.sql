@@ -1,5 +1,7 @@
 
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM `dbt`.`int_execution_circles_v2_backing`) AS as_of_date
+FROM (
 SELECT
     backer,
     first_initiated_at,
@@ -10,3 +12,4 @@ SELECT
     n_distinct_assets
 FROM `dbt`.`int_execution_circles_v2_backing_depositors_current`
 ORDER BY first_initiated_at
+) AS sub

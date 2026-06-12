@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '43c8e7cb2fea3a55b52867bb521ebf8cb072feca'
 
       
+
+      
         AND block_timestamp >= toDateTime('2025-08-01')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_circles_v2_ERC20TokenOfferFactory_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 43360889
+        AND block_timestamp >= toDateTime('2025-11-27 15:10:50')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

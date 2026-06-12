@@ -7,9 +7,12 @@
 -- match the Mixpanel identified-user set 70-83% — because both describe the
 -- same app.gnosis.io population, keyed on the same on-chain identity bridge.
 --
--- conversion_kind ∈ {topup, swap_filled, token_offer_claim, marketplace_buy}.
--- 'topup' is a GP card funding initiated from inside the app — the closest
--- UTM-attributable "first funded" signal.
+-- conversion_kind ∈ {topup, swap_filled, token_offer_claim, marketplace_buy,
+-- starts_referring}. 'topup' is a GP card funding initiated from inside the
+-- app — the closest UTM-attributable "first funded" signal.
+-- 'starts_referring' is the on-chain referral milestone: first time the
+-- user's address appears as invited_by on a new Circles Human registration
+-- (int_execution_circles_v2_referrers).
 --
 -- UTM attached via user_pseudonym == user_id_hash. Carries user_pseudonym →
 -- never exposed to cerebro-api or MCP.
@@ -21,6 +24,16 @@ WITH first_conv AS (
         min(conversion_ts) AS first_ts
     FROM `dbt`.`int_execution_gnosis_app_conversions`
     GROUP BY user_pseudonym, conversion_kind
+
+    UNION ALL
+
+    SELECT
+        
+    sipHash64(concat(unhex('00'), lower(inviter)))
+  AS user_pseudonym,
+        'starts_referring'                     AS conversion_kind,
+        first_referral_at                      AS first_ts
+    FROM `dbt`.`int_execution_circles_v2_referrers`
 )
 
 SELECT
@@ -28,7 +41,11 @@ SELECT
     toDate(f.first_ts)                            AS first_date,
     f.user_pseudonym                              AS user_pseudonym,
     coalesce(a.first_touch_campaign, 'unknown')   AS first_touch_campaign,
-    coalesce(a.last_touch_campaign,  'unknown')   AS last_touch_campaign
+    coalesce(a.last_touch_campaign,  'unknown')   AS last_touch_campaign,
+    coalesce(a.first_touch_source,   'unknown')   AS first_touch_source,
+    coalesce(a.last_touch_source,    'unknown')   AS last_touch_source,
+    coalesce(a.first_touch_medium,   'unknown')   AS first_touch_medium,
+    coalesce(a.last_touch_medium,    'unknown')   AS last_touch_medium
 FROM first_conv f
 LEFT JOIN `dbt`.`int_mixpanel_ga_user_acquisition` a
     ON a.user_id_hash = f.user_pseudonym

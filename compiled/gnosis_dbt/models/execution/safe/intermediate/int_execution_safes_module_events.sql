@@ -31,6 +31,11 @@ WITH decoded AS (
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -44,6 +49,8 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
 
       
+
+      
         AND block_timestamp >= toDateTime('2020-05-21')
       
 
@@ -51,9 +58,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`int_execution_safes_module_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46658447
+        AND block_timestamp >= toDateTime('2026-06-12 12:14:00')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

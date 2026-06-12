@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = 'e32f7dd7e3f098d518ff19a22d5f028e076489b1'
 
       
+
+      
         AND block_timestamp >= toDateTime('2022-04-22')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_UniswapV3_Factory_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 46646592
+        AND block_timestamp >= toDateTime('2026-06-11 19:23:00')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

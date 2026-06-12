@@ -38,6 +38,7 @@ FROM (
     
     
     
+    
 
     AND 
     
@@ -45,15 +46,6 @@ FROM (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_consensus_validators_dists_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_consensus_validators_dists_daily` AS x2
         WHERE 1=1 
       )
     

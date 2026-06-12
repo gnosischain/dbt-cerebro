@@ -29,6 +29,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -38,14 +43,17 @@ logs AS (
         PARTITION BY block_number, transaction_index, log_index
         ORDER BY insert_version DESC
       ) AS _dedup_rn
-    FROM (SELECT *, insert_version FROM `execution_live`.`logs` WHERE block_timestamp >= (SELECT max(block_timestamp) FROM `execution_live`.`logs`) - INTERVAL 4 HOUR)
+    FROM (SELECT *, insert_version FROM `execution_live`.`logs` WHERE block_timestamp >= (SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -5), now() - INTERVAL 30 MINUTE) FROM `dbt`.`contracts_BalancerV3_Vault_events_live`))
     WHERE address = 'ba1333333333a1ba1108e8412f11850a5c319ba9'
 
       
 
       
+
+      
       
 
+      
       
   )
   WHERE _dedup_rn = 1

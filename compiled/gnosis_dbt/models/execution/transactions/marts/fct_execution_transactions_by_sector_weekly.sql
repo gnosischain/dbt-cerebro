@@ -15,6 +15,7 @@ WITH base AS (
     
     
     
+    
 
     AND 
     
@@ -22,15 +23,6 @@ WITH base AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.week)), -1))
         FROM `dbt`.`fct_execution_transactions_by_sector_weekly` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            toStartOfWeek(addDays(max(toDate(x2.week)), -1))
-          
-
-        FROM `dbt`.`fct_execution_transactions_by_sector_weekly` AS x2
         WHERE 1=1 
       )
     

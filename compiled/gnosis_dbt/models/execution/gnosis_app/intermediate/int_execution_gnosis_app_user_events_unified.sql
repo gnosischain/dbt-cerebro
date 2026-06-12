@@ -35,6 +35,7 @@ WHERE 1=1
     
     
     
+    
 
     AND 
     
@@ -42,15 +43,6 @@ WHERE 1=1
       toStartOfMonth(toDate(event_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_user_events_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(event_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_events_unified` AS x2
         WHERE 1=1 
       )
     
@@ -84,6 +76,7 @@ WHERE 1=1
     
     
     
+    
 
     AND 
     
@@ -91,15 +84,6 @@ WHERE 1=1
       toStartOfMonth(toDate(event_date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_user_events_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(event_date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_user_events_unified` AS x2
         WHERE 1=1 
       )
     

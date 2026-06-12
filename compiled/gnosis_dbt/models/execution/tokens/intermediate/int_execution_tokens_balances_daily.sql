@@ -30,6 +30,7 @@ WITH balances AS (
     
     
     
+    
 
     AND 
     
@@ -37,59 +38,6 @@ WITH balances AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
-        WHERE 1=1 
-  
-  
-
-  
-  
-    
-    
-      AND symbol NOT IN (
-        
-          'aGnoGNO', 
-        
-          'aGnoWXDAI', 
-        
-          'aGnosDAI', 
-        
-          'aGnoUSDC', 
-        
-          'aGnoEURe', 
-        
-          'aGnoUSDCe', 
-        
-          'spGNO', 
-        
-          'spUSDT', 
-        
-          'spUSDC', 
-        
-          'spUSDC.e', 
-        
-          'spWETH', 
-        
-          'spwstETH', 
-        
-          'spWXDAI', 
-        
-          'spsDAI', 
-        
-          'spEURe'
-        
-      )
-    
-  
-
-
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
         WHERE 1=1 
   
   
@@ -200,6 +148,7 @@ prices AS (
     
     
     
+    
 
     AND 
     
@@ -207,59 +156,6 @@ prices AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_tokens_balances_daily` AS x1
-        WHERE 1=1 
-  
-  
-
-  
-  
-    
-    
-      AND symbol NOT IN (
-        
-          'aGnoGNO', 
-        
-          'aGnoWXDAI', 
-        
-          'aGnosDAI', 
-        
-          'aGnoUSDC', 
-        
-          'aGnoEURe', 
-        
-          'aGnoUSDCe', 
-        
-          'spGNO', 
-        
-          'spUSDT', 
-        
-          'spUSDC', 
-        
-          'spUSDC.e', 
-        
-          'spWETH', 
-        
-          'spwstETH', 
-        
-          'spWXDAI', 
-        
-          'spsDAI', 
-        
-          'spEURe'
-        
-      )
-    
-  
-
-
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_tokens_balances_daily` AS x2
         WHERE 1=1 
   
   

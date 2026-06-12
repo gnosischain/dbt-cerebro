@@ -155,6 +155,7 @@ WHERE 1=1
     
     
     
+    
 
     AND 
     
@@ -162,15 +163,6 @@ WHERE 1=1
       toStartOfMonth(toDate(week)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.week)), -0))
         FROM `dbt`.`int_execution_mmm_kpis_weekly` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(week) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.week)), -0)
-          
-
-        FROM `dbt`.`int_execution_mmm_kpis_weekly` AS x2
         WHERE 1=1 
       )
     

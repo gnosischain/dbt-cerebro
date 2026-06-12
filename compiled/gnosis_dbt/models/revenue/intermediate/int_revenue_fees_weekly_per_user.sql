@@ -676,3 +676,85 @@ WHERE (s.annual_rolling_fees > 0 OR s.week_fees > 0)
   
     AND s.week > (SELECT cutoff_week FROM cutoff)
   
+
+
+UNION ALL
+
+
+SELECT
+    week,
+    'gnosis_app' AS stream_type,
+    symbol,
+    user,
+    week_fees,
+    annual_rolling_fees
+FROM (
+    WITH weekly_sparse AS (
+        SELECT
+            toStartOfWeek(date, 1) AS week,
+            user,
+            symbol,
+            round(sum(fees), 8) AS week_fees
+        FROM `dbt`.`int_revenue_gnosis_app_fees_daily`
+        WHERE date < toStartOfWeek(today(), 1)
+          AND symbol = 'CRC'
+          
+            AND toStartOfWeek(date, 1) >= (SELECT cutoff_week FROM cutoff) - INTERVAL 52 WEEK
+          
+        GROUP BY week, user, symbol
+    ),
+    user_span AS (
+        SELECT
+            user,
+            symbol,
+            
+              greatest(min(week),
+                       (SELECT cutoff_week FROM cutoff) - INTERVAL 52 WEEK) AS first_week,
+              toStartOfWeek(today(), 1) - INTERVAL 1 WEEK AS last_week
+            
+        FROM weekly_sparse
+        GROUP BY 1, 2
+    ),
+    calendar AS (
+        SELECT
+            user,
+            symbol,
+            arrayJoin(
+                arrayMap(
+                    i -> toDate(addWeeks(first_week, i)),
+                    range(toUInt32(dateDiff('week', first_week, last_week) + 1))
+                )
+            ) AS week
+        FROM user_span
+    ),
+    weekly_dense AS (
+        SELECT
+            c.week,
+            c.user,
+            c.symbol,
+            coalesce(ws.week_fees, 0) AS week_fees
+        FROM calendar c
+        LEFT JOIN weekly_sparse ws
+            ON  ws.week   = c.week
+            AND ws.user   = c.user
+            AND ws.symbol = c.symbol
+    )
+    SELECT
+        week,
+        user,
+        symbol,
+        week_fees,
+        round(
+            sum(week_fees) OVER (
+                PARTITION BY user
+                ORDER BY week
+                ROWS BETWEEN 51 PRECEDING AND CURRENT ROW
+            ),
+            8
+        ) AS annual_rolling_fees
+    FROM weekly_dense
+) s
+WHERE (s.annual_rolling_fees > 0 OR s.week_fees > 0)
+  
+    AND s.week > (SELECT cutoff_week FROM cutoff)
+  

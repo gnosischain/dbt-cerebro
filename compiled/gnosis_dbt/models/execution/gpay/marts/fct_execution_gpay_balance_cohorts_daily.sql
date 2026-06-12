@@ -1,5 +1,7 @@
 
 
+-- balances_base reads the user-holdings view so migrated old/new Safe
+-- pairs are not double counted after the exploit-recovery refund.
 WITH balances_base AS (
     SELECT
         date,
@@ -7,7 +9,7 @@ WITH balances_base AS (
         symbol,
         balance,
         balance_usd
-    FROM `dbt`.`int_execution_gpay_balances_daily`
+    FROM `dbt`.`int_execution_gpay_balances_user_daily`
     WHERE symbol IN ('EURe', 'GBPe', 'USDC.e', 'GNO')
 ),
 

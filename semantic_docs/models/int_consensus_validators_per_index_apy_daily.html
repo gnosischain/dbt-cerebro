@@ -15,17 +15,30 @@
   <body>
     
     <h1>int_consensus_validators_per_index_apy_daily</h1>
-    <p>This model calculates daily validator consensus participation and withdrawal metrics, aggregated by validator index, to support analysis of validator performance and network health.</p>
+    <p>Per-(date, validator_index) APY for active / pending-queued validators.
+Rescoped 2026-06: `apy` is now read straight from
+int_consensus_validators_income_daily (consensus base-reward cap +
+ledger-exact effective-credit math) instead of the old mod-32-GNO
+deposit-rounding trick, which broke on EIP-7251 (MaxEB) sub-32-GNO top-ups
+and produced per-validator APY up to ~1e47% and down to -100% on
+consolidation / top-up days. Carries only the per-validator status + balance
+its distribution consumers need (int_consensus_validators_dists_daily,
+fct_consensus_validators_dists_last_30_days); balance is in gwei.
+</p>
     <p><strong>Module:</strong> consensus</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/consensus/intermediate/int_consensus_validators_per_index_apy_daily.sql</code></p>
-    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>validators_apy</span></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>consensus</span> <span class='pill'>validators_apy</span> <span class='pill'>microbatch</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount</code></td><td>UInt64</td><td>Total amount withdrawn by the validator on the given date, measured in the relevant currency units.</td></tr><tr><td><code>date</code></td><td>DateTime64</td><td>The specific day for which the validator metrics are recorded, truncated to the start of the day.</td></tr><tr><td><code>validator_index</code></td><td>UInt64</td><td>Unique identifier for each validator, used to track individual validator activity over time.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>apy</code></td><td>Float64</td><td>Spec-bounded annualised APY for the day, read from
+int_consensus_validators_income_daily (consensus base-reward cap +
+effective-credit math). Bounded to [-100, ~spec-max]; no MaxEB / mod-32
+blow-ups.
+</td></tr><tr><td><code>balance</code></td><td>UInt64</td><td>Validator balance at end of day, in gwei (divide by 1e9 for GNO).</td></tr><tr><td><code>date</code></td><td>DateTime64</td><td>Start-of-day UTC timestamp for the validator&#x27;s daily row.</td></tr><tr><td><code>status</code></td><td>String</td><td>Validator lifecycle status at end of day. Restricted to active_% or pending_queued.</td></tr><tr><td><code>validator_index</code></td><td>UInt64</td><td>Beacon-chain validator index. Unique per date (see model-level combination test).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>validator_index</code> (categorical)</li></ul>
-    <h2>Measures</h2><ul><li><code>consensus_validators_per_index_apy_daily__amount_value</code> (sum)</li></ul>
-    <h2>Upstream</h2><ul><li><code>stg_consensus__validators</code></li><li><code>stg_consensus__withdrawals</code></li></ul>
+    <h2>Measures</h2><ul><li><code>consensus_validators_per_index_apy_daily__apy_avg</code> (avg)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_consensus_validators_income_daily</code></li><li><code>int_consensus_validators_snapshots_daily</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_consensus_validators_dists_last_30_days</code></li><li><code>int_consensus_validators_dists_daily</code></li></ul>
     
   </body>

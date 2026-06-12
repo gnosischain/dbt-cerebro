@@ -1,23 +1,26 @@
 
 
--- Latest complete week's Weekly Active Users (non-blacklisted only) plus
--- WoW change pct. Mirrors api_execution_gnosis_app_kpi_mau_latest shape.
+-- Latest complete week's Gnosis App Weekly Active Users + WoW change pct.
+-- Reads the SAME lineage as DAU/MAU (fct_execution_gnosis_app_users_weekly,
+-- Gnosis-App-only `active_users`) so DAU/WAU/MAU are one consistent family.
+-- The whole-Circles-network number is the separate
+-- api:gnosis_app_circles_ecosystem_weekly_active_users metric.
 
+SELECT sub.*, (SELECT toDate(max(week)) FROM `dbt`.`fct_execution_gnosis_app_users_weekly`) AS as_of_date
+FROM (
 WITH weeks AS (
-    SELECT week, cnt
-    FROM `dbt`.`fct_execution_gnosis_app_weekly_active_users`
-    WHERE is_blacklisted = false
-      AND week < toStartOfWeek(today(), 1)
+    SELECT week, active_users
+    FROM `dbt`.`fct_execution_gnosis_app_users_weekly`
+    WHERE week < toStartOfWeek(today(), 1)
 ),
 ranked AS (
-    SELECT
-        week,
-        cnt,
-        row_number() OVER (ORDER BY week DESC) AS rn
+    SELECT week, active_users,
+           row_number() OVER (ORDER BY week DESC) AS rn
     FROM weeks
 )
 SELECT
-    anyIf(cnt, rn = 1)                                                   AS value,
-    round((anyIf(cnt, rn = 1) - anyIf(cnt, rn = 2))
-          / nullIf(anyIf(cnt, rn = 2), 0) * 100, 1)                      AS change_pct
+    anyIf(active_users, rn = 1)                                                  AS value,
+    round((anyIf(active_users, rn = 1) - anyIf(active_users, rn = 2))
+          / nullIf(anyIf(active_users, rn = 2), 0) * 100, 1)                     AS change_pct
 FROM ranked
+) AS sub

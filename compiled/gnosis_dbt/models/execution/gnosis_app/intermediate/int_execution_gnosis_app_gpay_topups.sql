@@ -37,6 +37,7 @@ ga_trades AS (
     
     
     
+    
 
     AND 
     
@@ -44,15 +45,6 @@ ga_trades AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_gnosis_app_gpay_topups` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_gpay_topups` AS x2
         WHERE 1=1 
       )
     
@@ -82,6 +74,7 @@ gp_deposits AS (
     
     
     
+    
 
     AND 
     
@@ -89,15 +82,6 @@ gp_deposits AS (
       toStartOfMonth(toDate(a.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_gnosis_app_gpay_topups` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(a.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_gpay_topups` AS x2
         WHERE 1=1 
       )
     

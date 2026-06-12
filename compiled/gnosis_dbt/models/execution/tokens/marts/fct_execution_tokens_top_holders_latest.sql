@@ -1,50 +1,40 @@
 
 
--- Latest-day top holders with labels, cumulative %, and 7-day USD delta.
--- Both today and (today - 7) are UBO-aware: the prev_balances CTE replays
--- the same unwind as fct_execution_tokens_top_holders_ranked but for the
--- 7-day-ago snapshot, so deltas track the UBO's own historical position
--- rather than the container contract's.
 
 WITH
 
-prev_date AS (
-    SELECT max(date) - 7 AS d
+prev_7d_date AS (
+    SELECT addDays(max(date), -7) AS d
     FROM `dbt`.`int_execution_tokens_balances_daily`
     WHERE date < today() AND balance > 0
 ),
 
-prev_direct_rows AS (
+prev_direct AS (
     SELECT
-        b.token_address                      AS token_address,
-        lower(b.address)                     AS address,
-        b.balance_usd                        AS balance_usd
-    FROM `dbt`.`int_execution_tokens_balances_daily` b
-    CROSS JOIN prev_date pd
-    LEFT ANTI JOIN `dbt`.`fct_ubo_known_containers_daily` k
-        ON  k.date                     = b.date
-        AND lower(k.token_address)     = lower(b.token_address)
-        AND lower(k.container_address) = lower(b.address)
-    WHERE b.date = pd.d
-      AND b.balance > 0
-      AND lower(b.address) != '0x0000000000000000000000000000000000000000'
+        r.token_address,
+        r.address,
+        coalesce(b.balance_usd, 0) AS balance_usd
+    FROM `dbt`.`fct_execution_tokens_top_holders_ranked` r
+    LEFT JOIN (
+        SELECT token_address, lower(address) AS address, balance_usd
+        FROM `dbt`.`int_execution_tokens_balances_daily`
+        WHERE date = (SELECT d FROM prev_7d_date)
+          AND balance > 0
+    ) b ON b.token_address = r.token_address AND b.address = r.address
 ),
 
-prev_unwound_rows AS (
+prev_ubo AS (
     SELECT
-        c.token_address                      AS token_address,
-        c.ubo_address                        AS address,
-        c.balance_usd                        AS balance_usd
-    FROM `dbt`.`fct_ubo_supply_claims_daily` c
-    CROSS JOIN prev_date pd
-    WHERE c.date = pd.d
-      AND c.balance > 0
-),
-
-prev_combined AS (
-    SELECT token_address, address, balance_usd FROM prev_direct_rows
-    UNION ALL
-    SELECT token_address, address, balance_usd FROM prev_unwound_rows
+        r.token_address,
+        r.address,
+        coalesce(c.balance_usd, 0) AS balance_usd
+    FROM `dbt`.`fct_execution_tokens_top_holders_ranked` r
+    LEFT JOIN (
+        SELECT token_address, ubo_address AS address, balance_usd
+        FROM `dbt`.`fct_ubo_supply_claims_resolved_daily`
+        WHERE date = (SELECT d FROM prev_7d_date)
+          AND balance > 0
+    ) c ON c.token_address = r.token_address AND c.address = r.address
 ),
 
 prev_balances AS (
@@ -52,10 +42,10 @@ prev_balances AS (
         token_address,
         address,
         sum(balance_usd) AS balance_usd_7d_ago
-    FROM prev_combined
-    WHERE (token_address, address) IN (
-        SELECT token_address, address
-        FROM `dbt`.`fct_execution_tokens_top_holders_ranked`
+    FROM (
+        SELECT token_address, address, balance_usd FROM prev_direct
+        UNION ALL
+        SELECT token_address, address, balance_usd FROM prev_ubo
     )
     GROUP BY token_address, address
 )
@@ -77,6 +67,7 @@ SELECT
     ), 4) AS cumulative_pct,
     r.balance_usd - coalesce(p.balance_usd_7d_ago, 0) AS change_usd_7d,
     r.unwound_from,
+    r.protocols,
     CASE
         WHEN l.sector IN ('EOAs', 'Wallets & AA', 'Bridges', 'Payments') THEN toNullable(toUInt8(1))
         WHEN l.sector IN ('Lending & Yield', 'DEX')                      THEN toNullable(toUInt8(0))

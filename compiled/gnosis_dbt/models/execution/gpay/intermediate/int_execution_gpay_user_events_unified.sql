@@ -45,6 +45,7 @@ activity AS (
     
     
     
+    
 
     AND 
     
@@ -52,15 +53,6 @@ activity AS (
       toStartOfMonth(toDate(a.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gpay_user_events_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(a.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gpay_user_events_unified` AS x2
         WHERE 1=1 
       )
     

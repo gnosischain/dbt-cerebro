@@ -8,7 +8,7 @@ with validation_errors as (
 
     select
         address, date
-    from `dbt`.`int_execution_account_balance_history_daily`
+    from (select * from `dbt`.`int_execution_account_balance_history_daily` where toDate(date) >= today() - 7) dbt_subquery
     group by address, date
     having count(*) > 1
 

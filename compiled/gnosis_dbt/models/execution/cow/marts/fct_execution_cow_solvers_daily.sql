@@ -1,5 +1,8 @@
 
 
+
+
+
 WITH
 
 solver_trades AS (
@@ -9,9 +12,14 @@ solver_trades AS (
         count(*)                                                                     AS num_trades,
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
-        sum(fee_usd)                                                                 AS fees_usd
+        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd
     FROM `dbt`.`fct_execution_cow_trades`
     WHERE solver IS NOT NULL
+    
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM `dbt`.`fct_execution_cow_solvers_daily`
+      )
+    
     GROUP BY date, solver
 ),
 
@@ -24,6 +32,11 @@ solver_batches AS (
         sum(tx_cost_native)                                                          AS total_tx_cost_native
     FROM `dbt`.`int_execution_cow_batches`
     WHERE solver IS NOT NULL
+    
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM `dbt`.`fct_execution_cow_solvers_daily`
+      )
+    
     GROUP BY date, solver
 )
 

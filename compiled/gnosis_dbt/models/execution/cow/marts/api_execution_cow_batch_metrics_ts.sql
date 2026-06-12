@@ -1,23 +1,14 @@
+﻿
 
-
-WITH base AS (
-    SELECT
-        toDate(block_timestamp)                                                      AS date,
-        countIf(num_interactions = 0 AND num_trades > 1)                             AS pure_cow,
-        countIf(num_trades > 1 AND num_interactions > 0
-                AND num_trades > num_interactions)                                   AS partial_cow,
-        countIf((num_trades = 1)
-                OR (num_trades > 1 AND num_trades <= num_interactions))              AS pure_dex,
-        count()                                                                      AS total
-    FROM `dbt`.`int_execution_cow_batches`
-    WHERE toDate(block_timestamp) < today()
-    GROUP BY date
-)
-SELECT * FROM (
-    SELECT date, 'Pure CoW'    AS label, round(pure_cow    / total * 100, 2) AS value FROM base
-    UNION ALL
-    SELECT date, 'Partial CoW' AS label, round(partial_cow / total * 100, 2) AS value FROM base
-    UNION ALL
-    SELECT date, 'Pure DEX'    AS label, round(pure_dex    / total * 100, 2) AS value FROM base
-)
-ORDER BY date, label
+-- Average trades settled per batch per day.
+-- On Gnosis Chain, CoW peer-to-peer matching is rare (~1% of batches
+-- historically), so nearly all batches contain a single trade routed
+-- through external DEX liquidity. Values > 1 indicate days where
+-- the solver matched multiple orders internally.
+SELECT
+    date,
+    round(num_trades / nullIf(num_batches, 0), 2)                                AS value
+FROM `dbt`.`fct_execution_cow_daily`
+WHERE date < today()
+  AND num_batches > 0
+ORDER BY date

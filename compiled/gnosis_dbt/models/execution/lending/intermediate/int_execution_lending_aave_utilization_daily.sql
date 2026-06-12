@@ -33,6 +33,7 @@ reserve_index_by_tx AS (
     
     
     
+    
 
     AND 
     
@@ -72,6 +73,7 @@ supply_events AS (
       AND block_timestamp < today()
       
   
+    
     
     
     
@@ -121,6 +123,7 @@ supply_events AS (
     
     
     
+    
 
     AND 
     
@@ -165,6 +168,7 @@ borrow_events AS (
     
     
     
+    
 
     AND 
     
@@ -204,6 +208,7 @@ borrow_events AS (
       AND block_timestamp < today()
       
   
+    
     
     
     
@@ -393,6 +398,7 @@ daily_index AS (
       AND block_timestamp < today()
       
   
+    
     
     
     

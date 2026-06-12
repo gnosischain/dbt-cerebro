@@ -11,8 +11,6 @@ WITH node_classification AS (
         scaling_factor
     FROM `dbt`.`int_esg_node_classification`
     
-        WHERE date > (SELECT MAX(date) FROM `dbt`.`int_esg_node_client_distribution`)
-    
 ),
 
 -- Combine client data from both DiscV4 (execution) and DiscV5 (consensus)
@@ -27,8 +25,6 @@ combined_client_data AS (
         AND value > 0
         AND label NOT IN ('Unknown', '')
         
-            AND date > (SELECT MAX(date) FROM `dbt`.`int_esg_node_client_distribution`) - INTERVAL 1 DAY
-        
     
     UNION ALL
     
@@ -41,8 +37,6 @@ combined_client_data AS (
     WHERE metric = 'Clients'
         AND value > 0  
         AND label NOT IN ('Unknown', '')
-        
-            AND date > (SELECT MAX(date) FROM `dbt`.`int_esg_node_client_distribution`) - INTERVAL 1 DAY
         
 ),
 

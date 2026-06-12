@@ -30,6 +30,11 @@
 
 
 
+
+
+
+
+
 WITH
 
 logs AS (
@@ -43,6 +48,8 @@ logs AS (
     WHERE address = '2fc8823e1b967d474b47ae0ad041c2ed562ab588'
 
       
+
+      
         AND block_timestamp >= toDateTime('2023-10-06')
       
 
@@ -50,9 +57,19 @@ logs AS (
       
 
       
-        AND block_timestamp >
-          (SELECT coalesce(max(block_timestamp),'1970-01-01')
-           FROM `dbt`.`contracts_spark_PoolConfigurator_events`)
+      
+        
+        
+          
+          
+          
+        
+        
+        AND block_number > 44474535
+        AND block_timestamp >= toDateTime('2026-02-02 14:38:40')
+        
+        
+        
       
   )
   WHERE _dedup_rn = 1

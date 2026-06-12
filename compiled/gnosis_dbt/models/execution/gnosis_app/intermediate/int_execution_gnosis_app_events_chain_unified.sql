@@ -39,6 +39,7 @@ onboard_rows AS (
     
     
     
+    
 
     AND 
     
@@ -46,15 +47,6 @@ onboard_rows AS (
       toStartOfMonth(toDate(uc.first_seen_at)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(uc.first_seen_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -90,6 +82,7 @@ heuristic_rows AS (
     
     
     
+    
 
     AND 
     
@@ -97,15 +90,6 @@ heuristic_rows AS (
       toStartOfMonth(toDate(ue.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(ue.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -137,6 +121,7 @@ swap_signed_rows AS (
     
     
     
+    
 
     AND 
     
@@ -144,15 +129,6 @@ swap_signed_rows AS (
       toStartOfMonth(toDate(s.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(s.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -186,6 +162,7 @@ swap_filled_rows AS (
     
     
     
+    
 
     AND 
     
@@ -193,15 +170,6 @@ swap_filled_rows AS (
       toStartOfMonth(toDate(s.first_fill_at)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(s.first_fill_at) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -233,6 +201,7 @@ topup_rows AS (
     
     
     
+    
 
     AND 
     
@@ -240,15 +209,6 @@ topup_rows AS (
       toStartOfMonth(toDate(t.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(t.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -280,6 +240,7 @@ marketplace_rows AS (
     
     
     
+    
 
     AND 
     
@@ -287,15 +248,6 @@ marketplace_rows AS (
       toStartOfMonth(toDate(mp.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(mp.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     
@@ -327,6 +279,7 @@ claim_rows AS (
     
     
     
+    
 
     AND 
     
@@ -334,15 +287,6 @@ claim_rows AS (
       toStartOfMonth(toDate(tc.block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.event_date)), -0))
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(tc.block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.event_date)), -0)
-          
-
-        FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x2
         WHERE 1=1 
       )
     

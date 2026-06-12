@@ -1,4 +1,4 @@
-
+﻿
 
 -- Daily CoW Protocol revenue on Gnosis Chain.
 -- Filtered to fee_source = 'api' (the surplus-based fee model introduced

@@ -34,6 +34,7 @@ WITH base AS (
     
     
     
+    
 
     AND 
     
@@ -41,15 +42,6 @@ WITH base AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x2
         WHERE 1=1 
       )
     
@@ -75,6 +67,7 @@ mints AS (
     
     
     
+    
 
     AND 
     
@@ -82,15 +75,6 @@ mints AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x2
         WHERE 1=1 
       )
     

@@ -1,4 +1,4 @@
-
+﻿
 
 
 
@@ -16,6 +16,7 @@ trades AS (
     
     
     
+    
 
     WHERE 
     
@@ -23,15 +24,6 @@ trades AS (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
         FROM `dbt`.`fct_execution_cow_trades` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.block_timestamp)), -0)
-          
-
-        FROM `dbt`.`fct_execution_cow_trades` AS x2
         WHERE 1=1 
       )
     
@@ -44,7 +36,10 @@ api_fees AS (
     SELECT
         order_uid,
         fee_token,
-        fee_amount
+        fee_amount,
+        surplus_policy_type,
+        surplus_component_raw,
+        surplus_factor
     FROM `dbt`.`stg_crawlers_data__cow_api_trade_fees`
     WHERE order_uid IN (SELECT order_uid FROM trades)
 )
@@ -85,6 +80,26 @@ SELECT
         f.fee_token != '',                'api',
         NULL
     )                                                                                AS fee_source,
+    -- Total gross value the solver found beyond the reference price (quote for limit
+    -- orders, clearing price for market orders), in USD. Equals fee_usd / factor, so
+    -- for a 50/50 split: solver_value_usd = 2 * the priceImprovement/surplus component
+    -- of fee_usd. NULL for pre-Sep-2024 trades and volume-only fee policies.
+    CASE
+        WHEN f.surplus_policy_type IN ('priceImprovement', 'surplus')
+             AND f.surplus_factor > 0
+             AND toFloat64OrZero(f.surplus_component_raw) > 0
+        THEN
+            CASE
+                WHEN f.fee_token = t.token_sold_address
+                THEN t.amount_usd
+                     * (toFloat64OrZero(f.surplus_component_raw) / f.surplus_factor)
+                     / nullIf(toFloat64(t.amount_sold_raw), 0)
+                WHEN f.fee_token = t.token_bought_address
+                THEN t.amount_usd
+                     * (toFloat64OrZero(f.surplus_component_raw) / f.surplus_factor)
+                     / nullIf(toFloat64(t.amount_bought_raw), 0)
+            END
+    END                                                                              AS solver_value_usd,
     t.taker                                                                          AS taker,
     t.order_uid                                                                      AS order_uid,
     t.solver                                                                         AS solver

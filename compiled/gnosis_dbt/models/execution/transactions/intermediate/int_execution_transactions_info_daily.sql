@@ -32,6 +32,7 @@ FROM (
     
     
     
+    
 
     AND 
     
@@ -39,15 +40,6 @@ FROM (
       toStartOfMonth(toDate(block_timestamp)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_transactions_info_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(block_timestamp) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_transactions_info_daily` AS x2
         WHERE 1=1 
       )
     
@@ -107,13 +99,15 @@ agg AS (
 ),
 
 px AS (
+  -- Native price hub (replaces the Dune feed); xDAI price for fee USD conversion.
   SELECT
     date,
     price
-  FROM `dbt`.`stg_crawlers_data__dune_prices`
-  WHERE symbol = 'XDAI'
+  FROM `dbt`.`int_execution_token_prices_daily`
+  WHERE upper(symbol) = 'XDAI'
   
   
+    
     
     
     
@@ -126,15 +120,6 @@ px AS (
       toStartOfMonth(toDate(date)) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_transactions_info_daily` AS x1
-        WHERE 1=1 
-      )
-      AND toDate(date) >= (
-        SELECT
-          
-            addDays(max(toDate(x2.date)), -0)
-          
-
-        FROM `dbt`.`int_execution_transactions_info_daily` AS x2
         WHERE 1=1 
       )
     

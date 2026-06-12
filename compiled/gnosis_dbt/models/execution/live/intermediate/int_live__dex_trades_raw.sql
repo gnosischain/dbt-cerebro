@@ -37,8 +37,9 @@ normalized AS (
       AND s.amount_sold_raw   > 0
       
       AND s.block_timestamp >= (
-          SELECT max(block_timestamp) FROM `execution_live`.`logs`
-      ) - INTERVAL 48 HOUR
+          SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -15), now() - INTERVAL 30 MINUTE)
+          FROM `dbt`.`int_live__dex_trades_raw`
+      )
       
 ),
 
