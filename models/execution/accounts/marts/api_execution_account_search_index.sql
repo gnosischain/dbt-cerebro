@@ -18,6 +18,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_date)) FROM {{ ref('int_execution_safes') }}) AS as_of_date
+FROM (
 SELECT
   search_key,
   result_type,
@@ -29,4 +31,4 @@ SELECT
   withdrawal_credentials,
   score_base
 FROM {{ ref('fct_execution_account_search_index') }}
-
+) AS sub

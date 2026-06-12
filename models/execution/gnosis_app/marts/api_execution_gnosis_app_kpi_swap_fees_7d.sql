@@ -1,10 +1,12 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','kpi','tier0','api:gnosis_app_kpi_swap_fees_7d','granularity:last_7d']
+    tags=['production', 'execution', 'gnosis_app', 'kpi', 'tier0', 'api:gnosis_app_kpi_swap_fees', 'granularity:last_7d', 'window:7d']
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_gnosis_app_swap_fees_daily') }}) AS as_of_date
+FROM (
 -- KPI: protocol fee revenue from filled swaps in the last 7 full days.
 
 WITH recent AS (
@@ -29,3 +31,4 @@ SELECT
     round((r.recent_fee_usd - p.prior_fee_usd) / nullIf(p.prior_fee_usd, 0) * 100, 1) AS change_pct
 FROM recent r
 CROSS JOIN prior p
+) AS sub

@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','cow','swaps','tier1',
-          'api:gnosis_app_swaps_by_pair_daily','granularity:daily'],
+    tags=['production', 'execution', 'gnosis_app', 'cow', 'swaps', 'tier1', 'api:gnosis_app_swaps_by_pair', 'granularity:daily'],
     meta={
       "api": {
         "methods": ["GET"],

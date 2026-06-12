@@ -1,11 +1,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(pay_wallet, owner)',
     partition_by='toStartOfMonth(block_timestamp)',
-    unique_key='(pay_wallet, owner)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','gpay']
   )
@@ -24,8 +23,4 @@ SELECT
 FROM {{ ref('int_execution_safes_current_owners') }} co
 INNER JOIN gpay_safes gs
     ON co.safe_address = gs.pay_wallet
-{% if is_incremental() %}
-WHERE co.became_owner_at > (
-    SELECT coalesce(max(block_timestamp), toDateTime('1970-01-01')) FROM {{ this }}
-)
-{% endif %}
+{{ apply_monthly_incremental_filter('co.became_owner_at', 'block_timestamp', false) }}

@@ -38,4 +38,7 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_consensus_validators_income_daily') }}) AS as_of_date
+FROM (
 SELECT * FROM {{ ref('fct_consensus_validators_explorer_members_table') }}
+) AS sub

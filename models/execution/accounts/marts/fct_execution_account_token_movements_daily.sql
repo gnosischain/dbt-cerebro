@@ -4,11 +4,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     partition_by='toStartOfMonth(date)',
     order_by='(address, date, counterparty, token_address, direction)',
-    unique_key='(date, address, counterparty, token_address, direction)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production', 'execution', 'accounts', 'portfolio', 'movements', 'granularity:daily']
   )

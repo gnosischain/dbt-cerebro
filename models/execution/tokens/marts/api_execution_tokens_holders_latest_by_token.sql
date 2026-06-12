@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_tokens_metrics_daily') }}) AS as_of_date
+FROM (
 SELECT
   symbol      AS token,
   toUInt64(argMax(holders, date)) AS value
@@ -12,4 +14,4 @@ FROM {{ ref('fct_execution_tokens_metrics_daily') }}
 WHERE date < today()
 GROUP BY token_address, symbol
 ORDER BY token
-
+) AS sub

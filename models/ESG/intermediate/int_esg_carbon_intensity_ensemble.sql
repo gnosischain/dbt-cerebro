@@ -1,8 +1,7 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
-        unique_key='(month_date, country_code)',
+        incremental_strategy='insert_overwrite',
         partition_by='toStartOfYear(month_date)',
         order_by='(month_date, country_code)',  
         tags=['production','esg','carbon_intensity']

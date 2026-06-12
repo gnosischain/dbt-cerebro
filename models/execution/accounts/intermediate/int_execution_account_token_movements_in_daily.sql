@@ -1,6 +1,6 @@
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
-{% set incr_end = var('incremental_end_date', none) %}
+{% set incr_end = mb_var('incremental_end_date') %}
 
 {#
   incremental_strategy resolves to `append` when either start_month
@@ -13,11 +13,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     partition_by='toStartOfMonth(date)',
     order_by='(address, date, counterparty, token_address)',
-    unique_key='(date, address, counterparty, token_address)',
     settings={ 'allow_nullable_key': 1 },
     pre_hook=[
       "SET max_threads = 1",

@@ -1,11 +1,32 @@
 {{
   config(
-    materialized='view',
+    materialized='table',
+    engine='ReplacingMergeTree()',
+    order_by='(date, symbol)',
+    partition_by='toStartOfYear(date)',
+    settings={'allow_nullable_key': 1},
     tags=['production','execution','prices','daily']
   )
 }}
 
-WITH dune AS (
+-- Hybrid price hub: native on-chain prices are primary; the Dune feed is kept as a
+-- lower-priority fallback for history native cannot reach. Native (Chainlink oracles +
+-- DEX-derived + sDAI vault) only exists from ~2021 (Chainlink's Gnosis deployment),
+-- whereas Dune's off-chain feed covers 2017+. So for any (date, symbol) native lacks
+-- -- mainly pre-2021, plus tokens with no native source (e.g. SAFE) -- Dune fills in.
+-- Priority: native (1) > backedfi RWA / aToken wrappers (2) > Dune fallback (3) > $1 pegs (4).
+
+WITH native AS (
+    SELECT
+        toDate(date)        AS date,
+        upper(symbol)       AS symbol,
+        toFloat64(price)    AS price
+    FROM {{ ref('int_execution_prices_native_daily') }}
+    WHERE date < today()
+),
+
+dune AS (
+    -- Historical / gap fallback only (lower priority than native).
     SELECT
         toDate(date)        AS date,
         upper(symbol)       AS symbol,
@@ -28,7 +49,7 @@ wxdai_from_xdai AS (
         date,
         'WXDAI' AS symbol,
         price
-    FROM dune
+    FROM native
     WHERE symbol = 'XDAI'
 ),
 
@@ -39,7 +60,7 @@ wrapper_prices AS (
         upper(m.supply_token_symbol) AS symbol,
         p.price
     FROM {{ ref('lending_market_mapping') }} m
-    INNER JOIN dune p
+    INNER JOIN native p
         ON upper(p.symbol) = upper(m.reserve_symbol)
 ),
 
@@ -49,13 +70,13 @@ usd_pegs AS (
         symbol,
         1.0 AS price
     FROM (
-        SELECT DISTINCT date FROM dune
+        SELECT DISTINCT date FROM native
     )
     ARRAY JOIN ['USDC','USDC.E','USDT'] AS symbol
 ),
 
 all_prices AS (
-    SELECT date, symbol, price, 1 AS priority FROM dune
+    SELECT date, symbol, price, 1 AS priority FROM native
     UNION ALL
     SELECT date, symbol, price, 2 AS priority FROM backedfi
     UNION ALL
@@ -63,7 +84,9 @@ all_prices AS (
     UNION ALL
     SELECT date, symbol, price, 2 AS priority FROM wrapper_prices
     UNION ALL
-    SELECT date, symbol, 1.0 AS price, 3 AS priority FROM usd_pegs
+    SELECT date, symbol, price, 3 AS priority FROM dune
+    UNION ALL
+    SELECT date, symbol, 1.0 AS price, 4 AS priority FROM usd_pegs
 ),
 
 deduplicated AS (

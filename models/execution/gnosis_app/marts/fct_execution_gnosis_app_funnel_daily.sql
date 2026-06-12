@@ -2,10 +2,9 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, funnel_name, user_pseudonym)',
-    unique_key='(date, funnel_name, user_pseudonym)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
     tags=['production', 'mta', 'execution', 'gnosis_app', 'mart'],

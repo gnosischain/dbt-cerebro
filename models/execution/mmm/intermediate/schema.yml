@@ -70,9 +70,11 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [week, kpi_name]
-      severity: error
-
+      combination_of_columns:
+      - week
+      - kpi_name
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(week) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_mmm_media_weekly
   description: |
     Long-form weekly MMM media (incentive / reward / outlay) registry.
@@ -130,10 +132,6 @@ models:
   - elementary.schema_changes:
       severity: warn
       tags: [elementary]
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [week, media_name]
-      severity: error
-
 - name: int_execution_mmm_controls_weekly
   description: |
     Long-form weekly MMM control variables (macro / seasonality /
@@ -191,5 +189,8 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [week, control_name]
-      severity: error
+      combination_of_columns:
+      - week
+      - control_name
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(week) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

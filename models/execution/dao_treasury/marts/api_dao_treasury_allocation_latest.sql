@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['dev','execution','dao_treasury','tier1',
-          'api:dao_treasury_allocation_latest','granularity:latest']
+    tags=['dev', 'execution', 'dao_treasury', 'tier1', 'api:dao_treasury_allocation', 'granularity:latest']
   )
 }}
 

@@ -28,6 +28,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_date)) FROM {{ ref('int_execution_safes') }}) AS as_of_date
+FROM (
 -- One row per Safe address: deployment info, current threshold, and
 -- current-owner count. Powers the Safe-section summary card in the Account
 -- Portfolio tab without needing a second aggregation round-trip.
@@ -52,3 +54,4 @@ SELECT
     o.current_threshold AS current_threshold
 FROM {{ ref('int_execution_safes') }} AS s
 LEFT JOIN owners AS o USING (safe_address)
+) AS sub

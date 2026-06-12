@@ -1,26 +1,15 @@
-{{
+﻿{{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
-        on_schema_change='sync_all_columns',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, container_address, ubo_address)',
-        unique_key='(date, protocol, container_address, ubo_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev','execution','ubo','claims','aave','spark']
+        tags=['production','execution','ubo','claims','aave','spark']
     )
 }}
 
--- Per-protocol UBO supply claims for Aave V3 + SparkLend.
---
--- This is the standardized "who can withdraw what" projection of
--- int_execution_lending_aave_user_balances_daily — same per-user balances,
--- reshaped into the protocol-agnostic supply-claim schema that
--- fct_ubo_supply_claims_daily unions across protocols.
---
--- Phase 2 protocols (Balancer, Curve, …) will each have their own sibling
--- int_ubo_claims_<protocol>_daily model contributing rows in the same shape.
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}

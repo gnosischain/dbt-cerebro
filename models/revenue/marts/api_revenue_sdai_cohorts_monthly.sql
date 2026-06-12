@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','revenue','revenue_sdai','api:revenue_sdai_cohorts_monthly','granularity:monthly'],
+    tags=['production', 'revenue', 'revenue_sdai', 'api:revenue_sdai_cohorts', 'granularity:monthly', 'tier1'],
     meta={
       "api": {
         "methods": ["GET"],

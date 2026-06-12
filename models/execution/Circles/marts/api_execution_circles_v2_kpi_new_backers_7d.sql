@@ -1,10 +1,12 @@
 {{
     config(
         materialized='view',
-        tags=['production', 'execution', 'tier0', 'api:circles_v2_kpi_new_backers_7d', 'granularity:latest']
+        tags=['production', 'execution', 'tier0', 'api:circles_v2_kpi_new_backers', 'granularity:latest', 'window:7d']
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_circles_v2_backers_cumulative_daily') }}) AS as_of_date
+FROM (
 -- KPI tile: backers newly trusted by the backers group in the last 7 days,
 -- with week-over-week change.
 
@@ -20,3 +22,4 @@ SELECT
     value                                                            AS value,
     round((value - prior_value) / nullIf(prior_value, 0) * 100, 1)   AS change_pct
 FROM windowed
+) AS sub

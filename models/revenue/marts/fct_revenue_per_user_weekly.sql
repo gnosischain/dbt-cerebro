@@ -29,6 +29,7 @@ SELECT
     max(stream_type = 'holdings')                       AS has_holdings,
     max(stream_type = 'sdai')                           AS has_sdai,
     max(stream_type = 'gpay')                           AS has_gpay,
+    max(stream_type = 'gnosis_app')                     AS has_gnosis_app,
     uniqExact(stream_type)                              AS n_streams,
     -- Headline active-user flag — matches the Dune $6 / annual_rolling
     -- threshold used by fct_revenue_active_users_totals_weekly.

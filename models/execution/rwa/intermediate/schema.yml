@@ -22,8 +22,19 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: "2023-04-01"
+      batch_months: 2
+      stages:
+      - name: all
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - bticker
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

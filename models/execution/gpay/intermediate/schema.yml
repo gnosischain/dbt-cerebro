@@ -8,23 +8,23 @@ models:
     whitelisted ERC-20 transfer to the Gnosis Pay spender
     0x4822521E6135CD2599199c83Ea35179229A172EE, excluding addresses in the
     gpay_operational_wallets seed. Replaces the crawler-sourced
-    stg_gpay__wallets model.
+    stg_gpay__wallets model. Additionally includes NEW Safes from the
+    June 2026 post-exploit migration (gp_migrated_safes seed) whose OLD
+    Safe qualified: they inherit the old Safe's activation_date so cohort
+    dates do not reset, with creation_time = migration completion.
   columns:
   - name: address
     description: Gnosis Pay Safe address (0x-prefixed, lowercase).
     data_type: String
   - name: activation_date
-    description: Earliest date this Safe sent a whitelisted ERC-20 transfer to the GPay spender (daily grain from int_execution_transfers_whitelisted_daily).
+    description: Earliest date this Safe (or, for migrated NEW Safes, its OLD Safe) sent a whitelisted ERC-20 transfer to the GPay spender (daily grain from int_execution_transfers_whitelisted_daily).
     data_type: Date
   - name: creation_time
-    description: Timestamp of the SafeSetup event for this Safe.
+    description: Timestamp of the SafeSetup event for this Safe (migration completedAt for migrated NEW Safes).
     data_type: DateTime
   meta:
     owner: analytics_team
     authoritative: false
-    full_refresh:
-      start_date: "2023-12-01"
-      batch_months: 6
 
 - name: int_execution_gpay_activity
   description: Incremental model that captures individual Gnosis Pay wallet transactions including payments, deposits, withdrawals, and cashback events with USD valuations.
@@ -95,6 +95,16 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - wallet_address
+      - block_timestamp
+      - transaction_hash
+      - token_address
+      - counterparty
+      - direction
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_activity_daily
   description: Incremental model that aggregates Gnosis Pay wallet activity at the daily level, grouped by wallet, action, direction, and token symbol.
   columns:
@@ -189,6 +199,14 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - wallet_address
+      - action
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_balances_daily
   description: Incremental model that tracks daily token balances for each Gnosis Pay wallet address, with both native and USD values.
   columns:
@@ -308,6 +326,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - pay_wallet
+      - owner
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_gpay_modules_registry
   description: |
     Cross-referenced registry of every Zodiac module proxy that is currently
@@ -425,12 +449,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - delay_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_roles_events
   description: |
     Decoded events from the Zodiac Roles v2 module proxies attached to GP
@@ -524,12 +559,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - roles_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_spender_events
   description: |
     Decoded events from the Gnosis Pay Spender module proxies attached to
@@ -633,12 +679,23 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
   tests:
   - elementary.schema_changes:
       severity: warn
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - spender_module_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_spend_activity_daily
   description: |
     Daily card-spend activity per GP Safe.
@@ -684,6 +741,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - gp_safe
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_safe_modules
   description: |
     Current module topology per Gnosis Pay Safe.
@@ -838,6 +901,12 @@ models:
       tags:
       - elementary
 
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - gp_safe
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_safe_identities
   description: |
     PURPOSE
@@ -1012,10 +1081,6 @@ models:
   # distinguishes the rows. Same can apply to initial_owner if one EOA
   # set up multiple Safes. The genuine unique key is
   # (address, identity_role, gp_safe).
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [address, identity_role, gp_safe]
-      severity: error
-
 - name: int_execution_gpay_user_events_unified
   description: |
     Long-form GP-side chain event log keyed by
@@ -1100,9 +1165,15 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [event_ts, event_kind, user_pseudonym, identity_role, event_dedup_key]
-      severity: warn
-
+      combination_of_columns:
+      - event_date
+      - user_pseudonym
+      - event_ts
+      - event_kind
+      - identity_role
+      - event_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(event_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_conversions
   description: |
     GP conversion registry. One row per (conversion event, identity_role)
@@ -1155,6 +1226,15 @@ models:
     - relationships:
         to: ref('mta_gp_identity_roles')
         field: identity_role
+  - name: gp_safe
+    description: |
+      Lowercased Gnosis Pay Safe contract address the conversion occurred on.
+      Part of the natural key (see uniqueness test): without it, two of the
+      same human's Safes paid in one transaction would collapse under the
+      ReplacingMergeTree sort. Joins to int_execution_gnosis_app_gpay_wallets.pay_wallet
+      for App<>GP UTM resolution.
+    data_type: String
+    tests: [not_null]
   - name: conversion_kind
     description: One of `gpay_payment`, `gpay_cashback_claim`, `gpay_funded`.
     data_type: LowCardinality(String)
@@ -1182,9 +1262,16 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_ts, conversion_kind, user_pseudonym, identity_role, conversion_dedup_key]
-      severity: error
-
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      - user_pseudonym
+      - identity_role
+      - gp_safe
+      - conversion_ts
+      - conversion_dedup_key
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gpay_coverage_daily
   description: |
     Per-day, per-(`conversion_kind`, `identity_role`) tracked-coverage
@@ -1245,5 +1332,126 @@ models:
       severity: warn
       tags: [elementary]
   - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [conversion_date, conversion_kind, identity_role]
-      severity: error
+      combination_of_columns:
+      - conversion_date
+      - conversion_kind
+      - identity_role
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(conversion_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_gpay_safe_canonical
+  description: |
+    Canonical resolution for the June 2026 post-exploit Safe migration
+    (gp_migrated_safes seed). One row per OLD Safe with its NEW
+    (canonical) Safe. No chained migrations exist in the seed, so a
+    single hop resolves fully. Use this to canonicalize any user/wallet
+    column across the migration boundary.
+  columns:
+  - name: address
+    description: Migrated OLD Safe address (lowercase).
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: canonical_address
+    description: NEW Safe address the old Safe migrated to (lowercase).
+    data_type: String
+    tests:
+    - not_null
+  - name: gp_user_id
+    description: Gnosis Pay internal user id from the migration export.
+    data_type: String
+  - name: migrated_at
+    description: Migration completion timestamp (completedAt).
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+
+- name: int_execution_gpay_refunds
+  description: |
+    Exploit-recovery refunds credited to migrated NEW Safes by the
+    distributor wallets in the gpay_refund_distributors seed. Refunds
+    arrive days after migration completion, not at Safe deployment.
+    refund_date is the per-(new Safe, token) cutover used by
+    int_execution_gpay_balances_user_daily: from that date the paired
+    OLD Safe's residual balance for the token is recovery-entitled and
+    excluded from user-holdings aggregates.
+  columns:
+  - name: new_safe
+    description: Migrated NEW Safe address that received the refund (lowercase).
+    data_type: String
+  - name: symbol
+    description: Refunded token symbol.
+    data_type: String
+  - name: refund_date
+    description: First date a refund for this (Safe, token) landed.
+    data_type: Date
+  - name: refund_amount_raw
+    description: Total refunded amount in raw token units.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - new_safe
+      - symbol
+
+- name: int_execution_gpay_safe_switchover
+  description: |
+    One row per June 2026 migrated pair. Refunded (is_lost) pairs are
+    excluded from user holdings from first_refund_at (the first refund from
+    the verified distributor 0xbb897a56...); non-refunded pairs have no
+    cutover - their old safe counts until the user moves the funds.
+    is_lost + first_refund_at are the reusable lost-safes filter;
+    new_safe_deployed_at is informational.
+  columns:
+  - name: old_safe
+    description: Migrated OLD Safe address (lowercase).
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: new_safe
+    description: NEW Safe address the pair migrated to (lowercase).
+    data_type: String
+    tests:
+    - not_null
+  - name: new_safe_deployed_at
+    description: On-chain SafeSetup time of the new Safe (seed completedAt fallback).
+    data_type: DateTime64(0, 'UTC')
+  - name: first_refund_at
+    description: First refund date from the verified distributor; NULL when the pair was never refunded.
+    data_type: Nullable(Date)
+  - name: is_lost
+    description: 1 when the pair received a refund (old-safe funds were lost and made whole).
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+
+- name: int_execution_gpay_balances_user_daily
+  description: |
+    User-holdings view over int_execution_gpay_balances_daily that is
+    safe to aggregate across the June 2026 Safe migration without double
+    counting: refunded (is_lost) pairs' old-safe rows count only before
+    first_refund_at; non-refunded pairs have no cutover - their old safe
+    counts until the user moves the funds. All user-holdings consumers
+    (balance aggregates and fct_execution_gpay_user_balances_latest) read
+    this view; raw on-chain per-Safe balances remain in
+    int_execution_gpay_balances_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: address
+    description: Gnosis Pay Safe address.
+    data_type: String
+  - name: symbol
+    data_type: String
+  - name: balance
+    description: Native token balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team

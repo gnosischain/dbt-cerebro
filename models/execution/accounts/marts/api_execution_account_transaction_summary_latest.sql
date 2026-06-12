@@ -16,6 +16,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_account_token_movements_daily') }}) AS as_of_date
+FROM (
 SELECT
   address,
   first_activity_date,
@@ -29,4 +31,4 @@ SELECT
   inbound_gross_amount_raw,
   outbound_gross_amount_raw
 FROM {{ ref('fct_execution_account_transaction_summary_latest') }}
-
+) AS sub

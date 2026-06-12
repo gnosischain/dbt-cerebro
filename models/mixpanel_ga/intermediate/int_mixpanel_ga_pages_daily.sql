@@ -4,11 +4,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, current_domain, page_path)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, current_domain, page_path)',
     tags=['production', 'mixpanel_ga']
   )
 }}

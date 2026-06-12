@@ -10,17 +10,32 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, symbol, user)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, symbol, user)',
     settings={'allow_nullable_key': 1},
+    pre_hook=[
+      "SET join_algorithm = 'grace_hash'",
+      "SET max_bytes_in_join = 500000000"
+    ],
+    post_hook=[
+      "SET join_algorithm = 'default'",
+      "SET max_bytes_in_join = 0"
+    ],
     tags=['production','revenue','revenue_gpay','refill_append']
   )
 }}
 
-WITH transfers AS (
+-- Users are EOAs and Safes only (see int_execution_accounts_non_user_contracts).
+-- The exclusion runs as a LEFT ANTI JOIN, not a NOT IN subquery: the
+-- 5.5M-address IN-set materializes via CreatingSetsTransform which cannot
+-- spill to disk; joins spill with grace_hash.
+WITH non_users AS (
+    SELECT address FROM {{ ref('int_execution_accounts_non_user_contracts') }}
+),
+
+transfers AS (
     SELECT
         t.date,
         lower(t."from") AS user,
@@ -51,20 +66,32 @@ WITH transfers AS (
     GROUP BY t.date, lower(t."from"), t.symbol, fee_rate
 ),
 
+transfers_users AS (
+    SELECT tr.*
+    FROM transfers tr
+    LEFT ANTI JOIN non_users nu ON tr.user = nu.address
+),
+
 prices AS (
     SELECT date, symbol, price
     FROM {{ ref('int_execution_token_prices_daily') }}
     WHERE price IS NOT NULL
 )
 
+-- user is canonicalized through the June 2026 Safe migration: payments
+-- made from a migrated OLD Safe are attributed to its NEW (canonical)
+-- Safe so per-user fee series stay continuous. CH LEFT JOIN fills ''
+-- on misses, hence the empty-string guard.
 SELECT
-    tr.date,
-    tr.user,
-    tr.symbol,
+    tr.date   AS date,
+    if(c.canonical_address != '', c.canonical_address, tr.user) AS user,
+    tr.symbol AS symbol,
     round(sum(tr.amount_native * tr.fee_rate), 8)           AS fees_native,
     round(sum(tr.amount_native * tr.fee_rate * p.price), 8) AS fees,
     round(sum(tr.amount_native * p.price), 6)               AS volume_usd
-FROM transfers tr
+FROM transfers_users tr
 LEFT JOIN prices p
     ON p.date = tr.date AND p.symbol = tr.symbol
-GROUP BY tr.date, tr.user, tr.symbol
+LEFT JOIN {{ ref('int_execution_gpay_safe_canonical') }} c
+    ON c.address = tr.user
+GROUP BY tr.date, if(c.canonical_address != '', c.canonical_address, tr.user), tr.symbol

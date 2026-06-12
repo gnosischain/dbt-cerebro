@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index)',
-        unique_key='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'pools', 'trades', 'intermediate'],
@@ -52,6 +51,9 @@ LEFT JOIN {{ ref('stg_pools__tokens_meta') }} ts
     AND toDate(s.block_timestamp) >= toDate(ts.date_start)
 WHERE s.amount_bought_raw > 0
   AND s.amount_sold_raw   > 0
-  {% if not (start_month and end_month) %}
+  {% if start_month and end_month %}
+    AND toStartOfMonth(s.block_timestamp) >= toDate('{{ start_month }}')
+    AND toStartOfMonth(s.block_timestamp) <= toDate('{{ end_month }}')
+  {% else %}
     {{ apply_monthly_incremental_filter('s.block_timestamp', 'block_timestamp', 'true') }}
   {% endif %}

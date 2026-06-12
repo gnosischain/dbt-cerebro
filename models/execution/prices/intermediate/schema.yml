@@ -54,3 +54,197 @@ models:
       severity: warn
       tags:
       - elementary
+
+- name: int_execution_prices_oracle_daily
+  description: >
+    Daily native USD prices derived from Chainlink on-chain oracle feeds
+    (AnswerUpdated events) for whitelisted tokens. One Chainlink feed per token
+    symbol; the latest answer of each day (argMax over block_timestamp) divided
+    by the feed's decimals. This is the native USD anchor intended to replace the
+    externally-ingested Dune price feed; see docs/native_token_prices_build_plan.md.
+  columns:
+
+  - name: symbol
+    description: The token symbol priced by the feed (e.g. GNO, WETH, EURe, ZCHF).
+    data_type: String
+
+  - name: date
+    description: The calendar day (start-of-day) for the recorded price.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: price
+    description: The latest oracle USD price for the token on the given day (answer / 10^decimals).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-01-01"
+      batch_months: 2
+      stages:
+      - name: all
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_prices_dex_ratios
+  description: >
+    Daily DEX-derived USD prices for whitelist tokens that have no Gnosis Chainlink
+    feed (GBPe, BRLA, BRZ, COW, SAFE). Median over trades where the token is swapped
+    against an oracle-priced anchor token (implied_usd = anchor_amount * anchor_usd /
+    target_amount), requiring >= $1000 notional and >= 5 trades/day. Sourced from the
+    UNPRICED trade tables (pools_dex_trades_raw + stg_cow__trades) to avoid a cycle
+    with the price hub; the USD anchor is int_execution_prices_oracle_daily.
+  columns:
+
+  - name: symbol
+    description: The whitelist token symbol being priced (GBPe, BRLA, BRZ, COW, SAFE).
+    data_type: String
+
+  - name: date
+    description: The calendar day for the recorded price.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: price
+    description: Daily median implied USD price across qualifying DEX/CoW trades.
+    data_type: Float64
+
+  - name: n_trades
+    description: Number of qualifying trades that contributed to the daily median.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-04-01"
+      batch_months: 1
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_prices_native_daily
+  description: >
+    Native daily USD price series for whitelist base tokens, assembled from on-chain
+    data to replace the Dune feed: Chainlink oracle prices (authoritative) + sDAI
+    ERC4626 vault rate + sGNO + DEX-derived stablecoins (GBPe/BRLA/BRZ/COW/SAFE, with
+    30-day rolling-MAD outlier nulling and BRZ<-BRLA fallback), forward-filled across a
+    daily calendar so every symbol is dense. Drop-in for the hub's source CTE; the hub
+    still layers aTokens (lending_market_mapping) and RWA (backedfi) on top. Full-rebuild
+    table. See docs/native_token_prices_build_plan.md.
+  columns:
+
+  - name: date
+    description: The calendar day for the recorded price.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: symbol
+    description: The whitelist token symbol (base tokens; aTokens/RWA are added by the hub).
+    data_type: String
+
+  - name: price
+    description: Forward-filled native USD price for the token on the given day.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution', 'tier1', 'api:transactions_initiators_count_daily', 'granularity:daily'])
+    tags=['production', 'execution', 'tier1', 'api:transactions_initiators_count', 'granularity:daily'])
 }}
 
 SELECT

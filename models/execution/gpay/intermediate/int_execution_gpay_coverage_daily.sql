@@ -1,10 +1,9 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(conversion_date, conversion_kind, identity_role)',
-    unique_key='(conversion_date, conversion_kind, identity_role)',
     partition_by='toStartOfMonth(conversion_date)',
     settings={'allow_nullable_key': 1},
     tags=['production', 'mta', 'execution', 'gpay'],

@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','activity','tier1',
-          'api:gnosis_app_activity_by_action_monthly','granularity:monthly'],
+    tags=['production', 'execution', 'gnosis_app', 'activity', 'tier1', 'api:gnosis_app_activity_by_action', 'granularity:monthly'],
     meta={
       "api": {
         "methods": ["GET"],

@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_trust_updates') }}) AS as_of_date
+FROM (
 WITH unioned AS (
     SELECT truster AS avatar, trustee AS counterparty, 'outgoing' AS direction, valid_from
     FROM {{ ref('fct_execution_circles_v2_trust_relations_current') }}
@@ -39,3 +41,4 @@ SELECT
     if(out_cnt > 0, outgoing_from_raw, NULL) AS outgoing_from,
     if(in_cnt > 0, incoming_from_raw, NULL) AS incoming_from
 FROM agg
+) AS sub

@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['dev', 'live', 'execution', 'pools', 'trades', 'api']
+        tags=['live', 'execution', 'pools', 'trades', 'api']
     )
 }}
 
@@ -21,7 +21,7 @@ hourly AS (
         toStartOfHour(block_timestamp)          AS date,
         protocol                                AS label,
         round(sum(amount_usd), 0)               AS value
-    FROM {{ ref('int_live__dex_trades_raw') }}
+    FROM {{ ref('int_live__dex_trades_raw') }} FINAL
     WHERE block_timestamp >= (SELECT ts FROM hwm) - INTERVAL 48 HOUR
       AND block_timestamp <= (SELECT ts FROM hwm) - INTERVAL 60 SECOND
       AND protocol != ''

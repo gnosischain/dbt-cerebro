@@ -38,6 +38,17 @@ models:
     full_refresh:
       start_date: "2021-12-01"
       batch_months: 2
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_GBCDeposit_events
   description: The contracts_GBCDeposit_events model captures and processes deposit event logs related to the GBC Deposit contract, providing a detailed record of deposit activities over time for analytics and reporting purposes.
   columns:
@@ -95,3 +106,14 @@ models:
     full_refresh:
       start_date: "2021-12-01"
       batch_months: 2
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

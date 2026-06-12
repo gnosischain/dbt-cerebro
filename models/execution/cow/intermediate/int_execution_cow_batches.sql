@@ -1,13 +1,12 @@
-{{
+﻿{{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash)',
-        unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'cow', 'batches', 'intermediate']
+        tags=['execution', 'cow', 'batches', 'intermediate']
     )
 }}
 
@@ -51,7 +50,7 @@ batch_trades AS (
         transaction_hash,
         any(solver)                                                                  AS solver,
         count(*)                                                                     AS num_trades,
-        countDistinct(amount_usd)                                                    AS num_priced_trades,
+        countIf(isNotNull(amount_usd))                                               AS num_priced_trades,
         sum(amount_usd)                                                              AS batch_value_usd
     FROM trades
     GROUP BY transaction_hash

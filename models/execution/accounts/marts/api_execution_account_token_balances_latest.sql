@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'execution', 'accounts', 'portfolio', 'tier1', 'api:account_token_balances_latest', 'granularity:latest'],
+    tags=['production', 'execution', 'accounts', 'portfolio', 'tier1', 'api:account_token_balances', 'granularity:latest'],
     meta={
       "api": {
         "methods": ["GET", "POST"],
@@ -18,6 +18,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('int_execution_tokens_balances_daily') }}) AS as_of_date
+FROM (
 SELECT
   address,
   date,
@@ -28,4 +30,4 @@ SELECT
   balance,
   balance_usd
 FROM {{ ref('fct_execution_account_token_balances_latest') }}
-
+) AS sub

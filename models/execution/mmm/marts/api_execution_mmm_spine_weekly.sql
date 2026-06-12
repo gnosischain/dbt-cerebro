@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'mmm', 'execution', 'tier1',
-          'api:mmm_spine_weekly', 'granularity:weekly']
+    tags=['production', 'mmm', 'execution', 'tier1', 'api:mmm_spine', 'granularity:weekly']
   )
 }}
 

@@ -4,10 +4,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if start_month else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date)',
-        unique_key='(date)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "attestations_performance"]
     )

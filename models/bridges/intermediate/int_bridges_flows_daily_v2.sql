@@ -1,9 +1,8 @@
 {{ config(
     materialized = 'incremental',
-    incremental_strategy = 'delete+insert',
+    incremental_strategy='insert_overwrite',
     engine = 'ReplacingMergeTree()',
     order_by = '(date, bridge, source_chain, dest_chain, token, direction)',
-    unique_key = '(date, bridge, source_chain, dest_chain, token, direction)',
     partition_by = 'toStartOfMonth(date)',
     settings = {'allow_nullable_key': 1},
     tags = ['dev', 'intermediate', 'bridges', 'v2']

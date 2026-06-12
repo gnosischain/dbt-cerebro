@@ -1,6 +1,64 @@
 version: 2
 models:
 
+- name: int_ubo_second_level_daily
+  description: >
+    Rows from fct_ubo_supply_claims_daily where ubo_address is itself a known
+    container for the bridge token (container_address). These are the "second-
+    level" rows that fct_ubo_supply_claims_resolved_daily needs to redistribute.
+    Materialized separately so the resolved model can join this tiny table on
+    the right (hash-table) side while streaming the full claims dataset through
+    on the left (probe) side, avoiding loading millions of rows into a hash
+    table. Identical schema and unique key to fct_ubo_supply_claims_daily.
+  meta:
+    owner: analytics_team
+    full_refresh:
+      start_date: "2021-04-21"
+      batch_months: 3
+      stages:
+      - name: all
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+  - name: protocol
+    description: Protocol the claim is sourced from.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the container contract holding the pooled token.
+    data_type: String
+  - name: token_address
+    description: Lowercase address of the underlying token being claimed.
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the second-level container (is itself a known container for container_address).
+    data_type: String
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: balance_raw
+    description: Raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the claim.
+    data_type: Float64
+
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - protocol
+      - container_address
+      - ubo_address
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_ubo_claims_balancer_v2_daily
   description: >
     Per-protocol UBO supply claims for Balancer V2. Standardized shape: one
@@ -87,11 +145,6 @@ models:
       severity: warn
       tags:
       - elementary
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, container_address, ubo_address, token_address]
-      tags: [ubo]
-      config:
-        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - dbt_utils.expression_is_true:
       name: int_ubo_claims_balancer_v2_daily_addresses_lowercase
       expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
@@ -100,6 +153,207 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - dbt_utils.expression_is_true:
       name: int_ubo_claims_balancer_v2_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_uniswap_v3_daily
+  description: >
+    Per-user UBO supply claims for Uniswap V3. Standardized shape: one row
+    per (date, container_address, ubo_address, token_address) capturing each
+    LP's net withdrawable token balance in a Uniswap V3 pool.
+
+    Unlike Balancer V2 (single Vault), each Uniswap V3 pool is its own token
+    custodian so container_address is the individual pool address.
+
+    Two tracks of LP attribution are merged:
+      - Track A (direct LPs, ~45%): the pool Mint/Burn event's owner field
+        is the real LP — used directly from stg_pools__dex_liquidity_uniswap_v3.
+      - Track B (via NPM, ~55%): the pool event's owner is the
+        NonfungiblePositionManager (0xae8fbe...). The real LP is resolved by
+        decoding NPM Transfer events (ERC-721 ownership per tokenId) and
+        joining NPM IncreaseLiquidity/DecreaseLiquidity to pool events via
+        transaction_hash.
+
+    Position transfers (LP A mints NFT → transfers to B → B burns) are handled
+    by the Transfer event ownership chain. Balances are keyed by (ubo_address,
+    symbol, container_address) through the cumsum so token migrations collapse
+    into a single series.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Uniswap V3'.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: >
+      Lowercase pool address. Each Uniswap V3 pool custodies its own tokens,
+      so the container is the pool contract (not a shared vault).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: >
+      Canonical token address per tokens_whitelist (symbol + date range).
+      Resolved at the balance date, so migrated tokens follow the canonical
+      successor contract from the migration date onward.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol from tokens_whitelist.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.) from tokens_whitelist.
+    data_type: String
+  - name: ubo_address
+    description: >
+      Lowercase address of the LP. For Track A this is the pool event owner;
+      for Track B it is the current NFT owner from NPM Transfer events.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Cumulative raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-04-22"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_uniswap_v3_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_uniswap_v3_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_swapr_v3_daily
+  description: >
+    Per-user UBO supply claims for Swapr V3 (Algebra). Standardized shape: one
+    row per (date, container_address, ubo_address, token_address) capturing each
+    LP's net withdrawable token balance in a Swapr V3 pool.
+
+    Same two-track approach as Uniswap V3, but simpler because Swapr's
+    IncreaseLiquidity event includes the pool address directly (no
+    transaction_hash join needed). Each Swapr V3 pool is its own token
+    custodian so container_address is the individual pool address.
+
+    Track A (direct LPs): the pool Mint/Burn owner field is the real LP.
+    Track B (via NPM): the owner is the NonfungiblePositionManager
+    (0x91fd...). The real LP is resolved from NPM Transfer events.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Swapr V3'.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: >
+      Lowercase pool address. Each Swapr V3 pool custodies its own tokens.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: >
+      Canonical token address per tokens_whitelist (symbol + date range).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol from tokens_whitelist.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.) from tokens_whitelist.
+    data_type: String
+  - name: ubo_address
+    description: >
+      Lowercase address of the LP. For Track A this is the pool event owner;
+      for Track B it is the current NFT owner from NPM Transfer events.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Cumulative raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-03-01"
+      batch_months: 6
+      stages:
+      - name: all
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_swapr_v3_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_swapr_v3_daily_non_negative_balance
       expression: "balance >= 0 AND balance_raw >= 0"
       tags: [ubo]
       config:
@@ -202,6 +456,164 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - dbt_utils.expression_is_true:
       name: int_ubo_claims_aave_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_curve_daily
+  description: >
+    Per-protocol UBO supply claims for Curve 3pool (0x7f90122bf0700f9e7e1f688fe926940e8839f353)
+    on Gnosis Chain. Unwinds both direct x3CRV LP holders and depositors in
+    the x3CRV gauge (0xb721cc32160ab0da2614cc6ab16ed822aeebc101) into a
+    single set of final wallet-level claims. Gauge depositors receive an
+    effective x3CRV allocation proportional to their share of total gauge
+    supply, preserving total conservation (sum of claims = pool reserves).
+    Sourced from contracts_Curve3PoolLP_events and contracts_CurveGauge_events
+    Transfer events; pool reserves from int_execution_tokens_balances_daily.
+    Backfilled from 2021-09-01 (pool deployment) in 6-month batches.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'Curve 3pool'.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the Curve 3pool contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of the underlying reserve token (WxDAI, USDC, USDT).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Reserve token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN or OTHERS).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the final beneficial owner (direct LP holder or gauge depositor).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit claim (Int256), proportional share of pool reserve.
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_curve_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_curve_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_ubo_claims_sdai_daily
+  description: >
+    Per-protocol UBO supply claims for the sDAI ERC4626 vault
+    (0xaf204776c7245bf4147c2612bf6e5972ee483701) on Gnosis Chain. Each sDAI
+    holder's proportional claim on the WxDAI held by the vault is computed
+    as (sDAI_balance / total_sDAI_supply) × vault_WxDAI_reserve. Holder
+    balances are sourced directly from int_execution_tokens_balances_daily
+    (no Transfer event parsing needed). Affects the WxDAI top-holders view;
+    the sDAI token top-holders view is unaffected. Note: aGnosDAI
+    (0x7a5c38...) appears as a second-level container — its share is left
+    attributed to the aToken address rather than individual Aave lenders.
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Always 'sDAI'.
+    data_type: String
+  - name: container_address
+    description: Lowercase address of the sDAI vault contract.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of WxDAI (the vault's underlying asset).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Always 'WxDAI'.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the sDAI token holder.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit WxDAI claim (Int256), proportional share of vault reserves.
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized WxDAI balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the WxDAI balance.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_sdai_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: int_ubo_claims_sdai_daily_non_negative_balance
       expression: "balance >= 0 AND balance_raw >= 0"
       tags: [ubo]
       config:

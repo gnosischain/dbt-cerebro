@@ -62,6 +62,17 @@ models:
     full_refresh:
       start_date: "2022-03-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_Swapr_v3_AlgebraFactory_events
   description: The `contracts_Swapr_v3_AlgebraFactory_events` model captures and processes event logs related to the Swapr v3 AlgebraFactory contract, enabling analysis of contract interactions and event occurrences over time.
   columns:
@@ -115,6 +126,18 @@ models:
     full_refresh:
       start_date: "2022-03-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_Swapr_v3_AlgebraPool_calls
   description: The `contracts_Swapr_v3_AlgebraPool_calls` model captures and processes call interactions related to the Swapr v3 Algebra Pool contract, enabling analysis of contract activity over time.
   columns:
@@ -168,6 +191,45 @@ models:
     full_refresh:
       start_date: "2022-03-01"
       batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: contracts_Swapr_v3_NonfungiblePositionManager_events
+  description: |
+    Decoded events from the Swapr V3 (Algebra) NonfungiblePositionManager contract
+    (0x91fd594c46d8b01e62dbdebed2401dde01817834) on Gnosis Chain. Decodes
+    IncreaseLiquidity, DecreaseLiquidity, Transfer (ERC-721), and Collect
+    events. Used by the UBO pipeline to attribute pool liquidity positions
+    to individual LPs via tokenId ownership tracking. Swapr's IncreaseLiquidity
+    event includes the pool address directly, simplifying the tokenId-to-pool
+    mapping vs Uniswap V3.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2022-03-01"
+      batch_months: 6
+
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_Swapr_v3_AlgebraPool_events_live
   description: >
     Plain view over `execution_live.logs` that decodes Swapr V3 Algebra Pool
@@ -176,6 +238,18 @@ models:
     cryo-live bulk attaches don't fire MV triggers, source pre-filtered to
     last 4h from source HWM for decode performance.
 
+  meta:
+    full_refresh:
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_number
+      - transaction_index
+      - log_index
 - name: contracts_Swapr_v3_AlgebraPool_events
   description: The `contracts_Swapr_v3_AlgebraPool_events` model captures and processes event logs related to Swapr's Algebra Pool smart contract, enabling analysis of pool activities and events over time.
   columns:
@@ -244,4 +318,17 @@ models:
     authoritative: false
     full_refresh:
       start_date: "2022-03-01"
-      batch_months: 6
+      batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - contract_address
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

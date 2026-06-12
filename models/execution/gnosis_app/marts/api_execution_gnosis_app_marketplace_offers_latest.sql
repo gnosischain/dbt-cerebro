@@ -1,8 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gnosis_app','marketplace','tier1',
-          'api:gnosis_app_marketplace_offers_latest','granularity:snapshot'],
+    tags=['production', 'execution', 'gnosis_app', 'marketplace', 'tier1', 'api:gnosis_app_marketplace_offers', 'granularity:snapshot'],
     meta={
       "api": {
         "methods": ["GET"],
@@ -17,6 +16,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_gnosis_app_marketplace_payments') }}) AS as_of_date
+FROM (
 SELECT
     offer_name,
     gateway_address,
@@ -27,3 +28,4 @@ SELECT
     last_buy_at
 FROM {{ ref('fct_execution_gnosis_app_marketplace_offers_latest') }}
 ORDER BY total_buys DESC
+) AS sub

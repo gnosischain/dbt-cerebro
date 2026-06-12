@@ -4,10 +4,9 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(block_timestamp, transaction_hash, log_index)',
-    unique_key='(transaction_hash, log_index, gp_wallet)',
     partition_by='toStartOfMonth(block_timestamp)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','gnosis_app','gpay','topups'],

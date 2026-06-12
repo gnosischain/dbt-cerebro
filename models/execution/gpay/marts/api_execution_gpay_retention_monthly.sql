@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier1','api:gpay_retention_monthly','granularity:monthly']
+    tags=['production', 'execution', 'gpay', 'tier1', 'api:gpay_retention', 'granularity:monthly']
   )
 }}
 

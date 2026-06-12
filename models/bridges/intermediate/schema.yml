@@ -2,8 +2,7 @@ version: 2
 models:
 
 - name: int_bridges_flows_daily
-  description: The int_bridges_flows_daily model aggregates daily bridge transfer data, providing insights into token volumes, transaction counts, and net USD flows across different blockchain bridges and
-    chains.
+  description: The int_bridges_flows_daily model aggregates daily bridge transfer data, providing insights into token volumes, transaction counts, and net USD flows across different blockchain bridges and chains.
   columns:
 
   - name: date
@@ -126,3 +125,13 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - bridge
+      - source_chain
+      - dest_chain
+      - token
+      - direction
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

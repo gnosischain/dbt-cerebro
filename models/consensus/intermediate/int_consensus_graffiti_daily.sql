@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, graffiti)',
-        unique_key='(date, graffiti)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "graffiti"]
     )

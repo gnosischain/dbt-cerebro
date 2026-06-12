@@ -55,6 +55,206 @@ models:
       start_date: "2021-01-01"
       batch_months: 3
 
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - proxy_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: contracts_zodiac_modules_registry
+  description: |
+    ABI-resolution registry for Zodiac Modifier proxies (Delay + Roles) on
+    Gnosis Chain, chain-wide (NOT GP-scoped).
+
+    Mirrors contracts_gpay_modules_registry but selects every module proxy
+    from int_execution_zodiac_module_proxies whose master_copy is one of the
+    vulnerable Modifier mastercopies — the primary GP Delay
+    (0x4a97e651...), the Roles mastercopy (0x9646fdad...), and the two older
+    Delay implementations (0xd54895b1..., 0xd62129bf...) that share the same
+    vulnerable codebase and still custody funds.
+
+    Exposes abi_source_address (= master_copy) so decode_logs can resolve the
+    mastercopy ABI for proxy-emitted events. Consumers that want only the
+    primary GP Delay filter on master_copy / abi_source_address directly.
+  columns:
+
+  - name: address
+    description: The deployed Modifier proxy address (lowercase, 0x-prefixed).
+    data_type: String
+    tests:
+    - not_null
+    - unique
+
+  - name: contract_type
+    description: "DelayModule, RolesModule, or Unknown (keyed on master_copy)."
+    data_type: String
+
+  - name: abi_source_address
+    description: The mastercopy whose ABI applies to this proxy (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: is_dynamic
+    description: Always 1 — proxies are dynamically discovered from the factory.
+    data_type: UInt8
+
+  - name: start_blocktime
+    description: Block timestamp of the proxy's ModuleProxyCreation event.
+    data_type: DateTime64(0, 'UTC')
+
+  - name: discovery_source
+    description: How the proxy was discovered (zodiac_module_proxy_factory).
+    data_type: String
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: int_execution_zodiac_modifier_module_events
+  description: |
+    Long-form append log of every EnabledModule / DisabledModule event
+    emitted BY a Zodiac Modifier proxy (Delay / Roles) — i.e. the sub-modules
+    enabled or disabled ON the Modifier itself.
+
+    The Zodiac Modifier emits EnabledModule(address module) NON-indexed
+    (module in data), unlike Gnosis Safe which emits it indexed. Decoded via
+    decode_logs against contracts_zodiac_modules_registry, which resolves the
+    mastercopy ABI (the non-indexed EnabledModule/DisabledModule rows were
+    added to the event_signatures seed for every vulnerable mastercopy).
+
+    This is NOT the same as int_execution_safes_module_events, which is
+    SafeProxy-scoped and therefore never sees Modifier-emitted events.
+    decode_logs handles its own incremental filter; do NOT add an outer
+    block_timestamp filter.
+  columns:
+
+  - name: modifier_address
+    description: The Modifier proxy that emitted the event (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: event_kind
+    description: "Enum: enabled_module or disabled_module."
+    data_type: String
+
+  - name: submodule_address
+    description: The sub-module enabled/disabled on the Modifier (lowercase, 0x-prefixed).
+    data_type: Nullable(String)
+
+  - name: block_timestamp
+    description: UTC timestamp of the block containing the event.
+    data_type: DateTime64(0, 'UTC')
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: block_number
+    description: Block number of the event.
+    data_type: UInt32
+
+  - name: transaction_hash
+    description: Transaction that emitted the event (0x-prefixed).
+    data_type: String
+
+  - name: log_index
+    description: Index of the log within its transaction.
+    data_type: UInt32
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2023-11-01"
+      batch_months: 3
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - modifier_address
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_execution_zodiac_modifier_submodules_latest
+  description: |
+    Latest-state snapshot of which sub-modules are currently enabled on each
+    Zodiac Modifier, derived from int_execution_zodiac_modifier_module_events
+    via argMax(event_kind) — keeps only (modifier, submodule) pairs whose most
+    recent event is an enable. Full history lives in the events model.
+
+    Generic Modifier -> sub-module relationship table. Classifies each
+    sub-module: submodule_is_safe is 1 when the sub-module is itself a Safe
+    (join to contracts_safe_registry). is_erc1271_exploitable mirrors that
+    flag — the ERC-1271 revert-data bypass in the shared Modifier mastercopies
+    is only reachable when the enabled sub-module is a Safe (an EOA sub-module
+    cannot be forced to return 0x1626ba7e). The avatar Safe (the Safe that has
+    the Modifier enabled) is resolved from the Safe-side module events; is_gp
+    flags whether that avatar is a Gnosis Pay wallet.
+  columns:
+
+  - name: modifier_address
+    description: The Modifier proxy (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: submodule_address
+    description: The sub-module currently enabled on the Modifier (lowercase, 0x-prefixed).
+    data_type: String
+
+  - name: module_type
+    description: "DelayModule / RolesModule (from contracts_zodiac_modules_registry)."
+    data_type: Nullable(String)
+
+  - name: master_copy
+    description: The Modifier's mastercopy (lets consumers filter to the primary GP Delay by address).
+    data_type: Nullable(String)
+
+  - name: avatar_address
+    description: The Safe that currently has this Modifier enabled (NULL if none found).
+    data_type: Nullable(String)
+
+  - name: submodule_is_safe
+    description: 1 when the sub-module is itself a Safe (present in contracts_safe_registry).
+    data_type: UInt8
+
+  - name: is_erc1271_exploitable
+    description: Derived flag, equal to submodule_is_safe — the sub-module being a Safe is the precondition for the ERC-1271 revert-data bypass.
+    data_type: UInt8
+
+  - name: is_gp
+    description: 1 when the avatar Safe is a Gnosis Pay wallet.
+    data_type: UInt8
+
+  - name: last_event_at
+    description: Timestamp of the latest enable/disable event for this pair.
+    data_type: DateTime64(0, 'UTC')
+
+  meta:
+    owner: analytics_team
+    authoritative: false
+
   tests:
   - elementary.schema_changes:
       severity: warn

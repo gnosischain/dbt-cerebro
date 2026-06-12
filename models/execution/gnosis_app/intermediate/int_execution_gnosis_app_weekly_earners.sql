@@ -8,40 +8,42 @@
   )
 }}
 
--- Weekly "economic earners" set: addresses that earned >= 1 unit of either
--- form of Circles reward in a given week. Used as the right side of the
--- WAU∩earners intersection that defines Weekly Economically Active Users.
+-- Weekly "economic earners" set FOR THE GNOSIS APP: addresses that earned
+-- >= 1 unit of a Circles reward in a given week, filtered to users and
+-- actions taken in-app. Used as the right side of the WAU∩earners
+-- intersection that defines Weekly Economically Active Users.
 --
--- Two reward streams (matching the Dune circles-v2-kpis dashboard):
---   * gCRC cashback   ≥ 1 gCRC from the Circles cashback wallet
---                     → int_execution_circles_v2_gcrc_cashback_recipients_weekly
---   * Inviter fees    ≥ 1 CRC of inviter fees received that week
---                     → int_execution_circles_v2_inviter_fees (aggregated here)
+-- Consumes the circles-first ecosystem layer
+-- (int_execution_circles_v2_economically_active_avatars_weekly) and scopes it:
+--   * inviter_fee   → address is a Gnosis App user AND at least one fee that
+--                     week came through a Gnosis App relayer tx (any_in_app_tx)
+--   * gcrc_cashback → address is a Gnosis App user (cashback payouts carry no
+--                     tx-origin, so scoping is membership-based)
+--
+-- DEFINITION CHANGE (vs the original global version): earnings via other
+-- apps/direct on-chain no longer count here — they remain visible in the
+-- circles-first ecosystem layer and its fct/api. ga_users membership comes
+-- from int_execution_gnosis_app_users_current.
 
 {% set floor_date = var('gnosis_app_wau_floor_date') %}
 
-WITH cashback AS (
-    SELECT week, address
-    FROM {{ ref('int_execution_circles_v2_gcrc_cashback_recipients_weekly') }}
-    WHERE week >= toDate('{{ floor_date }}')
+WITH ga_users AS (
+    SELECT address
+    FROM {{ ref('int_execution_gnosis_app_users_current') }}
 ),
 
-inviter_fees_weekly AS (
+scoped AS (
     SELECT
-        toStartOfWeek(block_timestamp, 1) AS week,
-        inviter                           AS address,
-        sum(amount)                       AS amount
-    FROM {{ ref('int_execution_circles_v2_inviter_fees') }}
-    WHERE block_timestamp < today()
-      AND block_timestamp >= toDateTime('{{ floor_date }}')
-    GROUP BY week, inviter
-    HAVING amount >= 1
+        e.week,
+        e.avatar AS address
+    FROM {{ ref('int_execution_circles_v2_economically_active_avatars_weekly') }} e
+    INNER JOIN ga_users u
+        ON u.address = e.avatar
+    WHERE e.week >= toDate('{{ floor_date }}')
+      AND (e.earning_kind = 'gcrc_cashback'
+           OR (e.earning_kind = 'inviter_fee' AND e.any_in_app_tx = 1))
 )
 
 SELECT DISTINCT week, address
-FROM (
-    SELECT week, address FROM cashback
-    UNION ALL
-    SELECT week, address FROM inviter_fees_weekly
-)
+FROM scoped
 WHERE address != ''

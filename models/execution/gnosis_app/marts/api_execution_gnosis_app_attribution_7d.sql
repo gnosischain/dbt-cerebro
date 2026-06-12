@@ -1,11 +1,12 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'mta', 'execution', 'gnosis_app', 'tier1',
-          'api:gnosis_app_attribution_7d', 'granularity:rolling_180d']
+    tags=['production', 'mta', 'execution', 'gnosis_app', 'tier1', 'api:gnosis_app_attribution', 'granularity:rolling_180d', 'window:7d']
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_gnosis_app_gpay_topups') }}) AS as_of_date
+FROM (
 -- API view passthrough over fct_execution_gnosis_app_attribution_7d.
 -- Tier1 endpoint, requires X-API-Key.
 
@@ -21,3 +22,4 @@ SELECT
   computed_at
 FROM {{ ref('fct_execution_gnosis_app_attribution_7d') }}
 ORDER BY conversion_kind, linear DESC
+) AS sub

@@ -46,9 +46,64 @@ from datetime import datetime
 from pathlib import Path
 
 BLOCKSCOUT_BASE = "https://gnosis.blockscout.com/api/v2/smart-contracts"
+BLOCKSCOUT_V1 = "https://gnosis.blockscout.com/api"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CSV_PATH = REPO_ROOT / "seeds" / "contracts_abi.csv"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+_BROWSER_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def _get_json(url: str) -> dict:
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": _BROWSER_UA},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def _fetch_blockscout_v1(address: str) -> dict:
+    """Fallback to Blockscout v1 API (etherscan-compatible).
+
+    Used when the v2 endpoint returns a 5xx error (common for Vyper contracts).
+    Calls getabi + getsourcecode to recover ABI and contract name.
+    """
+    import urllib.parse
+
+    abi_url = (
+        f"{BLOCKSCOUT_V1}?module=contract&action=getabi"
+        f"&address={address}"
+    )
+    body = _get_json(abi_url)
+    if body.get("status") != "1":
+        raise SystemExit(
+            f"Blockscout v1 getabi failed for {address}: {body.get('result') or body}"
+        )
+    abi = json.loads(body["result"])
+
+    name = ""
+    try:
+        src_url = (
+            f"{BLOCKSCOUT_V1}?module=contract&action=getsourcecode"
+            f"&address={address}"
+        )
+        src_body = _get_json(src_url)
+        if src_body.get("status") == "1":
+            results = src_body.get("result") or []
+            if results:
+                name = results[0].get("ContractName") or ""
+    except Exception:
+        pass
+
+    return {
+        "abi_json": json.dumps(abi, separators=(",", ":")),
+        "contract_name": name,
+        "implementations": [],
+    }
 
 
 def fetch_blockscout(address: str) -> dict:
@@ -59,26 +114,20 @@ def fetch_blockscout(address: str) -> dict:
         contract_name  : str
         implementations: list[dict] (may be empty)
 
+    Tries the v2 REST API first. If it returns a 5xx error (which can
+    happen for Vyper contracts), falls back to the v1 etherscan-compatible
+    API (module=contract&action=getabi).
+
     Blockscout's public API blocks the default Python-urllib user-agent
     with 403 Forbidden, so we send a browser-like UA explicitly.
     """
     url = f"{BLOCKSCOUT_BASE}/{address.lower()}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json",
-            # Without this header Blockscout returns 403 Forbidden to
-            # requests originating from some IP ranges / default UAs.
-            "User-Agent": (
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            ),
-        },
-    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read())
+        body = _get_json(url)
     except urllib.error.HTTPError as e:
+        if e.code >= 500:
+            print(f"  v2 API returned HTTP {e.code}, falling back to v1 API …")
+            return _fetch_blockscout_v1(address)
         raise SystemExit(
             f"Blockscout HTTP {e.code} for {address}: {e.reason}\n"
             "If this is a 403 or 429, retry in a minute or use --from-ch "
@@ -86,12 +135,10 @@ def fetch_blockscout(address: str) -> dict:
             "(requires that `dbt run-operation fetch_and_insert_abi` "
             "has already run for this address)."
         )
-    except urllib.error.URLError as e:
-        raise SystemExit(
-            f"Blockscout network error for {address}: {e.reason}\n"
-            "If your container has no egress to blockscout.com, use "
-            "--from-ch to read the ABI from ClickHouse instead."
-        )
+    except (urllib.error.URLError, OSError, TimeoutError) as e:
+        reason = getattr(e, "reason", str(e))
+        print(f"  v2 API error ({reason}), falling back to v1 API …")
+        return _fetch_blockscout_v1(address)
 
     abi = body.get("abi")
     if abi is None:

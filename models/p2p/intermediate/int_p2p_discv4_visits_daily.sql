@@ -1,10 +1,9 @@
 {{ 
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date)',
-        unique_key='(date)',
         partition_by='toStartOfMonth(date)',
         tags=['production','p2p','discv4']
     ) 

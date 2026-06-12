@@ -1,0 +1,106 @@
+version: 2
+models:
+
+- name: contracts_Curve3PoolLP_events
+  description: |
+    Decoded event log stream from the Curve 3pool LP token (x3CRV) at
+    0x1337BedC9D22ecbe766dF105c9623922A27963EC on Gnosis Chain. One row
+    per emitted log; decoded_params is a Map(String, String) containing
+    Transfer and Approval event parameters. Used by
+    int_ubo_claims_curve_daily to track LP token balances per holder.
+    Backfilled from 2021-09-01 (pool deployment) in 6-month batches.
+  columns:
+  - name: block_number
+    description: Block number containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the transaction.
+    data_type: UInt64
+  - name: contract_address
+    description: Address of the contract emitting the event (the x3CRV LP token).
+    data_type: String
+  - name: event_name
+    description: Name of the emitted event (Transfer or Approval).
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameter name to value. Transfer keys are _from, _to, _value. Approval keys are _owner, _spender, _value.
+    data_type: Map(String, String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-09-01"
+      batch_months: 6
+
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: contracts_CurveGauge_events
+  description: |
+    Decoded event log stream from the Curve x3CRV gauge deposit contract
+    (0xb721cc32160ab0da2614cc6ab16ed822aeebc101, proxy → implementation
+    0x9336DA074c4f585a8B59A8C2B77a32b630cde5A1) on Gnosis Chain. Captures
+    Transfer, Deposit, Withdraw and UpdateLiquidityLimit events. Transfer
+    events are used by int_ubo_claims_curve_gauge_daily to track gauge token
+    balances per depositor. Backfilled from 2021-09-01 in 6-month batches.
+  columns:
+  - name: block_number
+    description: Block number containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: Timestamp of the block in UTC.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: UInt64
+  - name: log_index
+    description: Index of the log within the transaction.
+    data_type: UInt64
+  - name: contract_address
+    description: Address of the gauge contract emitting the event.
+    data_type: String
+  - name: event_name
+    description: Name of the emitted event (Transfer, Deposit, Withdraw, UpdateLiquidityLimit).
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameter name to value. Transfer keys are _from, _to, _value.
+    data_type: Map(String, String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-09-01"
+      batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

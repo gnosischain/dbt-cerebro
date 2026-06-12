@@ -6,6 +6,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(date)) FROM {{ ref('fct_execution_gnosis_app_gpay_topups_by_token_daily') }}) AS as_of_date
+FROM (
 WITH days AS (
     SELECT date, sum(volume_usd) AS volume_usd
     FROM {{ ref('fct_execution_gnosis_app_gpay_topups_by_token_daily') }}
@@ -19,3 +21,4 @@ SELECT
     round(toFloat64((SELECT v FROM recent)), 2)                              AS value,
     round(((SELECT v FROM recent) - (SELECT v FROM prior))
           / nullIf((SELECT v FROM prior), 0) * 100, 1)                        AS change_pct
+) AS sub

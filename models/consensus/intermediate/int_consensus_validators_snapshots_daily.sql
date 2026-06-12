@@ -1,8 +1,8 @@
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
-{% set incr_end = var('incremental_end_date', none) %}
-{% set validator_index_start = var('validator_index_start', none) %}
-{% set validator_index_end = var('validator_index_end', none) %}
+{% set incr_end = mb_var('incremental_end_date') %}
+{% set validator_index_start = mb_var('validator_index_start') %}
+{% set validator_index_end = mb_var('validator_index_end') %}
 
 {#
   incremental_strategy resolves to `append` when either start_month
@@ -14,10 +14,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, validator_index)',
-        unique_key='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "validators_snapshots", "microbatch"]
     )

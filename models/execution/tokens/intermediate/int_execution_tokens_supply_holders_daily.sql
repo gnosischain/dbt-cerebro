@@ -1,11 +1,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, token_address)',
     partition_by='toStartOfMonth(date)',
-    unique_key='(date, token_address)',
     settings={ 'allow_nullable_key': 1 },
     pre_hook=[
       "SET max_memory_usage = 8000000000",

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier0','api:gpay_user_balances_daily','granularity:daily'],
+    tags=['production', 'execution', 'gpay', 'tier0', 'api:gpay_user_balances', 'granularity:daily'],
     meta={
       "api": {
         "methods": ["GET","POST"],

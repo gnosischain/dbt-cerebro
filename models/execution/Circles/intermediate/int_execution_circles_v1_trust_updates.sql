@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='append',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, truster, trustee)',
-        unique_key='(block_timestamp, truster, trustee)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         tags=['dev', 'execution', 'circles_v1', 'trusts']

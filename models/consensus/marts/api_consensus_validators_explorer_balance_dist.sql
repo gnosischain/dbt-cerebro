@@ -31,6 +31,8 @@
     )
 }}
 
+SELECT sub.*, today() AS as_of_date
+FROM (
 -- Balance distribution histogram across co-validators sharing a credential.
 -- Light view over fct_consensus_validators_status_latest (558k rows); the API
 -- prunes by withdrawal_credentials before the bucketing runs so this is cheap
@@ -77,3 +79,4 @@ SELECT
 FROM per_validator
 GROUP BY withdrawal_credentials, bucket, bucket_order
 ORDER BY withdrawal_credentials, bucket_order
+) AS sub

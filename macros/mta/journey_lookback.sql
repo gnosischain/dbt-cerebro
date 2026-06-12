@@ -43,17 +43,12 @@
 
 {{ config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by=(
       '(conversion_date, conversion_kind, identity_role, user_pseudonym, conversion_ts, event_kind)'
       if sector == 'gpay'
       else '(conversion_date, conversion_kind, user_pseudonym, conversion_ts, event_kind)'
-    ),
-    unique_key=(
-      '(conversion_ts, conversion_kind, user_pseudonym, identity_role, event_kind)'
-      if sector == 'gpay'
-      else '(conversion_ts, conversion_kind, user_pseudonym, event_kind)'
     ),
     partition_by='toStartOfMonth(conversion_date)',
     settings={'allow_nullable_key': 1},

@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','yields','api:yields_user_activity']
+        tags=['production', 'execution', 'yields', 'api:yields_user_activity', 'granularity:latest', 'tier1']
     )
 }}
 

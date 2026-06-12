@@ -22,6 +22,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_date)) FROM {{ ref('int_execution_safes') }}) AS as_of_date
+FROM (
 -- Lightweight dropdown source for the Account Portfolio tab's global
 -- filter. Same shape as `api_consensus_validators_search` and
 -- `api_execution_circles_v2_avatar_search`: two columns, address + display_name.
@@ -79,3 +81,4 @@ SELECT
   toUInt64(connected_validator_m) AS connected_validator_count,
   toUInt64(connected_safe_m)      AS connected_safe_count
 FROM merged
+) AS sub

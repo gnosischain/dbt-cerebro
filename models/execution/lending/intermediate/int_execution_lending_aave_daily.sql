@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, token_address)',
-        unique_key='(date, protocol, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production','execution','lending','aave','spark']

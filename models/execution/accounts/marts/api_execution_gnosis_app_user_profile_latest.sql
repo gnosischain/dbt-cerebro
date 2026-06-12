@@ -16,6 +16,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_gnosis_app_user_events') }}) AS as_of_date
+FROM (
 SELECT
   address,
   first_seen_at,
@@ -29,3 +31,4 @@ SELECT
   n_total_owners_current,
   onboarding_class
 FROM {{ ref('fct_execution_gnosis_app_user_profile_latest') }}
+) AS sub

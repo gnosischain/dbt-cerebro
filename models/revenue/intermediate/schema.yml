@@ -48,6 +48,14 @@ models:
       start_date: "2023-10-01"
       batch_months: 3
 
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_revenue_sdai_fees_daily
   description: |
     Daily per-user sDAI revenue accruing to the DAO.
@@ -87,6 +95,14 @@ models:
       start_date: "2023-10-01"
       batch_months: 3
 
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_revenue_gpay_fees_daily
   description: |
     Daily per-user Gnosis Pay fees. Each ERC20 transfer to the GP settlement
@@ -127,16 +143,69 @@ models:
       start_date: "2023-10-01"
       batch_months: 3
 
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_revenue_gnosis_app_fees_daily
+  description: |
+    Daily per-user Gnosis App (Metri) fees denominated in USD.
+    Users pay a CRC ERC-1155 fee to the Metri fee receiver address when
+    transacting via Gnosis App. Each fee transfer is priced using the
+    per-token CRC price from fct_execution_circles_v2_crc20_prices_daily
+    (matched on avatar address). Tokens without a DEX price fall back to
+    the daily median CRC price across all tokens that day.
+
+    Only includes transfers from 2025-11-12 onward (Gnosis App launch).
+    Grain: one row per (date, user) after aggregating across transfers.
+  columns:
+  - name: date
+    description: Calendar date of the fee transfer.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: user
+    description: Address that paid the fee (the CRC transfer sender, lowercase).
+    data_type: Nullable(String)
+  - name: symbol
+    description: Always 'CRC'.
+    data_type: String
+  - name: fees_native
+    description: Total CRC fee amount paid by this user on this date (18-decimal normalised).
+    data_type: Float64
+  - name: fees
+    description: USD-denominated fee amount (fees_native * CRC price).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-11-12"
+      batch_months: 3
+
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_revenue_fees_unified_daily
   description: |
     Unified daily per-user revenue fees across all streams.
-    UNION ALL of the three per-stream daily fee intermediates with a
-    stream_type label ('holdings'|'sdai'|'gpay'). Used by cross-stream
+    UNION ALL of the per-stream daily fee intermediates with a
+    stream_type label ('holdings'|'sdai'|'gpay'|'gnosis_app'). Used by cross-stream
     active-user cohort marts where a user must not be double-counted across
     holdings / sDAI / gpay streams. Materialized as a view.
   columns:
   - name: stream_type
-    description: One of 'holdings', 'sdai', 'gpay'.
+    description: One of 'holdings', 'sdai', 'gpay', 'gnosis_app'.
     data_type: String
   - name: date
     description: Calendar date.
@@ -189,7 +258,7 @@ models:
     description: ISO week start (Monday).
     data_type: Date
   - name: stream_type
-    description: One of 'holdings', 'sdai', 'gpay'.
+    description: One of 'holdings', 'sdai', 'gpay', 'gnosis_app'.
     data_type: String
   - name: symbol
     description: Canonical token symbol.
@@ -241,7 +310,13 @@ models:
         batch_months: 6
         vars:
           slice: "gpay:EURe,gpay:GBPe,gpay:USDC.e"
+      - name: gnosis_app
+        start_date: "2025-11-01"
+        batch_months: 12
+        vars:
+          slice: "gnosis_app:CRC"
 
+  tests: []
 - name: int_revenue_fees_monthly_per_user
   description: |
     Monthly per-user fees per stream/symbol. Simple calendar-month
@@ -252,7 +327,7 @@ models:
     description: First day of the calendar month.
     data_type: Date
   - name: stream_type
-    description: One of 'holdings', 'sdai', 'gpay'.
+    description: One of 'holdings', 'sdai', 'gpay', 'gnosis_app'.
     data_type: String
   - name: symbol
     description: Canonical token symbol.
@@ -269,3 +344,12 @@ models:
     full_refresh:
       start_date: "2023-10-01"
       batch_months: 3
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - month
+      - stream_type
+      - symbol
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(month) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

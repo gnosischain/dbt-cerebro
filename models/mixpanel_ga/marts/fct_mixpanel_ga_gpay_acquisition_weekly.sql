@@ -2,7 +2,7 @@
   config(
     materialized='table',
     engine='ReplacingMergeTree()',
-    order_by='(week, event_type, attribution_model, utm_campaign)',
+    order_by='(week, event_type, attribution_model, utm_campaign, utm_source, utm_medium)',
     tags=['production', 'mixpanel_ga', 'gpay']
   )
 }}
@@ -23,7 +23,9 @@ WITH unpivoted AS (
         event_type,
         first_date,
         'first_touch'        AS attribution_model,
-        first_touch_campaign AS utm_campaign
+        first_touch_campaign AS utm_campaign,
+        first_touch_source   AS utm_source,
+        first_touch_medium   AS utm_medium
     FROM {{ ref('int_mixpanel_ga_gpay_first_events') }}
 
     UNION ALL
@@ -32,7 +34,9 @@ WITH unpivoted AS (
         event_type,
         first_date,
         'last_touch'        AS attribution_model,
-        last_touch_campaign AS utm_campaign
+        last_touch_campaign AS utm_campaign,
+        last_touch_source   AS utm_source,
+        last_touch_medium   AS utm_medium
     FROM {{ ref('int_mixpanel_ga_gpay_first_events') }}
 ),
 
@@ -42,10 +46,12 @@ weekly AS (
         event_type,
         attribution_model,
         utm_campaign,
+        utm_source,
+        utm_medium,
         count()                      AS new_accounts
     FROM unpivoted
     WHERE toStartOfWeek(first_date, 1) < toStartOfWeek(today(), 1)
-    GROUP BY week, event_type, attribution_model, utm_campaign
+    GROUP BY week, event_type, attribution_model, utm_campaign, utm_source, utm_medium
 )
 
 SELECT
@@ -53,10 +59,12 @@ SELECT
     event_type,
     attribution_model,
     utm_campaign,
+    utm_source,
+    utm_medium,
     new_accounts,
     sum(new_accounts) OVER (
-        PARTITION BY event_type, attribution_model, utm_campaign
+        PARTITION BY event_type, attribution_model, utm_campaign, utm_source, utm_medium
         ORDER BY week
     ) AS cumulative_accounts
 FROM weekly
-ORDER BY week, event_type, attribution_model, utm_campaign
+ORDER BY week, event_type, attribution_model, utm_campaign, utm_source, utm_medium

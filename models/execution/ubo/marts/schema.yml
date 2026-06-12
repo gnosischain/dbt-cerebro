@@ -1,14 +1,44 @@
 version: 2
 models:
 
+- name: fct_ubo_address_classification
+  description: >
+    Maps every labeled address to its UBO terminal classification. Filters
+    to the six sectors relevant for UBO coverage analysis — addresses in
+    other sectors or with no label are absent and resolve to
+    is_terminal_ubo = NULL via LEFT JOIN in downstream consumers.
+  meta:
+    owner: analytics_team
+    authoritative: true
+  columns:
+  - name: address
+    description: Lowercase labeled address.
+    data_type: String
+    tests:
+    - not_null
+    - unique
+  - name: is_terminal_ubo
+    description: "1 = terminal (EOAs, Wallets & AA, Bridges, Payments); 0 = non-terminal (Lending & Yield, DEX)."
+    data_type: Int8
+    tests:
+    - not_null
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
 - name: fct_ubo_supply_claims_daily
   description: >
     THE reusable UBO supply-claims surface. One row per (date, protocol,
     container_address, ubo_address) — for each container contract that
     pools a token, the individual end-holders and their withdrawable
-    balance. Phase 1 contributors: Aave V3 + SparkLend. Phase 2+ will
-    add Balancer V2/V3, Curve, and V2-style AMMs via additional
-    UNION ALL branches; downstream consumers do not change.
+    balance. A "supply claim" is a withdrawable position an end-holder has
+    on a token held by a container contract (aToken, vault, pool LP).
+
+    Protocols: Aave V3 + SparkLend, Balancer V2, Uniswap V3, Swapr V3,
+    Curve 3pool, sDAI. New UNION ALL branches can be added; downstream
+    consumers pick them up automatically.
 
     Use this model to answer "who really holds this token" questions —
     join with int_execution_tokens_balances_daily on (token_address,
@@ -17,8 +47,8 @@ models:
     owner: analytics_team
     authoritative: true
     full_refresh:
-      start_date: "2022-12-01"
-      batch_months: 6
+      start_date: "2021-04-21"
+      batch_months: 2
       stages:
       - name: all
   columns:
@@ -95,6 +125,94 @@ models:
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
+- name: fct_ubo_supply_claims_resolved_daily
+  description: >
+    One-pass second-level-container resolution over fct_ubo_supply_claims_daily.
+    Identical schema and unique key. For any row where ubo_address is itself a
+    known container for the bridge token (bridge token = container_address, which
+    equals the share-token address for ERC4626 vaults), that row is replaced by
+    the container's own sub-holders redistributed proportionally. All other rows
+    pass through unchanged. If the same ubo appears via both a direct path and a
+    redistributed path, balances are summed. Downstream consumers
+    (fct_execution_tokens_top_holders_ranked, _latest, ubo_coverage_latest) use
+    this model instead of the raw fct.
+  meta:
+    owner: analytics_team
+    authoritative: true
+    full_refresh:
+      start_date: "2021-04-21"
+      batch_months: 1
+      stages:
+      - name: all
+  columns:
+  - name: date
+    description: Snapshot date.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: protocol
+    description: Protocol the claim is sourced from.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: container_address
+    description: Lowercase address of the container contract holding the pooled token.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: token_address
+    description: Lowercase address of the underlying token being claimed.
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification (STABLECOIN, OTHERS, etc.).
+    data_type: String
+  - name: ubo_address
+    description: Lowercase address of the end-holder (second-level containers resolved out).
+    data_type: String
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: balance_raw
+    description: Raw atomic-unit balance (Int256).
+    data_type: Int256
+  - name: balance
+    description: Decimal-normalized balance.
+    data_type: Float64
+  - name: balance_usd
+    description: USD value of the claim.
+    data_type: Float64
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+  - dbt_utils.expression_is_true:
+      name: fct_ubo_supply_claims_resolved_daily_addresses_lowercase
+      expression: "container_address = lower(container_address) AND token_address = lower(token_address) AND ubo_address = lower(ubo_address)"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - dbt_utils.expression_is_true:
+      name: fct_ubo_supply_claims_resolved_daily_non_negative_balance
+      expression: "balance >= 0 AND balance_raw >= 0"
+      tags: [ubo]
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
 - name: fct_ubo_known_containers_daily
   description: >
     Distinct (date, container_address, token_address) tuples for which
@@ -102,15 +220,11 @@ models:
     fct_ubo_supply_claims_daily — self-consistent: a container appears
     here iff we can decompose it. Consumers LEFT ANTI JOIN this against
     int_execution_tokens_balances_daily to strip container rows before
-    merging in per-UBO rows.
+    merging in per-UBO rows. Small — bounded by
+    (# protocols × # reserves × days) — so refresh is cheap.
   meta:
     owner: analytics_team
     authoritative: true
-    full_refresh:
-      start_date: "2022-12-01"
-      batch_months: 6
-      stages:
-      - name: all
   columns:
   - name: date
     description: Snapshot date.
@@ -138,11 +252,6 @@ models:
       severity: warn
       tags:
       - elementary
-  - dbt_utils.unique_combination_of_columns:
-      combination_of_columns: [date, container_address, token_address]
-      tags: [ubo]
-      config:
-        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - dbt_utils.expression_is_true:
       name: fct_ubo_known_containers_daily_addresses_lowercase
       expression: "container_address = lower(container_address) AND token_address = lower(token_address)"

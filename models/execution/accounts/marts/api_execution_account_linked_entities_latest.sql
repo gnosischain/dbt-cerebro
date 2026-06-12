@@ -19,6 +19,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_safes_owner_events') }}) AS as_of_date
+FROM (
 SELECT
   root_address,
   entity_type,
@@ -29,4 +31,4 @@ SELECT
   value_count,
   last_seen_at
 FROM {{ ref('fct_execution_account_linked_entities_latest') }}
-
+) AS sub

@@ -110,7 +110,7 @@ proj_sector AS (
 SELECT
   a.date                AS date,
   a.project             AS project,
-  ps.sector             AS sector,
+  coalesce(ps.sector, 'Unknown') AS sector,
   a.tx_count            AS tx_count,
   a.ua_bitmap_state     AS ua_bitmap_state,
   a.gas_used_sum        AS gas_used_sum,

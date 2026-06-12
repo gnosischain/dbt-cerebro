@@ -1,10 +1,9 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(week, kpi_name)',
-    unique_key='(week, kpi_name)',
     partition_by='toStartOfMonth(week)',
     settings={'allow_nullable_key': 1},
     tags=['production', 'mmm', 'execution']

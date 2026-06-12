@@ -5,6 +5,8 @@
     )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 -- Top-N Circles v2 groups by their personal-token supply, with profile
 -- columns ready for the dashboard leaderboard table. Member count is
 -- joined from fct_execution_circles_v2_group_size_current so the table
@@ -27,3 +29,4 @@ LEFT JOIN {{ ref('fct_execution_circles_v2_group_size_current') }} sz
 WHERE s.supply > 0
 ORDER BY s.supply DESC
 LIMIT 100
+) AS sub

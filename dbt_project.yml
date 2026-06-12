@@ -40,6 +40,24 @@ clean-targets:
 
 models:
   gnosis_dbt:
+    # Incremental write policy (enforced by scripts/checks/no_delete_insert.py):
+    #   - Default strategy is insert_overwrite: partition replace is mutation-free
+    #     (no ALTER DELETE) and duplicate-free (a partition holds one computed
+    #     version). Requires partition_by on every incremental model.
+    #   - Append-only event/decode streams override to 'append' + 'microbatch'
+    #     tag, which routes them through the strict no-overlap watermark.
+    # delete+insert is banned project-wide.
+    +incremental_strategy: insert_overwrite
+    contracts:
+      +incremental_strategy: append
+      +engine: "ReplacingMergeTree()"
+      # The decode macros generate very deep expression DAGs; the new CH
+      # analyzer spends ~8.5s planning each one (EXPLAIN alone), the legacy
+      # analyzer plans them in ms (measured 21x: 8.6s -> 0.4s). Revisit when
+      # the macros are refactored to emit smaller SQL or CH drops the
+      # legacy analyzer.
+      +pre_hook: ["SET enable_analyzer = 0"]
+      +post_hook: ["SET enable_analyzer = 1"]
     # Mixpanel privacy policy (two tiers):
     #   API : ALL mixpanel models are excluded from cerebro-api uniformly
     #         (enforced here via api.exclude_from_api: true).
@@ -215,6 +233,23 @@ seeds:
       +order_by: [address]
       +column_types:
         address: "String"
+
+    gp_migrated_safes:
+      +engine: ReplacingMergeTree()
+      +order_by: [old_safe_address, new_safe_address]
+      +column_types:
+        userId: "String"
+        old_safe_address: "String"
+        new_safe_address: "String"
+        startedAt: "String"
+        completedAt: "String"
+
+    gpay_refund_distributors:
+      +engine: MergeTree()
+      +order_by: [address]
+      +column_types:
+        address: "String"
+        label: "String"
 
     safe_singletons:
       +engine: MergeTree()

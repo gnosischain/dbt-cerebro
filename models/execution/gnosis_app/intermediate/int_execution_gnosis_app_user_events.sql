@@ -1,11 +1,10 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(address, heuristic_kind, block_timestamp, transaction_hash)',
     partition_by='toStartOfMonth(block_timestamp)',
-    unique_key='(address, heuristic_kind, transaction_hash)',
     settings={ 'allow_nullable_key': 1 },
     tags=['production','execution','gnosis_app'],
     pre_hook=["SET join_algorithm = 'grace_hash'"],

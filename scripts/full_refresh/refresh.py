@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -63,8 +64,61 @@ def clear_state() -> None:
 # dbt Integration
 # ============================================================================
 
+# In-process engine (opt-in via --inprocess / REFRESH_INPROCESS=1).
+#
+# The subprocess engine pays a full dbt startup + project re-parse (~14s on this
+# project) on EVERY batch, because each batch is a fresh `dbt` process and the
+# changing --vars invalidate the partial-parse cache. Across a ~1000-batch
+# backfill that is hours of pure parsing. dbt's programmatic dbtRunner accepts a
+# pre-parsed manifest, so we parse ONCE and reuse it for every batch.
+#
+# Safe because the batch vars (start_month/end_month/stage vars) are referenced
+# in model BODIES, which render at execution time per invocation. CAVEAT: any
+# var() used at PARSE time (inside config() blocks / model selection) is frozen
+# at the initial parse — do not use --inprocess with parse-time vars.
+_DBT_MANIFEST = None
+
+def _run_dbt_inprocess(args: List[str], capture: bool = False) -> subprocess.CompletedProcess:
+    global _DBT_MANIFEST
+    from dbt.cli.main import dbtRunner
+
+    prev_cwd = os.getcwd()
+    os.chdir(PROJECT_ROOT)
+    try:
+        if _DBT_MANIFEST is None:
+            print("    [inprocess] parsing project once (manifest will be reused)...")
+            res = dbtRunner().invoke(["parse"])
+            if not res.success or res.result is None:
+                raise RuntimeError(f"initial dbt parse failed: {res.exception}")
+            _DBT_MANIFEST = res.result
+        res = dbtRunner(manifest=_DBT_MANIFEST).invoke(args)
+    finally:
+        os.chdir(prev_cwd)
+
+    # Synthesize a CompletedProcess so the caller's success/transient-error
+    # handling works identically for both engines.
+    output = ""
+    try:
+        for node_res in getattr(res.result, "results", []) or []:
+            if getattr(node_res, "message", None):
+                output += str(node_res.message) + "\n"
+    except Exception:
+        pass
+    if not res.success:
+        if res.exception and not output:
+            output = str(res.exception)
+        raise subprocess.CalledProcessError(1, ["dbt"] + args, output=output, stderr=output)
+    return subprocess.CompletedProcess(["dbt"] + args, 0, stdout=output, stderr="")
+
+
 def run_dbt_command(args: List[str], capture: bool = False) -> subprocess.CompletedProcess:
     """Execute a dbt command from project root."""
+    # In-process engine handles `run` only: its synthesized stdout carries node
+    # result messages, which is what the run-batch error handling needs. `ls`
+    # (model selection, parsed from stdout) and other commands stay subprocess —
+    # they happen once per invocation, so the re-parse cost is negligible.
+    if os.environ.get("REFRESH_INPROCESS") == "1" and args and args[0] == "run":
+        return _run_dbt_inprocess(args, capture)
     cmd = ["dbt"] + args
     return subprocess.run(
         cmd,
@@ -467,19 +521,30 @@ def run_model_batched(
                 # even when our own query is bounded by max_memory_usage.
                 # When that happens, the failure is independent of our batch
                 # — wait briefly and retry.
-                TRANSIENT_PATTERNS = (
-                    "Code: 241",          # MEMORY_LIMIT_EXCEEDED / OvercommitTracker victim
+                # Network/timeout errors are genuinely transient — full retry.
+                NETWORK_TRANSIENT = (
                     "Code: 159",          # SOCKET_TIMEOUT
                     "Code: 209",          # NETWORK_ERROR
                     "Code: 210",          # NETWORK_ERROR
                     "TIMEOUT_EXCEEDED",
+                    "SOCKET_TIMEOUT",
                     "NETWORK_ERROR",
-                    "MEMORY_LIMIT_EXCEEDED",
-                    "OvercommitTracker",
+                    "SSLError",
+                    "UNEXPECTED_EOF_WHILE_READING",
+                    "HTTPSConnectionPool",
+                    "RemoteDisconnected",
+                    "ConnectionResetError",
+                    "Broken pipe",
                 )
-                MAX_TRANSIENT_RETRIES = 5
+                # A memory error (Code 241 / MEMORY_LIMIT_EXCEEDED) is DETERMINISTIC
+                # for our own query — retrying the identical batch re-OOMs and only
+                # wastes the backoff window. The ONE exception is when the cluster
+                # OvercommitTracker picked us as a cross-tenant victim (shared
+                # ceiling), which is independent of our batch — retry that once.
+                MAX_NETWORK_RETRIES = 5
+                MAX_MEMORY_RETRIES = 3
                 BACKOFF_SECONDS = (30, 60, 120, 240, 480)
-                for attempt in range(MAX_TRANSIENT_RETRIES + 1):
+                for attempt in range(MAX_NETWORK_RETRIES + 1):
                     try:
                         # capture=True so we can inspect e.stdout / e.stderr to
                         # classify the failure. We tee the captured output back
@@ -505,16 +570,30 @@ def run_model_batched(
                         if e.stderr:
                             print(e.stderr, end="")
                         err_blob = (e.stdout or "") + (e.stderr or "")
-                        is_transient = any(p in err_blob for p in TRANSIENT_PATTERNS)
-                        if is_transient and attempt < MAX_TRANSIENT_RETRIES:
-                            wait = BACKOFF_SECONDS[attempt]
+                        is_network = any(p in err_blob for p in NETWORK_TRANSIENT)
+                        is_memory = ("Code: 241" in err_blob) or ("MEMORY_LIMIT_EXCEEDED" in err_blob)
+                        is_overcommit_victim = is_memory and ("OvercommitTracker" in err_blob)
+                        # Network → full retries; OvercommitTracker victim → 1 retry;
+                        # a bare OOM (our query too big) → 0 retries (fail fast).
+                        retry_cap = (
+                            MAX_NETWORK_RETRIES if is_network
+                            else MAX_MEMORY_RETRIES if is_overcommit_victim
+                            else 0
+                        )
+                        if attempt < retry_cap:
+                            wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+                            kind = "network" if is_network else "overcommit-victim"
                             print(
-                                f"\n    [transient] dbt run hit ClickHouse "
-                                f"transient error; retry {attempt + 1}/"
-                                f"{MAX_TRANSIENT_RETRIES} after {wait}s"
+                                f"\n    [transient:{kind}] dbt run hit a retryable "
+                                f"ClickHouse error; retry {attempt + 1}/{retry_cap} "
+                                f"after {wait}s"
                             )
                             time.sleep(wait)
                             continue
+                        if is_memory and not is_overcommit_victim:
+                            print(f"\n    [permanent] memory limit exceeded (not an "
+                                  f"OvercommitTracker victim) — not retrying; needs a "
+                                  f"bounded build / memory hooks.")
                         print(f"\n    ERROR: dbt run failed!")
                         print(f"    Command: dbt {' '.join(cmd)}")
                         return False
@@ -594,6 +673,13 @@ Examples:
         help="Resume from last saved state"
     )
     parser.add_argument(
+        "--inprocess",
+        action="store_true",
+        help="Run batches via in-process dbtRunner with a single shared parse "
+             "(skips the ~14s per-batch dbt startup/re-parse). Batch vars must "
+             "be execution-time only (model bodies), not parse-time."
+    )
+    parser.add_argument(
         "--incremental-only",
         action="store_true",
         help="Skip --full-refresh flag (append data only, don't destroy existing)"
@@ -627,6 +713,9 @@ Examples:
     )
     
     args = parser.parse_args()
+
+    if args.inprocess:
+        os.environ["REFRESH_INPROCESS"] = "1"
     
     # Build defer flags to forward to every dbt run command
     defer_args: List[str] = []

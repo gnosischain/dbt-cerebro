@@ -4,10 +4,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if start_month else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(withdrawal_credentials, date)',
-        unique_key='(date, withdrawal_credentials)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "fct:validators_explorer", "granularity:daily"]
     )
@@ -47,7 +46,7 @@ SELECT
     ) AS apy
     ,SUM(i.deposits_amount_gno) AS deposits_amount_gno
     ,SUM(i.withdrawals_amount_gno) AS withdrawals_amount_gno
-    ,SUM(i.consolidation_inflow_gno) AS consolidation_inflow_gno
+    ,coalesce(SUM(i.consolidation_inflow_gno), 0) AS consolidation_inflow_gno
     ,SUM(i.consolidation_outflow_gno) AS consolidation_outflow_gno
     ,SUM(COALESCE(p.proposer_reward_total_gno, 0)) AS proposer_reward_total_gno
     ,SUM(COALESCE(p.proposed_blocks_count, 0)) AS proposed_blocks_count

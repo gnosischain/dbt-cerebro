@@ -1,10 +1,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, inclusion_delay)',
-        unique_key='(date, inclusion_delay)',
         partition_by='toStartOfMonth(date)',
         tags=["production", "consensus", "attestations"]
     )

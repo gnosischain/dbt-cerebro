@@ -21,6 +21,8 @@
     )
 }}
 
+SELECT sub.*, today() AS as_of_date
+FROM (
 -- Dropdown source for the Validator Explorer tab.
 --
 -- Grain: one row per WITHDRAWAL_CREDENTIALS (not per validator). On Gnosis today this is
@@ -60,3 +62,4 @@ SELECT
     ) AS display_name
 FROM {{ ref('fct_consensus_validators_status_latest') }}
 GROUP BY withdrawal_credentials
+) AS sub

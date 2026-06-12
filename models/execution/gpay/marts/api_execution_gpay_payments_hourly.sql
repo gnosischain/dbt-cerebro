@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','gpay','tier1','api:gpay_payments_hourly','granularity:hourly'],
+    tags=['production', 'execution', 'gpay', 'tier1', 'api:gpay_payments', 'granularity:hourly'],
     meta={
       "api": {
         "methods": ["GET"],

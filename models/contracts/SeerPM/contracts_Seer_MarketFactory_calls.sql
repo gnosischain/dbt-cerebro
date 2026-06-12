@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized            = 'incremental',
-        incremental_strategy    = 'delete+insert',
+        incremental_strategy='append',
         engine                  = 'ReplacingMergeTree()',
         order_by                = '(block_timestamp, transaction_hash)',
         unique_key              = '(block_timestamp, transaction_hash)',
@@ -9,7 +9,7 @@
         settings                = { 
                                     'allow_nullable_key': 1 
                                 },
-        tags                    = ['production','contracts','seermarketfactory','calls'],
+        tags                    = ['production','contracts','seermarketfactory','calls', 'microbatch'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )

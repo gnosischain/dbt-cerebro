@@ -1,13 +1,17 @@
 {{
     config(
-        materialized='table',
+        materialized='incremental',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(date, solver)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'cow', 'solvers', 'daily']
+        tags=['execution', 'cow', 'solvers', 'daily']
     )
 }}
+
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month',   none) %}
 
 WITH
 
@@ -18,9 +22,17 @@ solver_trades AS (
         count(*)                                                                     AS num_trades,
         countDistinct(taker)                                                         AS unique_traders,
         sum(amount_usd)                                                              AS volume_usd,
-        sum(fee_usd)                                                                 AS fees_usd
+        sumIf(fee_usd, fee_source = 'api')                                           AS fees_usd
     FROM {{ ref('fct_execution_cow_trades') }}
     WHERE solver IS NOT NULL
+    {% if start_month and end_month %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
+    {% elif is_incremental() %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
+      )
+    {% endif %}
     GROUP BY date, solver
 ),
 
@@ -33,6 +45,14 @@ solver_batches AS (
         sum(tx_cost_native)                                                          AS total_tx_cost_native
     FROM {{ ref('int_execution_cow_batches') }}
     WHERE solver IS NOT NULL
+    {% if start_month and end_month %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
+    {% elif is_incremental() %}
+      AND toStartOfMonth(toDate(block_timestamp)) >= (
+          SELECT toStartOfMonth(addDays(max(date), -3)) FROM {{ this }}
+      )
+    {% endif %}
     GROUP BY date, solver
 )
 

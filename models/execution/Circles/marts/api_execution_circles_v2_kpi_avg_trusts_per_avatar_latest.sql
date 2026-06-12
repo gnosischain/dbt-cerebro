@@ -5,6 +5,8 @@
   )
 }}
 
+SELECT sub.*, (SELECT toDate(max(block_timestamp)) FROM {{ ref('int_execution_circles_v2_avatars') }}) AS as_of_date
+FROM (
 -- KPI tile: average trusts per human avatar = active_trusts / humans.
 -- A network-density indicator. Derived from fct_execution_circles_v2_stats_current.
 
@@ -21,3 +23,4 @@ SELECT
         2
     ) AS value
 FROM s
+) AS sub

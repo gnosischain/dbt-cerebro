@@ -8,10 +8,9 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash)',
-        unique_key='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         tags=['dev', 'execution', 'pools', 'trades', 'intermediate', 'microbatch'],

@@ -1,12 +1,23 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='append',
+        incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index)',
-        unique_key='(block_number, transaction_index, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={ 'allow_nullable_key': 1 },
+        pre_hook=[
+            "SET max_threads = 1",
+            "SET max_block_size = 8192",
+            "SET max_bytes_before_external_group_by = 2000000000",
+            "SET max_bytes_before_external_sort = 2000000000"
+        ],
+        post_hook=[
+            "SET max_threads = 0",
+            "SET max_block_size = 65505",
+            "SET max_bytes_before_external_group_by = 0",
+            "SET max_bytes_before_external_sort = 0"
+        ],
         tags=['dev', 'execution', 'transfers', 'erc20', 'whitelisted']
     )
 }}
@@ -91,35 +102,15 @@ raw_whitelisted_logs AS (
        AND (t.date_end IS NULL OR toDate(l.block_timestamp) < t.date_end)
 ),
 
-prices_rwa AS (
+prices AS (
+    -- Native price hub (replaces the Dune feed). It already unions backedfi (RWA),
+    -- native oracle/DEX prices, WXDAI<-XDAI, aTokens, and USD pegs, so a single read
+    -- covers what the prices_rwa + prices_dune CTEs did.
     SELECT
         toDate(date)             AS date,
-        upper(bticker)           AS symbol_upper,
-        price
-    FROM {{ ref('api_execution_rwa_backedfi_prices_daily') }}
-),
-
-prices_dune_raw AS (
-    SELECT
-        date,
         upper(symbol)            AS symbol_upper,
         price
-    FROM {{ ref('stg_crawlers_data__dune_prices') }}
-),
-
-prices_dune AS (
-    SELECT date, symbol_upper, price
-    FROM prices_dune_raw
-    UNION ALL
-    SELECT date, 'WXDAI' AS symbol_upper, price
-    FROM prices_dune_raw
-    WHERE symbol_upper = 'XDAI'
-),
-
-prices AS (
-    SELECT date, symbol_upper, price FROM prices_rwa
-    UNION ALL
-    SELECT date, symbol_upper, price FROM prices_dune
+    FROM {{ ref('int_execution_token_prices_daily') }}
 ),
 
 enriched AS (

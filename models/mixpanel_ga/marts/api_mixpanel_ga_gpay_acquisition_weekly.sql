@@ -15,7 +15,9 @@ SELECT
     event_type,
     attribution_model,
     utm_campaign,
+    utm_source,
+    utm_medium,
     new_accounts,
     cumulative_accounts
 FROM {{ ref('fct_mixpanel_ga_gpay_acquisition_weekly') }}
-ORDER BY week, event_type, attribution_model, utm_campaign
+ORDER BY week, event_type, attribution_model, utm_campaign, utm_source, utm_medium

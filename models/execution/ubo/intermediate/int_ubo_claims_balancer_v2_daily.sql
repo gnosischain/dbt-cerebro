@@ -1,8 +1,7 @@
-{{
+﻿{{
     config(
         materialized='incremental',
         incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
-        on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, container_address, ubo_address, token_address)',
         unique_key='(date, container_address, ubo_address, token_address)',
@@ -10,21 +9,10 @@
         settings={'allow_nullable_key': 1},
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"],
-        tags=['dev','execution','ubo','claims','balancer']
+        tags=['production','execution','ubo','claims','balancer']
     )
 }}
 
--- Per-user UBO supply claims for Balancer V2.
---
--- Balancer V2 uses a single Vault contract that custodies ALL pool tokens.
--- Each LP's net token position is the cumulative sum of their PoolBalanceChanged
--- deltas across all pools for that token. container_address is therefore the
--- Vault address for every row; token_address is the canonical address per
--- tokens_whitelist on that date.
---
--- Tracking is keyed by (ubo_address, symbol) through the cumsum so that token
--- migrations (e.g. EURe V1 → V2) collapse into a single continuous series.
--- The canonical token_address is resolved at the final SELECT via tokens_whitelist.
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
@@ -63,13 +51,13 @@ overall_max_date AS (
         {% endif %} AS max_date
 ),
 
-{% if start_month and end_month %}
+{% if start_month and end_month and is_incremental() %}
 prev_balances AS (
     SELECT
         t1.ubo_address,
         tw.symbol,
         t1.balance_raw
-    FROM {{ this }} FINAL t1
+    FROM (SELECT ubo_address, token_address, balance_raw, date FROM {{ this }} FINAL) t1
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)
     WHERE t1.date = (
@@ -87,7 +75,7 @@ prev_balances AS (
         t1.ubo_address,
         tw.symbol,
         t1.balance_raw
-    FROM {{ this }} t1
+    FROM (SELECT ubo_address, token_address, balance_raw, date FROM {{ this }}) t1
     CROSS JOIN current_partition t2
     INNER JOIN {{ ref('tokens_whitelist') }} tw
         ON lower(tw.address) = lower(t1.token_address)

@@ -1,17 +1,16 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='delete+insert',
+        incremental_strategy='append',
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index)',
-        unique_key='(block_timestamp, transaction_hash, log_index)',
         ttl='block_timestamp + INTERVAL 48 HOUR',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'live', 'execution', 'pools', 'trades', 'intermediate']
+        tags=['live', 'execution', 'pools', 'trades', 'intermediate']
     )
 }}
 
-{%- set overlap_minutes = var('live_trades_overlap_minutes', 120) -%}
+{%- set overlap_minutes = var('live_trades_overlap_minutes', 15) -%}
 
 WITH
 
@@ -52,7 +51,7 @@ normalized AS (
       AND s.amount_sold_raw   > 0
       {% if is_incremental() %}
       AND s.block_timestamp >= (
-          SELECT addMinutes(max(block_timestamp), -{{ overlap_minutes }})
+          SELECT if(max(block_timestamp) > toDateTime(0), addMinutes(max(block_timestamp), -{{ overlap_minutes }}), now() - INTERVAL 30 MINUTE)
           FROM {{ this }}
       )
       {% else %}

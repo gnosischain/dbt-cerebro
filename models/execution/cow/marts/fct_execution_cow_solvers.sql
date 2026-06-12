@@ -1,10 +1,10 @@
-{{
+﻿{{
     config(
         materialized='table',
         engine='ReplacingMergeTree()',
         order_by='(solver)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'cow', 'solvers']
+        tags=['execution', 'cow', 'solvers']
     )
 }}
 

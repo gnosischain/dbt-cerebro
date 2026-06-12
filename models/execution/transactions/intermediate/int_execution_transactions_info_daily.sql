@@ -1,10 +1,9 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(date, transaction_type, success)',
-    unique_key='(date, transaction_type, success)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','transactions']
@@ -80,11 +79,12 @@ agg AS (
 ),
 
 px AS (
+  -- Native price hub (replaces the Dune feed); xDAI price for fee USD conversion.
   SELECT
     date,
     price
-  FROM {{ ref('stg_crawlers_data__dune_prices') }}
-  WHERE symbol = 'XDAI'
+  FROM {{ ref('int_execution_token_prices_daily') }}
+  WHERE upper(symbol) = 'XDAI'
   {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
 )
 
