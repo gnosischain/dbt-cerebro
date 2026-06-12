@@ -1,10 +1,10 @@
 {{
     config(
-        materialized='table',
+        materialized='incremental',
+        incremental_strategy='insert_overwrite',
         on_schema_change='sync_all_columns',
         engine='ReplacingMergeTree()',
         order_by='(date, protocol, reserve_address, user_address)',
-        unique_key='(date, protocol, reserve_address, user_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         tags=['production','execution','lending','aave','spark','diffs']

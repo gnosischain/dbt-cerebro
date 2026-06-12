@@ -303,9 +303,25 @@ WITH
            immutable, so `> max(block_number)` appends each block exactly once
            with no anti-join (memory-light) and no shared-timestamp boundary
            that block_timestamp would hit. Reorg/late corrections go through a
-           targeted --full-refresh, never the daily path. #}
+           targeted --full-refresh, never the daily path.
+
+           Watermark fetched at render time and embedded as LITERALS: a
+           scalar subquery on block_number cannot prune partitions, forcing
+           every run to read across the full traces span. The extra literal
+           timestamp bound enables pruning and is safe because the strict
+           block_number bound already excludes the watermark and everything
+           before it. Empty/missing target => no watermark (same as before). #}
         {% if incremental_column and not flags.FULL_REFRESH %}
-          AND block_number > (SELECT coalesce(max(block_number), -1) FROM {{ this }})
+          {% set _wm_bn = none %}{% set _wm_ts = none %}
+          {% if execute %}
+            {% set _wm = run_query("SELECT max(block_number), toString(max(" ~ incremental_column ~ ")) FROM " ~ this) %}
+            {% set _wm_bn = _wm.columns[0].values()[0] %}
+            {% set _wm_ts = _wm.columns[1].values()[0] %}
+          {% endif %}
+          {% if _wm_bn is not none %}
+          AND block_number > {{ _wm_bn }}
+          AND {{ incremental_column }} >= toDateTime('{{ _wm_ts }}')
+          {% endif %}
           {# Microbatch upper bound: runner advances incremental_end_date one day
              at a time so each slice reads only that day's new blocks (bounded
              memory for catch-up). No-op on the plain daily path. #}

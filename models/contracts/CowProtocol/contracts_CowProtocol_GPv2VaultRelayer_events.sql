@@ -9,7 +9,7 @@
         settings                = { 
                                     'allow_nullable_key': 1 
                                 },
-        tags                    = ['production','contracts','cow','events', 'microbatch'],
+        tags                    = ['dev','contracts','cow','events', 'microbatch'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )

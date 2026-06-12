@@ -51,6 +51,13 @@ models:
     contracts:
       +incremental_strategy: append
       +engine: "ReplacingMergeTree()"
+      # The decode macros generate very deep expression DAGs; the new CH
+      # analyzer spends ~8.5s planning each one (EXPLAIN alone), the legacy
+      # analyzer plans them in ms (measured 21x: 8.6s -> 0.4s). Revisit when
+      # the macros are refactored to emit smaller SQL or CH drops the
+      # legacy analyzer.
+      +pre_hook: ["SET enable_analyzer = 0"]
+      +post_hook: ["SET enable_analyzer = 1"]
     # Mixpanel privacy policy (two tiers):
     #   API : ALL mixpanel models are excluded from cerebro-api uniformly
     #         (enforced here via api.exclude_from_api: true).
