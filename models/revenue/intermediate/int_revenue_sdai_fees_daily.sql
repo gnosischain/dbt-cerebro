@@ -11,6 +11,18 @@
     order_by='(date, symbol, user)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
+    pre_hook=[
+      "SET join_algorithm = 'grace_hash'",
+      "SET max_bytes_in_join = 500000000",
+      "SET max_bytes_before_external_group_by = 2000000000",
+      "SET max_bytes_before_external_sort = 2000000000"
+    ],
+    post_hook=[
+      "SET join_algorithm = 'default'",
+      "SET max_bytes_in_join = 0",
+      "SET max_bytes_before_external_group_by = 0",
+      "SET max_bytes_before_external_sort = 0"
+    ],
     tags=['production','revenue','revenue_sdai','refill_append']
   )
 }}
@@ -18,7 +30,10 @@
 -- Users are EOAs and Safes only. Protocol/token contracts (pools, vaults,
 -- the aGnosDAI aToken proxy) hold sDAI but are not fee-paying users; the
 -- aToken contract in particular would double count the Aave look-through
--- branch below.
+-- branch below. The exclusion runs as a single LEFT ANTI JOIN after the
+-- union (NOT a NOT IN subquery: the 5.5M-address IN-set materializes via
+-- CreatingSetsTransform which cannot spill and OOMs the 10.8 GiB instance
+-- under nightly load; joins spill with grace_hash).
 WITH non_users AS (
     SELECT address FROM {{ ref('int_execution_accounts_non_user_contracts') }}
 ),
@@ -30,7 +45,6 @@ base AS (
     WHERE date < today()
       AND balance_usd > 0
       AND address IS NOT NULL
-      AND address NOT IN (SELECT address FROM non_users)
       AND symbol = 'sDAI'
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
@@ -47,7 +61,6 @@ base AS (
     WHERE date < today()
       AND balance_usd > 0
       AND user_address IS NOT NULL
-      AND user_address NOT IN (SELECT address FROM non_users)
       AND protocol = 'Aave V3'
       AND symbol = 'sDAI'
       {% if start_month and end_month %}
@@ -58,9 +71,15 @@ base AS (
       {% endif %}
 ),
 
+base_users AS (
+    SELECT b.*
+    FROM base b
+    LEFT ANTI JOIN non_users nu ON b.user = nu.address
+),
+
 balances AS (
     SELECT date, user, sum(balance_usd) AS balance_usd_sum
-    FROM base
+    FROM base_users
     GROUP BY date, user
 ),
 
