@@ -1667,26 +1667,23 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_circles_v2_mint_events
   description: >
-    Per-event view over int_execution_circles_v2_hub_transfers restricted to
-    mint events (from_address = 0x00…00), tagged with a `mint_kind` to
-    distinguish personal mints, group mints, and V1→V2 migrations. All three
-    look identical at the ERC-1155 layer; classification combines the
-    structural shape of the transfer (`token_address = to_address`) with the
-    avatar registry (`avatar_type`) and a join against top-level V2 Hub
-    `migrate()` calls.
+    One row per protocol mint, tagged with `mint_kind`. Sourced from the
+    DECODED Hub events in contracts_circles_v2_Hub_events — NOT inferred from
+    from=0x00…00 TransferSingle legs.
 
     Classifier:
-      personal  - token_avatar_type = 'Human' AND token_address = to_address.
-                  Human avatar mints their own Circles to themselves —
-                  either via a direct personalMint() call or as the
-                  unscheduled mint that the Hub performs during a transfer.
-      group     - token_avatar_type = 'Group'. Group CRC minted; covers both
-                  group-to-depositor and group-to-self shapes.
-      migration - tx contains a top-level V2 Hub migrate() call. Historically
-                  4 calls, 0 emitted mints; kept in the enum so the
-                  classifier remains structurally correct.
-      other     - residual; should be ~0. Presence indicates a missing
-                  avatar registration row.
+      personal  - PersonalMint event. to_address / token_address = the minting
+                  human; amount_raw = event `amount`. Replaces the old
+                  from=0x0 + Human-token heuristic, which over-counted ~4.5k
+                  avatars whose CRC was created only by inline auto-issuance
+                  legs that emit no PersonalMint event. Now matches Dune
+                  query_6317871 / hub_evt_personalmint (~18.4k distinct humans).
+      group     - GroupMint event. to_address = receiver, token_address =
+                  group, operator = sender, amount_raw = Σ event `amounts[]`.
+      migration - V1→V2 migration mints have no Hub mint event, so this branch
+                  stays transfer-derived: from=0x0 TransferSingle whose operator
+                  is the Circles V2 Migration contract
+                  (contracts_circles_registry.contract_type = 'Migration').
 
     Incremental, monthly partitioned on block_timestamp.
   columns:
@@ -1716,16 +1713,16 @@ models:
     description: Recipient address of the minted Circles.
   - name: token_id
     data_type: Nullable(String)
-    description: ERC-1155 token ID (avatar address encoded as uint256).
+    description: ERC-1155 token ID. NULL for personal/group (event-sourced) rows; populated only for migration rows from the transfer leg.
   - name: token_address
     data_type: Nullable(String)
-    description: Avatar address whose Circles are being minted.
+    description: Token/avatar minted — the human's token (personal), the group token (group), or the migration leg's token.
   - name: amount_raw
     data_type: Nullable(UInt256)
-    description: Raw mint amount in token base units.
+    description: Raw mint amount in base units — PersonalMint amount, sum of GroupMint amounts[], or the migration leg amount.
   - name: transfer_type
     data_type: String
-    description: Transfer classification (CrcV2_TransferSingle or CrcV2_TransferBatch).
+    description: Source tag — CrcV2_PersonalMint / CrcV2_GroupMint for event rows, or the migration leg's transfer_type.
   - name: mint_kind
     data_type: String
     description: "Enum: personal | group | migration | other (see model description)."
