@@ -664,6 +664,104 @@ def maybe_extend_stages(
         )
 
 
+# --- In-process engine (opt-in via MICROBATCH_INPROCESS=1) -------------------
+#
+# The subprocess path below pays a full dbt project parse (~15s on this project)
+# on EVERY slice: each slice is a fresh `dbt` process, and a changed DBT_MB_*
+# env var invalidates dbt's partial-parse cache into a full re-parse. Across a
+# multi-day catch-up that parse cost dwarfs the ~0.6s of real model work.
+#
+# dbt's programmatic dbtRunner accepts a pre-parsed manifest and then SKIPS
+# parsing, so we parse ONCE and reuse the manifest for every slice. This mirrors
+# scripts/full_refresh/refresh.py's REFRESH_INPROCESS engine.
+#
+# Correctness — 26 models resolve `incremental_strategy` at PARSE time from
+# whether the microbatch var is set, e.g.
+#   incremental_strategy=('append' if (start_month or incr_end) else 'delete+insert')
+# dbt freezes a node's resolved config in the manifest and does NOT re-evaluate
+# config() per run. We therefore prime the one-time parse with
+# `--vars {incremental_end_date: <placeholder>}` so those models resolve to
+# `append` (only the var's truthiness is read at parse time). Per slice we then
+# pass the REAL date via --vars, read in the model BODY at run time. Both the
+# priming and the per-slice values use --vars, never env vars: a changed
+# env_var() value invalidates a provided manifest and forces a full re-parse on
+# every slice (the very overhead we are removing), whereas --vars leave the
+# provided manifest intact and only re-compile node bodies.
+_INPROCESS_MANIFEST = None
+_INPROCESS_PLACEHOLDER = "2099-01-01"
+
+
+def _inprocess_enabled() -> bool:
+    return os.environ.get("MICROBATCH_INPROCESS") == "1"
+
+
+def _get_inprocess_manifest(project_dir: Path, profiles_dir: Path):
+    global _INPROCESS_MANIFEST
+    if _INPROCESS_MANIFEST is not None:
+        return _INPROCESS_MANIFEST
+    from dbt.cli.main import dbtRunner
+
+    # dbtRunner with a provided manifest resolves the project from CWD; chdir
+    # rather than passing --project-dir (which re-initializes the project).
+    os.environ.setdefault("DBT_PROFILES_DIR", str(profiles_dir))
+    prev_cwd = os.getcwd()
+    os.chdir(project_dir)
+    try:
+        print(
+            "[info] microbatch in-process: parsing project once "
+            "(manifest reused for every slice in this invocation)",
+            file=sys.stderr,
+        )
+        res = dbtRunner().invoke([
+            "parse",
+            "--vars", json.dumps({"incremental_end_date": _INPROCESS_PLACEHOLDER}),
+        ])
+    finally:
+        os.chdir(prev_cwd)
+    if not res.success or res.result is None:
+        raise RuntimeError(f"in-process parse failed: {res.exception}")
+    _INPROCESS_MANIFEST = res.result
+    return _INPROCESS_MANIFEST
+
+
+def _run_one_slice_inprocess(
+    model: str,
+    stage: dict,
+    end_date: dt.date,
+    defer_args: list[str],
+    project_dir: Path,
+    profiles_dir: Path,
+    threads: int | None,
+) -> int:
+    from dbt.cli.main import dbtRunner
+
+    manifest = _get_inprocess_manifest(project_dir, profiles_dir)
+    # Per-slice values go through --vars (read by mb_var()/var() in the model
+    # body at run time). No env vars: changing one would invalidate the provided
+    # manifest and trigger a full re-parse, defeating the whole optimization.
+    slice_vars = {"incremental_end_date": end_date.isoformat()}
+    slice_vars.update(stage.get("vars") or {})
+    cmd = ["run", "--select", model, "--vars", json.dumps(slice_vars)]
+    if threads is not None:
+        cmd.extend(["--threads", str(threads)])
+    cmd.extend(defer_args)
+    prev_cwd = os.getcwd()
+    os.chdir(project_dir)
+    try:
+        res = dbtRunner(manifest=manifest).invoke(cmd)
+    finally:
+        os.chdir(prev_cwd)
+    if not res.success:
+        if res.exception is not None:
+            print(
+                f"[error] in-process slice {model} stage={stage.get('name')} "
+                f"end={end_date.isoformat()}: {res.exception}",
+                file=sys.stderr,
+            )
+        return 1
+    return 0
+
+
 def run_one_slice(
     model: str,
     stage: dict,
@@ -673,6 +771,10 @@ def run_one_slice(
     profiles_dir: Path,
     threads: int | None,
 ) -> int:
+    if _inprocess_enabled():
+        return _run_one_slice_inprocess(
+            model, stage, end_date, defer_args, project_dir, profiles_dir, threads
+        )
     # Pass the slice date + stage vars via DBT_MB_* env vars rather than --vars.
     # dbt treats ANY --vars change as a global manifest invalidation (full
     # re-parse of the whole project, ~20s/slice); env vars used in model/macro
