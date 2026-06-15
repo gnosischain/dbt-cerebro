@@ -47,13 +47,16 @@ WITH base AS (
       {% endif %}
 ),
 mints AS (
-    -- Pre-tagged mint flavours; restricted to the same monthly window for
-    -- a cheap join.
+    -- Pre-tagged mint flavours, deduped to one row per (tx, recipient, token)
+    -- so the LEFT JOIN below cannot fan out a base row. Keyed on
+    -- (tx, to_address, token_address) because int_execution_circles_v2_mint_events
+    -- is now sourced from the PersonalMint / GroupMint events, whose log_index
+    -- differs from the TransferSingle mint-leg log_index in `base`.
     SELECT
         transaction_hash,
-        log_index,
-        batch_index,
-        mint_kind
+        to_address,
+        token_address,
+        any(mint_kind) AS mint_kind
     FROM {{ ref('int_execution_circles_v2_mint_events') }}
     WHERE block_timestamp < today()
       {% if start_month and end_month %}
@@ -62,6 +65,7 @@ mints AS (
       {% else %}
         {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True) }}
       {% endif %}
+    GROUP BY transaction_hash, to_address, token_address
 )
 SELECT
     b.block_number,
@@ -85,9 +89,14 @@ SELECT
         b.to_address   = '0x0000000000000000000000000000000000000000', 'burn',
         'p2p'
     ) AS transfer_category,
-    m.mint_kind AS mint_kind
+    if(
+        b.from_address = '0x0000000000000000000000000000000000000000'
+        AND b.transfer_type != 'CrcV2_ERC20WrapperTransfer',
+        m.mint_kind,
+        NULL
+    ) AS mint_kind
 FROM base b
 LEFT JOIN mints m
     ON  m.transaction_hash = b.transaction_hash
-    AND m.log_index        = b.log_index
-    AND m.batch_index      = b.batch_index
+    AND m.to_address       = b.to_address
+    AND m.token_address    = b.token_address
