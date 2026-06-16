@@ -15,7 +15,7 @@
   <body>
     
     <h1>stg_crawlers_data__cow_api_trade_fees</h1>
-    <p>Staging view over crawlers_data.cow_api_trade_fees (ingested by click-runner from the CoW Protocol API). Exposes protocol fees per order_uid for trades that use the surplus-based fee model (2024+, and partially mid-2023 onwards).
+    <p>Staging view over cow_api_trade_fees (ingested by click-runner from the CoW Protocol API). Exposes protocol fees per fill for trades that use the surplus-based fee model (2024+, and partially mid-2023 onwards). One row per (order_uid, tx_hash, log_index): partially-fillable orders settle across multiple trades sharing an order_uid, each fill with its own executedProtocolFees — downstream joins must use the full per-fill key.
 </p>
     <p><strong>Module:</strong> crawlers_data</p>
     <p><strong>Status:</strong> docs_only</p>
@@ -23,10 +23,11 @@
     <p><strong>Path:</strong> <code>models/crawlers_data/staging/stg_crawlers_data__cow_api_trade_fees.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>staging</span> <span class='pill'>crawlers_data</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>fee_amount</code></td><td>String</td><td>Total protocol fee in token atoms (string-encoded uint256).</td></tr><tr><td><code>fee_policies</code></td><td>String</td><td>Raw JSON array of fee policy entries from the CoW API.</td></tr><tr><td><code>fee_token</code></td><td>String</td><td>Token address the fee is denominated in (lowercased).</td></tr><tr><td><code>ingested_at</code></td><td>DateTime</td><td></td></tr><tr><td><code>order_uid</code></td><td>String</td><td>Unique order identifier. Join key to int_execution_cow_trades.</td></tr><tr><td><code>surplus_component_raw</code></td><td>String</td><td>CoW Protocol&#x27;s cut of the solver-found value in raw token atoms (string-encoded). Gross value found = surplus_component_raw / surplus_factor. NULL / empty for volume-only policies.
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>fee_amount</code></td><td>String</td><td>Total protocol fee in token atoms (string-encoded uint256).</td></tr><tr><td><code>fee_policies</code></td><td>String</td><td>Raw JSON array of fee policy entries from the CoW API.</td></tr><tr><td><code>fee_token</code></td><td>String</td><td>Token address the fee is denominated in (lowercased).</td></tr><tr><td><code>ingested_at</code></td><td>DateTime</td><td></td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>On-chain log index of this fill&#x27;s GPv2 Trade event (matches the CoW API logIndex).</td></tr><tr><td><code>order_uid</code></td><td>String</td><td>Order identifier. NOT unique — one order can fill across multiple trades. Join to int_execution_cow_trades together with tx_hash and log_index.
+</td></tr><tr><td><code>surplus_component_raw</code></td><td>String</td><td>CoW Protocol&#x27;s cut of the solver-found value in raw token atoms (string-encoded). Gross value found = surplus_component_raw / surplus_factor. NULL / empty for volume-only policies.
 </td></tr><tr><td><code>surplus_factor</code></td><td>Nullable(Float64)</td><td>Fraction of found value CoW keeps (e.g. 0.5 = protocol takes 50%). NULL for volume-only policies.
 </td></tr><tr><td><code>surplus_policy_type</code></td><td>String</td><td>Type of the first (surplus-generating) policy entry: &#x27;priceImprovement&#x27; (limit orders — improvement over quoted price), &#x27;surplus&#x27; (market orders — improvement over clearing price), or &#x27;volume&#x27; (flat volume tax only, no surplus component). Derived from fee_policies JSON.
-</td></tr></tbody></table>
+</td></tr><tr><td><code>tx_hash</code></td><td>String</td><td>Settlement transaction hash of this fill (lowercased, 0x-prefixed).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>cow_api_trade_fees</code></li></ul>

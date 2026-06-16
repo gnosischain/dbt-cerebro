@@ -3,10 +3,13 @@
 
 
 
+
 WITH
 
 trades AS (
-    SELECT *
+    SELECT
+        *,
+        lower(transaction_hash) AS tx_hash_norm
     FROM `dbt`.`int_execution_cow_trades`
     
       
@@ -35,6 +38,8 @@ trades AS (
 api_fees AS (
     SELECT
         order_uid,
+        tx_hash,
+        log_index,
         fee_token,
         fee_amount,
         surplus_policy_type,
@@ -104,5 +109,12 @@ SELECT
     t.order_uid                                                                      AS order_uid,
     t.solver                                                                         AS solver
 FROM trades t
+-- Join per fill, not per order: partially-fillable orders settle across
+-- multiple trades sharing an order_uid, each with its own protocol fees.
+-- Joining on order_uid alone attaches the same fee row to every fill and
+-- inflates summed fee_usd / solver_value_usd (~12x on multi-fill orders).
+-- API txHash/logIndex match the on-chain values exactly (validated Jun 2026).
 LEFT JOIN api_fees f
-    ON f.order_uid = t.order_uid
+    ON  f.order_uid = t.order_uid
+    AND f.tx_hash   = t.tx_hash_norm
+    AND f.log_index = t.log_index

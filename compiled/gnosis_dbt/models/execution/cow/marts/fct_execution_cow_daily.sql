@@ -3,6 +3,7 @@
 
 
 
+
 WITH
 
 trade_daily AS (

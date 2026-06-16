@@ -3,6 +3,7 @@
 
 
 
+
 WITH
 
 solver_trades AS (

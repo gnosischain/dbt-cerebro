@@ -2,6 +2,11 @@
 
 SELECT
     order_uid,
+    -- Per-fill identity: orders can partially fill across multiple trades,
+    -- each with its own protocol fees. Downstream joins must use
+    -- (order_uid, tx_hash, log_index), never order_uid alone.
+    lower(tx_hash)                          AS tx_hash,
+    log_index,
     lower(fee_token)                        AS fee_token,
     fee_amount,
     fee_policies,
