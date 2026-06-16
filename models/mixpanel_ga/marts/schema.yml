@@ -1072,3 +1072,335 @@ models:
       - name: cumulative_accounts
         description: Running total within (conversion_kind, attribution_model, utm_campaign).
         data_type: UInt64
+
+  - name: fct_mixpanel_ga_campaign_funnel_weekly
+    description: >
+      Weekly growth funnel by UTM, first-touch attribution. Every funnel step in
+      one tidy long model so "which campaign attracts users" reads end-to-end:
+      signup -> card_ordered -> circles_created -> crc_minted -> funded ->
+      first_payment -> starts_referring. step_order makes funnel-monotonicity
+      checks easy; not every user passes every step, so cross-step comparisons
+      are per-campaign trends, not a strict sequential funnel. K-anonymity:
+      campaigns with < 5 all-time signups are bucketed into '_small_campaigns'.
+      Aggregate-only output (no user_id_hash).
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: step
+        description: >
+          Funnel step name: signup, card_ordered, circles_created, crc_minted,
+          funded, first_payment, starts_referring.
+        data_type: String
+      - name: step_order
+        description: >
+          Stable ordinal (0=signup .. 6=starts_referring; 9=unmapped) for
+          funnel-monotonicity checks and ordered display. A dimension, not a measure.
+        data_type: UInt8
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if < 5 all-time signups).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: new_users
+        description: Distinct users reaching this step in the week (flow; safe to sum across weeks within a step).
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_campaign_funnel_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_campaign_funnel_weekly (campaign-level counts only, no
+      user_id_hash). Weekly growth funnel by UTM, first-touch attribution.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: step
+        description: Funnel step name (signup .. starts_referring).
+        data_type: String
+      - name: step_order
+        description: Stable ordinal for funnel ordering. A dimension, not a measure.
+        data_type: UInt8
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: new_users
+        description: Distinct users reaching this step in the week.
+        data_type: UInt64
+
+  - name: fct_mixpanel_ga_client_conversions_weekly
+    description: >
+      Weekly progression of client-side (Mixpanel-event) conversions by UTM —
+      card_ordered / crc_minted / circles_created etc. per
+      seeds/mixpanel_conversion_events.csv. Complements the on-chain steps so
+      Growth's full funnel by UTM lives in one place. Tidy/long shape:
+      attribution_model = first_touch | last_touch (stacked long — filter to one
+      value before summing new_users, or counts double). Aggregate-only.
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: metric
+        description: Client-side conversion event (card_ordered, crc_minted, circles_created, ...).
+        data_type: String
+      - name: attribution_model
+        description: >
+          UTM attribution window: 'first_touch' | 'last_touch'. Both windows are
+          stacked long — ALWAYS filter to a single value before summing new_users.
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' if unmatched.
+        data_type: String
+      - name: utm_source
+        description: UTM source.
+        data_type: String
+      - name: utm_medium
+        description: UTM medium.
+        data_type: String
+      - name: new_users
+        description: Distinct users converting on this metric in the week (flow).
+        data_type: UInt64
+      - name: cumulative_users
+        description: >
+          Running total within (metric, attribution_model, utm_*). CUMULATIVE
+          stock — read the latest value in a period; do NOT sum across weeks.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_client_conversions_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_client_conversions_weekly. Weekly client-side conversions
+      by UTM (first_touch | last_touch).
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: metric
+        description: Client-side conversion event.
+        data_type: String
+      - name: attribution_model
+        description: "first_touch | last_touch (stacked long — filter to one value before summing)."
+        data_type: String
+      - name: utm_campaign
+        description: Marketing campaign, 'unknown' if unmatched.
+        data_type: String
+      - name: utm_source
+        description: UTM source.
+        data_type: String
+      - name: utm_medium
+        description: UTM medium.
+        data_type: String
+      - name: new_users
+        description: Distinct users converting on this metric in the week.
+        data_type: UInt64
+      - name: cumulative_users
+        description: Running total within (metric, attribution_model, utm_*). Stock — do NOT sum across weeks.
+        data_type: UInt64
+
+  - name: fct_mixpanel_ga_gpay_campaign_metrics_weekly
+    description: >
+      Per-campaign weekly engagement/value for Gnosis Pay accounts: of the
+      accounts attributed to each first-touch UTM campaign, their weekly card
+      Payment activity (active accounts, payment count, USD volume, cashback) —
+      the downstream detail beyond acquisition counts. K-anonymity: campaigns
+      with < 5 attributed funded accounts all-time are bucketed into
+      '_small_campaigns'. Aggregate-only output.
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if < 5 funded accounts).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: active_accounts
+        description: Distinct GP accounts of this campaign making >= 1 card payment in the week (flow).
+        data_type: UInt64
+      - name: payments
+        description: Total card payments by this campaign's accounts in the week (flow).
+        data_type: UInt64
+      - name: payment_volume_usd
+        description: Total card payment USD volume by this campaign's accounts in the week (flow).
+        data_type: Float64
+      - name: cashback_usd
+        description: Total cashback USD claimed by this campaign's accounts in the week (flow).
+        data_type: Float64
+      - name: avg_payments_per_account
+        description: payments / active_accounts for the week. Ratio — average over the grain; do NOT sum.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_gpay_campaign_metrics_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_gpay_campaign_metrics_weekly. Per-campaign weekly Gnosis
+      Pay engagement and value.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: active_accounts
+        description: Distinct GP accounts making >= 1 card payment in the week.
+        data_type: UInt64
+      - name: payments
+        description: Total card payments in the week.
+        data_type: UInt64
+      - name: payment_volume_usd
+        description: Total card payment USD volume in the week.
+        data_type: Float64
+      - name: cashback_usd
+        description: Total cashback USD claimed in the week.
+        data_type: Float64
+      - name: avg_payments_per_account
+        description: payments / active_accounts. Ratio — do NOT sum.
+        data_type: Float64
+
+  - name: fct_mixpanel_ga_gpay_campaign_retention_weekly
+    description: >
+      Per-campaign retention for Gnosis Pay: of the accounts first funded in
+      cohort_week (per first-touch UTM campaign), how many made >= 1 card Payment
+      N weeks later. Answers "which campaign retains" alongside acquisition's
+      "which campaign attracts". week 0 = payments in the funding week itself.
+      K-anonymity: cohorts (cohort_week x campaign) smaller than 5 accounts are
+      excluded. Aggregate-only output (no pseudonyms).
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: cohort_week
+        description: Funding-cohort week (ISO week start, Monday, UTC).
+        data_type: Date
+      - name: weeks_since
+        description: Whole weeks elapsed since cohort_week (0 = funding week). A dimension, not a measure.
+        data_type: UInt16
+      - name: utm_campaign
+        description: First-touch marketing campaign of the cohort.
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: cohort_size
+        description: >
+          Distinct accounts funded in cohort_week for this campaign (the
+          retention denominator). Constant within a cohort; do NOT sum across weeks_since.
+        data_type: UInt64
+      - name: retained_accounts
+        description: Accounts from the cohort making >= 1 card payment in this weeks_since bucket.
+        data_type: UInt64
+      - name: retention_pct
+        description: retained_accounts / cohort_size * 100. Ratio — average over the grain; do NOT sum.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_gpay_campaign_retention_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_gpay_campaign_retention_weekly. Per-campaign Gnosis Pay
+      retention by weeks-since-funding.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: cohort_week
+        description: Funding-cohort week (ISO week start, Monday, UTC).
+        data_type: Date
+      - name: weeks_since
+        description: Whole weeks elapsed since cohort_week (0 = funding week). A dimension, not a measure.
+        data_type: UInt16
+      - name: utm_campaign
+        description: First-touch marketing campaign of the cohort.
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: cohort_size
+        description: Distinct accounts funded in cohort_week (retention denominator). Do NOT sum across weeks_since.
+        data_type: UInt64
+      - name: retained_accounts
+        description: Accounts from the cohort making >= 1 card payment in this weeks_since bucket.
+        data_type: UInt64
+      - name: retention_pct
+        description: retained_accounts / cohort_size * 100. Ratio — do NOT sum.
+        data_type: Float64
