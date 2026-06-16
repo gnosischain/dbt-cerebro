@@ -557,17 +557,18 @@ models:
 
 - name: api_execution_trades_stats_hop_distribution
   description: >
-    Dashboard view — last-30d hop-count distribution. Light GROUP BY on
-    the pre-bucketed `hop_bucket` column in `int_execution_trades_by_tx`.
-    Not affected by the dashboard time window.
+    Dashboard view — hop-count distribution per time window. Percentages are
+    computed within each window (1m/3m/6m/1y) off the pre-bucketed `hop_bucket`
+    column in `int_execution_trades_by_tx`. The dashboard filters by time_window.
   columns:
+  - name: time_window
+    description: Window the row belongs to — "1m", "3m", "6m", "1y". The dashboard filters on this.
+    data_type: String
   - name: label
     description: hop_bucket value ("1 hop", "2 hops", "3 hops", "4+ hops").
     data_type: String
-  - name: trade_count
-    data_type: UInt64
   - name: value
-    description: Percentage of trades in this bucket over the last 30 days.
+    description: Percentage of trades in this bucket within the window.
     data_type: Float64
   - name: bucket_order
     description: Sort order (1..4). Used by the dashboard to render x-axis.
@@ -575,17 +576,18 @@ models:
 
 - name: api_execution_trades_stats_size_distribution
   description: >
-    Dashboard view — last-30d trade-size distribution. Light GROUP BY on
-    the pre-bucketed `size_bucket` column in `int_execution_trades_by_tx`.
-    Not affected by the dashboard time window.
+    Dashboard view — trade-size distribution per time window. Percentages are
+    computed within each window (1m/3m/6m/1y) off the pre-bucketed `size_bucket`
+    column in `int_execution_trades_by_tx`. The dashboard filters by time_window.
   columns:
+  - name: time_window
+    description: Window the row belongs to — "1m", "3m", "6m", "1y". The dashboard filters on this.
+    data_type: String
   - name: label
     description: size_bucket value ("< $100", "$100 – $1K", etc.).
     data_type: String
-  - name: trade_count
-    data_type: UInt64
   - name: value
-    description: Percentage of trades in this bucket over the last 30 days.
+    description: Percentage of trades in this bucket within the window.
     data_type: Float64
   - name: bucket_order
     description: Sort order (1..5). Used by the dashboard to render x-axis.
@@ -593,10 +595,14 @@ models:
 
 - name: api_execution_trades_stats_net_flow
   description: >
-    Dashboard view — top 10 tokens by absolute net USD flow over the last
-    30 days. Reads from fct_execution_trades_by_token_daily. Positive
-    value = net bought, negative = net sold.
+    Dashboard view — top 10 tokens by absolute net USD flow per time window
+    (1m/3m/6m/1y), ranked independently within each window. Reads from
+    fct_execution_trades_by_token_daily. Positive value = net bought,
+    negative = net sold. The dashboard filters by time_window.
   columns:
+  - name: time_window
+    description: Window the row belongs to — "1m", "3m", "6m", "1y". The dashboard filters on this.
+    data_type: String
   - name: label
     description: Token symbol.
     data_type: String
@@ -618,4 +624,30 @@ models:
   - name: lifetime_trade_count
     data_type: UInt64
   - name: lifetime_unique_traders
+    data_type: UInt64
+
+- name: api_execution_trades_stats_trades_ts
+  description: >
+    Dashboard view — daily protocol swap counts. Pure SELECT from
+    fct_execution_trades_by_protocol_daily.
+  columns:
+  - name: date
+    data_type: Date
+  - name: label
+    description: Protocol name.
+    data_type: String
+  - name: value
+    description: Number of swap events on this protocol on this day.
+    data_type: UInt64
+
+- name: api_execution_trades_stats_traders_weekly
+  description: >
+    Dashboard view — weekly unique traders. Distinct `tx_from` per week
+    (Monday start, UTC) from `int_execution_trades_by_tx`.
+  columns:
+  - name: date
+    description: Week start (Monday, UTC).
+    data_type: Date
+  - name: value
+    description: Distinct trader (tx_from) count for the week.
     data_type: UInt64
