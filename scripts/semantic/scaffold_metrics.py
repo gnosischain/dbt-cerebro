@@ -295,10 +295,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                     cerebro["allowed_dimensions"] = list(allowed_dimensions)
                 if supported_grains:
                     cerebro["supported_time_grains"] = list(supported_grains)
-                cerebro["question_synonyms"] = [
+                # Seed with the measure-derived phrases, then inherit the source
+                # model's curated synonyms so discover_metrics / preflight (which
+                # rank on metric-level fields) can match natural-language queries.
+                question_synonyms = [
                     f"{human_model} {human_measure}".strip(),
                     human_measure,
                 ]
+                for synonym in meta.get("question_synonyms") or []:
+                    if synonym not in question_synonyms:
+                        question_synonyms.append(synonym)
+                cerebro["question_synonyms"] = question_synonyms
                 metric = {
                     "name": metric_name,
                     "label": f"{human_model.title()} - {human_measure.title()}",
