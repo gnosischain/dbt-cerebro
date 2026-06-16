@@ -6,7 +6,7 @@
         order_by='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['execution', 'cow', 'batches', 'intermediate']
+        tags=['production', 'execution', 'cow', 'batches', 'intermediate']
     )
 }}
 

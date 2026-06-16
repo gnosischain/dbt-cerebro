@@ -13,7 +13,7 @@
         order_by='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['dev', 'execution', 'pools', 'trades', 'intermediate', 'microbatch'],
+        tags=['production', 'execution', 'pools', 'trades', 'intermediate', 'microbatch'],
         pre_hook=["SET join_algorithm = 'grace_hash'"],
         post_hook=["SET join_algorithm = 'default'"]
     )

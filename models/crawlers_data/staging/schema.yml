@@ -169,13 +169,31 @@ models:
 
 - name: stg_crawlers_data__cow_api_trade_fees
   description: >
-    Staging view over crawlers_data.cow_api_trade_fees (ingested by click-runner
-    from the CoW Protocol API). Exposes protocol fees per order_uid for trades
-    that use the surplus-based fee model (2024+, and partially mid-2023 onwards).
+    Staging view over cow_api_trade_fees (ingested by click-runner from the
+    CoW Protocol API). Exposes protocol fees per fill for trades that use the
+    surplus-based fee model (2024+, and partially mid-2023 onwards).
+    One row per (order_uid, tx_hash, log_index): partially-fillable orders
+    settle across multiple trades sharing an order_uid, each fill with its own
+    executedProtocolFees — downstream joins must use the full per-fill key.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+        - order_uid
+        - tx_hash
+        - log_index
   columns:
   - name: order_uid
-    description: Unique order identifier. Join key to int_execution_cow_trades.
+    description: >
+      Order identifier. NOT unique — one order can fill across multiple
+      trades. Join to int_execution_cow_trades together with tx_hash and
+      log_index.
     data_type: String
+  - name: tx_hash
+    description: Settlement transaction hash of this fill (lowercased, 0x-prefixed).
+    data_type: String
+  - name: log_index
+    description: On-chain log index of this fill's GPv2 Trade event (matches the CoW API logIndex).
+    data_type: UInt64
   - name: fee_token
     description: Token address the fee is denominated in (lowercased).
     data_type: String

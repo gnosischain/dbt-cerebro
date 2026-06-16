@@ -1,7 +1,7 @@
 ﻿{{
   config(
     materialized='view',
-    tags=['execution','cow','tier1',
+    tags=['production', 'execution','cow','tier1',
           'api:cow_volume_ts','granularity:daily']
   )
 }}

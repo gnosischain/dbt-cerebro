@@ -7,6 +7,11 @@
 
 SELECT
     order_uid,
+    -- Per-fill identity: orders can partially fill across multiple trades,
+    -- each with its own protocol fees. Downstream joins must use
+    -- (order_uid, tx_hash, log_index), never order_uid alone.
+    lower(tx_hash)                          AS tx_hash,
+    log_index,
     lower(fee_token)                        AS fee_token,
     fee_amount,
     fee_policies,
@@ -35,6 +40,6 @@ SELECT
         ELSE NULL
     END                                     AS surplus_factor
 
-FROM {{ source('crawlers_data', 'cow_api_trade_fees') }} FINAL
+FROM {{ source('crawlers_data_cow', 'cow_api_trade_fees') }} FINAL
 WHERE fee_amount != '0'
   AND fee_amount != ''
