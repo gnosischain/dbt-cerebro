@@ -269,7 +269,7 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: active_trusts_value
+  - name: execution_circles_v2_trust_relations_current__active_trusts_value
     agg: count
     expr: truster
   config:
@@ -348,12 +348,6 @@ semantic_models:
           evidence_model: api_execution_circles_v2_avatar_metadata
           evidence_source_column: invited_by
           evidence_target_column: avatar
-          # invited_by is NULL/empty for Groups & Orgs (self-registered, no
-          # inviter) and 0x0000…0000 for genesis/migration avatars. Without a
-          # guard the neighbors query emits a bogus empty node and a giant
-          # zero-address hub. `valid_address` drops NULL/empty AND the zero
-          # address. Honored by build_neighbors_sql / build_sample_sql via
-          # _default_filter_clauses.
           default_filters:
             invited_by: valid_address
 - name: execution_circles_v2_avatar_balances_latest
@@ -395,6 +389,3301 @@ semantic_models:
           weight_column: balance
           node_enrichment_model: api_execution_circles_v2_avatar_metadata
           node_enrichment_key: avatar
+- name: api_execution_circles_v2_avatar_balances_latest
+  model: ref('api_execution_circles_v2_avatar_balances_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar balances latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v1_balance_diffs
+  model: ref('int_execution_circles_v1_balance_diffs')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v1 balance diffs
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: account
+    type: categorical
+    expr: account
+  - name: counterparty
+    type: categorical
+    expr: counterparty
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+- name: execution_circles_v1_balances_daily
+  model: ref('int_execution_circles_v1_balances_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v1 balances daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: account
+    type: categorical
+    expr: account
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: execution_circles_v1_transfers
+  model: ref('int_execution_circles_v1_transfers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v1 transfers
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: operator
+    type: categorical
+    expr: operator
+  - name: from_address
+    type: categorical
+    expr: from_address
+  - name: to_address
+    type: categorical
+    expr: to_address
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+- name: execution_circles_v1_trust_relations
+  model: ref('int_execution_circles_v1_trust_relations')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v1 trust relations
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: truster
+    type: categorical
+    expr: truster
+  - name: trustee
+    type: categorical
+    expr: trustee
+  - name: trust_value
+    type: categorical
+    expr: trust_value
+  - name: valid_from
+    type: time
+    expr: valid_from
+    type_params:
+      time_granularity: day
+  - name: valid_to
+    type: time
+    expr: valid_to
+    type_params:
+      time_granularity: day
+  - name: updated_at
+    type: time
+    expr: updated_at
+    type_params:
+      time_granularity: day
+- name: execution_circles_v1_trust_updates
+  model: ref('int_execution_circles_v1_trust_updates')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v1 trust updates
+        grain: day
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: truster
+    type: categorical
+    expr: truster
+  - name: trustee
+    type: categorical
+    expr: trustee
+  - name: trust_value
+    type: categorical
+    expr: trust_value
+  - name: updated_at
+    type: time
+    expr: updated_at
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_active_avatars_weekly
+  model: ref('int_execution_circles_v2_active_avatars_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 active avatars weekly
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: address
+    type: categorical
+    expr: address
+- name: execution_circles_v2_active_minters_daily
+  model: ref('api_execution_circles_v2_active_minters_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 active minters daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: active_minters_value
+    agg: sum
+    expr: active_minters
+- name: execution_circles_v2_active_trusts_cnt_latest
+  model: ref('api_execution_circles_v2_active_trusts_cnt_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 active trusts cnt latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: total_value
+    agg: sum
+    expr: total
+  - name: execution_circles_v2_active_trusts_cnt_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_active_trusts_daily
+  model: ref('api_execution_circles_v2_active_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 active trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: new_trusts_value
+    agg: sum
+    expr: new_trusts
+  - name: revoked_trusts_value
+    agg: sum
+    expr: revoked_trusts
+  - name: execution_circles_v2_active_trusts_daily__active_trusts_value
+    agg: sum
+    expr: active_trusts
+- name: execution_circles_v2_avatar_balances_daily
+  model: ref('api_execution_circles_v2_avatar_balances_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar balances daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: execution_circles_v2_avatar_metadata_history
+  model: ref('api_execution_circles_v2_avatar_metadata_history')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar metadata history
+  defaults:
+    agg_time_dimension: valid_from
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: avatar_type
+    type: categorical
+    expr: avatar_type
+  - name: onchain_name
+    type: categorical
+    expr: onchain_name
+  - name: metadata_digest
+    type: categorical
+    expr: metadata_digest
+  - name: ipfs_cid_v0
+    type: categorical
+    expr: ipfs_cid_v0
+  - name: gateway_url
+    type: categorical
+    expr: gateway_url
+  - name: valid_from
+    type: time
+    expr: valid_from
+    type_params:
+      time_granularity: day
+  - name: valid_to
+    type: time
+    expr: valid_to
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: metadata_name
+    type: categorical
+    expr: metadata_name
+  - name: metadata_symbol
+    type: categorical
+    expr: metadata_symbol
+  - name: metadata_description
+    type: categorical
+    expr: metadata_description
+  - name: metadata_image_url
+    type: categorical
+    expr: metadata_image_url
+  - name: metadata_preview_image_url
+    type: categorical
+    expr: metadata_preview_image_url
+  - name: metadata_fetched_at
+    type: time
+    expr: metadata_fetched_at
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_metadata_targets
+  model: ref('int_execution_circles_v2_avatar_metadata_targets')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar metadata targets
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: metadata_digest
+    type: categorical
+    expr: metadata_digest
+  - name: metadata_digest_hex
+    type: categorical
+    expr: metadata_digest_hex
+  - name: ipfs_cid_v0
+    type: categorical
+    expr: ipfs_cid_v0
+  - name: gateway_url
+    type: categorical
+    expr: gateway_url
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+- name: execution_circles_v2_avatar_mint_activity_daily
+  model: ref('api_execution_circles_v2_avatar_mint_activity_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar mint activity daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_personal_token_supply_latest
+  model: ref('api_execution_circles_v2_avatar_personal_token_supply_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar personal token supply latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_search
+  model: ref('api_execution_circles_v2_avatar_search')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar search
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: display_name
+    type: categorical
+    expr: display_name
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_token_distribution
+  model: ref('api_execution_circles_v2_avatar_token_distribution')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar token distribution
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: holder_category
+    type: categorical
+    expr: holder_category
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_tokens_held_count
+  model: ref('api_execution_circles_v2_avatar_tokens_held_count')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar tokens held count
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_trust_network
+  model: ref('api_execution_circles_v2_avatar_trust_network')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trust network
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: source_id
+    type: categorical
+    expr: source_id
+  - name: target_id
+    type: categorical
+    expr: target_id
+  - name: source_name
+    type: categorical
+    expr: source_name
+  - name: target_name
+    type: categorical
+    expr: target_name
+  - name: source_image
+    type: categorical
+    expr: source_image
+  - name: target_image
+    type: categorical
+    expr: target_image
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: source_layer
+    type: categorical
+    expr: source_layer
+  - name: target_layer
+    type: categorical
+    expr: target_layer
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_trust_relations
+  model: ref('api_execution_circles_v2_avatar_trust_relations')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trust relations
+  defaults:
+    agg_time_dimension: outgoing_from
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: counterparty
+    type: categorical
+    expr: counterparty
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: outgoing_from
+    type: time
+    expr: outgoing_from
+    type_params:
+      time_granularity: day
+  - name: incoming_from
+    type: time
+    expr: incoming_from
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_trusts_daily
+  model: ref('api_execution_circles_v2_avatar_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatar_trusts_summary
+  model: ref('api_execution_circles_v2_avatar_trusts_summary')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trusts summary
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_avatars_current
+  model: ref('api_execution_circles_v2_avatars_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatars current
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: avatar_type
+    type: categorical
+    expr: avatar_type
+  - name: invited_by
+    type: categorical
+    expr: invited_by
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: name
+    type: categorical
+    expr: name
+- name: execution_circles_v2_backers_cumulative_daily
+  model: ref('api_execution_circles_v2_backers_cumulative_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backers cumulative daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: new_backers_value
+    agg: sum
+    expr: new_backers
+  - name: cumulative_backers_value
+    agg: max
+    expr: cumulative_backers
+- name: execution_circles_v2_backers_current
+  model: ref('int_execution_circles_v2_backers_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backers current
+  defaults:
+    agg_time_dimension: first_trusted_at
+  dimensions:
+  - name: backer
+    type: categorical
+    expr: backer
+  - name: first_trusted_at
+    type: time
+    expr: first_trusted_at
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_backing_depositors_current
+  model: ref('api_execution_circles_v2_backing_depositors_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backing depositors current
+  defaults:
+    agg_time_dimension: first_initiated_at
+  dimensions:
+  - name: backer
+    type: categorical
+    expr: backer
+  - name: first_initiated_at
+    type: time
+    expr: first_initiated_at
+    type_params:
+      time_granularity: day
+  - name: last_event_at
+    type: time
+    expr: last_event_at
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: n_initiated_value
+    agg: sum
+    expr: n_initiated
+  - name: n_completed_value
+    agg: sum
+    expr: n_completed
+  - name: n_released_value
+    agg: sum
+    expr: n_released
+  - name: execution_circles_v2_backing_depositors_current__n_distinct_assets_value
+    agg: sum
+    expr: n_distinct_assets
+- name: execution_circles_v2_backing_events_daily
+  model: ref('api_execution_circles_v2_backing_events_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 backing events daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: lifecycle_stage
+    type: categorical
+    expr: lifecycle_stage
+  measures:
+  - name: execution_circles_v2_backing_events_daily__n_events_value
+    agg: sum
+    expr: n_events
+  - name: n_distinct_backers_value
+    agg: sum
+    expr: n_distinct_backers
+  - name: execution_circles_v2_backing_events_daily__n_distinct_assets_value
+    agg: sum
+    expr: n_distinct_assets
+- name: execution_circles_v2_balance_cohorts_daily
+  model: ref('int_execution_circles_v2_balance_cohorts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 balance cohorts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: balance_bucket
+    type: categorical
+    expr: balance_bucket
+- name: execution_circles_v2_balance_diffs_daily
+  model: ref('int_execution_circles_v2_balance_diffs_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 balance diffs daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: account
+    type: categorical
+    expr: account
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: execution_circles_v2_balances_daily
+  model: ref('int_execution_circles_v2_balances_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 balances daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: account
+    type: categorical
+    expr: account
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: execution_circles_v2_crc20_pools
+  model: ref('int_execution_circles_v2_crc20_pools')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 crc20 pools
+  dimensions:
+  - name: pool_address
+    type: categorical
+    expr: pool_address
+  - name: pool_address_no0x
+    type: categorical
+    expr: pool_address_no0x
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: crc20_token
+    type: categorical
+    expr: crc20_token
+  - name: backing_token
+    type: categorical
+    expr: backing_token
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: crc20_symbol
+    type: categorical
+    expr: crc20_symbol
+- name: execution_circles_v2_crc20_prices_daily
+  model: ref('api_execution_circles_v2_crc20_prices_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 crc20 prices daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: crc20_token
+    type: categorical
+    expr: crc20_token
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: symbol
+    type: categorical
+    expr: symbol
+  measures:
+  - name: circles_type_value
+    agg: sum
+    expr: circles_type
+  - name: price_vwap_usd_value
+    agg: average
+    expr: price_vwap_usd
+  - name: price_median_usd_value
+    agg: average
+    expr: price_median_usd
+  - name: total_crc_volume_value
+    agg: sum
+    expr: total_crc_volume
+  - name: total_crc_bought_volume_value
+    agg: sum
+    expr: total_crc_bought_volume
+  - name: total_crc_sold_volume_value
+    agg: sum
+    expr: total_crc_sold_volume
+  - name: trade_count_value
+    agg: sum
+    expr: trade_count
+  - name: pool_count_value
+    agg: sum
+    expr: pool_count
+- name: execution_circles_v2_crc20_prices_raw
+  model: ref('int_execution_circles_v2_crc20_prices_raw')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 crc20 prices raw
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: pool_address
+    type: categorical
+    expr: pool_address
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: crc20_token
+    type: categorical
+    expr: crc20_token
+  - name: backing_token
+    type: categorical
+    expr: backing_token
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: crc20_symbol
+    type: categorical
+    expr: crc20_symbol
+  - name: backing_token_symbol
+    type: categorical
+    expr: backing_token_symbol
+- name: execution_circles_v2_economically_active_avatars_weekly
+  model: ref('api_execution_circles_v2_economically_active_avatars_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 economically active avatars weekly
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: earning_kind
+    type: categorical
+    expr: earning_kind
+  measures:
+  - name: avatars_value
+    agg: sum
+    expr: avatars
+  - name: avatars_in_app_tx_value
+    agg: sum
+    expr: avatars_in_app_tx
+- name: execution_circles_v2_gcrc_cashback_recipients_weekly
+  model: ref('int_execution_circles_v2_gcrc_cashback_recipients_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 gcrc cashback recipients weekly
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: address
+    type: categorical
+    expr: address
+- name: execution_circles_v2_group_collateral_balances_daily
+  model: ref('int_execution_circles_v2_group_collateral_balances_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group collateral balances daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: group_address
+    type: categorical
+    expr: group_address
+  - name: token_id
+    type: categorical
+    expr: token_id
+- name: execution_circles_v2_group_collateral_diffs
+  model: ref('int_execution_circles_v2_group_collateral_diffs')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group collateral diffs
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: event_name
+    type: categorical
+    expr: event_name
+  - name: group_address
+    type: categorical
+    expr: group_address
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: recipient
+    type: categorical
+    expr: recipient
+- name: execution_circles_v2_group_settings_updates
+  model: ref('int_execution_circles_v2_group_settings_updates')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group settings updates
+        grain: day
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: group_address
+    type: categorical
+    expr: group_address
+  - name: owner
+    type: categorical
+    expr: owner
+  - name: mint_handler
+    type: categorical
+    expr: mint_handler
+  - name: redemption_handler
+    type: categorical
+    expr: redemption_handler
+  - name: liquidity_provider
+    type: categorical
+    expr: liquidity_provider
+  - name: treasury_address
+    type: categorical
+    expr: treasury_address
+  - name: service
+    type: categorical
+    expr: service
+  - name: fee_collection
+    type: categorical
+    expr: fee_collection
+- name: execution_circles_v2_group_size_current
+  model: ref('fct_execution_circles_v2_group_size_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group size current
+  dimensions:
+  - name: group_avatar
+    type: categorical
+    expr: group_avatar
+  measures:
+  - name: n_members_value
+    agg: sum
+    expr: n_members
+- name: execution_circles_v2_group_size_distribution
+  model: ref('api_execution_circles_v2_group_size_distribution')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group size distribution
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: bucket
+    type: categorical
+    expr: bucket
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: bucket_order_value
+    agg: sum
+    expr: bucket_order
+  - name: n_groups_value
+    agg: sum
+    expr: n_groups
+- name: execution_circles_v2_group_token_supply_current
+  model: ref('fct_execution_circles_v2_group_token_supply_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group token supply current
+  dimensions:
+  - name: group_avatar
+    type: categorical
+    expr: group_avatar
+  - name: display_name
+    type: categorical
+    expr: display_name
+  - name: preview_image_url
+    type: categorical
+    expr: preview_image_url
+  measures:
+  - name: execution_circles_v2_group_token_supply_current__supply_value
+    agg: sum
+    expr: supply
+  - name: wrapped_value
+    agg: sum
+    expr: wrapped
+  - name: unwrapped_value
+    agg: sum
+    expr: unwrapped
+  - name: execution_circles_v2_group_token_supply_current__wrapped_pct_value
+    agg: average
+    expr: wrapped_pct
+  - name: supply_demurraged_value
+    agg: sum
+    expr: supply_demurraged
+  - name: wrapped_demurraged_value
+    agg: sum
+    expr: wrapped_demurraged
+- name: execution_circles_v2_group_token_supply_daily
+  model: ref('api_execution_circles_v2_group_token_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group token supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: execution_circles_v2_group_token_supply_daily__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_group_token_supply_daily__value_demurraged_value
+    agg: sum
+    expr: value_demurraged
+- name: execution_circles_v2_group_token_supply_top_latest
+  model: ref('api_execution_circles_v2_group_token_supply_top_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group token supply top latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: group_avatar
+    type: categorical
+    expr: group_avatar
+  - name: display_name
+    type: categorical
+    expr: display_name
+  - name: preview_image_url
+    type: categorical
+    expr: preview_image_url
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_groups_overview_daily
+  model: ref('api_execution_circles_v2_groups_overview_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 groups overview daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: n_new_groups_value
+    agg: sum
+    expr: n_new_groups
+  - name: n_collateral_events_value
+    agg: sum
+    expr: n_collateral_events
+  - name: n_distinct_groups_acting_value
+    agg: sum
+    expr: n_distinct_groups_acting
+  - name: n_groups_total_value
+    agg: sum
+    expr: n_groups_total
+- name: execution_circles_v2_hub_events_daily
+  model: ref('api_execution_circles_v2_hub_events_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 hub events daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: event_name
+    type: categorical
+    expr: event_name
+  measures:
+  - name: execution_circles_v2_hub_events_daily__n_events_value
+    agg: sum
+    expr: n_events
+  - name: n_tx_value
+    agg: sum
+    expr: n_tx
+  - name: n_distinct_addresses_value
+    agg: sum
+    expr: n_distinct_addresses
+- name: execution_circles_v2_hub_transfers
+  model: ref('int_execution_circles_v2_hub_transfers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 hub transfers
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: operator
+    type: categorical
+    expr: operator
+  - name: from_address
+    type: categorical
+    expr: from_address
+  - name: to_address
+    type: categorical
+    expr: to_address
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+- name: execution_circles_v2_invite_funnel
+  model: ref('int_execution_circles_v2_invite_funnel')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 invite funnel
+  defaults:
+    agg_time_dimension: invited_at
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: inviter
+    type: categorical
+    expr: inviter
+  - name: invited_at
+    type: time
+    expr: invited_at
+    type_params:
+      time_granularity: day
+  - name: first_mint_at
+    type: time
+    expr: first_mint_at
+    type_params:
+      time_granularity: day
+  - name: second_mint_date
+    type: time
+    expr: second_mint_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_invite_funnel_cohort_monthly
+  model: ref('api_execution_circles_v2_invite_funnel_cohort_monthly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly
+        grain: month
+  defaults:
+    agg_time_dimension: cohort_month
+  dimensions:
+  - name: cohort_month
+    type: time
+    expr: cohort_month
+    type_params:
+      time_granularity: month
+  measures:
+  - name: n_invited_value
+    agg: sum
+    expr: n_invited
+  - name: n_minted_2_days_value
+    agg: sum
+    expr: n_minted_2_days
+  - name: n_minted_7_days_value
+    agg: sum
+    expr: n_minted_7_days
+  - name: n_minted_14_days_value
+    agg: sum
+    expr: n_minted_14_days
+  - name: n_active_minter_value
+    agg: sum
+    expr: n_active_minter
+  - name: pct_minted_2_days_value
+    agg: average
+    expr: pct_minted_2_days
+  - name: pct_minted_7_days_value
+    agg: average
+    expr: pct_minted_7_days
+  - name: pct_minted_14_days_value
+    agg: average
+    expr: pct_minted_14_days
+  - name: pct_active_minter_value
+    agg: average
+    expr: pct_active_minter
+  - name: median_days_to_second_mint_value
+    agg: sum
+    expr: median_days_to_second_mint
+  - name: p25_days_to_second_mint_value
+    agg: sum
+    expr: p25_days_to_second_mint
+  - name: p75_days_to_second_mint_value
+    agg: sum
+    expr: p75_days_to_second_mint
+- name: execution_circles_v2_inviter_fees
+  model: ref('int_execution_circles_v2_inviter_fees')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 inviter fees
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: invitee
+    type: categorical
+    expr: invitee
+  - name: inviter
+    type: categorical
+    expr: inviter
+- name: execution_circles_v2_inviters_ranking
+  model: ref('api_execution_circles_v2_inviters_ranking')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 inviters ranking
+  defaults:
+    agg_time_dimension: first_invite_ts
+  dimensions:
+  - name: inviter
+    type: categorical
+    expr: inviter
+  - name: display_name
+    type: categorical
+    expr: display_name
+  - name: preview_image_url
+    type: categorical
+    expr: preview_image_url
+  - name: first_invite_ts
+    type: time
+    expr: first_invite_ts
+    type_params:
+      time_granularity: day
+  - name: last_invite_ts
+    type: time
+    expr: last_invite_ts
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_kpi_active_minters_latest
+  model: ref('api_execution_circles_v2_kpi_active_minters_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi active minters latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_active_minters_latest__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_active_minters_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_avg_members_per_group_latest
+  model: ref('api_execution_circles_v2_kpi_avg_members_per_group_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi avg members per group latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_avg_members_per_group_latest__value_value
+    agg: sum
+    expr: value
+  - name: median_members_value
+    agg: sum
+    expr: median_members
+  - name: execution_circles_v2_kpi_avg_members_per_group_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_avg_trusts_per_avatar_latest
+  model: ref('api_execution_circles_v2_kpi_avg_trusts_per_avatar_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi avg trusts per avatar latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_avg_trusts_per_avatar_latest__value_value
+    agg: sum
+    expr: value
+- name: execution_circles_v2_kpi_depositors_in_backers_pct_latest
+  model: ref('api_execution_circles_v2_kpi_depositors_in_backers_pct_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi depositors in backers pct latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_depositors_in_backers_pct_latest__value_value
+    agg: sum
+    expr: value
+  - name: total_depositors_value
+    agg: sum
+    expr: total_depositors
+  - name: depositors_in_backers_value
+    agg: sum
+    expr: depositors_in_backers
+  - name: execution_circles_v2_kpi_depositors_in_backers_pct_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_group_token_supply_latest
+  model: ref('api_execution_circles_v2_kpi_group_token_supply_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi group token supply latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_group_token_supply_latest__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_group_token_supply_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_group_wrapped_pct_latest
+  model: ref('api_execution_circles_v2_kpi_group_wrapped_pct_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi group wrapped pct latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_group_wrapped_pct_latest__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_group_wrapped_pct_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_mints_7d
+  model: ref('api_execution_circles_v2_kpi_mints_7d')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi mints 7d
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_mints_7d__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_mints_7d__amount_value
+    agg: sum
+    expr: amount
+  - name: execution_circles_v2_kpi_mints_7d__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_new_backers_7d
+  model: ref('api_execution_circles_v2_kpi_new_backers_7d')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi new backers 7d
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_new_backers_7d__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_new_backers_7d__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_new_groups_7d
+  model: ref('api_execution_circles_v2_kpi_new_groups_7d')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi new groups 7d
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_new_groups_7d__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_new_groups_7d__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_new_trusts_7d
+  model: ref('api_execution_circles_v2_kpi_new_trusts_7d')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi new trusts 7d
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_new_trusts_7d__value_value
+    agg: sum
+    expr: value
+  - name: revoked_value
+    agg: sum
+    expr: revoked
+  - name: execution_circles_v2_kpi_new_trusts_7d__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_total_backers_latest
+  model: ref('api_execution_circles_v2_kpi_total_backers_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi total backers latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_total_backers_latest__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_total_backers_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_total_depositors_latest
+  model: ref('api_execution_circles_v2_kpi_total_depositors_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi total depositors latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_total_depositors_latest__value_value
+    agg: sum
+    expr: value
+  - name: new_last_7d_value
+    agg: sum
+    expr: new_last_7d
+  - name: execution_circles_v2_kpi_total_depositors_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_kpi_total_supply_latest
+  model: ref('api_execution_circles_v2_kpi_total_supply_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 kpi total supply latest
+        grain: day
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_kpi_total_supply_latest__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_kpi_total_supply_latest__change_pct_value
+    agg: average
+    expr: change_pct
+- name: execution_circles_v2_mint_activity_daily
+  model: ref('int_execution_circles_v2_mint_activity_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 mint activity daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_mint_events
+  model: ref('int_execution_circles_v2_mint_events')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 mint events
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: operator
+    type: categorical
+    expr: operator
+  - name: to_address
+    type: categorical
+    expr: to_address
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+  - name: mint_kind
+    type: categorical
+    expr: mint_kind
+- name: execution_circles_v2_minter_cohort_daily
+  model: ref('api_execution_circles_v2_minter_cohort_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 minter cohort daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: cohort
+    type: categorical
+    expr: cohort
+  measures:
+  - name: cohort_order_value
+    agg: sum
+    expr: cohort_order
+  - name: cnt_value
+    agg: sum
+    expr: cnt
+- name: execution_circles_v2_mints_daily
+  model: ref('api_execution_circles_v2_mints_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 mints daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: mint_kind
+    type: categorical
+    expr: mint_kind
+  measures:
+  - name: n_mint_events_value
+    agg: sum
+    expr: n_mint_events
+  - name: n_minters_value
+    agg: sum
+    expr: n_minters
+  - name: amount_minted_value
+    agg: sum
+    expr: amount_minted
+- name: execution_circles_v2_offer_cycles
+  model: ref('int_execution_circles_v2_offer_cycles')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 offer cycles
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: cycle_address
+    type: categorical
+    expr: cycle_address
+  - name: event_name
+    type: categorical
+    expr: event_name
+  - name: decoded_params
+    type: categorical
+    expr: decoded_params
+- name: execution_circles_v2_p2p_velocity_daily
+  model: ref('api_execution_circles_v2_p2p_velocity_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 p2p velocity daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_p2p_velocity_daily__n_transfers_value
+    agg: sum
+    expr: n_transfers
+  - name: execution_circles_v2_p2p_velocity_daily__n_senders_value
+    agg: sum
+    expr: n_senders
+  - name: execution_circles_v2_p2p_velocity_daily__n_receivers_value
+    agg: sum
+    expr: n_receivers
+  - name: execution_circles_v2_p2p_velocity_daily__amount_value
+    agg: sum
+    expr: amount
+- name: execution_circles_v2_payments
+  model: ref('int_execution_circles_v2_payments')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 payments
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: payer
+    type: categorical
+    expr: payer
+  - name: payee
+    type: categorical
+    expr: payee
+  - name: gateway
+    type: categorical
+    expr: gateway
+  - name: token_id
+    type: categorical
+    expr: token_id
+  - name: payment_data
+    type: categorical
+    expr: payment_data
+  - name: event_params
+    type: categorical
+    expr: event_params
+- name: execution_circles_v2_referrers
+  model: ref('int_execution_circles_v2_referrers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 referrers
+- name: execution_circles_v2_stats_current
+  model: ref('api_execution_circles_v2_stats_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 stats current
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: measure
+    type: categorical
+    expr: measure
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_supply_by_holder_type_daily
+  model: ref('api_execution_circles_v2_supply_by_holder_type_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 supply by holder type daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: execution_circles_v2_supply_by_holder_type_daily__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_supply_by_holder_type_daily__value_demurraged_value
+    agg: sum
+    expr: value_demurraged
+  - name: holder_count_value
+    agg: sum
+    expr: holder_count
+- name: execution_circles_v2_tokens_supply_daily
+  model: ref('fct_execution_circles_v2_tokens_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 tokens supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: token_address
+    type: categorical
+    expr: token_address
+  measures:
+  - name: supply_raw_value
+    agg: sum
+    expr: supply_raw
+  - name: execution_circles_v2_tokens_supply_daily__supply_value
+    agg: sum
+    expr: supply
+  - name: demurraged_supply_value
+    agg: sum
+    expr: demurraged_supply
+- name: execution_circles_v2_total_supply_daily
+  model: ref('api_execution_circles_v2_total_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 total supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_total_supply_daily__value_value
+    agg: sum
+    expr: value
+  - name: execution_circles_v2_total_supply_daily__value_demurraged_value
+    agg: sum
+    expr: value_demurraged
+  - name: token_count_value
+    agg: sum
+    expr: token_count
+- name: execution_circles_v2_transfers
+  model: ref('int_execution_circles_v2_transfers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 transfers
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: operator
+    type: categorical
+    expr: operator
+  - name: from_address
+    type: categorical
+    expr: from_address
+  - name: to_address
+    type: categorical
+    expr: to_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: unit_type
+    type: categorical
+    expr: unit_type
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+- name: execution_circles_v2_transfers_categorised
+  model: ref('int_execution_circles_v2_transfers_categorised')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 transfers categorised
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: transfer_type
+    type: categorical
+    expr: transfer_type
+  - name: from_address
+    type: categorical
+    expr: from_address
+  - name: to_address
+    type: categorical
+    expr: to_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: transfer_category
+    type: categorical
+    expr: transfer_category
+  - name: mint_kind
+    type: categorical
+    expr: mint_kind
+- name: execution_circles_v2_transfers_daily
+  model: ref('api_execution_circles_v2_transfers_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 transfers daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: transfer_category
+    type: categorical
+    expr: transfer_category
+  measures:
+  - name: execution_circles_v2_transfers_daily__n_transfers_value
+    agg: sum
+    expr: n_transfers
+  - name: execution_circles_v2_transfers_daily__n_senders_value
+    agg: sum
+    expr: n_senders
+  - name: execution_circles_v2_transfers_daily__n_receivers_value
+    agg: sum
+    expr: n_receivers
+  - name: execution_circles_v2_transfers_daily__amount_value
+    agg: sum
+    expr: amount
+  - name: amount_demurraged_value
+    agg: sum
+    expr: amount_demurraged
+- name: execution_circles_v2_trust_pair_ranges
+  model: ref('int_execution_circles_v2_trust_pair_ranges')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trust pair ranges
+- name: execution_circles_v2_trust_updates
+  model: ref('int_execution_circles_v2_trust_updates')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trust updates
+        grain: day
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: truster
+    type: categorical
+    expr: truster
+  - name: trustee
+    type: categorical
+    expr: trustee
+  - name: trust_value
+    type: categorical
+    expr: trust_value
+  - name: updated_at
+    type: time
+    expr: updated_at
+    type_params:
+      time_granularity: day
+- name: execution_circles_v2_trusts_daily
+  model: ref('api_execution_circles_v2_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: n_trust_events_value
+    agg: sum
+    expr: n_trust_events
+  - name: n_new_trusts_value
+    agg: sum
+    expr: n_new_trusts
+  - name: n_revoked_trusts_value
+    agg: sum
+    expr: n_revoked_trusts
+  - name: n_distinct_trusters_value
+    agg: sum
+    expr: n_distinct_trusters
+  - name: n_distinct_trustees_value
+    agg: sum
+    expr: n_distinct_trustees
+- name: execution_circles_v2_trusts_distribution
+  model: ref('api_execution_circles_v2_trusts_distribution')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trusts distribution
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: trust_bucket
+    type: categorical
+    expr: trust_bucket
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: avatar_count_value
+    agg: sum
+    expr: avatar_count
+- name: execution_circles_v2_wrapper_share_daily
+  model: ref('api_execution_circles_v2_wrapper_share_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - execution circles v2 wrapper share daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: wrapped_supply_value
+    agg: sum
+    expr: wrapped_supply
+  - name: unwrapped_supply_value
+    agg: sum
+    expr: unwrapped_supply
+  - name: total_supply_value
+    agg: sum
+    expr: total_supply
+  - name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
+    agg: average
+    expr: wrapped_pct
+- name: execution_circles_v2_wrapper_supply_daily
+  model: ref('int_execution_circles_v2_wrapper_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 wrapper supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: wrapper_address
+    type: categorical
+    expr: wrapper_address
+- name: execution_circles_v2_wrapper_tokens
+  model: ref('int_execution_circles_v2_wrapper_tokens')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 wrapper tokens
+  dimensions:
+  - name: wrapper_address
+    type: categorical
+    expr: wrapper_address
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: symbol
+    type: categorical
+    expr: symbol
+- name: execution_circles_v2_wrapper_transfers
+  model: ref('int_execution_circles_v2_wrapper_transfers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 wrapper transfers
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: from_address
+    type: categorical
+    expr: from_address
+  - name: to_address
+    type: categorical
+    expr: to_address
+- name: execution_circles_v2_wrappers
+  model: ref('int_execution_circles_v2_wrappers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 wrappers
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: wrapper_address
+    type: categorical
+    expr: wrapper_address
+- name: fct_execution_circles_v2_active_minters_daily
+  model: ref('fct_execution_circles_v2_active_minters_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 active minters daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_active_trusts_daily
+  model: ref('fct_execution_circles_v2_active_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 active trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_avatar_balances_daily
+  model: ref('fct_execution_circles_v2_avatar_balances_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar balances daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: fct_execution_circles_v2_avatar_personal_token_supply_latest
+  model: ref('fct_execution_circles_v2_avatar_personal_token_supply_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar personal token supply latest
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+- name: fct_execution_circles_v2_avatar_token_distribution
+  model: ref('fct_execution_circles_v2_avatar_token_distribution')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar token distribution
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: holder_category
+    type: categorical
+    expr: holder_category
+- name: fct_execution_circles_v2_avatar_tokens_held_count
+  model: ref('fct_execution_circles_v2_avatar_tokens_held_count')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar tokens held count
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+- name: fct_execution_circles_v2_avatar_trusts_daily
+  model: ref('fct_execution_circles_v2_avatar_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: day
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: day
+    type: time
+    expr: day
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_avatar_trusts_summary
+  model: ref('fct_execution_circles_v2_avatar_trusts_summary')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar trusts summary
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+- name: fct_execution_circles_v2_backers_cumulative_daily
+  model: ref('fct_execution_circles_v2_backers_cumulative_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backers cumulative daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_crc20_prices_daily
+  model: ref('fct_execution_circles_v2_crc20_prices_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 crc20 prices daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: crc20_token
+    type: categorical
+    expr: crc20_token
+  - name: backing_token
+    type: categorical
+    expr: backing_token
+  - name: backing_token_symbol
+    type: categorical
+    expr: backing_token_symbol
+  - name: pool_address
+    type: categorical
+    expr: pool_address
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: crc20_symbol
+    type: categorical
+    expr: crc20_symbol
+- name: fct_execution_circles_v2_economically_active_avatars_weekly
+  model: ref('fct_execution_circles_v2_economically_active_avatars_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 economically active avatars weekly
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: earning_kind
+    type: categorical
+    expr: earning_kind
+- name: fct_execution_circles_v2_group_token_supply_daily
+  model: ref('fct_execution_circles_v2_group_token_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 group token supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_inviters_ranking
+  model: ref('fct_execution_circles_v2_inviters_ranking')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 inviters ranking
+  defaults:
+    agg_time_dimension: first_invite_ts
+  dimensions:
+  - name: invited_by
+    type: categorical
+    expr: invited_by
+  - name: first_invite_ts
+    type: time
+    expr: first_invite_ts
+    type_params:
+      time_granularity: day
+  - name: last_invite_ts
+    type: time
+    expr: last_invite_ts
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_minter_cohort_daily
+  model: ref('fct_execution_circles_v2_minter_cohort_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 minter cohort daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: cohort
+    type: categorical
+    expr: cohort
+- name: fct_execution_circles_v2_stats_current
+  model: ref('fct_execution_circles_v2_stats_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 stats current
+  dimensions:
+  - name: measure
+    type: categorical
+    expr: measure
+- name: fct_execution_circles_v2_supply_by_holder_type_daily
+  model: ref('fct_execution_circles_v2_supply_by_holder_type_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 supply by holder type daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: holder_type
+    type: categorical
+    expr: holder_type
+- name: fct_execution_circles_v2_total_supply_daily
+  model: ref('fct_execution_circles_v2_total_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 total supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_trust_relations_current
+  model: ref('fct_execution_circles_v2_trust_relations_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trust relations current
+  defaults:
+    agg_time_dimension: valid_from
+  dimensions:
+  - name: truster
+    type: categorical
+    expr: truster
+  - name: trustee
+    type: categorical
+    expr: trustee
+  - name: valid_from
+    type: time
+    expr: valid_from
+    type_params:
+      time_granularity: day
+  - name: valid_to
+    type: time
+    expr: valid_to
+    type_params:
+      time_granularity: day
+- name: fct_execution_circles_v2_trusts_distribution
+  model: ref('fct_execution_circles_v2_trusts_distribution')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trusts distribution
+  dimensions:
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: trust_bucket
+    type: categorical
+    expr: trust_bucket
+- name: int_execution_circles_v2_avatar_metadata
+  model: ref('int_execution_circles_v2_avatar_metadata')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar metadata
+  defaults:
+    agg_time_dimension: metadata_fetched_at
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: avatar_type
+    type: categorical
+    expr: avatar_type
+  - name: onchain_name
+    type: categorical
+    expr: onchain_name
+  - name: metadata_digest
+    type: categorical
+    expr: metadata_digest
+  - name: ipfs_cid_v0
+    type: categorical
+    expr: ipfs_cid_v0
+  - name: gateway_url
+    type: categorical
+    expr: gateway_url
+  - name: metadata_name
+    type: categorical
+    expr: metadata_name
+  - name: metadata_symbol
+    type: categorical
+    expr: metadata_symbol
+  - name: metadata_description
+    type: categorical
+    expr: metadata_description
+  - name: metadata_image_url
+    type: categorical
+    expr: metadata_image_url
+  - name: metadata_preview_image_url
+    type: categorical
+    expr: metadata_preview_image_url
+  - name: metadata_body
+    type: categorical
+    expr: metadata_body
+  - name: metadata_fetched_at
+    type: time
+    expr: metadata_fetched_at
+    type_params:
+      time_granularity: day
+- name: int_execution_circles_v2_avatar_metadata_history
+  model: ref('int_execution_circles_v2_avatar_metadata_history')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 avatar metadata history
+  defaults:
+    agg_time_dimension: valid_from
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: avatar_type
+    type: categorical
+    expr: avatar_type
+  - name: onchain_name
+    type: categorical
+    expr: onchain_name
+  - name: metadata_digest
+    type: categorical
+    expr: metadata_digest
+  - name: ipfs_cid_v0
+    type: categorical
+    expr: ipfs_cid_v0
+  - name: gateway_url
+    type: categorical
+    expr: gateway_url
+  - name: valid_from
+    type: time
+    expr: valid_from
+    type_params:
+      time_granularity: day
+  - name: valid_to
+    type: time
+    expr: valid_to
+    type_params:
+      time_granularity: day
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  - name: metadata_name
+    type: categorical
+    expr: metadata_name
+  - name: metadata_symbol
+    type: categorical
+    expr: metadata_symbol
+  - name: metadata_description
+    type: categorical
+    expr: metadata_description
+  - name: metadata_image_url
+    type: categorical
+    expr: metadata_image_url
+  - name: metadata_preview_image_url
+    type: categorical
+    expr: metadata_preview_image_url
+  - name: metadata_body
+    type: categorical
+    expr: metadata_body
+  - name: metadata_fetched_at
+    type: time
+    expr: metadata_fetched_at
+    type_params:
+      time_granularity: day
+- name: int_execution_circles_v2_backing_depositors_current
+  model: ref('int_execution_circles_v2_backing_depositors_current')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backing depositors current
+  defaults:
+    agg_time_dimension: first_initiated_at
+  dimensions:
+  - name: backer
+    type: categorical
+    expr: backer
+  - name: first_initiated_at
+    type: time
+    expr: first_initiated_at
+    type_params:
+      time_granularity: day
+  - name: last_event_at
+    type: time
+    expr: last_event_at
+    type_params:
+      time_granularity: day
+- name: int_execution_circles_v2_backing_events_daily
+  model: ref('int_execution_circles_v2_backing_events_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 backing events daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: lifecycle_stage
+    type: categorical
+    expr: lifecycle_stage
+- name: int_execution_circles_v2_economically_active_avatars_weekly
+  model: ref('int_execution_circles_v2_economically_active_avatars_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 economically active avatars weekly
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: earning_kind
+    type: categorical
+    expr: earning_kind
+- name: int_execution_circles_v2_groups_overview_daily
+  model: ref('int_execution_circles_v2_groups_overview_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 groups overview daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+- name: int_execution_circles_v2_hub_events_daily
+  model: ref('int_execution_circles_v2_hub_events_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 hub events daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: event_name
+    type: categorical
+    expr: event_name
+- name: int_execution_circles_v2_mints_daily
+  model: ref('int_execution_circles_v2_mints_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 mints daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: mint_kind
+    type: categorical
+    expr: mint_kind
+- name: int_execution_circles_v2_tokens_supply_daily
+  model: ref('int_execution_circles_v2_tokens_supply_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 tokens supply daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: token_address
+    type: categorical
+    expr: token_address
+- name: int_execution_circles_v2_transfers_daily
+  model: ref('int_execution_circles_v2_transfers_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 transfers daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: transfer_category
+    type: categorical
+    expr: transfer_category
+- name: int_execution_circles_v2_trusts_daily
+  model: ref('int_execution_circles_v2_trusts_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 trusts daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
 metrics:
 - name: circles_distinct_human_users
   label: Circles Distinct Human Users
@@ -698,11 +3987,10 @@ metrics:
         - cnt
 - name: active_trusts_value
   label: Execution Circles V2 Trust Relations Current - Active Trusts
-  description: execution circles v2 trust relations current - active trusts (count). Auto-generated candidate metric; review
-    and promote before relying on it.
+  description: execution circles v2 trust relations current - active trusts (count).
   type: simple
   type_params:
-    measure: active_trusts_value
+    measure: execution_circles_v2_trust_relations_current__active_trusts_value
   config:
     meta:
       cerebro:
@@ -724,8 +4012,7 @@ metrics:
         - active trusts
 - name: execution_circles_v2_avatar_balances_latest__balance_value
   label: Execution Circles V2 Avatar Balances Latest - Balance
-  description: execution circles v2 avatar balances latest - balance (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  description: execution circles v2 avatar balances latest - balance (sum).
   type: simple
   type_params:
     measure: execution_circles_v2_avatar_balances_latest__balance_value
@@ -741,3 +4028,2791 @@ metrics:
         question_synonyms:
         - execution circles v2 avatar balances latest balance
         - balance
+- name: active_minters_value
+  label: Execution Circles V2 Active Minters Daily - Active Minters
+  description: execution circles v2 active minters daily - active minters (sum).
+  type: simple
+  type_params:
+    measure: active_minters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active minters daily active minters
+        - active minters
+- name: total_value
+  label: Execution Circles V2 Active Trusts Cnt Latest - Total
+  description: execution circles v2 active trusts cnt latest - total (sum).
+  type: simple
+  type_params:
+    measure: total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active trusts cnt latest total
+        - total
+- name: execution_circles_v2_active_trusts_cnt_latest__change_pct_value
+  label: Execution Circles V2 Active Trusts Cnt Latest - Change Pct
+  description: execution circles v2 active trusts cnt latest - change pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_active_trusts_cnt_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active trusts cnt latest change pct
+        - change pct
+- name: new_trusts_value
+  label: Execution Circles V2 Active Trusts Daily - New Trusts
+  description: execution circles v2 active trusts daily - new trusts (sum).
+  type: simple
+  type_params:
+    measure: new_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active trusts daily new trusts
+        - new trusts
+- name: revoked_trusts_value
+  label: Execution Circles V2 Active Trusts Daily - Revoked Trusts
+  description: execution circles v2 active trusts daily - revoked trusts (sum).
+  type: simple
+  type_params:
+    measure: revoked_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active trusts daily revoked trusts
+        - revoked trusts
+- name: new_backers_value
+  label: Execution Circles V2 Backers Cumulative Daily - New Backers
+  description: execution circles v2 backers cumulative daily - new backers (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: new_backers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backers cumulative daily new backers
+        - new backers
+- name: cumulative_backers_value
+  label: Execution Circles V2 Backers Cumulative Daily - Cumulative Backers
+  description: 'execution circles v2 backers cumulative daily - cumulative backers (max). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: cumulative_backers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backers cumulative daily cumulative backers
+        - cumulative backers
+- name: n_initiated_value
+  label: Execution Circles V2 Backing Depositors Current - N Initiated
+  description: execution circles v2 backing depositors current - n initiated (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: n_initiated_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - backer
+        - first_initiated_at
+        - last_event_at
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing depositors current n initiated
+        - n initiated
+- name: n_completed_value
+  label: Execution Circles V2 Backing Depositors Current - N Completed
+  description: execution circles v2 backing depositors current - n completed (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: n_completed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - backer
+        - first_initiated_at
+        - last_event_at
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing depositors current n completed
+        - n completed
+- name: n_released_value
+  label: Execution Circles V2 Backing Depositors Current - N Released
+  description: execution circles v2 backing depositors current - n released (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: n_released_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - backer
+        - first_initiated_at
+        - last_event_at
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing depositors current n released
+        - n released
+- name: execution_circles_v2_backing_depositors_current__n_distinct_assets_value
+  label: Execution Circles V2 Backing Depositors Current - N Distinct Assets
+  description: execution circles v2 backing depositors current - n distinct assets (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_backing_depositors_current__n_distinct_assets_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - backer
+        - first_initiated_at
+        - last_event_at
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing depositors current n distinct assets
+        - n distinct assets
+- name: execution_circles_v2_backing_events_daily__n_events_value
+  label: Execution Circles V2 Backing Events Daily - N Events
+  description: execution circles v2 backing events daily - n events (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_backing_events_daily__n_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - lifecycle_stage
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing events daily n events
+        - n events
+- name: n_distinct_backers_value
+  label: Execution Circles V2 Backing Events Daily - N Distinct Backers
+  description: execution circles v2 backing events daily - n distinct backers (sum).
+  type: simple
+  type_params:
+    measure: n_distinct_backers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - lifecycle_stage
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing events daily n distinct backers
+        - n distinct backers
+- name: execution_circles_v2_backing_events_daily__n_distinct_assets_value
+  label: Execution Circles V2 Backing Events Daily - N Distinct Assets
+  description: execution circles v2 backing events daily - n distinct assets (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_backing_events_daily__n_distinct_assets_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - lifecycle_stage
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 backing events daily n distinct assets
+        - n distinct assets
+- name: circles_type_value
+  label: Execution Circles V2 Crc20 Prices Daily - Circles Type
+  description: execution circles v2 crc20 prices daily - circles type (sum).
+  type: simple
+  type_params:
+    measure: circles_type_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily circles type
+        - circles type
+- name: price_vwap_usd_value
+  label: Execution Circles V2 Crc20 Prices Daily - Price Vwap Usd
+  description: execution circles v2 crc20 prices daily - price vwap usd (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: price_vwap_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily price vwap usd
+        - price vwap usd
+- name: price_median_usd_value
+  label: Execution Circles V2 Crc20 Prices Daily - Price Median Usd
+  description: execution circles v2 crc20 prices daily - price median usd (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: price_median_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily price median usd
+        - price median usd
+- name: total_crc_volume_value
+  label: Execution Circles V2 Crc20 Prices Daily - Total Crc Volume
+  description: execution circles v2 crc20 prices daily - total crc volume (sum).
+  type: simple
+  type_params:
+    measure: total_crc_volume_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily total crc volume
+        - total crc volume
+- name: total_crc_bought_volume_value
+  label: Execution Circles V2 Crc20 Prices Daily - Total Crc Bought Volume
+  description: execution circles v2 crc20 prices daily - total crc bought volume (sum).
+  type: simple
+  type_params:
+    measure: total_crc_bought_volume_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily total crc bought volume
+        - total crc bought volume
+- name: total_crc_sold_volume_value
+  label: Execution Circles V2 Crc20 Prices Daily - Total Crc Sold Volume
+  description: execution circles v2 crc20 prices daily - total crc sold volume (sum).
+  type: simple
+  type_params:
+    measure: total_crc_sold_volume_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily total crc sold volume
+        - total crc sold volume
+- name: trade_count_value
+  label: Execution Circles V2 Crc20 Prices Daily - Trade Count
+  description: execution circles v2 crc20 prices daily - trade count (sum).
+  type: simple
+  type_params:
+    measure: trade_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily trade count
+        - trade count
+- name: pool_count_value
+  label: Execution Circles V2 Crc20 Prices Daily - Pool Count
+  description: execution circles v2 crc20 prices daily - pool count (sum).
+  type: simple
+  type_params:
+    measure: pool_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - crc20_token
+        - avatar
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 crc20 prices daily pool count
+        - pool count
+- name: avatars_value
+  label: Execution Circles V2 Economically Active Avatars Weekly - Avatars
+  description: execution circles v2 economically active avatars weekly - avatars (sum).
+  type: simple
+  type_params:
+    measure: avatars_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - earning_kind
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 economically active avatars weekly avatars
+        - avatars
+- name: avatars_in_app_tx_value
+  label: Execution Circles V2 Economically Active Avatars Weekly - Avatars In App Tx
+  description: execution circles v2 economically active avatars weekly - avatars in app tx (sum).
+  type: simple
+  type_params:
+    measure: avatars_in_app_tx_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - earning_kind
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 economically active avatars weekly avatars in app tx
+        - avatars in app tx
+- name: n_members_value
+  label: Execution Circles V2 Group Size Current - N Members
+  description: execution circles v2 group size current - n members (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: n_members_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        question_synonyms:
+        - execution circles v2 group size current n members
+        - n members
+- name: bucket_order_value
+  label: Execution Circles V2 Group Size Distribution - Bucket Order
+  description: execution circles v2 group size distribution - bucket order (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: bucket_order_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - bucket
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 group size distribution bucket order
+        - bucket order
+- name: n_groups_value
+  label: Execution Circles V2 Group Size Distribution - N Groups
+  description: execution circles v2 group size distribution - n groups (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: n_groups_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - bucket
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 group size distribution n groups
+        - n groups
+- name: execution_circles_v2_group_token_supply_current__supply_value
+  label: Execution Circles V2 Group Token Supply Current - Supply
+  description: execution circles v2 group token supply current - supply (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_group_token_supply_current__supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current supply
+        - supply
+- name: wrapped_value
+  label: Execution Circles V2 Group Token Supply Current - Wrapped
+  description: execution circles v2 group token supply current - wrapped (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: wrapped_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current wrapped
+        - wrapped
+- name: unwrapped_value
+  label: Execution Circles V2 Group Token Supply Current - Unwrapped
+  description: execution circles v2 group token supply current - unwrapped (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: unwrapped_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current unwrapped
+        - unwrapped
+- name: execution_circles_v2_group_token_supply_current__wrapped_pct_value
+  label: Execution Circles V2 Group Token Supply Current - Wrapped Pct
+  description: execution circles v2 group token supply current - wrapped pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_group_token_supply_current__wrapped_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current wrapped pct
+        - wrapped pct
+- name: supply_demurraged_value
+  label: Execution Circles V2 Group Token Supply Current - Supply Demurraged
+  description: execution circles v2 group token supply current - supply demurraged (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: supply_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current supply demurraged
+        - supply demurraged
+- name: wrapped_demurraged_value
+  label: Execution Circles V2 Group Token Supply Current - Wrapped Demurraged
+  description: execution circles v2 group token supply current - wrapped demurraged (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: wrapped_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - group_avatar
+        - display_name
+        - preview_image_url
+        question_synonyms:
+        - execution circles v2 group token supply current wrapped demurraged
+        - wrapped demurraged
+- name: execution_circles_v2_group_token_supply_daily__value_value
+  label: Execution Circles V2 Group Token Supply Daily - Value
+  description: execution circles v2 group token supply daily - value (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_group_token_supply_daily__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 group token supply daily value
+        - value
+- name: execution_circles_v2_group_token_supply_daily__value_demurraged_value
+  label: Execution Circles V2 Group Token Supply Daily - Value Demurraged
+  description: execution circles v2 group token supply daily - value demurraged (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_group_token_supply_daily__value_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 group token supply daily value demurraged
+        - value demurraged
+- name: n_new_groups_value
+  label: Execution Circles V2 Groups Overview Daily - N New Groups
+  description: execution circles v2 groups overview daily - n new groups (sum).
+  type: simple
+  type_params:
+    measure: n_new_groups_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 groups overview daily n new groups
+        - n new groups
+- name: n_collateral_events_value
+  label: Execution Circles V2 Groups Overview Daily - N Collateral Events
+  description: execution circles v2 groups overview daily - n collateral events (sum).
+  type: simple
+  type_params:
+    measure: n_collateral_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 groups overview daily n collateral events
+        - n collateral events
+- name: n_distinct_groups_acting_value
+  label: Execution Circles V2 Groups Overview Daily - N Distinct Groups Acting
+  description: execution circles v2 groups overview daily - n distinct groups acting (sum).
+  type: simple
+  type_params:
+    measure: n_distinct_groups_acting_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 groups overview daily n distinct groups acting
+        - n distinct groups acting
+- name: n_groups_total_value
+  label: Execution Circles V2 Groups Overview Daily - N Groups Total
+  description: execution circles v2 groups overview daily - n groups total (sum).
+  type: simple
+  type_params:
+    measure: n_groups_total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 groups overview daily n groups total
+        - n groups total
+- name: execution_circles_v2_hub_events_daily__n_events_value
+  label: Execution Circles V2 Hub Events Daily - N Events
+  description: execution circles v2 hub events daily - n events (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_hub_events_daily__n_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 hub events daily n events
+        - n events
+- name: n_tx_value
+  label: Execution Circles V2 Hub Events Daily - N Tx
+  description: execution circles v2 hub events daily - n tx (sum).
+  type: simple
+  type_params:
+    measure: n_tx_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 hub events daily n tx
+        - n tx
+- name: n_distinct_addresses_value
+  label: Execution Circles V2 Hub Events Daily - N Distinct Addresses
+  description: execution circles v2 hub events daily - n distinct addresses (sum).
+  type: simple
+  type_params:
+    measure: n_distinct_addresses_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - event_name
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 hub events daily n distinct addresses
+        - n distinct addresses
+- name: n_invited_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - N Invited
+  description: execution circles v2 invite funnel cohort monthly - n invited (sum).
+  type: simple
+  type_params:
+    measure: n_invited_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly n invited
+        - n invited
+- name: n_minted_2_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - N Minted 2 Days
+  description: execution circles v2 invite funnel cohort monthly - n minted 2 days (sum).
+  type: simple
+  type_params:
+    measure: n_minted_2_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly n minted 2 days
+        - n minted 2 days
+- name: n_minted_7_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - N Minted 7 Days
+  description: execution circles v2 invite funnel cohort monthly - n minted 7 days (sum).
+  type: simple
+  type_params:
+    measure: n_minted_7_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly n minted 7 days
+        - n minted 7 days
+- name: n_minted_14_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - N Minted 14 Days
+  description: execution circles v2 invite funnel cohort monthly - n minted 14 days (sum).
+  type: simple
+  type_params:
+    measure: n_minted_14_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly n minted 14 days
+        - n minted 14 days
+- name: n_active_minter_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - N Active Minter
+  description: execution circles v2 invite funnel cohort monthly - n active minter (sum).
+  type: simple
+  type_params:
+    measure: n_active_minter_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly n active minter
+        - n active minter
+- name: pct_minted_2_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - Pct Minted 2 Days
+  description: execution circles v2 invite funnel cohort monthly - pct minted 2 days (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: pct_minted_2_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly pct minted 2 days
+        - pct minted 2 days
+- name: pct_minted_7_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - Pct Minted 7 Days
+  description: execution circles v2 invite funnel cohort monthly - pct minted 7 days (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: pct_minted_7_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly pct minted 7 days
+        - pct minted 7 days
+- name: pct_minted_14_days_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - Pct Minted 14 Days
+  description: execution circles v2 invite funnel cohort monthly - pct minted 14 days (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: pct_minted_14_days_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly pct minted 14 days
+        - pct minted 14 days
+- name: pct_active_minter_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - Pct Active Minter
+  description: execution circles v2 invite funnel cohort monthly - pct active minter (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: pct_active_minter_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly pct active minter
+        - pct active minter
+- name: median_days_to_second_mint_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - Median Days To Second Mint
+  description: execution circles v2 invite funnel cohort monthly - median days to second mint (sum).
+  type: simple
+  type_params:
+    measure: median_days_to_second_mint_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly median days to second mint
+        - median days to second mint
+- name: p25_days_to_second_mint_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - P25 Days To Second Mint
+  description: execution circles v2 invite funnel cohort monthly - p25 days to second mint (sum).
+  type: simple
+  type_params:
+    measure: p25_days_to_second_mint_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly p25 days to second mint
+        - p25 days to second mint
+- name: p75_days_to_second_mint_value
+  label: Execution Circles V2 Invite Funnel Cohort Monthly - P75 Days To Second Mint
+  description: execution circles v2 invite funnel cohort monthly - p75 days to second mint (sum).
+  type: simple
+  type_params:
+    measure: p75_days_to_second_mint_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - cohort_month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 invite funnel cohort monthly p75 days to second mint
+        - p75 days to second mint
+- name: execution_circles_v2_kpi_active_minters_latest__value_value
+  label: Execution Circles V2 Kpi Active Minters Latest - Value
+  description: execution circles v2 kpi active minters latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_active_minters_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi active minters latest value
+        - value
+- name: execution_circles_v2_kpi_active_minters_latest__change_pct_value
+  label: Execution Circles V2 Kpi Active Minters Latest - Change Pct
+  description: execution circles v2 kpi active minters latest - change pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_active_minters_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi active minters latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_avg_members_per_group_latest__value_value
+  label: Execution Circles V2 Kpi Avg Members Per Group Latest - Value
+  description: execution circles v2 kpi avg members per group latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_avg_members_per_group_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi avg members per group latest value
+        - value
+- name: median_members_value
+  label: Execution Circles V2 Kpi Avg Members Per Group Latest - Median Members
+  description: execution circles v2 kpi avg members per group latest - median members (sum).
+  type: simple
+  type_params:
+    measure: median_members_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi avg members per group latest median members
+        - median members
+- name: execution_circles_v2_kpi_avg_members_per_group_latest__change_pct_value
+  label: Execution Circles V2 Kpi Avg Members Per Group Latest - Change Pct
+  description: execution circles v2 kpi avg members per group latest - change pct (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_avg_members_per_group_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi avg members per group latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_avg_trusts_per_avatar_latest__value_value
+  label: Execution Circles V2 Kpi Avg Trusts Per Avatar Latest - Value
+  description: execution circles v2 kpi avg trusts per avatar latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_avg_trusts_per_avatar_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi avg trusts per avatar latest value
+        - value
+- name: execution_circles_v2_kpi_depositors_in_backers_pct_latest__value_value
+  label: Execution Circles V2 Kpi Depositors In Backers Pct Latest - Value
+  description: execution circles v2 kpi depositors in backers pct latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_depositors_in_backers_pct_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi depositors in backers pct latest value
+        - value
+- name: total_depositors_value
+  label: Execution Circles V2 Kpi Depositors In Backers Pct Latest - Total Depositors
+  description: execution circles v2 kpi depositors in backers pct latest - total depositors (sum).
+  type: simple
+  type_params:
+    measure: total_depositors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi depositors in backers pct latest total depositors
+        - total depositors
+- name: depositors_in_backers_value
+  label: Execution Circles V2 Kpi Depositors In Backers Pct Latest - Depositors In Backers
+  description: execution circles v2 kpi depositors in backers pct latest - depositors in backers (sum).
+  type: simple
+  type_params:
+    measure: depositors_in_backers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi depositors in backers pct latest depositors in backers
+        - depositors in backers
+- name: execution_circles_v2_kpi_depositors_in_backers_pct_latest__change_pct_value
+  label: Execution Circles V2 Kpi Depositors In Backers Pct Latest - Change Pct
+  description: execution circles v2 kpi depositors in backers pct latest - change pct (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_depositors_in_backers_pct_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi depositors in backers pct latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_group_token_supply_latest__value_value
+  label: Execution Circles V2 Kpi Group Token Supply Latest - Value
+  description: execution circles v2 kpi group token supply latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_group_token_supply_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi group token supply latest value
+        - value
+- name: execution_circles_v2_kpi_group_token_supply_latest__change_pct_value
+  label: Execution Circles V2 Kpi Group Token Supply Latest - Change Pct
+  description: execution circles v2 kpi group token supply latest - change pct (average). Read this as an average over the
+    grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_group_token_supply_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi group token supply latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_group_wrapped_pct_latest__value_value
+  label: Execution Circles V2 Kpi Group Wrapped Pct Latest - Value
+  description: execution circles v2 kpi group wrapped pct latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_group_wrapped_pct_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi group wrapped pct latest value
+        - value
+- name: execution_circles_v2_kpi_group_wrapped_pct_latest__change_pct_value
+  label: Execution Circles V2 Kpi Group Wrapped Pct Latest - Change Pct
+  description: execution circles v2 kpi group wrapped pct latest - change pct (average). Read this as an average over the
+    grain; do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_group_wrapped_pct_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi group wrapped pct latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_mints_7d__value_value
+  label: Execution Circles V2 Kpi Mints 7D - Value
+  description: execution circles v2 kpi mints 7d - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_mints_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi mints 7d value
+        - value
+- name: execution_circles_v2_kpi_mints_7d__amount_value
+  label: Execution Circles V2 Kpi Mints 7D - Amount
+  description: execution circles v2 kpi mints 7d - amount (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_mints_7d__amount_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi mints 7d amount
+        - amount
+- name: execution_circles_v2_kpi_mints_7d__change_pct_value
+  label: Execution Circles V2 Kpi Mints 7D - Change Pct
+  description: execution circles v2 kpi mints 7d - change pct (average). Read this as an average over the grain; do NOT sum
+    it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_mints_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi mints 7d change pct
+        - change pct
+- name: execution_circles_v2_kpi_new_backers_7d__value_value
+  label: Execution Circles V2 Kpi New Backers 7D - Value
+  description: execution circles v2 kpi new backers 7d - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_backers_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new backers 7d value
+        - value
+- name: execution_circles_v2_kpi_new_backers_7d__change_pct_value
+  label: Execution Circles V2 Kpi New Backers 7D - Change Pct
+  description: execution circles v2 kpi new backers 7d - change pct (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_backers_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new backers 7d change pct
+        - change pct
+- name: execution_circles_v2_kpi_new_groups_7d__value_value
+  label: Execution Circles V2 Kpi New Groups 7D - Value
+  description: execution circles v2 kpi new groups 7d - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_groups_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new groups 7d value
+        - value
+- name: execution_circles_v2_kpi_new_groups_7d__change_pct_value
+  label: Execution Circles V2 Kpi New Groups 7D - Change Pct
+  description: execution circles v2 kpi new groups 7d - change pct (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_groups_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new groups 7d change pct
+        - change pct
+- name: execution_circles_v2_kpi_new_trusts_7d__value_value
+  label: Execution Circles V2 Kpi New Trusts 7D - Value
+  description: execution circles v2 kpi new trusts 7d - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_trusts_7d__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new trusts 7d value
+        - value
+- name: revoked_value
+  label: Execution Circles V2 Kpi New Trusts 7D - Revoked
+  description: execution circles v2 kpi new trusts 7d - revoked (sum).
+  type: simple
+  type_params:
+    measure: revoked_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new trusts 7d revoked
+        - revoked
+- name: execution_circles_v2_kpi_new_trusts_7d__change_pct_value
+  label: Execution Circles V2 Kpi New Trusts 7D - Change Pct
+  description: execution circles v2 kpi new trusts 7d - change pct (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_new_trusts_7d__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi new trusts 7d change pct
+        - change pct
+- name: execution_circles_v2_kpi_total_backers_latest__value_value
+  label: Execution Circles V2 Kpi Total Backers Latest - Value
+  description: execution circles v2 kpi total backers latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_backers_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total backers latest value
+        - value
+- name: execution_circles_v2_kpi_total_backers_latest__change_pct_value
+  label: Execution Circles V2 Kpi Total Backers Latest - Change Pct
+  description: execution circles v2 kpi total backers latest - change pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_backers_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total backers latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_total_depositors_latest__value_value
+  label: Execution Circles V2 Kpi Total Depositors Latest - Value
+  description: execution circles v2 kpi total depositors latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_depositors_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total depositors latest value
+        - value
+- name: new_last_7d_value
+  label: Execution Circles V2 Kpi Total Depositors Latest - New Last 7D
+  description: execution circles v2 kpi total depositors latest - new last 7d (sum).
+  type: simple
+  type_params:
+    measure: new_last_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total depositors latest new last 7d
+        - new last 7d
+- name: execution_circles_v2_kpi_total_depositors_latest__change_pct_value
+  label: Execution Circles V2 Kpi Total Depositors Latest - Change Pct
+  description: execution circles v2 kpi total depositors latest - change pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_depositors_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total depositors latest change pct
+        - change pct
+- name: execution_circles_v2_kpi_total_supply_latest__value_value
+  label: Execution Circles V2 Kpi Total Supply Latest - Value
+  description: execution circles v2 kpi total supply latest - value (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_supply_latest__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total supply latest value
+        - value
+- name: execution_circles_v2_kpi_total_supply_latest__change_pct_value
+  label: Execution Circles V2 Kpi Total Supply Latest - Change Pct
+  description: execution circles v2 kpi total supply latest - change pct (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_kpi_total_supply_latest__change_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 kpi total supply latest change pct
+        - change pct
+- name: cohort_order_value
+  label: Execution Circles V2 Minter Cohort Daily - Cohort Order
+  description: execution circles v2 minter cohort daily - cohort order (sum).
+  type: simple
+  type_params:
+    measure: cohort_order_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - cohort
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 minter cohort daily cohort order
+        - cohort order
+- name: cnt_value
+  label: Execution Circles V2 Minter Cohort Daily - Cnt
+  description: execution circles v2 minter cohort daily - cnt (sum).
+  type: simple
+  type_params:
+    measure: cnt_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - cohort
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 minter cohort daily cnt
+        - cnt
+- name: n_mint_events_value
+  label: Execution Circles V2 Mints Daily - N Mint Events
+  description: execution circles v2 mints daily - n mint events (sum).
+  type: simple
+  type_params:
+    measure: n_mint_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - mint_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 mints daily n mint events
+        - n mint events
+- name: n_minters_value
+  label: Execution Circles V2 Mints Daily - N Minters
+  description: execution circles v2 mints daily - n minters (sum).
+  type: simple
+  type_params:
+    measure: n_minters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - mint_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 mints daily n minters
+        - n minters
+- name: amount_minted_value
+  label: Execution Circles V2 Mints Daily - Amount Minted
+  description: execution circles v2 mints daily - amount minted (sum).
+  type: simple
+  type_params:
+    measure: amount_minted_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - mint_kind
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 mints daily amount minted
+        - amount minted
+- name: execution_circles_v2_p2p_velocity_daily__n_transfers_value
+  label: Execution Circles V2 P2P Velocity Daily - N Transfers
+  description: execution circles v2 p2p velocity daily - n transfers (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_p2p_velocity_daily__n_transfers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 p2p velocity daily n transfers
+        - n transfers
+- name: execution_circles_v2_p2p_velocity_daily__n_senders_value
+  label: Execution Circles V2 P2P Velocity Daily - N Senders
+  description: execution circles v2 p2p velocity daily - n senders (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_p2p_velocity_daily__n_senders_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 p2p velocity daily n senders
+        - n senders
+- name: execution_circles_v2_p2p_velocity_daily__n_receivers_value
+  label: Execution Circles V2 P2P Velocity Daily - N Receivers
+  description: execution circles v2 p2p velocity daily - n receivers (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_p2p_velocity_daily__n_receivers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 p2p velocity daily n receivers
+        - n receivers
+- name: execution_circles_v2_p2p_velocity_daily__amount_value
+  label: Execution Circles V2 P2P Velocity Daily - Amount
+  description: execution circles v2 p2p velocity daily - amount (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_p2p_velocity_daily__amount_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 p2p velocity daily amount
+        - amount
+- name: execution_circles_v2_supply_by_holder_type_daily__value_value
+  label: Execution Circles V2 Supply By Holder Type Daily - Value
+  description: execution circles v2 supply by holder type daily - value (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_supply_by_holder_type_daily__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 supply by holder type daily value
+        - value
+- name: execution_circles_v2_supply_by_holder_type_daily__value_demurraged_value
+  label: Execution Circles V2 Supply By Holder Type Daily - Value Demurraged
+  description: execution circles v2 supply by holder type daily - value demurraged (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_supply_by_holder_type_daily__value_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 supply by holder type daily value demurraged
+        - value demurraged
+- name: holder_count_value
+  label: Execution Circles V2 Supply By Holder Type Daily - Holder Count
+  description: execution circles v2 supply by holder type daily - holder count (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: holder_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 supply by holder type daily holder count
+        - holder count
+- name: supply_raw_value
+  label: Execution Circles V2 Tokens Supply Daily - Supply Raw
+  description: execution circles v2 tokens supply daily - supply raw (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: supply_raw_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - token_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 tokens supply daily supply raw
+        - supply raw
+- name: execution_circles_v2_tokens_supply_daily__supply_value
+  label: Execution Circles V2 Tokens Supply Daily - Supply
+  description: execution circles v2 tokens supply daily - supply (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_tokens_supply_daily__supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - token_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 tokens supply daily supply
+        - supply
+- name: demurraged_supply_value
+  label: Execution Circles V2 Tokens Supply Daily - Demurraged Supply
+  description: execution circles v2 tokens supply daily - demurraged supply (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: demurraged_supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - token_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 tokens supply daily demurraged supply
+        - demurraged supply
+- name: execution_circles_v2_total_supply_daily__value_value
+  label: Execution Circles V2 Total Supply Daily - Value
+  description: execution circles v2 total supply daily - value (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_total_supply_daily__value_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 total supply daily value
+        - value
+- name: execution_circles_v2_total_supply_daily__value_demurraged_value
+  label: Execution Circles V2 Total Supply Daily - Value Demurraged
+  description: execution circles v2 total supply daily - value demurraged (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_total_supply_daily__value_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 total supply daily value demurraged
+        - value demurraged
+- name: token_count_value
+  label: Execution Circles V2 Total Supply Daily - Token Count
+  description: execution circles v2 total supply daily - token count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: token_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 total supply daily token count
+        - token count
+- name: execution_circles_v2_transfers_daily__n_transfers_value
+  label: Execution Circles V2 Transfers Daily - N Transfers
+  description: execution circles v2 transfers daily - n transfers (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_transfers_daily__n_transfers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - transfer_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 transfers daily n transfers
+        - n transfers
+- name: execution_circles_v2_transfers_daily__n_senders_value
+  label: Execution Circles V2 Transfers Daily - N Senders
+  description: execution circles v2 transfers daily - n senders (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_transfers_daily__n_senders_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - transfer_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 transfers daily n senders
+        - n senders
+- name: execution_circles_v2_transfers_daily__n_receivers_value
+  label: Execution Circles V2 Transfers Daily - N Receivers
+  description: execution circles v2 transfers daily - n receivers (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_transfers_daily__n_receivers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - transfer_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 transfers daily n receivers
+        - n receivers
+- name: execution_circles_v2_transfers_daily__amount_value
+  label: Execution Circles V2 Transfers Daily - Amount
+  description: execution circles v2 transfers daily - amount (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_transfers_daily__amount_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - transfer_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 transfers daily amount
+        - amount
+- name: amount_demurraged_value
+  label: Execution Circles V2 Transfers Daily - Amount Demurraged
+  description: execution circles v2 transfers daily - amount demurraged (sum).
+  type: simple
+  type_params:
+    measure: amount_demurraged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - transfer_category
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 transfers daily amount demurraged
+        - amount demurraged
+- name: n_trust_events_value
+  label: Execution Circles V2 Trusts Daily - N Trust Events
+  description: execution circles v2 trusts daily - n trust events (sum).
+  type: simple
+  type_params:
+    measure: n_trust_events_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts daily n trust events
+        - n trust events
+- name: n_new_trusts_value
+  label: Execution Circles V2 Trusts Daily - N New Trusts
+  description: execution circles v2 trusts daily - n new trusts (sum).
+  type: simple
+  type_params:
+    measure: n_new_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts daily n new trusts
+        - n new trusts
+- name: n_revoked_trusts_value
+  label: Execution Circles V2 Trusts Daily - N Revoked Trusts
+  description: execution circles v2 trusts daily - n revoked trusts (sum).
+  type: simple
+  type_params:
+    measure: n_revoked_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts daily n revoked trusts
+        - n revoked trusts
+- name: n_distinct_trusters_value
+  label: Execution Circles V2 Trusts Daily - N Distinct Trusters
+  description: execution circles v2 trusts daily - n distinct trusters (sum).
+  type: simple
+  type_params:
+    measure: n_distinct_trusters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts daily n distinct trusters
+        - n distinct trusters
+- name: n_distinct_trustees_value
+  label: Execution Circles V2 Trusts Daily - N Distinct Trustees
+  description: execution circles v2 trusts daily - n distinct trustees (sum).
+  type: simple
+  type_params:
+    measure: n_distinct_trustees_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts daily n distinct trustees
+        - n distinct trustees
+- name: avatar_count_value
+  label: Execution Circles V2 Trusts Distribution - Avatar Count
+  description: execution circles v2 trusts distribution - avatar count (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: avatar_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - direction
+        - trust_bucket
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 trusts distribution avatar count
+        - avatar count
+- name: wrapped_supply_value
+  label: Execution Circles V2 Wrapper Share Daily - Wrapped Supply
+  description: execution circles v2 wrapper share daily - wrapped supply (sum).
+  type: simple
+  type_params:
+    measure: wrapped_supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 wrapper share daily wrapped supply
+        - wrapped supply
+- name: unwrapped_supply_value
+  label: Execution Circles V2 Wrapper Share Daily - Unwrapped Supply
+  description: execution circles v2 wrapper share daily - unwrapped supply (sum).
+  type: simple
+  type_params:
+    measure: unwrapped_supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 wrapper share daily unwrapped supply
+        - unwrapped supply
+- name: total_supply_value
+  label: Execution Circles V2 Wrapper Share Daily - Total Supply
+  description: execution circles v2 wrapper share daily - total supply (sum).
+  type: simple
+  type_params:
+    measure: total_supply_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 wrapper share daily total supply
+        - total supply
+- name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
+  label: Execution Circles V2 Wrapper Share Daily - Wrapped Pct
+  description: execution circles v2 wrapper share daily - wrapped pct (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 wrapper share daily wrapped pct
+        - wrapped pct
+- name: execution_circles_v2_active_trusts_daily__active_trusts_value
+  label: Execution Circles V2 Active Trusts Daily - Execution Circles V2 Active Trusts Daily Active Trusts
+  description: execution circles v2 active trusts daily - execution circles v2 active trusts daily active trusts (sum).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_active_trusts_daily__active_trusts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution circles v2 active trusts daily execution circles v2 active trusts daily active trusts
+        - execution circles v2 active trusts daily active trusts
