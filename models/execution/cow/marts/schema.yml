@@ -11,7 +11,11 @@ models:
     in events) sourced from executedProtocolFees via /api/v2/trades; the
     transition period (mid-2023 through early 2024) is mixed — COALESCE picks
     whichever source is available per trade. fee_source identifies where the fee
-    came from ('onchain', 'api', or NULL). NOTE — ClickHouse LEFT JOIN with
+    came from ('onchain', 'api', or NULL). The API fee join is per fill —
+    (order_uid, tx_hash, log_index) — because partially-fillable orders settle
+    across multiple trades sharing an order_uid, each with its own
+    executedProtocolFees; joining on order_uid alone double-counts fees across
+    fills. NOTE — ClickHouse LEFT JOIN with
     join_use_nulls=0 (default) fills unmatched String columns with '' instead
     of NULL, so we check fee_token != '' rather than IS NOT NULL to correctly
     detect a real API match.

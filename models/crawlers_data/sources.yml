@@ -28,13 +28,6 @@ sources:
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
-      - name: cow_api_trade_fees
-        description: >
-          Per-trade protocol fee data from the CoW Protocol API.
-          Ingested by click-runner (cow ingestor). Keyed by order_uid.
-          Covers 2023+ where CoW switched to surplus-based fees not visible in events.
-        loaded_at_field: ingested_at
-
       - name: circles_blacklisted
         description: >
           Current Circles v2 bot/sybil blacklist. Ingested daily by click-runner
@@ -54,3 +47,24 @@ sources:
             description: Free-text reason from the upstream API (e.g. `repeated_username`, `duplicate_avatar`).
           - name: ingested_at
             description: Wall-clock timestamp of the row insert.
+
+  # Separate source so the schema can be redirected (e.g. to playground_max)
+  # during dev/backfill validation without also redirecting dune_* and the
+  # other crawlers_data tables. Defaults to crawlers_data in prod.
+  - name: crawlers_data_cow
+    schema: "{{ env_var('DBT_COW_FEES_SCHEMA', 'crawlers_data') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: cow_api_trade_fees
+        description: >
+          Per-fill protocol fee data from the CoW Protocol API.
+          Ingested by click-runner (cow ingestor). Keyed by
+          (order_uid, tx_hash, log_index) — partially-fillable orders produce
+          multiple trades per order_uid, each with its own executedProtocolFees.
+          Covers 2023+ where CoW switched to surplus-based fees not visible in events.
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}

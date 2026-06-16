@@ -1,12 +1,19 @@
-﻿{{
+﻿{#
+  Batched backfill (scripts/full_refresh/refresh.py) passes start_month, which
+  flips the strategy to 'append' so per-month batches are plain INSERTs and never
+  touch system.parts (which insert_overwrite's partition-replace needs, and which
+  playground/dev users aren't granted). Prod daily runs pass no start_month and
+  stay on insert_overwrite. Mirrors the tokens balances models.
+#}
+{{
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
+        incremental_strategy=('append' if var('start_month', none) else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['execution', 'cow', 'trades']
+        tags=['production', 'execution', 'cow', 'trades']
     )
 }}
 
@@ -16,7 +23,9 @@
 WITH
 
 trades AS (
-    SELECT *
+    SELECT
+        *,
+        lower(transaction_hash) AS tx_hash_norm
     FROM {{ ref('int_execution_cow_trades') }}
     {% if start_month and end_month %}
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
@@ -29,6 +38,8 @@ trades AS (
 api_fees AS (
     SELECT
         order_uid,
+        tx_hash,
+        log_index,
         fee_token,
         fee_amount,
         surplus_policy_type,
@@ -98,5 +109,12 @@ SELECT
     t.order_uid                                                                      AS order_uid,
     t.solver                                                                         AS solver
 FROM trades t
+-- Join per fill, not per order: partially-fillable orders settle across
+-- multiple trades sharing an order_uid, each with its own protocol fees.
+-- Joining on order_uid alone attaches the same fee row to every fill and
+-- inflates summed fee_usd / solver_value_usd (~12x on multi-fill orders).
+-- API txHash/logIndex match the on-chain values exactly (validated Jun 2026).
 LEFT JOIN api_fees f
-    ON f.order_uid = t.order_uid
+    ON  f.order_uid = t.order_uid
+    AND f.tx_hash   = t.tx_hash_norm
+    AND f.log_index = t.log_index

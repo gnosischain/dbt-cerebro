@@ -1,12 +1,17 @@
+{#
+  'append' under batched backfill (start_month set) so per-month batches are plain
+  INSERTs and avoid the system.parts grant insert_overwrite needs; insert_overwrite
+  for prod daily runs. See fct_execution_cow_trades.
+#}
 {{
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
+        incremental_strategy=('append' if var('start_month', none) else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(date, solver)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['execution', 'cow', 'solvers', 'daily']
+        tags=['production', 'execution', 'cow', 'solvers', 'daily']
     )
 }}
 
