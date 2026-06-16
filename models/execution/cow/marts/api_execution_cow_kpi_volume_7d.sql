@@ -19,4 +19,5 @@ prior AS (
 SELECT
     round((SELECT v FROM recent), 0)                                             AS value,
     round(((SELECT v FROM recent) - (SELECT v FROM prior))
-          / nullIf((SELECT v FROM prior), 0) * 100, 1)                           AS change_pct
+          / nullIf((SELECT v FROM prior), 0) * 100, 1)                           AS change_pct,
+    today() - 1                                                                  AS as_of_date
