@@ -46,22 +46,34 @@ cohort_activity AS (
     GROUP BY f.cohort_month, a.activity_month
 ),
 
-with_initial AS (
+cohort_size AS (
+    -- Onboard-cohort size: distinct users who onboarded in cohort_month.
+    -- Bounds retention at 100% (active users are a subset of the cohort). See
+    -- fct_execution_gnosis_app_retention_by_action_monthly for why a month-0
+    -- anchor is wrong for an onboard-cohort numerator.
+    SELECT
+        cohort_month,
+        count(DISTINCT address) AS initial_users
+    FROM cohort_user
+    GROUP BY cohort_month
+),
+
+with_amount AS (
     SELECT
         *,
-        max(users)    OVER (PARTITION BY cohort_month)                        AS initial_users,
         argMin(amount_usd, activity_month) OVER (PARTITION BY cohort_month)   AS initial_amount_usd
     FROM cohort_activity
 )
 
 SELECT
-    cohort_month,
-    activity_month,
-    months_since,
-    users,
-    initial_users,
-    round(users / greatest(initial_users, 1) * 100, 1)                           AS retention_pct,
-    round(amount_usd / nullIf(initial_amount_usd, 0) * 100, 1)                   AS amount_retention_pct,
-    round(toFloat64(amount_usd), 2)                                              AS amount_usd
-FROM with_initial
-ORDER BY cohort_month, activity_month
+    w.cohort_month,
+    w.activity_month,
+    w.months_since,
+    w.users,
+    s.initial_users,
+    round(w.users / nullIf(s.initial_users, 0) * 100, 1)                         AS retention_pct,
+    round(w.amount_usd / nullIf(w.initial_amount_usd, 0) * 100, 1)               AS amount_retention_pct,
+    round(toFloat64(w.amount_usd), 2)                                            AS amount_usd
+FROM with_amount w
+INNER JOIN cohort_size s ON w.cohort_month = s.cohort_month
+ORDER BY w.cohort_month, w.activity_month

@@ -148,19 +148,21 @@ models:
 
 - name: fct_execution_gnosis_app_gpay_topups_by_token_daily
   description: |
-    Daily Gnosis App → Gnosis Pay TopUp activity, derived from
-    int_execution_gnosis_app_gpay_topups. Backing fact for
+    Daily Gnosis App → Gnosis Pay top-up activity, derived from
+    int_execution_gnosis_app_gpay_topups (top-up = a GP "Crypto Deposit" into a
+    currently-GA-owned wallet; see that model's docs). Backing fact for
     api_execution_gnosis_app_gpay_topups_by_token_daily.
 
-    Grain: (date, token_bought_symbol). The dashboard can aggregate across
-    tokens or filter client-side (e.g. only EURe, only USDC). n_ga_users and
-    n_gp_wallets are distinct counts within the slice.
+    Grain: (date, token_bought_symbol). token_bought_symbol is the DEPOSITED
+    token (legacy column name from the old swap-based definition). The dashboard
+    can aggregate across tokens or filter client-side (e.g. only EURe, only USDC).
+    n_ga_users and n_gp_wallets are distinct counts within the slice.
   columns:
   - name: date
     description: Calendar date (UTC).
     data_type: Date
   - name: token_bought_symbol
-    description: Symbol of the token bought.
+    description: Symbol of the deposited (top-up) token; legacy column name.
     data_type: Nullable(String)
   - name: n_topups
     description: Number of in-app top-up events.
@@ -639,35 +641,49 @@ models:
 
 - name: fct_execution_gnosis_app_retention_monthly
   description: |
-    Cohort retention grid. cohort_month = month of user's 'onboard' row
-    (first-ever heuristic hit). activity_month = month of any subsequent
-    non-onboard activity. retention_pct = users_in_activity_month /
-    cohort_initial_size × 100. Matches the fct_execution_gpay_retention_monthly
-    shape; port for GA.
+    Cohort retention grid for the Gnosis App onboard cohort.
+
+    Modeling assumptions:
+      * cohort_month = month of the user's 'onboard' row (first-ever heuristic
+        hit), NOT their first transactional activity.
+      * activity_month = month of any subsequent non-onboard activity. Only the
+        lower triangle is kept (activity_month >= cohort_month) so on-chain
+        history predating the GA onboard does not create spurious cells.
+      * initial_users (the retention denominator) = the onboard-cohort size,
+        i.e. distinct users whose onboard month is cohort_month. It is
+        deliberately NOT max(users) over activity months (peak-normalisation,
+        which let retention exceed 100%) and NOT the month-0 actives: the
+        numerator counts ANY cohort user active in activity_month (not a fixed
+        followed sub-cohort), so only the full onboard cohort bounds it <= 100%.
+      * retention_pct therefore reads as "% of the onboard cohort active in
+        month N" (return/adoption), not the conditional stickiness of a followed
+        sub-cohort.
+      * amount_retention_pct anchors on the cohort's earliest activity-month
+        amount (argMin over activity_month).
   columns:
   - name: cohort_month
-    description: Month of the user's first activity (cohort anchor).
+    description: Onboard month (toStartOfMonth of the first 'onboard' row); the cohort anchor.
     data_type: Date
   - name: activity_month
-    description: Month in which the cohort's subsequent activity is measured.
+    description: Month in which the cohort's subsequent activity is measured (>= cohort_month).
     data_type: Date
   - name: months_since
-    description: Whole months between cohort_month and activity_month.
+    description: Whole months between cohort_month and activity_month (0 = onboard month).
     data_type: Int32
   - name: users
-    description: Distinct users in this cell.
+    description: Distinct cohort users active in this cell (subset of initial_users).
     data_type: UInt64
   - name: initial_users
-    description: Size of the cohort at its anchor period (retention denominator).
+    description: Onboard-cohort size = distinct users onboarded in cohort_month (fixed retention denominator; numerator is a subset so retention_pct <= 100%).
     data_type: UInt64
   - name: retention_pct
-    description: users / initial_users x 100.
+    description: users / initial_users x 100 = share of the onboard cohort active in activity_month.
     data_type: Float64
   - name: amount_retention_pct
-    description: Retained USD amount as a share of the cohort's initial amount (x100).
+    description: Activity USD as a share of the cohort's earliest activity-month USD (argMin anchor) x100.
     data_type: Nullable(Float64)
   - name: amount_usd
-    description: USD amount.
+    description: USD amount transacted by the cohort in activity_month.
     data_type: Nullable(Float64)
   meta:
     owner: analytics_team
@@ -680,31 +696,46 @@ models:
 
 - name: fct_execution_gnosis_app_retention_by_action_monthly
   description: |
-    Retention split by activity_kind (swap_filled / topup / marketplace_buy /
-    circles_trust / etc.). Uses the GLOBAL onboard cohort_month as the
-    anchor so the denominator is consistent across action types — the
-    numerator counts users who did that specific action in activity_month.
+    Cohort retention split by activity_kind (swap_filled / swap_signed / topup /
+    marketplace_buy / token_offer_claim / circles_*). Same onboard-cohort anchor
+    and denominator as fct_execution_gnosis_app_retention_monthly.
+
+    Modeling assumptions:
+      * cohort_month = the user's GLOBAL onboard month (first 'onboard' row) —
+        the SAME anchor for every action, so denominators are comparable across
+        action types.
+      * users (numerator) = distinct cohort users who did THIS activity_kind in
+        activity_month (lower triangle only, activity_month >= cohort_month).
+      * initial_users (denominator) = onboard-cohort size = distinct users
+        onboarded in cohort_month. NOT max(users) over months (peak-normalisation
+        -> retention > 100%) and NOT the month-0 action adopters: because the
+        numerator counts any cohort user doing the action each month (not a fixed
+        followed sub-cohort), a later month can have more adopters than month 0,
+        so only the full onboard cohort bounds the ratio at <= 100%.
+      * retention_pct reads as "% of the onboard cohort doing this action in
+        month N" (action adoption), not conditional stickiness. Small/rare
+        actions therefore show low (correct) percentages, not ~100%.
   columns:
   - name: activity_kind
-    description: Type of activity (swap_filled / topup / marketplace_buy / circles_* / ...).
+    description: Type of activity (swap_filled / swap_signed / topup / marketplace_buy / token_offer_claim / circles_* / ...).
     data_type: String
   - name: cohort_month
-    description: Month of the user's first activity (cohort anchor).
+    description: Onboard month (first 'onboard' row); shared across all activity_kinds.
     data_type: Date
   - name: activity_month
-    description: Month in which the cohort's subsequent activity is measured.
+    description: Month in which the cohort's activity for this kind is measured (>= cohort_month).
     data_type: Date
   - name: months_since
-    description: Whole months between cohort_month and activity_month.
+    description: Whole months between cohort_month and activity_month (0 = onboard month).
     data_type: Int32
   - name: users
-    description: Distinct users in this cell.
+    description: Distinct cohort users who did this activity_kind in activity_month.
     data_type: UInt64
   - name: initial_users
-    description: Size of the cohort at its anchor period (retention denominator).
+    description: Onboard-cohort size = distinct users onboarded in cohort_month (same across actions; fixed denominator).
     data_type: UInt64
   - name: retention_pct
-    description: users / initial_users x 100.
+    description: users / initial_users x 100 = share of the onboard cohort doing this action in activity_month.
     data_type: Float64
   meta:
     owner: analytics_team
@@ -901,7 +932,7 @@ models:
 # ---------- TopUps extra grains ----------
 
 - name: fct_execution_gnosis_app_gpay_topups_weekly
-  description: Weekly topup counts and USD volume (aggregated across tokens).
+  description: "Weekly top-up counts and USD volume (aggregated across tokens). Top-up = a GP Crypto Deposit into a currently-GA-owned wallet; definition owned by int_execution_gnosis_app_gpay_topups."
   columns:
   - name: week
     description: Monday-aligned start of the week (UTC).
@@ -928,7 +959,7 @@ models:
       - elementary
 
 - name: fct_execution_gnosis_app_gpay_topups_monthly
-  description: Monthly topup counts and USD volume (aggregated across tokens).
+  description: "Monthly top-up counts and USD volume (aggregated across tokens). Top-up = a GP Crypto Deposit into a currently-GA-owned wallet; definition owned by int_execution_gnosis_app_gpay_topups."
   columns:
   - name: month
     description: First day of the month (UTC).
@@ -1144,27 +1175,38 @@ models:
 
 - name: fct_execution_gnosis_app_gpay_topups_cohort_monthly
   description: |
-    First-TopUp cohort × subsequent-TopUp activity retention. cohort_month
-    = month of user's first TopUp. retention_pct = users_still_topping_up /
-    cohort_initial × 100. Same shape as fct_execution_gpay_cashback_cohort_retention_monthly.
+    First-top-up cohort × subsequent-top-up retention.
+
+    Top-up definition is owned by int_execution_gnosis_app_gpay_topups (a GP
+    "Crypto Deposit" into a currently-GA-owned wallet; see that model's docs).
+
+    Modeling assumptions:
+      * cohort_month = month of the user's FIRST top-up (so the cohort is the
+        first-top-up cohort, NOT the onboard cohort).
+      * initial_users (denominator) = the month-0 cohort size. Here max(users)
+        over activity months equals the month-0 count by construction (every
+        member tops up in their first-top-up month and later months are subsets),
+        so the max()-anchor is correct for this model — unlike the onboard-cohort
+        retention marts, which require the explicit onboard-cohort denominator.
+      * retention_pct = % of the first-top-up cohort still topping up in month N.
   columns:
   - name: cohort_month
-    description: Month of the user's first activity (cohort anchor).
+    description: Month of the user's first top-up (cohort anchor).
     data_type: Date
   - name: activity_month
-    description: Month in which the cohort's subsequent activity is measured.
+    description: Month in which the cohort's subsequent top-up activity is measured.
     data_type: Date
   - name: months_since
-    description: Whole months between cohort_month and activity_month.
+    description: Whole months between cohort_month and activity_month (0 = first-top-up month).
     data_type: Int32
   - name: users
-    description: Distinct users in this cell.
+    description: Distinct cohort users who topped up in this cell.
     data_type: UInt64
   - name: initial_users
-    description: Size of the cohort at its anchor period (retention denominator).
+    description: First-top-up cohort size (= month-0 users; retention denominator).
     data_type: UInt64
   - name: retention_pct
-    description: users / initial_users x 100.
+    description: users / initial_users x 100 = share of the first-top-up cohort still topping up.
     data_type: Float64
   - name: amount_retention_pct
     description: Retained USD amount as a share of the cohort's initial amount (x100).
@@ -2366,7 +2408,47 @@ models:
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
 - name: api_execution_gnosis_app_time_to_first_conversion_cohort_monthly
-  description: "Cohort by month-of-onboard × conversion_kind: conversion rate + p25/median/p75 days."
+  description: |
+    Time from onboard to a user's FIRST event of each conversion kind, bucketed
+    by onboard-month cohort. Long format: one row per (cohort_month,
+    conversion_kind) over topup / swap_filled / marketplace_buy /
+    token_offer_claim. Built on int_execution_gnosis_app_first_conversion.
+
+    Modeling assumptions:
+      * cohort_month = toStartOfMonth(first_seen_at), the heuristic onboard
+        month. The current (partial) month is excluded.
+      * n_in_cohort = all users onboarded that month; n_converted = those with a
+        non-NULL first_<kind>_at (a NULL first_*_at means the user never did that
+        action). pct_converted = n_converted / n_in_cohort x 100.
+      * median/p25/p75_days are over CONVERTERS ONLY, as
+        dateDiff('day', first_seen_at, first_conversion_at), FLOORED AT 0: the
+        heuristic onboard date can postdate a user's real first action (negative
+        raw diff), and those users are reported as 0-day rather than negative.
+  columns:
+  - name: cohort_month
+    description: Onboard month (toStartOfMonth of first_seen_at).
+    data_type: Date
+  - name: conversion_kind
+    description: topup / swap_filled / marketplace_buy / token_offer_claim.
+    data_type: String
+  - name: n_in_cohort
+    description: Users onboarded in cohort_month (denominator).
+    data_type: UInt64
+  - name: n_converted
+    description: Users with a non-NULL first event of this kind.
+    data_type: UInt64
+  - name: pct_converted
+    description: n_converted / n_in_cohort x 100.
+    data_type: Float64
+  - name: median_days
+    description: Median days onboard->first conversion, converters only, floored at 0.
+    data_type: Float64
+  - name: p25_days
+    description: 25th-pct days onboard->first conversion, converters only, floored at 0.
+    data_type: Float64
+  - name: p75_days
+    description: 75th-pct days onboard->first conversion, converters only, floored at 0.
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false

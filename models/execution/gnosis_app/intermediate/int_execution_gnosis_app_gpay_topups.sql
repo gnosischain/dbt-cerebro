@@ -14,54 +14,43 @@
     post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-WITH ga_users AS (
-    SELECT address FROM {{ ref('int_execution_gnosis_app_users_current') }}
+
+-- A top-up is a Gnosis Pay "Crypto Deposit" into a GP wallet that is currently
+-- GA-owned (per the persistent int_execution_gnosis_app_gpay_wallets bridge),
+-- from the GA launch (2025-11-12) on. This supersedes the old same-transaction
+-- CoW-trade + deposit definition, which captured only ~1.4% of GA-owned funding
+-- (the bulk is direct EURe transfers, not atomic swaps). See
+-- docs/model_review/gpay_topup_capture_probe.md.
+--
+-- Scope choices (broadest, per product decision): counts ALL Crypto Deposits
+-- into currently-GA-owned wallets. Two narrowing toggles are intentionally NOT
+-- applied here and can be added as a one-line WHERE if wanted:
+--   * self-funding: counterparty = the wallet's own GA owner address
+--   * temporal:     block_timestamp < first_ga_owner_at (deposits predating
+--                   GA ownership of an imported wallet)
+
+WITH ga_wallets AS (
+    SELECT
+        pay_wallet,
+        first_ga_owner_address
+    FROM {{ ref('int_execution_gnosis_app_gpay_wallets') }}
+    WHERE is_currently_ga_owned
 ),
 
--- GA-user CoW trades in the incremental window.
-ga_trades AS (
+deposits AS (
     SELECT
-        t.block_number,
-        t.block_timestamp,
-        t.transaction_hash,
-        t.log_index,
-        t.taker,
-        t.order_uid,
-        t.token_bought_address,
-        t.token_bought_symbol,
-        t.amount_bought,
-        t.amount_bought_raw,
-        t.token_sold_address,
-        t.token_sold_symbol,
-        t.amount_sold,
-        t.amount_sold_raw,
-        t.amount_usd,
-        t.solver
-    FROM {{ ref('int_execution_cow_trades') }} t
-    WHERE t.taker IN (SELECT address FROM ga_users)
-      AND t.block_timestamp >= toDateTime('2025-11-12')
-      AND t.block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(t.block_timestamp) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(t.block_timestamp) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter('t.block_timestamp', 'block_timestamp', add_and=True) }}
-      {% endif %}
-),
-
--- GP Safe deposits ("Crypto Deposit" action) in the same window.
--- tx_hash is 0x-prefixed on both sides, so the join is direct.
-gp_deposits AS (
-    SELECT
-        a.transaction_hash                      AS transaction_hash,
-        a.wallet_address                        AS gp_wallet,
-        a.token_address                         AS token_address,
-        a.symbol                                AS token_received_symbol,
-        a.amount                                AS amount_received,
-        a.amount_usd                            AS amount_received_usd
+        a.block_timestamp        AS block_timestamp,
+        a.transaction_hash       AS transaction_hash,
+        a.wallet_address         AS gp_wallet,
+        a.token_address          AS token_bought_address,
+        a.symbol                 AS token_bought_symbol,
+        a.amount                 AS amount_bought,
+        a.amount_usd             AS amount_usd,
+        a.counterparty           AS counterparty
     FROM {{ ref('int_execution_gpay_activity') }} a
     WHERE a.action = 'Crypto Deposit'
       AND a.block_timestamp >= toDateTime('2025-11-12')
+      AND a.block_timestamp < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(a.block_timestamp) >= toDate('{{ start_month }}')
         AND toStartOfMonth(a.block_timestamp) <= toDate('{{ end_month }}')
@@ -71,23 +60,21 @@ gp_deposits AS (
 )
 
 SELECT
-    t.block_number                   AS block_number,
-    t.block_timestamp                AS block_timestamp,
-    t.transaction_hash               AS transaction_hash,
-    t.log_index                      AS log_index,
-    t.taker                          AS ga_user,
-    d.gp_wallet                      AS gp_wallet,
-    t.order_uid                      AS order_uid,
-    t.token_sold_address             AS token_sold_address,
-    t.token_sold_symbol              AS token_sold_symbol,
-    t.amount_sold                    AS amount_sold,
-    t.token_bought_address           AS token_bought_address,
-    t.token_bought_symbol            AS token_bought_symbol,
-    t.amount_bought                  AS amount_bought,
-    coalesce(t.amount_usd,
-             d.amount_received_usd)  AS amount_usd,
-    t.solver                         AS solver
-FROM ga_trades t
-INNER JOIN gp_deposits d
-    ON d.transaction_hash = t.transaction_hash
-   AND lower(d.token_address) = lower(t.token_bought_address)
+    d.block_timestamp            AS block_timestamp,
+    d.transaction_hash           AS transaction_hash,
+    -- int_execution_gpay_activity has no log_index; synthesise a stable per-tx
+    -- ordinal so the downstream cityHash64(tx, log_index) dedup key in
+    -- int_execution_gnosis_app_conversions / _events_chain_unified stays unique
+    -- per deposit. A tx is atomic (single block/partition) so the window is
+    -- complete within an insert_overwrite batch.
+    (row_number() OVER (PARTITION BY d.transaction_hash
+        ORDER BY d.gp_wallet, d.token_bought_address, d.amount_usd, d.counterparty) - 1) AS log_index,
+    w.first_ga_owner_address     AS ga_user,
+    d.gp_wallet                  AS gp_wallet,
+    d.token_bought_address       AS token_bought_address,
+    d.token_bought_symbol        AS token_bought_symbol,
+    d.amount_bought              AS amount_bought,
+    d.amount_usd                 AS amount_usd,
+    d.counterparty               AS counterparty
+FROM deposits d
+INNER JOIN ga_wallets w ON w.pay_wallet = d.gp_wallet

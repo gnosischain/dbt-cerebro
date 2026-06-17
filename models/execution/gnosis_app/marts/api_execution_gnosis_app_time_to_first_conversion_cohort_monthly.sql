@@ -46,11 +46,14 @@ SELECT
     count()                                                                   AS n_in_cohort,
     countIf(first_conversion_at IS NOT NULL)                                  AS n_converted,
     round(countIf(first_conversion_at IS NOT NULL) / count() * 100, 1)        AS pct_converted,
-    quantileExactIf(0.5)(dateDiff('day', first_seen_at, first_conversion_at),
+    -- greatest(..., 0): the onboard date is heuristic-derived and can land
+    -- after a user's real first action, yielding a negative day-count for a
+    -- few edge users; floor at 0 so the latency percentiles stay non-negative.
+    quantileExactIf(0.5)(greatest(dateDiff('day', first_seen_at, first_conversion_at), 0),
                           first_conversion_at IS NOT NULL)                    AS median_days,
-    quantileExactIf(0.25)(dateDiff('day', first_seen_at, first_conversion_at),
+    quantileExactIf(0.25)(greatest(dateDiff('day', first_seen_at, first_conversion_at), 0),
                            first_conversion_at IS NOT NULL)                   AS p25_days,
-    quantileExactIf(0.75)(dateDiff('day', first_seen_at, first_conversion_at),
+    quantileExactIf(0.75)(greatest(dateDiff('day', first_seen_at, first_conversion_at), 0),
                            first_conversion_at IS NOT NULL)                   AS p75_days
 FROM long_form
 WHERE cohort_month < toStartOfMonth(today())

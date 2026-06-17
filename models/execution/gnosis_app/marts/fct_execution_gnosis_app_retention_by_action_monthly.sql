@@ -43,20 +43,30 @@ cohort_activity AS (
     GROUP BY a.activity_kind, f.cohort_month, a.activity_month
 ),
 
-with_initial AS (
+cohort_size AS (
+    -- True denominator: the onboard-cohort size (distinct users who onboarded
+    -- in cohort_month). The users doing an action in any month are a subset of
+    -- this, so retention_pct is bounded at 100% and is consistent across
+    -- actions. NOTE: do NOT anchor on the month-0 ACTION adopters here -- the
+    -- cohort is the onboard cohort and the numerator counts ANY cohort user
+    -- doing the action each month (not a fixed followed subset), so more users
+    -- adopt the action in later months than in month 0, which pushes a
+    -- month-0-anchored ratio above 100%.
     SELECT
-        *,
-        max(users) OVER (PARTITION BY activity_kind, cohort_month) AS initial_users
-    FROM cohort_activity
+        cohort_month,
+        count(DISTINCT address) AS initial_users
+    FROM cohort_user
+    GROUP BY cohort_month
 )
 
 SELECT
-    activity_kind,
-    cohort_month,
-    activity_month,
-    months_since,
-    users,
-    initial_users,
-    round(users / greatest(initial_users, 1) * 100, 1) AS retention_pct
-FROM with_initial
-ORDER BY activity_kind, cohort_month, activity_month
+    a.activity_kind,
+    a.cohort_month,
+    a.activity_month,
+    a.months_since,
+    a.users,
+    s.initial_users,
+    round(a.users / nullIf(s.initial_users, 0) * 100, 1) AS retention_pct
+FROM cohort_activity a
+INNER JOIN cohort_size s ON a.cohort_month = s.cohort_month
+ORDER BY a.activity_kind, a.cohort_month, a.activity_month

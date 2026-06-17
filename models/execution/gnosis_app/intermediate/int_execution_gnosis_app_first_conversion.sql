@@ -4,7 +4,9 @@
     engine='MergeTree()',
     order_by='(address)',
     settings={'allow_nullable_key': 1},
-    tags=['production','execution','gnosis_app','first_conversion']
+    tags=['production','execution','gnosis_app','first_conversion'],
+    pre_hook=["SET join_use_nulls = 1"],
+    post_hook=["SET join_use_nulls = 0"]
   )
 }}
 
@@ -35,10 +37,15 @@ WITH onboard AS (
 firsts AS (
     SELECT
         address,
-        minIf(date, activity_kind = 'topup')             AS first_topup_at,
-        minIf(date, activity_kind = 'swap_filled')       AS first_swap_filled_at,
-        minIf(date, activity_kind = 'marketplace_buy')   AS first_marketplace_buy_at,
-        minIf(date, activity_kind = 'token_offer_claim') AS first_token_offer_claim_at
+        -- minIf returns the Date default (1970-01-01), NOT NULL, for a user
+        -- with no row of this kind; nullIf maps that sentinel back to NULL so
+        -- non-converters are genuinely NULL (1970-01-01 cannot occur in real
+        -- 2025+ data). The join_use_nulls hook handles the same default for
+        -- users who miss the LEFT JOIN entirely.
+        nullIf(minIf(date, activity_kind = 'topup'),             toDate('1970-01-01')) AS first_topup_at,
+        nullIf(minIf(date, activity_kind = 'swap_filled'),       toDate('1970-01-01')) AS first_swap_filled_at,
+        nullIf(minIf(date, activity_kind = 'marketplace_buy'),   toDate('1970-01-01')) AS first_marketplace_buy_at,
+        nullIf(minIf(date, activity_kind = 'token_offer_claim'), toDate('1970-01-01')) AS first_token_offer_claim_at
     FROM {{ ref('int_execution_gnosis_app_user_activity_daily') }}
     WHERE activity_kind IN ('topup', 'swap_filled', 'marketplace_buy', 'token_offer_claim')
     GROUP BY address

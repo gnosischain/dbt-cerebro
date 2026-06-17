@@ -251,60 +251,50 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_gnosis_app_gpay_topups
   description: |
-    Gnosis App → Gnosis Pay TopUps.
+    Gnosis App → Gnosis Pay top-ups.
 
-    A TopUp = a CoW Protocol trade initiated by a GA user whose bought token
-    ends up in a GP wallet in the same settlement tx.
+    A top-up = a Gnosis Pay "Crypto Deposit" into a GP wallet that is currently
+    GA-owned, per the persistent int_execution_gnosis_app_gpay_wallets bridge
+    (is_currently_ga_owned), from the GA launch (2025-11-12) on. ga_user is the
+    wallet's first GA owner.
 
-    Detection:
-      1. Filter int_execution_cow_trades to taker ∈ GA users.
-      2. In the same transaction_hash, find an ERC-20 Transfer of the
-         trade's token_bought_address whose recipient is a known GP wallet.
+    This supersedes the original same-transaction CoW-trade + deposit rule,
+    which captured only ~1.4% of GA-owned funding — most top-ups are direct
+    EURe transfers, not atomic swaps. See
+    docs/model_review/gpay_topup_capture_probe.md.
 
-    Per design decision (April 2026), we do NOT filter by token_sold = CRC —
-    the original Slack heuristic suggested CRC-only but the Dune dashboard
-    already shows TopUps in many tokens. We expose token_sold_symbol so the
-    dashboard can filter client-side.
-
-    Scope note: uses int_execution_transfers_whitelisted_raw for the payout
-    side, which only covers whitelisted tokens. The vast majority of GP
-    top-ups are into EURe / USDC (whitelisted), so this covers the
-    practical use-case. TopUps into non-whitelisted tokens would be
-    missed — rare and acceptable for V1.
+    Scope (broadest): all Crypto Deposits into currently-GA-owned wallets, all
+    tokens. Two narrowing toggles are intentionally NOT applied and can be added
+    as a one-line WHERE: self-funding exclusion (counterparty = the wallet's GA
+    owner) and a temporal filter for deposits predating GA ownership of an
+    imported wallet.
   columns:
-  - name: block_number
-    data_type: UInt64
   - name: block_timestamp
     data_type: DateTime
   - name: transaction_hash
-    description: Solver settlement tx hash (0x-prefixed, lowercase).
+    description: Gnosis Pay deposit transaction hash (0x-prefixed).
     data_type: String
   - name: log_index
-    description: Log index of the Trade event.
+    description: Synthetic per-tx ordinal (gpay_activity has no log index); keeps the (tx, log_index) dedup key unique per deposit.
     data_type: UInt64
   - name: ga_user
-    description: GA user who initiated the trade (lowercase, 0x-prefixed).
+    description: First GA owner of the receiving GP wallet — the attributed acquired user.
     data_type: String
   - name: gp_wallet
-    description: GP wallet address that received the bought token (lowercase, 0x-prefixed).
+    description: GA-owned GP wallet that received the deposit.
     data_type: String
-  - name: order_uid
-    data_type: String
-  - name: token_sold_address
-    data_type: String
-  - name: token_sold_symbol
-    data_type: Nullable(String)
-  - name: amount_sold
-    data_type: Nullable(Float64)
   - name: token_bought_address
+    description: Deposited token contract address (legacy column name; now the funded token, not a swap output).
     data_type: String
   - name: token_bought_symbol
     data_type: Nullable(String)
   - name: amount_bought
+    description: Deposited token amount (decimal-adjusted).
     data_type: Nullable(Float64)
   - name: amount_usd
     data_type: Nullable(Float64)
-  - name: solver
+  - name: counterparty
+    description: Sender of the deposit (the funding source address).
     data_type: Nullable(String)
   meta:
     owner: analytics_team
@@ -1314,14 +1304,28 @@ models:
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
 - name: int_execution_gnosis_app_first_conversion
-  description: One row per GA user with first-event-per-conversion-kind timestamps.
+  description: |
+    One row per Gnosis App user (the onboard cohort) with the date of their
+    first event in each conversion kind. Feeds the time-to-first-conversion view.
+
+    Modeling assumptions:
+      * first_seen_at = the heuristic onboard date, carried from
+        int_execution_gnosis_app_user_activity_daily ('onboard' rows).
+      * Each first_<kind>_at is NULL when the user never did that action.
+        This is enforced via nullIf(minIf(...), toDate('1970-01-01')) plus a
+        join_use_nulls hook, so the ClickHouse Date default (1970-01-01) from an
+        empty minIf or an unmatched LEFT JOIN cannot masquerade as a real
+        conversion. Consumers MUST treat 1970-01-01 as impossible and rely on
+        IS NULL (a prior bug let the epoch sentinel inflate pct_converted to
+        100% and produce negative time-to-conversion).
+      * Conversion kinds: topup, swap_filled, marketplace_buy, token_offer_claim.
   columns:
-  - {name: address, data_type: String}
-  - {name: first_seen_at, data_type: Date}
-  - {name: first_topup_at, data_type: Nullable(Date)}
-  - {name: first_swap_filled_at, data_type: Nullable(Date)}
-  - {name: first_marketplace_buy_at, data_type: Nullable(Date)}
-  - {name: first_token_offer_claim_at, data_type: Nullable(Date)}
+  - {name: address, description: "Gnosis App user address.", data_type: String}
+  - {name: first_seen_at, description: "Heuristic onboard date (min onboard activity).", data_type: Date}
+  - {name: first_topup_at, description: "First top-up date; NULL if never.", data_type: Nullable(Date)}
+  - {name: first_swap_filled_at, description: "First filled-swap date; NULL if never.", data_type: Nullable(Date)}
+  - {name: first_marketplace_buy_at, description: "First marketplace-buy date; NULL if never.", data_type: Nullable(Date)}
+  - {name: first_token_offer_claim_at, description: "First token-offer-claim date; NULL if never.", data_type: Nullable(Date)}
   meta: {owner: analytics_team, authoritative: false}
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
