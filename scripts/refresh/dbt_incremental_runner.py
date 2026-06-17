@@ -762,6 +762,53 @@ def _run_one_slice_inprocess(
     return 0
 
 
+def _run_plain_inprocess(
+    models: list[str],
+    defer_args: list[str],
+    project_dir: Path,
+    profiles_dir: Path,
+    threads: int | None,
+) -> int:
+    """Run a group of plain (non-microbatch) models against the frozen
+    in-process manifest, so they reuse the single project parse instead of
+    paying a fresh `dbt run` subprocess re-parse (see run_passthrough). dbt
+    resolves intra-group order and parallelism from the manifest graph.
+
+    Plain models do not read incremental_end_date at parse time, so the
+    placeholder-primed manifest leaves their resolved config untouched; we still
+    pass the placeholder via --vars (never env vars) to keep the provided
+    manifest intact and only re-compile node bodies.
+    """
+    from dbt.cli.main import dbtRunner
+
+    manifest = _get_inprocess_manifest(project_dir, profiles_dir)
+    cmd = [
+        "run",
+        "--select",
+        *models,
+        "--vars",
+        json.dumps({"incremental_end_date": _INPROCESS_PLACEHOLDER}),
+    ]
+    if threads is not None:
+        cmd.extend(["--threads", str(threads)])
+    cmd.extend(defer_args)
+    prev_cwd = os.getcwd()
+    os.chdir(project_dir)
+    try:
+        res = dbtRunner(manifest=manifest).invoke(cmd)
+    finally:
+        os.chdir(prev_cwd)
+    if not res.success:
+        if res.exception is not None:
+            print(
+                f"[error] in-process plain group ({len(models)} model(s)) "
+                f"first={models[0]}: {res.exception}",
+                file=sys.stderr,
+            )
+        return 1
+    return 0
+
+
 def run_one_slice(
     model: str,
     stage: dict,
@@ -1216,9 +1263,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[dry-run] dbt run --select '{selector}'")
             buf.clear()
             return
-        rc = run_passthrough(
-            selector, defer_args, project_dir, profiles_dir, args.threads
-        )
+        # In-process: reuse the single frozen parse for plain models too,
+        # eliminating run_passthrough's subprocess re-parse. The invoke still
+        # writes target/run_results.json, so stash_failure stays classify-
+        # compatible. Subprocess path retained for MICROBATCH_INPROCESS=0.
+        if _inprocess_enabled():
+            rc = _run_plain_inprocess(
+                list(buf), defer_args, project_dir, profiles_dir, args.threads
+            )
+        else:
+            rc = run_passthrough(
+                selector, defer_args, project_dir, profiles_dir, args.threads
+            )
         plain_flush_counter["n"] += 1
         if rc != 0:
             stash_failure(
@@ -1229,6 +1285,10 @@ def main(argv: list[str] | None = None) -> int:
                 invocation_id=invocation_id,
             )
             failures.append(("_plain", f"passthrough#{plain_flush_counter['n']}", "-"))
+        elif args.delay:
+            # Throttle ClickHouse between flush groups, mirroring the per-slice
+            # delay (replaces the old inter-batch sleep in run_dbt_observability).
+            time.sleep(args.delay)
         buf.clear()
 
     plain_buffer: list[str] = []

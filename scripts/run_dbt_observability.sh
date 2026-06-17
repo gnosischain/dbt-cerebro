@@ -193,7 +193,32 @@ RUN_BATCH_PLAN="$(mktemp)"
 FAILED_BATCHES_DIR="${PROJECT_DIR}/target/failed_batches"
 rm -rf "$FAILED_BATCHES_DIR"
 
-if python "$PROJECT_DIR/scripts/refresh/dbt_run_batches.py" \
+if [ "${DBT_RUN_SINGLE_PARSE:-0}" = "1" ]; then
+  # Single-parse path (cron preview): ONE runner invocation over the whole
+  # selection. dbt_incremental_runner topo-orders plain + microbatch models
+  # itself and parses the project once (in-process, reused for every plain model
+  # AND every slice) instead of spawning a re-parsing process per batch. It
+  # stashes per-node failures to target/failed_batches/, so the classify +
+  # smart-retry block below is unchanged. DBT_RUN_BATCH_SLEEP_SECONDS becomes the
+  # inter-slice/flush delay.
+  single_parse_args=()
+  if [ -n "${MICROBATCH_BOOTSTRAP_LOOKBACK_DAYS:-}" ]; then
+    single_parse_args+=(--bootstrap-lookback-days "$MICROBATCH_BOOTSTRAP_LOOKBACK_DAYS")
+  fi
+  if [ -n "${MICROBATCH_MAX_END_DATE:-}" ]; then
+    single_parse_args+=(--max-end-date "$MICROBATCH_MAX_END_DATE")
+  fi
+  if [ "$DBT_RUN_BATCH_SLEEP_SECONDS" -gt 0 ]; then
+    single_parse_args+=(--delay "$DBT_RUN_BATCH_SLEEP_SECONDS")
+  fi
+  echo "[$(date -u)] dbt-run single-parse: one runner invocation over tag:production"
+  run_step "dbt-run:all" \
+    python "$PROJECT_DIR/scripts/refresh/dbt_incremental_runner.py" \
+      --select tag:production \
+      --project-dir "$PROJECT_DIR" --profiles-dir "$PROFILES_DIR" \
+      "${single_parse_args[@]}" \
+    || true
+elif python "$PROJECT_DIR/scripts/refresh/dbt_run_batches.py" \
   --select tag:production \
   --batch-size "$DBT_RUN_BATCH_SIZE" \
   --project-dir "$PROJECT_DIR" \

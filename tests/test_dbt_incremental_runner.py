@@ -255,11 +255,15 @@ def test_fetch_max_date_raises_when_missing():
 def test_run_one_slice_constructs_expected_command(tmp_path):
     captured: dict = {}
 
-    def fake_run(cmd):
+    def fake_run(cmd, env=None, **kwargs):
         captured["cmd"] = cmd
+        captured["env"] = env
         return mock.Mock(returncode=0)
 
-    with mock.patch("subprocess.run", side_effect=fake_run):
+    # Force the legacy subprocess path (MICROBATCH_INPROCESS off).
+    with mock.patch.object(runner, "_inprocess_enabled", return_value=False), mock.patch(
+        "subprocess.run", side_effect=fake_run
+    ):
         rc = runner.run_one_slice(
             "int_x",
             {"name": "stage_a", "vars": {"validator_index_start": 0, "validator_index_end": 100}},
@@ -272,19 +276,71 @@ def test_run_one_slice_constructs_expected_command(tmp_path):
     assert rc == 0
     cmd = captured["cmd"]
     assert cmd[0:4] == ["dbt", "run", "--select", "int_x"]
-    # vars JSON contains all three keys.
-    vars_idx = cmd.index("--vars")
-    payload = json.loads(cmd[vars_idx + 1])
-    assert payload == {
-        "incremental_end_date": "2026-04-20",
-        "validator_index_start": 0,
-        "validator_index_end": 100,
-    }
+    # The subprocess path passes the slice date + stage vars via DBT_MB_* ENV
+    # vars (NOT --vars) so dbt's partial-parse cache stays warm between slices.
+    assert "--vars" not in cmd
+    env = captured["env"]
+    assert env["DBT_MB_INCREMENTAL_END_DATE"] == "2026-04-20"
+    assert env["DBT_MB_VALIDATOR_INDEX_START"] == "0"
+    assert env["DBT_MB_VALIDATOR_INDEX_END"] == "100"
     # Defer flags forwarded.
     assert "--defer" in cmd
     assert ["--state", "/state"] == cmd[cmd.index("--state") : cmd.index("--state") + 2]
     # Threads forwarded.
     assert ["--threads", "2"] == cmd[cmd.index("--threads") : cmd.index("--threads") + 2]
+
+
+def test_run_plain_inprocess_reuses_frozen_manifest(tmp_path):
+    captured: dict = {}
+    sentinel_manifest = object()
+
+    class FakeRunner:
+        def __init__(self, manifest=None):
+            captured["manifest"] = manifest
+
+        def invoke(self, cmd):
+            captured["cmd"] = cmd
+            return mock.Mock(success=True, exception=None)
+
+    with mock.patch.object(
+        runner, "_get_inprocess_manifest", return_value=sentinel_manifest
+    ), mock.patch("dbt.cli.main.dbtRunner", FakeRunner):
+        rc = runner._run_plain_inprocess(
+            ["m1", "m2"],
+            ["--defer", "--state", "/state"],
+            tmp_path,
+            tmp_path,
+            threads=4,
+        )
+
+    assert rc == 0
+    # Crucial: the plain group ran against the single frozen manifest (no re-parse).
+    assert captured["manifest"] is sentinel_manifest
+    cmd = captured["cmd"]
+    assert cmd[0:4] == ["run", "--select", "m1", "m2"]
+    vars_idx = cmd.index("--vars")
+    assert json.loads(cmd[vars_idx + 1]) == {
+        "incremental_end_date": runner._INPROCESS_PLACEHOLDER
+    }
+    assert ["--threads", "4"] == cmd[cmd.index("--threads") : cmd.index("--threads") + 2]
+    assert "--defer" in cmd
+    assert ["--state", "/state"] == cmd[cmd.index("--state") : cmd.index("--state") + 2]
+
+
+def test_run_plain_inprocess_returns_1_on_failure(tmp_path):
+    class FakeRunner:
+        def __init__(self, manifest=None):
+            pass
+
+        def invoke(self, cmd):
+            return mock.Mock(success=False, exception=RuntimeError("boom"))
+
+    with mock.patch.object(
+        runner, "_get_inprocess_manifest", return_value=object()
+    ), mock.patch("dbt.cli.main.dbtRunner", FakeRunner):
+        rc = runner._run_plain_inprocess(["m1"], [], tmp_path, tmp_path, threads=None)
+
+    assert rc == 1
 
 
 # ---------------------------------------------------------------------------
