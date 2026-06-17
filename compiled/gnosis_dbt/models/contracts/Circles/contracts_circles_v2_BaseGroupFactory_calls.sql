@@ -59,8 +59,8 @@ WITH
             
           
           
-          AND block_number > 46420377
-          AND block_timestamp >= toDateTime('2026-05-29 08:33:25')
+          AND block_number > 46737020
+          AND block_timestamp >= toDateTime('2026-06-17 04:02:05')
           
           
           
@@ -90,6 +90,7 @@ FROM `dbt`.`function_signatures`
 WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244ec3587f19bd06d'
  ),
 
+  
   process AS (
     SELECT
       t.block_number,
@@ -193,11 +194,14 @@ WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244e
                         '\0',''
                       ),
                       range(
-                        toUInt64(reinterpretAsUInt256(reverse(unhex(
-                          substring(args_raw_hex,
-                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
-                                    64)
-                        ))))
+                        least(
+                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            substring(args_raw_hex,
+                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      64)
+                          )))),
+                          intDiv(length(args_raw_hex), 64)
+                        )
                       )
                     ),
                   multiIf(
@@ -214,11 +218,14 @@ WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244e
                         )
                       ),
                       range(
-                        toUInt64(reinterpretAsUInt256(reverse(unhex(
-                          substring(args_raw_hex,
-                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
-                                    64)
-                        ))))
+                        least(
+                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            substring(args_raw_hex,
+                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      64)
+                          )))),
+                          intDiv(length(args_raw_hex), 64)
+                        )
                       )
                     ),
                     base_types[i+1] = 'bytes32',
@@ -231,11 +238,14 @@ WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244e
                         )
                       ),
                       range(
-                        toUInt64(reinterpretAsUInt256(reverse(unhex(
-                          substring(args_raw_hex,
-                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
-                                    64)
-                        ))))
+                        least(
+                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            substring(args_raw_hex,
+                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      64)
+                          )))),
+                          intDiv(length(args_raw_hex), 64)
+                        )
                       )
                     ),
                     /* bool[] shares the uint decode path: each element is a
@@ -252,11 +262,14 @@ WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244e
                         )
                       )))),
                       range(
-                        toUInt64(reinterpretAsUInt256(reverse(unhex(
-                          substring(args_raw_hex,
-                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
-                                    64)
-                        ))))
+                        least(
+                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            substring(args_raw_hex,
+                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      64)
+                          )))),
+                          intDiv(length(args_raw_hex), 64)
+                        )
                       )
                     ),
                     startsWith(base_types[i+1], 'int'),
@@ -269,11 +282,14 @@ WHERE replaceAll(lower(contract_address),'0x','') = 'd0b5bd9962197beac4cba24244e
                         )
                       )))),
                       range(
-                        toUInt64(reinterpretAsUInt256(reverse(unhex(
-                          substring(args_raw_hex,
-                                    (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
-                                    64)
-                        ))))
+                        least(
+                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            substring(args_raw_hex,
+                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      64)
+                          )))),
+                          intDiv(length(args_raw_hex), 64)
+                        )
                       )
                     ),
                     []

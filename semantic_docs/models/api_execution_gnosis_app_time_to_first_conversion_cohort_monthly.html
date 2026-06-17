@@ -15,14 +15,29 @@
   <body>
     
     <h1>api_execution_gnosis_app_time_to_first_conversion_cohort_monthly</h1>
-    <p>Cohort by month-of-onboard × conversion_kind: conversion rate + p25/median/p75 days.</p>
+    <p>Time from onboard to a user&#x27;s FIRST event of each conversion kind, bucketed
+by onboard-month cohort. Long format: one row per (cohort_month,
+conversion_kind) over topup / swap_filled / marketplace_buy /
+token_offer_claim. Built on int_execution_gnosis_app_first_conversion.
+
+Modeling assumptions:
+  * cohort_month = toStartOfMonth(first_seen_at), the heuristic onboard
+    month. The current (partial) month is excluded.
+  * n_in_cohort = all users onboarded that month; n_converted = those with a
+    non-NULL first_&lt;kind&gt;_at (a NULL first_*_at means the user never did that
+    action). pct_converted = n_converted / n_in_cohort x 100.
+  * median/p25/p75_days are over CONVERTERS ONLY, as
+    dateDiff(&#x27;day&#x27;, first_seen_at, first_conversion_at), FLOORED AT 0: the
+    heuristic onboard date can postdate a user&#x27;s real first action (negative
+    raw diff), and those users are reported as 0-day rather than negative.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/execution/gnosis_app/marts/api_execution_gnosis_app_time_to_first_conversion_cohort_monthly.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>tier1</span> <span class='pill'>api:gnosis_app_time_to_first_conversion_cohort</span> <span class='pill'>granularity:monthly</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>cohort_month</code></td><td>Date</td><td>Onboard month (toStartOfMonth of first_seen_at).</td></tr><tr><td><code>conversion_kind</code></td><td>String</td><td>topup / swap_filled / marketplace_buy / token_offer_claim.</td></tr><tr><td><code>median_days</code></td><td>Float64</td><td>Median days onboard-&gt;first conversion, converters only, floored at 0.</td></tr><tr><td><code>n_converted</code></td><td>UInt64</td><td>Users with a non-NULL first event of this kind.</td></tr><tr><td><code>n_in_cohort</code></td><td>UInt64</td><td>Users onboarded in cohort_month (denominator).</td></tr><tr><td><code>p25_days</code></td><td>Float64</td><td>25th-pct days onboard-&gt;first conversion, converters only, floored at 0.</td></tr><tr><td><code>p75_days</code></td><td>Float64</td><td>75th-pct days onboard-&gt;first conversion, converters only, floored at 0.</td></tr><tr><td><code>pct_converted</code></td><td>Float64</td><td>n_converted / n_in_cohort x 100.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_first_conversion</code></li></ul>

@@ -15,11 +15,25 @@
   <body>
     
     <h1>fct_execution_gnosis_app_retention_monthly</h1>
-    <p>Cohort retention grid. cohort_month = month of user&#x27;s &#x27;onboard&#x27; row
-(first-ever heuristic hit). activity_month = month of any subsequent
-non-onboard activity. retention_pct = users_in_activity_month /
-cohort_initial_size × 100. Matches the fct_execution_gpay_retention_monthly
-shape; port for GA.
+    <p>Cohort retention grid for the Gnosis App onboard cohort.
+
+Modeling assumptions:
+  * cohort_month = month of the user&#x27;s &#x27;onboard&#x27; row (first-ever heuristic
+    hit), NOT their first transactional activity.
+  * activity_month = month of any subsequent non-onboard activity. Only the
+    lower triangle is kept (activity_month &gt;= cohort_month) so on-chain
+    history predating the GA onboard does not create spurious cells.
+  * initial_users (the retention denominator) = the onboard-cohort size,
+    i.e. distinct users whose onboard month is cohort_month. It is
+    deliberately NOT max(users) over activity months (peak-normalisation,
+    which let retention exceed 100%) and NOT the month-0 actives: the
+    numerator counts ANY cohort user active in activity_month (not a fixed
+    followed sub-cohort), so only the full onboard cohort bounds it &lt;= 100%.
+  * retention_pct therefore reads as &quot;% of the onboard cohort active in
+    month N&quot; (return/adoption), not the conditional stickiness of a followed
+    sub-cohort.
+  * amount_retention_pct anchors on the cohort&#x27;s earliest activity-month
+    amount (argMin over activity_month).
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> approved</p>
@@ -27,7 +41,7 @@ shape; port for GA.
     <p><strong>Path:</strong> <code>models/execution/gnosis_app/marts/fct_execution_gnosis_app_retention_monthly.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>retention</span> <span class='pill'>mart</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activity_month</code></td><td>Date</td><td>Month in which the cohort&#x27;s subsequent activity is measured.</td></tr><tr><td><code>amount_retention_pct</code></td><td>Nullable(Float64)</td><td>Retained USD amount as a share of the cohort&#x27;s initial amount (x100).</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD amount.</td></tr><tr><td><code>cohort_month</code></td><td>Date</td><td>Month of the user&#x27;s first activity (cohort anchor).</td></tr><tr><td><code>initial_users</code></td><td>UInt64</td><td>Size of the cohort at its anchor period (retention denominator).</td></tr><tr><td><code>months_since</code></td><td>Int32</td><td>Whole months between cohort_month and activity_month.</td></tr><tr><td><code>retention_pct</code></td><td>Float64</td><td>users / initial_users x 100.</td></tr><tr><td><code>users</code></td><td>UInt64</td><td>Distinct users in this cell.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activity_month</code></td><td>Date</td><td>Month in which the cohort&#x27;s subsequent activity is measured (&gt;= cohort_month).</td></tr><tr><td><code>amount_retention_pct</code></td><td>Nullable(Float64)</td><td>Activity USD as a share of the cohort&#x27;s earliest activity-month USD (argMin anchor) x100.</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD amount transacted by the cohort in activity_month.</td></tr><tr><td><code>cohort_month</code></td><td>Date</td><td>Onboard month (toStartOfMonth of the first &#x27;onboard&#x27; row); the cohort anchor.</td></tr><tr><td><code>initial_users</code></td><td>UInt64</td><td>Onboard-cohort size = distinct users onboarded in cohort_month (fixed retention denominator; numerator is a subset so retention_pct &lt;= 100%).</td></tr><tr><td><code>months_since</code></td><td>Int32</td><td>Whole months between cohort_month and activity_month (0 = onboard month).</td></tr><tr><td><code>retention_pct</code></td><td>Float64</td><td>users / initial_users x 100 = share of the onboard cohort active in activity_month.</td></tr><tr><td><code>users</code></td><td>UInt64</td><td>Distinct cohort users active in this cell (subset of initial_users).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>cohort_month</code> (time)</li><li><code>activity_month</code> (time)</li></ul>
     <h2>Measures</h2><ul><li><code>fct_execution_gnosis_app_retention_monthly__months_since_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_monthly__users_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_monthly__initial_users_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_monthly__retention_pct_value</code> (average)</li><li><code>fct_execution_gnosis_app_retention_monthly__amount_retention_pct_value</code> (average)</li><li><code>fct_execution_gnosis_app_retention_monthly__amount_usd_value</code> (sum)</li></ul>
     <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_user_activity_daily</code></li></ul>

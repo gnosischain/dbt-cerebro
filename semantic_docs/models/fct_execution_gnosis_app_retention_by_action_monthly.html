@@ -15,10 +15,25 @@
   <body>
     
     <h1>fct_execution_gnosis_app_retention_by_action_monthly</h1>
-    <p>Retention split by activity_kind (swap_filled / topup / marketplace_buy /
-circles_trust / etc.). Uses the GLOBAL onboard cohort_month as the
-anchor so the denominator is consistent across action types — the
-numerator counts users who did that specific action in activity_month.
+    <p>Cohort retention split by activity_kind (swap_filled / swap_signed / topup /
+marketplace_buy / token_offer_claim / circles_*). Same onboard-cohort anchor
+and denominator as fct_execution_gnosis_app_retention_monthly.
+
+Modeling assumptions:
+  * cohort_month = the user&#x27;s GLOBAL onboard month (first &#x27;onboard&#x27; row) —
+    the SAME anchor for every action, so denominators are comparable across
+    action types.
+  * users (numerator) = distinct cohort users who did THIS activity_kind in
+    activity_month (lower triangle only, activity_month &gt;= cohort_month).
+  * initial_users (denominator) = onboard-cohort size = distinct users
+    onboarded in cohort_month. NOT max(users) over months (peak-normalisation
+    -&gt; retention &gt; 100%) and NOT the month-0 action adopters: because the
+    numerator counts any cohort user doing the action each month (not a fixed
+    followed sub-cohort), a later month can have more adopters than month 0,
+    so only the full onboard cohort bounds the ratio at &lt;= 100%.
+  * retention_pct reads as &quot;% of the onboard cohort doing this action in
+    month N&quot; (action adoption), not conditional stickiness. Small/rare
+    actions therefore show low (correct) percentages, not ~100%.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> approved</p>
@@ -26,7 +41,7 @@ numerator counts users who did that specific action in activity_month.
     <p><strong>Path:</strong> <code>models/execution/gnosis_app/marts/fct_execution_gnosis_app_retention_by_action_monthly.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>retention</span> <span class='pill'>mart</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activity_kind</code></td><td>String</td><td>Type of activity (swap_filled / topup / marketplace_buy / circles_* / ...).</td></tr><tr><td><code>activity_month</code></td><td>Date</td><td>Month in which the cohort&#x27;s subsequent activity is measured.</td></tr><tr><td><code>cohort_month</code></td><td>Date</td><td>Month of the user&#x27;s first activity (cohort anchor).</td></tr><tr><td><code>initial_users</code></td><td>UInt64</td><td>Size of the cohort at its anchor period (retention denominator).</td></tr><tr><td><code>months_since</code></td><td>Int32</td><td>Whole months between cohort_month and activity_month.</td></tr><tr><td><code>retention_pct</code></td><td>Float64</td><td>users / initial_users x 100.</td></tr><tr><td><code>users</code></td><td>UInt64</td><td>Distinct users in this cell.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activity_kind</code></td><td>String</td><td>Type of activity (swap_filled / swap_signed / topup / marketplace_buy / token_offer_claim / circles_* / ...).</td></tr><tr><td><code>activity_month</code></td><td>Date</td><td>Month in which the cohort&#x27;s activity for this kind is measured (&gt;= cohort_month).</td></tr><tr><td><code>cohort_month</code></td><td>Date</td><td>Onboard month (first &#x27;onboard&#x27; row); shared across all activity_kinds.</td></tr><tr><td><code>initial_users</code></td><td>UInt64</td><td>Onboard-cohort size = distinct users onboarded in cohort_month (same across actions; fixed denominator).</td></tr><tr><td><code>months_since</code></td><td>Int32</td><td>Whole months between cohort_month and activity_month (0 = onboard month).</td></tr><tr><td><code>retention_pct</code></td><td>Float64</td><td>users / initial_users x 100 = share of the onboard cohort doing this action in activity_month.</td></tr><tr><td><code>users</code></td><td>UInt64</td><td>Distinct cohort users who did this activity_kind in activity_month.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>activity_kind</code> (categorical)</li><li><code>cohort_month</code> (time)</li><li><code>activity_month</code> (time)</li></ul>
     <h2>Measures</h2><ul><li><code>fct_execution_gnosis_app_retention_by_action_monthly__months_since_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_by_action_monthly__users_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_by_action_monthly__initial_users_value</code> (sum)</li><li><code>fct_execution_gnosis_app_retention_by_action_monthly__retention_pct_value</code> (average)</li></ul>
     <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_user_activity_daily</code></li></ul>

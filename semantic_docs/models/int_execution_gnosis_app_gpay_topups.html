@@ -15,26 +15,23 @@
   <body>
     
     <h1>int_execution_gnosis_app_gpay_topups</h1>
-    <p>Gnosis App → Gnosis Pay TopUps.
+    <p>Gnosis App → Gnosis Pay top-ups.
 
-A TopUp = a CoW Protocol trade initiated by a GA user whose bought token
-ends up in a GP wallet in the same settlement tx.
+A top-up = a Gnosis Pay &quot;Crypto Deposit&quot; into a GP wallet that is currently
+GA-owned, per the persistent int_execution_gnosis_app_gpay_wallets bridge
+(is_currently_ga_owned), from the GA launch (2025-11-12) on. ga_user is the
+wallet&#x27;s first GA owner.
 
-Detection:
-  1. Filter int_execution_cow_trades to taker ∈ GA users.
-  2. In the same transaction_hash, find an ERC-20 Transfer of the
-     trade&#x27;s token_bought_address whose recipient is a known GP wallet.
+This supersedes the original same-transaction CoW-trade + deposit rule,
+which captured only ~1.4% of GA-owned funding — most top-ups are direct
+EURe transfers, not atomic swaps. See
+docs/model_review/gpay_topup_capture_probe.md.
 
-Per design decision (April 2026), we do NOT filter by token_sold = CRC —
-the original Slack heuristic suggested CRC-only but the Dune dashboard
-already shows TopUps in many tokens. We expose token_sold_symbol so the
-dashboard can filter client-side.
-
-Scope note: uses int_execution_transfers_whitelisted_raw for the payout
-side, which only covers whitelisted tokens. The vast majority of GP
-top-ups are into EURe / USDC (whitelisted), so this covers the
-practical use-case. TopUps into non-whitelisted tokens would be
-missed — rare and acceptable for V1.
+Scope (broadest): all Crypto Deposits into currently-GA-owned wallets, all
+tokens. Two narrowing toggles are intentionally NOT applied and can be added
+as a one-line WHERE: self-funding exclusion (counterparty = the wallet&#x27;s GA
+owner) and a temporal filter for deposits predating GA ownership of an
+imported wallet.
 </p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
@@ -42,10 +39,10 @@ missed — rare and acceptable for V1.
     <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_gpay_topups.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>gpay</span> <span class='pill'>topups</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_sold</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>block_number</code></td><td>UInt64</td><td></td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>ga_user</code></td><td>String</td><td>GA user who initiated the trade (lowercase, 0x-prefixed).</td></tr><tr><td><code>gp_wallet</code></td><td>String</td><td>GP wallet address that received the bought token (lowercase, 0x-prefixed).</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>Log index of the Trade event.</td></tr><tr><td><code>order_uid</code></td><td>String</td><td></td></tr><tr><td><code>solver</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_bought_address</code></td><td>String</td><td></td></tr><tr><td><code>token_bought_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>token_sold_address</code></td><td>String</td><td></td></tr><tr><td><code>token_sold_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Solver settlement tx hash (0x-prefixed, lowercase).</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_bought</code></td><td>Nullable(Float64)</td><td>Deposited token amount (decimal-adjusted).</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td></td></tr><tr><td><code>counterparty</code></td><td>Nullable(String)</td><td>Sender of the deposit (the funding source address).</td></tr><tr><td><code>ga_user</code></td><td>String</td><td>First GA owner of the receiving GP wallet — the attributed acquired user.</td></tr><tr><td><code>gp_wallet</code></td><td>String</td><td>GA-owned GP wallet that received the deposit.</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>Synthetic per-tx ordinal (gpay_activity has no log index); keeps the (tx, log_index) dedup key unique per deposit.</td></tr><tr><td><code>token_bought_address</code></td><td>String</td><td>Deposited token contract address (legacy column name; now the funded token, not a swap output).</td></tr><tr><td><code>token_bought_symbol</code></td><td>Nullable(String)</td><td></td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Gnosis Pay deposit transaction hash (0x-prefixed).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>block_number</code> (categorical)</li><li><code>block_timestamp</code> (time)</li><li><code>transaction_hash</code> (categorical)</li><li><code>ga_user</code> (categorical)</li><li><code>gp_wallet</code> (categorical)</li><li><code>order_uid</code> (categorical)</li><li><code>token_sold_address</code> (categorical)</li><li><code>token_sold_symbol</code> (categorical)</li><li><code>token_bought_address</code> (categorical)</li><li><code>token_bought_symbol</code> (categorical)</li><li><code>solver</code> (categorical)</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>int_execution_cow_trades</code></li><li><code>int_execution_gnosis_app_users_current</code></li><li><code>int_execution_gpay_activity</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_gpay_wallets</code></li><li><code>int_execution_gpay_activity</code></li></ul>
     <h2>Downstream</h2><ul><li><code>api_execution_gnosis_app_attribution_30d</code></li><li><code>api_execution_gnosis_app_attribution_60d</code></li><li><code>api_execution_gnosis_app_attribution_7d</code></li><li><code>fct_execution_gnosis_app_gpay_topups_by_token_daily</code></li><li><code>fct_execution_gnosis_app_gpay_topups_cohort_monthly</code></li><li><code>fct_execution_gnosis_app_gpay_topups_monthly</code></li><li><code>fct_execution_gnosis_app_gpay_topups_weekly</code></li><li><code>int_execution_gnosis_app_conversions</code></li><li><code>int_execution_gnosis_app_events_chain_unified</code></li><li><code>int_execution_gnosis_app_user_activity_daily</code></li></ul>
     
   </body>

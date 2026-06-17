@@ -15,14 +15,28 @@
   <body>
     
     <h1>int_execution_gnosis_app_first_conversion</h1>
-    <p>One row per GA user with first-event-per-conversion-kind timestamps.</p>
+    <p>One row per Gnosis App user (the onboard cohort) with the date of their
+first event in each conversion kind. Feeds the time-to-first-conversion view.
+
+Modeling assumptions:
+  * first_seen_at = the heuristic onboard date, carried from
+    int_execution_gnosis_app_user_activity_daily (&#x27;onboard&#x27; rows).
+  * Each first_&lt;kind&gt;_at is NULL when the user never did that action.
+    This is enforced via nullIf(minIf(...), toDate(&#x27;1970-01-01&#x27;)) plus a
+    join_use_nulls hook, so the ClickHouse Date default (1970-01-01) from an
+    empty minIf or an unmatched LEFT JOIN cannot masquerade as a real
+    conversion. Consumers MUST treat 1970-01-01 as impossible and rely on
+    IS NULL (a prior bug let the epoch sentinel inflate pct_converted to
+    100% and produce negative time-to-conversion).
+  * Conversion kinds: topup, swap_filled, marketplace_buy, token_offer_claim.
+</p>
     <p><strong>Module:</strong> execution</p>
     <p><strong>Status:</strong> candidate</p>
     <p><strong>Owner:</strong> analytics_team</p>
     <p><strong>Path:</strong> <code>models/execution/gnosis_app/intermediate/int_execution_gnosis_app_first_conversion.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gnosis_app</span> <span class='pill'>first_conversion</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td></td></tr><tr><td><code>first_marketplace_buy_at</code></td><td>Nullable(Date)</td><td></td></tr><tr><td><code>first_seen_at</code></td><td>Date</td><td></td></tr><tr><td><code>first_swap_filled_at</code></td><td>Nullable(Date)</td><td></td></tr><tr><td><code>first_token_offer_claim_at</code></td><td>Nullable(Date)</td><td></td></tr><tr><td><code>first_topup_at</code></td><td>Nullable(Date)</td><td></td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>Gnosis App user address.</td></tr><tr><td><code>first_marketplace_buy_at</code></td><td>Nullable(Date)</td><td>First marketplace-buy date; NULL if never.</td></tr><tr><td><code>first_seen_at</code></td><td>Date</td><td>Heuristic onboard date (min onboard activity).</td></tr><tr><td><code>first_swap_filled_at</code></td><td>Nullable(Date)</td><td>First filled-swap date; NULL if never.</td></tr><tr><td><code>first_token_offer_claim_at</code></td><td>Nullable(Date)</td><td>First token-offer-claim date; NULL if never.</td></tr><tr><td><code>first_topup_at</code></td><td>Nullable(Date)</td><td>First top-up date; NULL if never.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>address</code> (categorical)</li><li><code>first_seen_at</code> (time)</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>int_execution_gnosis_app_user_activity_daily</code></li></ul>
