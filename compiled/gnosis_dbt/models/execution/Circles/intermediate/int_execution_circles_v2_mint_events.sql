@@ -69,6 +69,7 @@ personal AS (
         FROM `dbt`.`int_execution_circles_v2_mint_events` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -114,6 +115,7 @@ grp AS (
         FROM `dbt`.`int_execution_circles_v2_mint_events` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -158,6 +160,7 @@ migration AS (
         FROM `dbt`.`int_execution_circles_v2_mint_events` AS x1
         WHERE 1=1 
       )
+      
     
   
 

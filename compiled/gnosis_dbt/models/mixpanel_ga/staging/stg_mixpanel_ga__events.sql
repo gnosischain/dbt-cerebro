@@ -143,6 +143,7 @@ WITH raw AS (
         FROM `dbt`.`stg_mixpanel_ga__events` AS x1
         WHERE 1=1 
       )
+      
     
   
 

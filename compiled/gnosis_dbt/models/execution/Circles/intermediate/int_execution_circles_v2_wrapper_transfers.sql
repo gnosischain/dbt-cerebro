@@ -52,6 +52,7 @@ FROM (
         FROM `dbt`.`int_execution_circles_v2_wrapper_transfers` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -42,6 +42,7 @@ FROM (
         FROM `dbt`.`int_execution_transactions_info_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -122,6 +123,7 @@ px AS (
         FROM `dbt`.`int_execution_transactions_info_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

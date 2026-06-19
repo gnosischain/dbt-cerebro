@@ -55,6 +55,7 @@ cometh_presignatures AS (
         FROM `dbt`.`int_execution_gnosis_app_swaps` AS x1
         WHERE 1=1 
       )
+      
     
   
 

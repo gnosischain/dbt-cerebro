@@ -70,6 +70,7 @@
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -104,6 +105,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -138,6 +140,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -172,6 +175,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -206,6 +210,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -240,6 +245,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -274,6 +280,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -308,6 +315,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -342,6 +350,7 @@ union all
         FROM `dbt`.`int_execution_rwa_backedfi_prices` AS x1
         WHERE 1=1 
       )
+      
     
   
 

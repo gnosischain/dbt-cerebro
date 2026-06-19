@@ -31,6 +31,7 @@ WHERE event_name IN ('CycleConfiguration', 'NextOfferCreated', 'NextOfferTokensD
         FROM `dbt`.`int_execution_circles_v2_offer_cycles` AS x1
         WHERE 1=1 
       )
+      
     
   
 

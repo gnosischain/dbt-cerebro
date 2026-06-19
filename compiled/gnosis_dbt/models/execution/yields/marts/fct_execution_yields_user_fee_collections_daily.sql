@@ -34,6 +34,7 @@ WHERE event_type IN ('collect', 'burn')
         FROM `dbt`.`fct_execution_yields_user_fee_collections_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -84,6 +84,7 @@ final AS (
         FROM `dbt`.`int_consensus_graffiti_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

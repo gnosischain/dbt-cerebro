@@ -31,6 +31,7 @@ WHERE page_path != ''
         FROM `dbt`.`int_mixpanel_ga_pages_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

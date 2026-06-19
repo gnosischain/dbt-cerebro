@@ -37,6 +37,7 @@ token_holdings AS (
         FROM `dbt`.`int_dao_treasury_holdings_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -74,6 +75,7 @@ lending_holdings AS (
         FROM `dbt`.`int_dao_treasury_holdings_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

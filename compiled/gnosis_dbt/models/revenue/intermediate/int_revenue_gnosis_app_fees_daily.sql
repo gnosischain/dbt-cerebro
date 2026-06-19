@@ -41,6 +41,7 @@ metri_transfers_raw AS (
         FROM `dbt`.`int_revenue_gnosis_app_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

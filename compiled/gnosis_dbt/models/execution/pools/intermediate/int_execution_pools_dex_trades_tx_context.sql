@@ -30,6 +30,7 @@ WHERE t.transaction_hash IN (
         FROM `dbt`.`int_execution_pools_dex_trades_tx_context` AS x1
         WHERE 1=1 
       )
+      
     
   
 

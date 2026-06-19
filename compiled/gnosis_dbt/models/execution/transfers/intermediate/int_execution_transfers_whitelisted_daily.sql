@@ -58,6 +58,7 @@ FROM (
         FROM `dbt`.`int_execution_transfers_whitelisted_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -133,6 +134,7 @@ wxdai_logs AS (
         FROM `dbt`.`int_execution_transfers_whitelisted_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

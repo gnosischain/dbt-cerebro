@@ -68,6 +68,7 @@ WHERE address != '0x0000000000000000000000000000000000000000'
         FROM `dbt`.`fct_execution_account_token_movements_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

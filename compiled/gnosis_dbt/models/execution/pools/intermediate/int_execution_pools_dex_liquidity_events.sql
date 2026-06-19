@@ -54,6 +54,7 @@ events_base AS (
         FROM `dbt`.`int_execution_pools_dex_liquidity_events` AS x1
         WHERE 1=1 
       )
+      
     
   
 

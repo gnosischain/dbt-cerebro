@@ -26,6 +26,7 @@ trades AS (
         FROM `dbt`.`int_execution_circles_v2_crc20_prices_raw` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -30,6 +30,7 @@ trades AS (
         FROM `dbt`.`int_execution_cow_batches` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -55,6 +55,7 @@ WHERE u.date < today()
         FROM `dbt`.`int_ubo_claims_aave_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

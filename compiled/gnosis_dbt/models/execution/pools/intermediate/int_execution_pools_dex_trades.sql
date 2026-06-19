@@ -31,6 +31,7 @@ swaps AS (
         FROM `dbt`.`int_execution_pools_dex_trades` AS x1
         WHERE 1=1 
       )
+      
     
   
 

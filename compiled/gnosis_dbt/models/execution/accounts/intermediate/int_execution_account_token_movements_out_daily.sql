@@ -39,6 +39,7 @@ WHERE date < today()
         FROM `dbt`.`int_execution_account_token_movements_out_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

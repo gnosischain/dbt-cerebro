@@ -165,6 +165,7 @@ WHERE 1=1
         FROM `dbt`.`int_execution_mmm_kpis_weekly` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -33,6 +33,7 @@ WHERE event_name = 'Trust'
         FROM `dbt`.`int_execution_circles_v1_trust_updates` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -44,6 +44,7 @@ WITH base AS (
         FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -80,6 +81,7 @@ mints AS (
         FROM `dbt`.`int_execution_circles_v2_transfers_categorised` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -208,6 +208,7 @@ WHERE 1=1
         FROM `dbt`.`int_execution_mmm_controls_weekly` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -35,6 +35,7 @@ WITH single_locks AS (
         FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -91,6 +92,7 @@ batch_locks AS (
         FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -148,6 +150,7 @@ batch_burns AS (
         FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -205,6 +208,7 @@ batch_returns AS (
         FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 

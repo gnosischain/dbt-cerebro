@@ -30,6 +30,7 @@ WITH src AS (
         FROM `dbt`.`int_execution_transactions_by_project_alltime_state` AS x1
         WHERE 1=1 
       )
+      
     
   
 

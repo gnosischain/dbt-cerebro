@@ -33,6 +33,7 @@ WITH base AS (
         FROM `dbt`.`int_bridges_flows_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
  

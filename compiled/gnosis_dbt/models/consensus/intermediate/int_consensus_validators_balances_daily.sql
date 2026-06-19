@@ -25,6 +25,7 @@ WHERE
         FROM `dbt`.`int_consensus_validators_balances_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

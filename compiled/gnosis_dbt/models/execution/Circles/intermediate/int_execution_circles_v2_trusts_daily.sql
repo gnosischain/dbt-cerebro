@@ -39,6 +39,7 @@ WHERE block_timestamp < today()
         FROM `dbt`.`int_execution_circles_v2_trusts_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

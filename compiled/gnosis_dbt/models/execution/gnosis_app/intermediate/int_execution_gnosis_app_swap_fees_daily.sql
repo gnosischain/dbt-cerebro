@@ -57,6 +57,7 @@ WHERE was_filled = 1
         FROM `dbt`.`int_execution_gnosis_app_swap_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -84,6 +84,7 @@ WITH balances AS (
 
 
       )
+      
     
   
 
@@ -202,6 +203,7 @@ prices AS (
 
 
       )
+      
     
   
 

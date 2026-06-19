@@ -57,6 +57,7 @@ deposits AS (
         FROM `dbt`.`int_execution_gnosis_app_gpay_topups` AS x1
         WHERE 1=1 
       )
+      
     
   
 

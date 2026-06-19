@@ -64,6 +64,7 @@ FROM (
         FROM `dbt`.`int_execution_transfers_whitelisted_raw` AS x1
         WHERE 1=1 
       )
+      
     
   
 

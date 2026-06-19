@@ -48,6 +48,7 @@ FROM (
         FROM `dbt`.`int_consensus_validators_dists_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

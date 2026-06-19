@@ -68,6 +68,7 @@ reserve_index_by_tx AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -107,6 +108,7 @@ pool_events AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -146,6 +148,7 @@ pool_events AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -186,6 +189,7 @@ pool_events AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -226,6 +230,7 @@ pool_events AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -315,6 +320,7 @@ transfer_deltas AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -354,6 +360,7 @@ transfer_deltas AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -414,6 +421,7 @@ treasury_mint_deltas AS (
         FROM `dbt`.`int_execution_lending_aave_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -29,9 +29,7 @@ rate_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
-        )
+        
       
 ),
 
@@ -53,9 +51,7 @@ activity_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
-        )
+        
       
 
     UNION ALL
@@ -77,9 +73,7 @@ activity_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM `dbt`.`int_execution_lending_aave_daily`
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM `dbt`.`int_execution_lending_aave_daily`
-        )
+        
       
 ),
 

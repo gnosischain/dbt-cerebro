@@ -35,6 +35,7 @@ WHERE f.date < today()
         FROM `dbt`.`int_ubo_second_level_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

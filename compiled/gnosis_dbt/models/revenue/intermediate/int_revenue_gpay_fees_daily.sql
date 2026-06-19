@@ -57,6 +57,7 @@ transfers AS (
         FROM `dbt`.`int_revenue_gpay_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

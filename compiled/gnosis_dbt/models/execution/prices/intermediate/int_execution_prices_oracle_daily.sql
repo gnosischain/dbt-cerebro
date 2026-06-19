@@ -96,6 +96,7 @@ WITH decoded AS (
         FROM `dbt`.`int_execution_prices_oracle_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

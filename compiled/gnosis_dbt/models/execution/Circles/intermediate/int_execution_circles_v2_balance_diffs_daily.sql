@@ -37,6 +37,7 @@ FROM (
         FROM `dbt`.`int_execution_circles_v2_balance_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -71,6 +72,7 @@ FROM (
         FROM `dbt`.`int_execution_circles_v2_balance_diffs_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

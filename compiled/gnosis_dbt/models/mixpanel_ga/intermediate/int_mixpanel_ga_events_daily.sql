@@ -32,6 +32,7 @@ WHERE event_date < today()
         FROM `dbt`.`int_mixpanel_ga_events_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

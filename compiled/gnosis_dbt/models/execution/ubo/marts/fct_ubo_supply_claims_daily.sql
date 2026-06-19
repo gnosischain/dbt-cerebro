@@ -25,6 +25,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -54,6 +55,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -83,6 +85,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -112,6 +115,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -141,6 +145,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -170,6 +175,7 @@ WHERE date < today()
         FROM `dbt`.`fct_ubo_supply_claims_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

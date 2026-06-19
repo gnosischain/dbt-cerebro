@@ -31,6 +31,7 @@ WHERE 1=1
         FROM `dbt`.`fct_consensus_attestations_performance_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

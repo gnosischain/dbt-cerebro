@@ -35,6 +35,7 @@ WHERE 1 = 1
         FROM `dbt`.`int_execution_circles_v1_balance_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -75,6 +76,7 @@ WHERE 1 = 1
         FROM `dbt`.`int_execution_circles_v1_balance_diffs` AS x1
         WHERE 1=1 
       )
+      
     
   
 

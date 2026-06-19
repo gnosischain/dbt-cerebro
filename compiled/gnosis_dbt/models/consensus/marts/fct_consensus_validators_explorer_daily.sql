@@ -70,6 +70,7 @@ WHERE 1=1
         FROM `dbt`.`fct_consensus_validators_explorer_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

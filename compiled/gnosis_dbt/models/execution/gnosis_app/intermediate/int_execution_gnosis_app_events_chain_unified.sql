@@ -49,6 +49,7 @@ onboard_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -92,6 +93,7 @@ heuristic_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -131,6 +133,7 @@ swap_signed_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -172,6 +175,7 @@ swap_filled_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -211,6 +215,7 @@ topup_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -250,6 +255,7 @@ marketplace_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -289,6 +295,7 @@ claim_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_events_chain_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 

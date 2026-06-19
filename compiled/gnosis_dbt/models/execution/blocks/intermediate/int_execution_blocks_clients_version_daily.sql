@@ -59,6 +59,7 @@ FROM (
         FROM `dbt`.`int_execution_blocks_clients_version_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -32,6 +32,7 @@ WHERE country_code != ''
         FROM `dbt`.`int_mixpanel_ga_geo_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

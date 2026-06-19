@@ -38,6 +38,7 @@ WHERE toStartOfMonth(date) < toStartOfMonth(today())
         FROM `dbt`.`int_revenue_fees_monthly_per_user` AS x1
         WHERE 1=1 
       )
+      
     
   
 

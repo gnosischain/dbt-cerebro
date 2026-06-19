@@ -31,6 +31,7 @@ WITH balances AS (
         FROM `dbt`.`int_execution_circles_v2_tokens_supply_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

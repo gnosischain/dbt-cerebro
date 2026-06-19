@@ -50,6 +50,7 @@ visits_info AS (
         FROM `dbt`.`int_p2p_discv5_visits_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

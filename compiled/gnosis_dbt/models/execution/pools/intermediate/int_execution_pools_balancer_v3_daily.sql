@@ -169,6 +169,7 @@ daily_deltas AS (
         FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

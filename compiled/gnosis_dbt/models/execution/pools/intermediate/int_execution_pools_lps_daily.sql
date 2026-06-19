@@ -34,6 +34,7 @@ uniswap_v3_lp_events AS (
         FROM `dbt`.`int_execution_pools_lps_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -69,6 +70,7 @@ swapr_v3_lp_events AS (
         FROM `dbt`.`int_execution_pools_lps_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -104,6 +106,7 @@ balancer_v3_lp_events_raw AS (
         FROM `dbt`.`int_execution_pools_lps_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

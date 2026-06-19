@@ -26,6 +26,7 @@ WHERE 1=1
         FROM `dbt`.`fct_execution_transactions_active_accounts_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

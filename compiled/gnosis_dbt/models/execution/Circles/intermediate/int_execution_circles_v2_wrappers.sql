@@ -31,6 +31,7 @@ WHERE event_name = 'ERC20WrapperDeployed'
         FROM `dbt`.`int_execution_circles_v2_wrappers` AS x1
         WHERE 1=1 
       )
+      
     
   
 

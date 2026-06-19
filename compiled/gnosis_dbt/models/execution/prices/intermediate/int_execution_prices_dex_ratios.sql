@@ -47,6 +47,7 @@ WITH unpriced_trades AS (
         FROM `dbt`.`int_execution_prices_dex_ratios` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -89,6 +90,7 @@ WITH unpriced_trades AS (
         FROM `dbt`.`int_execution_prices_dex_ratios` AS x1
         WHERE 1=1 
       )
+      
     
   
 

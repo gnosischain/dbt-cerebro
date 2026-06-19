@@ -41,6 +41,7 @@ WHERE b.date < today()
         FROM `dbt`.`int_execution_tokens_supply_holders_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

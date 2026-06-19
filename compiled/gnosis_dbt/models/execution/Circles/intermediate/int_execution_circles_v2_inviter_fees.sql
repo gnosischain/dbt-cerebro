@@ -61,6 +61,7 @@ gnosis_app_txs AS (
         FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -101,6 +102,7 @@ mint_txs AS (
         FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -137,6 +139,7 @@ wrapper_transfers AS (
         FROM `dbt`.`int_execution_circles_v2_inviter_fees` AS x1
         WHERE 1=1 
       )
+      
     
   
 

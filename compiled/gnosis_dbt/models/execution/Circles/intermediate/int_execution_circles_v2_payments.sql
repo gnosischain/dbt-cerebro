@@ -35,6 +35,7 @@ WHERE event_name = 'PaymentReceived'
         FROM `dbt`.`int_execution_circles_v2_payments` AS x1
         WHERE 1=1 
       )
+      
     
   
 

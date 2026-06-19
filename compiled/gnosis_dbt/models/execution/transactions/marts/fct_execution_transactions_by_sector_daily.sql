@@ -25,6 +25,7 @@ WITH base AS (
         FROM `dbt`.`fct_execution_transactions_by_sector_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

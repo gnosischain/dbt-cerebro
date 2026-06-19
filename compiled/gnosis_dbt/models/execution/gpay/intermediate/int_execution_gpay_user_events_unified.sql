@@ -55,6 +55,7 @@ activity AS (
         FROM `dbt`.`int_execution_gpay_user_events_unified` AS x1
         WHERE 1=1 
       )
+      
     
   
 

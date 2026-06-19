@@ -27,6 +27,7 @@ deposists AS (
         FROM `dbt`.`int_consensus_deposits_withdrawals_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -59,6 +60,7 @@ deposists_requests AS (
         FROM `dbt`.`int_consensus_deposits_withdrawals_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -90,6 +92,7 @@ withdrawals AS (
         FROM `dbt`.`int_consensus_deposits_withdrawals_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

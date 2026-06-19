@@ -30,5 +30,6 @@ INNER JOIN gpay_safes gs
         FROM `dbt`.`int_execution_gpay_wallet_owners` AS x1
         WHERE 1=1 
       )
+      
     
   

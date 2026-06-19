@@ -29,6 +29,7 @@ WHERE
         FROM `dbt`.`int_consensus_credentials_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -28,6 +28,7 @@ WITH conversions AS (
         FROM `dbt`.`fct_execution_gnosis_app_journeys_60d` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -60,6 +61,7 @@ events_window AS (
         FROM `dbt`.`fct_execution_gnosis_app_journeys_60d` AS x1
         WHERE 1=1 
       )
+      
     
   
 

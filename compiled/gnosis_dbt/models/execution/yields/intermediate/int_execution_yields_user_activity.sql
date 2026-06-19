@@ -44,6 +44,7 @@ lp_events AS (
         FROM `dbt`.`int_execution_yields_user_activity` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -119,6 +120,7 @@ lending_events AS (
         FROM `dbt`.`int_execution_yields_user_activity` AS x1
         WHERE 1=1 
       )
+      
     
   
 

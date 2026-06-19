@@ -27,6 +27,7 @@ state_size_diff AS (
         FROM `dbt`.`int_execution_state_size_full_diff_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -48,6 +48,7 @@ WITH events AS (
         FROM `dbt`.`fct_execution_gnosis_app_funnel_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

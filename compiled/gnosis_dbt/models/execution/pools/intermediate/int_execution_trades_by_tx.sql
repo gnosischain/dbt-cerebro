@@ -1,6 +1,10 @@
 
 
 
+
+
+
+
 -- Transaction-grain collapse of int_execution_pools_dex_trades. One row per
 -- (date, transaction_hash). Does the expensive tx-level GROUP BY and the
 -- aggregator-label JOIN exactly once, here. Downstream facts and api views
@@ -40,6 +44,7 @@ swaps AS (
         FROM `dbt`.`int_execution_trades_by_tx` AS x1
         WHERE 1=1 
       )
+      
     
   
 

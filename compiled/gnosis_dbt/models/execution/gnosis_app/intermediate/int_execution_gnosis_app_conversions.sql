@@ -43,6 +43,7 @@ topup_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -82,6 +83,7 @@ swap_filled_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -119,6 +121,7 @@ claim_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -156,6 +159,7 @@ marketplace_rows AS (
         FROM `dbt`.`int_execution_gnosis_app_conversions` AS x1
         WHERE 1=1 
       )
+      
     
   
 

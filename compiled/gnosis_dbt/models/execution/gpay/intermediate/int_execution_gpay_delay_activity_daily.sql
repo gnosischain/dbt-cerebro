@@ -30,6 +30,7 @@ events_filtered AS (
         FROM `dbt`.`int_execution_gpay_delay_activity_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

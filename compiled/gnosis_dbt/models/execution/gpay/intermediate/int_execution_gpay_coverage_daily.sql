@@ -30,6 +30,7 @@ WITH conv AS (
         FROM `dbt`.`int_execution_gpay_coverage_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

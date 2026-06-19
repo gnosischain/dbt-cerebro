@@ -37,6 +37,7 @@ WITH balances AS (
         FROM `dbt`.`int_execution_account_balance_history_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

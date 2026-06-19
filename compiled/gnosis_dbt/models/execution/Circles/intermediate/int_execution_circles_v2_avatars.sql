@@ -59,6 +59,7 @@ WHERE
         FROM `dbt`.`int_execution_circles_v2_avatars` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -40,6 +40,7 @@ WITH single_rows AS (
         FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -78,6 +79,7 @@ batch_rows AS (
         FROM `dbt`.`int_execution_circles_v2_hub_transfers` AS x1
         WHERE 1=1 
       )
+      
     
   
 

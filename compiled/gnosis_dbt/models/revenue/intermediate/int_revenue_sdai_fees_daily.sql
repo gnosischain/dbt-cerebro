@@ -42,6 +42,7 @@ base AS (
         FROM `dbt`.`int_revenue_sdai_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -75,6 +76,7 @@ base AS (
         FROM `dbt`.`int_revenue_sdai_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

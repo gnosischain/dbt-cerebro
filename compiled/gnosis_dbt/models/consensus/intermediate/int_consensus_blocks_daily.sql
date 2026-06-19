@@ -46,6 +46,7 @@ FROM (
         FROM `dbt`.`int_consensus_blocks_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

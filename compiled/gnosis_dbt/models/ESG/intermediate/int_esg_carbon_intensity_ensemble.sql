@@ -38,6 +38,7 @@ WITH ember_monthly AS (
         FROM `dbt`.`int_esg_carbon_intensity_ensemble` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -34,6 +34,7 @@ FROM (
         FROM `dbt`.`int_execution_blocks_gas_usage_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

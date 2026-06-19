@@ -34,6 +34,7 @@ WITH
         FROM `dbt`.`int_p2p_discv4_peers` AS x1
         WHERE 1=1 
       )
+      
     
   
 

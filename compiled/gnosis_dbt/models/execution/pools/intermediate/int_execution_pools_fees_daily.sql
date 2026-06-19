@@ -53,6 +53,7 @@ uniswap_v3_swap_fees_token AS (
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -88,6 +89,7 @@ uniswap_v3_flash_fees_token AS (
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -161,6 +163,7 @@ swapr_v3_swaps_with_fee AS (
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -218,6 +221,7 @@ swapr_v3_flash_fees_token AS (
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -266,6 +270,7 @@ balancer_v3_swap_fees AS (
         FROM `dbt`.`int_execution_pools_fees_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

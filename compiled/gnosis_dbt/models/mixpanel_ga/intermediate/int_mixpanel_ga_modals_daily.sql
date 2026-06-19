@@ -32,6 +32,7 @@ WHERE event_category = 'modal'
         FROM `dbt`.`int_mixpanel_ga_modals_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

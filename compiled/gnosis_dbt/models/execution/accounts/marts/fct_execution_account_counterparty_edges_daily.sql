@@ -32,6 +32,7 @@ WITH token_edges AS (
         FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -69,6 +70,7 @@ gpay_edges AS (
         FROM `dbt`.`fct_execution_account_counterparty_edges_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

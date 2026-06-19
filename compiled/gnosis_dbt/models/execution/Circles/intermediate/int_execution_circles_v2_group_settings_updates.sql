@@ -36,6 +36,7 @@ WHERE event_name = 'BaseGroupCreated'
         FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -77,6 +78,7 @@ WHERE event_name = 'CMGroupCreated'
         FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -118,6 +120,7 @@ WHERE event_name IN ('OwnerSet', 'ServiceUpdated', 'FeeCollectionUpdated', 'Mint
         FROM `dbt`.`int_execution_circles_v2_group_settings_updates` AS x1
         WHERE 1=1 
       )
+      
     
   
 

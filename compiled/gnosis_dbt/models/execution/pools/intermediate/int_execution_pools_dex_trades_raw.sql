@@ -57,6 +57,7 @@ WHERE s.amount_bought_raw > 0
         FROM `dbt`.`int_execution_pools_dex_trades_raw` AS x1
         WHERE 1=1 
       )
+      
     
   
 

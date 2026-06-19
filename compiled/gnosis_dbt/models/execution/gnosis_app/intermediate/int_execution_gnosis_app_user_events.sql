@@ -48,6 +48,7 @@ WITH cometh_txs AS (
         FROM `dbt`.`int_execution_gnosis_app_user_events` AS x1
         WHERE 1=1 
       )
+      
     
   
 

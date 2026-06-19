@@ -52,6 +52,7 @@ payment_events AS (
         FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
         WHERE 1=1 
       )
+      
     
   
 
@@ -84,6 +85,7 @@ cometh_txs AS (
         FROM `dbt`.`int_execution_gnosis_app_marketplace_payments` AS x1
         WHERE 1=1 
       )
+      
     
   
 

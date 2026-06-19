@@ -35,6 +35,7 @@ queue_activation AS (
         FROM `dbt`.`int_consensus_entry_queue_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

@@ -28,6 +28,7 @@ FROM `dbt`.`int_execution_gpay_activity`
         FROM `dbt`.`int_execution_gpay_activity_daily` AS x1
         WHERE 1=1 
       )
+      
     
   
 

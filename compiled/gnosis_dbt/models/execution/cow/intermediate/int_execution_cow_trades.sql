@@ -47,6 +47,7 @@ swaps AS (
         FROM `dbt`.`int_execution_cow_trades` AS x1
         WHERE 1=1 
       )
+      
     
   
 
