@@ -42,9 +42,10 @@ rate_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM {{ this }}
-        )
+        {# removed AND toDate(block_timestamp) >= (SELECT max(`date`)) — under
+           insert_overwrite + monthly partition this collapsed the month to
+           [max(date)..today] and REPLACE PARTITION wiped the earlier days. The
+           toStartOfMonth lower bound above re-pulls the whole current month. #}
       {% endif %}
 ),
 
@@ -69,9 +70,10 @@ activity_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM {{ this }}
-        )
+        {# removed AND toDate(block_timestamp) >= (SELECT max(`date`)) — under
+           insert_overwrite + monthly partition this collapsed the month to
+           [max(date)..today] and REPLACE PARTITION wiped the earlier days. The
+           toStartOfMonth lower bound above re-pulls the whole current month. #}
       {% endif %}
 
     UNION ALL
@@ -96,9 +98,10 @@ activity_events AS (
         AND toStartOfMonth(toDate(block_timestamp)) >= (
           SELECT toStartOfMonth(max(`date`)) FROM {{ this }}
         )
-        AND toDate(block_timestamp) >= (
-          SELECT max(`date`) FROM {{ this }}
-        )
+        {# removed AND toDate(block_timestamp) >= (SELECT max(`date`)) — under
+           insert_overwrite + monthly partition this collapsed the month to
+           [max(date)..today] and REPLACE PARTITION wiped the earlier days. The
+           toStartOfMonth lower bound above re-pulls the whole current month. #}
       {% endif %}
 ),
 

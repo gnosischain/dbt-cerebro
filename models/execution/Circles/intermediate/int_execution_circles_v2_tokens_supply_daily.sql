@@ -12,7 +12,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
+        incremental_strategy=('append' if (start_month or incr_end) else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(token_address, date)',
         partition_by='toStartOfMonth(date)',

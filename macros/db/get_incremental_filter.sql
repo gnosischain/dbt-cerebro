@@ -6,7 +6,11 @@
      incremental result; if the filter returned only the last N days the
      replace would wipe the rest of the month. So under insert_overwrite the
      filter must return COMPLETE months (toStartOfMonth lower bound only, no
-     day-level restriction) — the recompute is lossless.
+     day-level restriction) — the recompute is lossless. This branch takes
+     PRECEDENCE even when incremental_end_date is set: the microbatch runner's
+     single-day end date is applied only as an UPPER cap, never as the lower
+     bound. (Letting the microbatch branch below win here is what wiped a whole
+     month down to one day under REPLACE PARTITION.)
 
   2. microbatch append (incremental_end_date set): strict no-overlap
      `> max(date)` ... `<= incr_end`. Exact-once append, no duplicates.
@@ -30,14 +34,20 @@
     {% set strategy = config.get('incremental_strategy') %}
 
     {{ "AND " if add_and else "WHERE " }}
-    {% if incr_end is none and strategy == 'insert_overwrite' %}
-      {# Whole-partition recompute: return complete months so REPLACE PARTITION
-         is lossless. No day-level lower bound here on purpose. #}
+    {% if strategy == 'insert_overwrite' %}
+      {# Whole-partition recompute: return COMPLETE months so REPLACE PARTITION is
+         lossless, EVEN when the microbatch runner set incremental_end_date. A
+         day-level lower bound here would make REPLACE PARTITION wipe the rest of
+         the month (the June data-loss bug). When incr_end is set we still honor it
+         as an upper cap so the runner stays the ceiling authority. #}
       toStartOfMonth(toDate({{ source_field }})) >= (
         SELECT toStartOfMonth(addDays(max(toDate(x1.{{ dest_field }})), -{{ lb_days }}))
         FROM {{ this }} AS x1
         WHERE 1=1 {{ filters_sql }}
       )
+      {% if incr_end is not none %}
+      AND toDate({{ source_field }}) <= toDate('{{ incr_end }}')
+      {% endif %}
     {% elif incr_end is not none %}
       {# No-overlap microbatch path: strict > max(target_date), <= incr_end.
          Lookback is intentionally suppressed — the microbatch runner is the

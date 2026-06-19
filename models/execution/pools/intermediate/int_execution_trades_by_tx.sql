@@ -1,3 +1,7 @@
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month',   none) %}
+{% set incr_end    = mb_var('incremental_end_date') %}
+
 {#
   incremental_strategy resolves to `append` when either start_month
   (full-refresh batching) OR incremental_end_date (microbatch runner) is set.
@@ -8,7 +12,7 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
+        incremental_strategy=('append' if (start_month or incr_end) else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
