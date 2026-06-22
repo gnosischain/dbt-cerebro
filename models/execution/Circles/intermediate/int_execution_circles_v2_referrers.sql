@@ -57,7 +57,7 @@ SELECT
     min(r.block_timestamp)                                          AS first_referral_at,
     toStartOfWeek(min(r.block_timestamp), 1)                        AS first_referral_week,
     count()                                                         AS n_referrals,
-    argMin(toUInt8(g.transaction_hash != ''), r.block_timestamp)    AS first_referral_in_app,
+    argMin(toUInt8(g.transaction_hash IS NOT NULL AND g.transaction_hash != ''), r.block_timestamp) AS first_referral_in_app,
     any(f.first_inviter_fee_at)                                     AS first_inviter_fee_at
 FROM registrations r
 LEFT JOIN gnosis_app_txs g
