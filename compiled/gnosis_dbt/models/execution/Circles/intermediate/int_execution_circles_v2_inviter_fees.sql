@@ -155,10 +155,17 @@ SELECT
     t.from_address                          AS invitee,
     t.to_address                            AS inviter,
     toFloat64(t.amount_raw) / pow(10, 18)   AS amount,
-    toUInt8(g.transaction_hash != '')       AS is_gnosis_app_tx
+    -- isNotNull guard: an unmatched LEFT JOIN yields NULL (not ''), so a bare
+    -- `!= ''` returns NULL and silently drops the row from downstream
+    -- `is_gnosis_app_tx IN (0,1)` filters. Treat unmatched as 0 (not in-app).
+    toUInt8(g.transaction_hash IS NOT NULL AND g.transaction_hash != '') AS is_gnosis_app_tx
 FROM wrapper_transfers t
 INNER JOIN mint_txs m
-    ON m.transaction_hash = t.transaction_hash
+    -- mint_events.transaction_hash is UNPREFIXED while wrapper_transfers is
+    -- 0x-prefixed; normalize (same pattern as the gnosis_app_txs join below).
+    -- A recent upstream format drift silently broke this equality join and
+    -- froze the model — keep them format-agnostic.
+    ON concat('0x', m.transaction_hash) = t.transaction_hash
 INNER JOIN invitee_inviter ii
     ON ii.invitee = t.from_address
    AND ii.inviter = t.to_address

@@ -24,7 +24,9 @@ SELECT
     to_address                                         AS address,
     sum(toFloat64(amount_raw) / pow(10, 18))           AS amount
 FROM `dbt`.`int_execution_circles_v2_wrapper_transfers`
-WHERE token_address = '0x548c20e6c24e4876e20dadbeab75362e2f5a4bc1'
+-- IN(list) handles the ~2026-06-15 gCRC token cutover (old 0x548c -> new
+-- 0x78ba); the wallet pays exactly one token per week, so no double-counting.
+WHERE token_address IN ('0x548c20e6c24e4876e20dadbeab75362e2f5a4bc1', '0x78bab8d5ea6b72f8375cc21436857815210f7d02')
   AND from_address  = '0x7abe74b71f2958b624cb2be0596678784c0caf6a'
   AND block_timestamp < today()
 GROUP BY week, to_address
