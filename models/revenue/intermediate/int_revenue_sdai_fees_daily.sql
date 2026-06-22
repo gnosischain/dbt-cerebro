@@ -69,6 +69,25 @@ base AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', true, lookback_days=2) }}
       {% endif %}
+
+    UNION ALL
+
+    -- sDAI held via the OpenCover OC-sDAI ERC-4626 vault (look-through). The
+    -- look-through already values each holder's underlying sDAI in USD; the
+    -- vault's own pooled sDAI is excluded by the non_users anti-join below
+    -- (the vault address is in tokens_whitelist -> non_user_contracts), so
+    -- attributing the underlying to OC-sDAI shareholders does not double count.
+    SELECT date, user, balance_usd
+    FROM {{ ref('int_revenue_ocsdai_user_balances_daily') }}
+    WHERE date < today()
+      AND balance_usd > 0
+      AND user IS NOT NULL
+      {% if start_month and end_month %}
+        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('date', 'date', true, lookback_days=2) }}
+      {% endif %}
 ),
 
 base_users AS (

@@ -69,6 +69,64 @@ models:
       - log_index
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: contracts_ocsdai_events
+  description: |
+    Decoded event logs for the OpenCover OC-sDAI vault ("Covered Savings xDAI",
+    CoveredMetavault, 0x0ac34fe133bde3a2ef589a18a4e10b6a7d253829). ERC-4626 /
+    async ERC-7540 vault whose asset() is sDAI. Standard ERC-4626
+    Deposit(sender,owner,assets,shares) and Withdraw(...,assets,shares) events
+    are decoded here and consumed by int_yields_ocsdai_share_price_daily to
+    reconstruct the vault share price for the revenue sDAI look-through.
+  columns:
+
+  - name: block_timestamp
+    description: The timestamp when the block was mined, in UTC.
+    data_type: DateTime
+
+  - name: log_index
+    description: The index of the log within the block, used to order logs.
+    data_type: UInt64
+
+  - name: transaction_hash
+    description: The hash of the transaction associated with the event.
+    data_type: String
+
+  - name: contract_address
+    description: The address of the contract emitting the event.
+    data_type: String
+
+  - name: event_name
+    description: The name of the event emitted.
+    data_type: String
+
+  - name: decoded_params
+    description: Map of decoded event parameters (names to string values).
+    data_type: JSON
+
+  - name: block_number
+    description: The number of the block containing the event.
+    data_type: UInt64
+
+  - name: transaction_index
+    description: The index of the transaction within the block.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2026-03-01"
+      batch_months: 6
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_wxdai_calls
   description: The `contracts_wxdai_calls` model captures and decodes call interactions with the specified wxDai contract, providing detailed insights into transaction activity over time.
   columns:

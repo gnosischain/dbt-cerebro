@@ -56,6 +56,48 @@ models:
       - user
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_revenue_ocsdai_user_balances_daily
+  description: |
+    OpenCover OC-sDAI ERC-4626 vault look-through for the sDAI revenue stream.
+    Per (date, user) USD value of the sDAI underlying each OC-sDAI shareholder's
+    position: `balance_usd = oc_shares * share_price * sDAI_usd_price`, where
+    `oc_shares` is the per-holder OC-sDAI balance (int_execution_tokens_balances_native_daily),
+    `share_price` is sDAI-per-share (int_yields_ocsdai_share_price_daily), and
+    `sDAI_usd_price` comes from int_execution_token_prices_daily.
+
+    Consumed by int_revenue_sdai_fees_daily as a third UNION branch alongside
+    native sDAI and Aave aGnosDAI balances. The vault's own pooled sDAI is NOT
+    double-counted: it is held under the vault address, which the sdai model's
+    non_user_contracts anti-join drops (the vault is in tokens_whitelist). The
+    vault's self-held OC-sDAI shares (async escrow) are dropped by the same
+    downstream anti-join.
+  columns:
+  - name: date
+    description: Calendar date of the balance snapshot.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: user
+    description: Address holding the OC-sDAI shares (lowercase).
+    data_type: Nullable(String)
+  - name: balance_usd
+    description: USD value of the sDAI underlying this holder's OC-sDAI shares.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2026-03-16"
+      batch_months: 12
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - user
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_revenue_sdai_fees_daily
   description: |
     Daily per-user sDAI revenue accruing to the DAO.
@@ -64,10 +106,13 @@ models:
     `dao_share_pct` (10%) is the share of the full rate assumed to accrue
     to the DAO.
 
-    Tracks native sDAI balances (int_execution_tokens_balances_daily) plus
-    sDAI held in Aave V3 (aGnosDAI) from
-    int_execution_lending_aave_user_balances_daily — where `symbol = 'sDAI'`
-    represents the aGnosDAI aToken holder. SparkLend is excluded.
+    Tracks native sDAI balances (int_execution_tokens_balances_daily), sDAI
+    held in Aave V3 (aGnosDAI) from int_execution_lending_aave_user_balances_daily
+    — where `symbol = 'sDAI'` represents the aGnosDAI aToken holder; SparkLend is
+    excluded — and sDAI held via the OpenCover OC-sDAI ERC-4626 vault, looked
+    through to the underlying per holder in int_revenue_ocsdai_user_balances_daily.
+    The OC-sDAI vault's own pooled sDAI is excluded by the non_users anti-join
+    (the vault address is in tokens_whitelist) so it is not double-counted.
   columns:
   - name: date
     description: Calendar date.
