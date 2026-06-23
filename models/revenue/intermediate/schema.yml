@@ -128,8 +128,15 @@ models:
     description: Always 'sDAI'.
     data_type: String
   - name: fees
-    description: USD-denominated daily DAO share of sDAI interest.
+    description: |
+      USD-denominated daily DAO share of sDAI interest. Defaults to 0 (never
+      NULL) on dates where int_yields_sdai_rate_daily has no rate yet (launch
+      warmup / freshness lag); the balance row is preserved via LEFT JOIN.
     data_type: Float64
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: balance_usd_total
     description: Total USD sDAI balance for this user on this date.
     data_type: Float64
