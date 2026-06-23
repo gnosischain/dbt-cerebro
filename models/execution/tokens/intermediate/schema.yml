@@ -20,10 +20,6 @@ models:
     description: The token's symbol, representing its identifier in a human-readable format.
     data_type: String
 
-  - name: AS
-    description: The recipient address in the transfer, stored in lowercase, representing the address receiving tokens.
-    data_type: ''
-
   - name: token_class
     description: Class of the token.
     data_type: String
@@ -253,10 +249,6 @@ models:
     description: The token's symbol, representing its identifier in the ecosystem.
     data_type: String
 
-  - name: AS
-    description: The alias used for the symbol column in the SQL query, representing the token's symbol.
-    data_type: ''
-
   - name: token_class
     description: Class of the token.
     data_type: String
@@ -333,6 +325,16 @@ models:
   - name: supply
     description: The total circulating supply of the token on the given date.
     data_type: Float64
+    tests:
+    # Detector for under-ingested tokens: a negative supply means some address
+    # carries a negative running-sum balance (recorded outflows > inflows),
+    # i.e. its pre-window inflows were never ingested (see wstETH, only built
+    # from 2026-05 despite a 2022 start). severity=warn until the affected
+    # tokens are backfilled; flip to error afterwards so it cannot regress.
+    - dbt_utils.accepted_range:
+        min_value: 0
+        config:
+          severity: warn
   - name: holders
     description: The number of unique addresses holding a positive balance.
     data_type: UInt64
