@@ -237,39 +237,16 @@ semantic_models:
   - name: address
     type: categorical
     expr: address
-  - name: from_value_binary
+  - name: balance_raw
     type: categorical
-    expr: from_value_binary
-  - name: from_value_string
-    type: categorical
-    expr: from_value_string
-  - name: to_value_binary
-    type: categorical
-    expr: to_value_binary
-  - name: to_value_string
-    type: categorical
-    expr: to_value_string
-  - name: chain_id
-    type: categorical
-    expr: chain_id
-  - name: block_timestamp
-    type: time
-    expr: block_timestamp
-    type_params:
-      time_granularity: day
+    expr: toString(balance_raw)
   measures:
-  - name: net_delta_raw_value
+  - name: execution_tokens_balances_daily__balance_value
     agg: sum
-    expr: net_delta_raw
-  - name: from_value_f64_value
+    expr: balance
+  - name: execution_tokens_balances_daily__balance_usd_value
     agg: sum
-    expr: from_value_f64
-  - name: to_value_f64_value
-    agg: sum
-    expr: to_value_f64
-  - name: insert_version_value
-    agg: sum
-    expr: insert_version
+    expr: balance_usd
   config:
     meta:
       cerebro:
@@ -277,6 +254,7 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution tokens balances daily
+        - token balance per address
         grain: day
 - name: execution_tokens_holders_daily
   model: ref('api_execution_tokens_holders_daily')
@@ -359,15 +337,6 @@ semantic_models:
         quality_tier: candidate
         question_synonyms:
         - execution tokens supply by sector latest
-- name: fct_execution_tokens_supply_by_sector_latest
-  model: ref('fct_execution_tokens_supply_by_sector_latest')
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution tokens supply by sector latest
 - name: execution_tokens_supply_daily
   model: ref('api_execution_tokens_supply_daily')
   defaults:
@@ -398,15 +367,6 @@ semantic_models:
         grain: day
 - name: execution_tokens_supply_distribution_latest
   model: ref('api_execution_tokens_supply_distribution_latest')
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        question_synonyms:
-        - execution tokens supply distribution latest
-- name: fct_execution_tokens_supply_distribution_latest
-  model: ref('fct_execution_tokens_supply_distribution_latest')
   config:
     meta:
       cerebro:
@@ -821,13 +781,12 @@ metrics:
         question_synonyms:
         - execution tokens balances by sector daily supply usd
         - supply usd
-- name: net_delta_raw_value
-  label: Execution Tokens Balances Daily - Net Delta Raw
-  description: execution tokens balances daily - net delta raw (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+- name: execution_tokens_balances_daily__balance_value
+  label: Execution Tokens Balances Daily - Balance
+  description: execution tokens balances daily - balance (sum, native units). Candidate metric; review before relying on it.
   type: simple
   type_params:
-    measure: net_delta_raw_value
+    measure: execution_tokens_balances_daily__balance_value
   config:
     meta:
       cerebro:
@@ -840,12 +799,6 @@ metrics:
         - symbol
         - token_class
         - address
-        - from_value_binary
-        - from_value_string
-        - to_value_binary
-        - to_value_string
-        - chain_id
-        - block_timestamp
         supported_time_grains:
         - day
         - week
@@ -853,15 +806,14 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution tokens balances daily net delta raw
-        - net delta raw
-- name: from_value_f64_value
-  label: Execution Tokens Balances Daily - From Value F64
-  description: execution tokens balances daily - from value f64 (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+        - execution tokens balances daily balance
+        - token balance
+- name: execution_tokens_balances_daily__balance_usd_value
+  label: Execution Tokens Balances Daily - Balance USD
+  description: execution tokens balances daily - balance usd (sum). Candidate metric; review before relying on it.
   type: simple
   type_params:
-    measure: from_value_f64_value
+    measure: execution_tokens_balances_daily__balance_usd_value
   config:
     meta:
       cerebro:
@@ -874,12 +826,6 @@ metrics:
         - symbol
         - token_class
         - address
-        - from_value_binary
-        - from_value_string
-        - to_value_binary
-        - to_value_string
-        - chain_id
-        - block_timestamp
         supported_time_grains:
         - day
         - week
@@ -887,76 +833,8 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution tokens balances daily from value f64
-        - from value f64
-- name: to_value_f64_value
-  label: Execution Tokens Balances Daily - To Value F64
-  description: execution tokens balances daily - to value f64 (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
-  type: simple
-  type_params:
-    measure: to_value_f64_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - token_address
-        - symbol
-        - token_class
-        - address
-        - from_value_binary
-        - from_value_string
-        - to_value_binary
-        - to_value_string
-        - chain_id
-        - block_timestamp
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution tokens balances daily to value f64
-        - to value f64
-- name: insert_version_value
-  label: Execution Tokens Balances Daily - Insert Version
-  description: execution tokens balances daily - insert version (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
-  type: simple
-  type_params:
-    measure: insert_version_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - token_address
-        - symbol
-        - token_class
-        - address
-        - from_value_binary
-        - from_value_string
-        - to_value_binary
-        - to_value_string
-        - chain_id
-        - block_timestamp
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution tokens balances daily insert version
-        - insert version
+        - execution tokens balances daily balance usd
+        - token balance usd
 - name: execution_tokens_holders_daily__value_value
   label: Execution Tokens Holders Daily - Value
   description: execution tokens holders daily - value (sum). Auto-generated candidate metric; review and promote before relying
