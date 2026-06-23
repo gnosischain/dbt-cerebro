@@ -25,14 +25,16 @@
 -- 10 GiB-blowing raw-logs scan.
 
 {% set cashback_wallet = var('circles_v2_cashback_wallet') %}
-{% set gcrc_token      = var('circles_v2_gcrc_token') %}
+{% set gcrc_tokens     = var('circles_v2_gcrc_tokens') %}
 
 SELECT
     toStartOfWeek(block_timestamp, 1)                  AS week,
     to_address                                         AS address,
     sum(toFloat64(amount_raw) / pow(10, 18))           AS amount
 FROM {{ ref('int_execution_circles_v2_wrapper_transfers') }}
-WHERE token_address = '{{ gcrc_token }}'
+-- IN(list) handles the ~2026-06-15 gCRC token cutover (old 0x548c -> new
+-- 0x78ba); the wallet pays exactly one token per week, so no double-counting.
+WHERE token_address IN ({% for t in gcrc_tokens %}'{{ t | lower }}'{% if not loop.last %}, {% endif %}{% endfor %})
   AND from_address  = '{{ cashback_wallet }}'
   AND block_timestamp < today()
 GROUP BY week, to_address
