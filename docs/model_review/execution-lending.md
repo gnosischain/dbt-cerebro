@@ -98,6 +98,16 @@ review's "add a treasury exclusion to the lending diffs/top-lenders/TVL" recomme
   `dbt seed --select contracts_whitelist` + a rebuild of `int_execution_accounts_non_user_contracts`
   (then the revenue models pick it up on their next run). Lending marts are already correct and do
   not depend on this. (Data-team run.)
+  - **Cross-stream impact verified (2026-06-23, playground_max).** `non_user_contracts` feeds all
+    five revenue fee streams, so the impact was checked across all of them. The three contracts
+    appear in **only** `holdings` and `sdai` (the on-chain balance streams) and in **NONE** of the
+    human-facing product streams (`gpay` = 0 rows, `gnosis_app` = 0 rows). So the exclusion strips
+    only protocol/infra balances, never legitimate product users. Footprint removed (cumulative,
+    full history): ATokenVault holdings 218 user-days/$390 fees; treasury holdings 1,586/$232 + sDAI
+    909/$10; CoW Settlement holdings 2,363/$1.48 + sDAI 937/$1.40 — total ~$635 of fees over ~2.5
+    years. The treasury's `~958 rows / ~$13` sDAI leak verified earlier reconciles (909/$10 here is
+    the stale playground window). The ATokenVault's EURe balance leaves the holdings base when
+    excluded (the documented, immaterial under-count) and never touched sDAI (it wraps EURe, not sDAI).
 
 ### Documentation — caveats that must travel with figures
 

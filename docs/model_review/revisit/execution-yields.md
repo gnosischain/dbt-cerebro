@@ -6,9 +6,9 @@ Re-verification of the `execution/yields` baseline (`docs/model_review/execution
 
 | case_id | P0 | claim (short) | orig sev | status | new sev | confidence | incident | rounds |
 |---|---|---|---|---|---|---|---|---|
-| EXECUTIONYIELDS-C01 | P0-19 | `least(date, NULL)` coerces `first_yield_date` to `1970-01-01` (no coalesce) | critical | CONFIRMED | critical | high | none | 3 |
+| EXECUTIONYIELDS-C01 | P0-19 | unmatched LEFT JOIN -> non-null epoch `1970-01-01` in `first_yield_date` (non-nullable `min()` agg; coalesce is a no-op) | critical | CONFIRMED (fixed + verified in playground 2026-06-23, pending prod full-refresh) | critical | high | none | 3 |
 | EXECUTIONYIELDS-C02 | P0-19 | `active_lending_positions = 0` for all wallets (stale table) | critical | RESOLVED | resolved | high | other (table refresh) | 3 |
-| EXECUTIONYIELDS-C03 | P0-08 | grain omits `token_address`; RMT collapses multi-token Balancer legs | high | CONFIRMED | high | high | none | 3 |
+| EXECUTIONYIELDS-C03 | P0-08 | grain omits `token_address`; RMT collapses multi-token LP legs | high | CONFIRMED (fixed + verified in playground 2026-06-23, pending prod full-refresh) | high | high | none | 3 |
 | EXECUTIONYIELDS-C04 | — | overview snapshot forward-references CTE `lending_tvl_latest_date` | high | CONFIRMED | high | high | none | 3 |
 | EXECUTIONYIELDS-C05 | P0-07 | approved measures reference nonexistent `apy_7DMA`/`apy_30DMA` cols | high | CONFIRMED | high | high | none | 3 |
 | EXECUTIONYIELDS-C06 | — | `as_of_date` derived from Swapr Algebra events not source marts | medium | CONFIRMED | low | medium | none | 3 |
@@ -122,7 +122,7 @@ None — all 17 cases reached a settled status with query-backed evidence over 3
 
 | priority | recommendation | affected models |
 |---|---|---|
-| P0 (KEEP/ESCALATE) | Wrap `least()` args in `coalesce(..., toDateTime('2106-01-01'))` or guard single-NULL-arg wallets; `first_yield_date`/`tenure_days` are wrong for `23,416/24,614` wallets and propagate to the deployed KPI view. Full-refresh after fix. | `models/execution/yields/marts/fct_execution_yields_user_lifetime_metrics.sql`, `models/execution/yields/marts/api_execution_yields_user_kpis.sql` |
+| P0 (KEEP/ESCALATE) | **CORRECTED 2026-06-23 — a plain `coalesce` here is a NO-OP (see re-verification addendum).** The unmatched arg is epoch `1970-01-01` (non-null, `isNull()=0`), not NULL, so `coalesce`-wrapped args never fire. Setting-independent fix: convert the sentinel first — `least(nullIf(lp.first_lp_date, toDateTime64('1970-01-01 00:00:00',0)), nullIf(ll.first_lending_date, toDate('1970-01-01')))` then `coalesce`, and cast to a common type (`first_lp_date` is `DateTime64(0)`, `first_lending_date` is `Date`). `first_yield_date`/`tenure_days` wrong for `23,864/25,083` (95.1%) wallets; propagates to the deployed KPI view. Full-refresh after fix. | `models/execution/yields/marts/fct_execution_yields_user_lifetime_metrics.sql`, `models/execution/yields/marts/api_execution_yields_user_kpis.sql` |
 | P0 (KEEP/ESCALATE) | Add `privacy:tier_*` tag and/or `expose_to_mcp: false` to the 7 plaintext-wallet user marts; they are MCP-exposed by default — any caller can look up any wallet's full history. | `api_execution_yields_user_{activity,lp_positions,lending_positions,kpis,top_wallets,lending_balances_daily,fee_collections_daily}.sql` |
 | P1 (KEEP) | Add `token_address` to the ReplacingMergeTree ORDER BY key; multi-token Balancer V2 legs are being permanently collapsed (`8`→`1` realized; `115,301` colliding groups in 2026). Backfill after fix. | `models/execution/yields/intermediate/int_execution_yields_user_activity.sql`, `intermediate/schema.yml` |
 | P1 (KEEP) | Fix the broken approved-tier semantic measures: either add `apy_7DMA`/`apy_30DMA` columns to the model or rewrite the measures to filter `label='7DMA'/'30DMA'` over the long-format `apy`. Any MCP query of these metrics fails at runtime. | `semantic/authoring/execution/yields/semantic_models.yml`, `models/execution/yields/marts/fct_yields_sdai_apy_daily.sql` |
@@ -139,3 +139,46 @@ None — all 17 cases reached a settled status with query-backed evidence over 3
 | P3 (KEEP) | Add `as_of_date` to the 3 omitting daily/event-stream user views for consistency (downgraded — granularity-pattern split, not a singleton). | `api_execution_yields_user_{activity,lending_balances_daily,fee_collections_daily}.sql` |
 | — (DROP) | ~~Refresh stale `active_lending_positions=0`~~ — RESOLVED: `19,709` wallets now carry positions, reconciling `1:1` with upstream. | `fct_execution_yields_user_lifetime_metrics.sql` |
 | — (DROP) | ~~Unify SparkLend across activity and positions/APY~~ — RESOLVED: SparkLend present in both (`3,157` activity users, `935` positions, `95.3%` non-NULL apy). | `int_execution_yields_user_activity.sql`, `fct_execution_yields_user_lending_positions_latest.sql` |
+
+---
+
+## Re-verification 2026-06-23 (independent, vs prod `dbt`)
+
+Independent re-run of the four load-bearing must-fix checks against prod `dbt`. All four confirmed; figures refreshed (the warehouse moved again since the 2026-06-21 pass); one **fix correction** that applies to both this file and the baseline.
+
+### Refreshed figures
+
+| case | 2026-06-21 | 2026-06-23 (verified) |
+|---|---|---|
+| C01 epoch wallets | 23,416 / 24,614 (95%) | **23,864 / 25,083 (95.14%)**, max tenure 20,627d |
+| C01 reconciliation | both-active 1,042 | in_both **1,219**; lp_only **4,888** + lending_only **18,976** = 23,864 epoch (exact) |
+| C03 leg collapse | 8→1 on tx `cadf0e76`; 115,301 colliding groups (Balancer V2, 2026) | repo-wide LP (all protocols): **2,516,209 source legs → 2,024,540 kept = 491,669 (~19.5%) dropped**; every `(tx,log_index)` collapsed to exactly 1 token |
+| C05 broken measures | `apy_7DMA`/`apy_30DMA` absent | confirmed — table cols are `(date, apy, label)` only; measures at `semantic_models.yml` 1152-1157 feed **approved** metrics 1352/1377 |
+| C12 Balancer proxy | $2.57M / 313 (~76%) | **$2,745,733 / 321 / 81.1%** of $3,383,787 total LP fees |
+
+### Fix correction — C01 (critical)
+
+The fix recommended in this file (and the baseline) — wrapping `least()` args in `coalesce(...)` — is a **no-op**. Verified directly: on an unmatched LEFT JOIN row the `min(date)`/`min(entry_date)` aggregate resolves to epoch `1970-01-01` with `isNull() = 0` (non-null), because the aggregate column is non-nullable. `coalesce` only catches NULL, so `coalesce(epoch, fallback) = epoch` and `least(valid, epoch) = epoch` — the bug survives a verbatim apply.
+
+- The "(no coalesce)" / "`least(date, NULL)`" framing is the wrong mechanism: the arg is **not** NULL.
+- Whether a NULL ever appears at build time depends on the build's `join_use_nulls` setting, which **could not be tested here** (the MCP query guard blocks the `SETTINGS` keyword). The materialized output column is non-nullable `DateTime`, so the stored value alone cannot distinguish "NULL coerced to epoch on store" from "epoch produced directly."
+- **Setting-independent fix:** convert the sentinel explicitly with `nullIf(date, <epoch>)` before `coalesce`/`least`, using type-correct sentinels (`first_lp_date` `DateTime64(0)`, `first_lending_date` `Date`). Works regardless of `join_use_nulls`. (The "SET `join_use_nulls=1`" alternative only works if that setting reliably nulls the non-nullable aggregate — unverified here, so prefer `nullIf`.)
+
+### Verification limits
+
+- `join_use_nulls=1` behavior and any `SETTINGS`-based fix could not be exercised (MCP guard blocks `SETTINGS` / `SYSTEM`). The `nullIf` fix sidesteps this.
+- C04, C06–C11, C13, C15, C17 were not independently re-run on 2026-06-23 — they were code/config-static or low-severity and unchanged from the 2026-06-21 pass.
+
+### Code fixes applied + verified in playground (2026-06-23)
+
+Two fully-verified, decision-free correctness fixes applied to the model source, then rebuilt and verified in `playground_max` (NOT yet deployed to prod — both require a `--full-refresh` of already-materialized tables, a prod `dbt` operation):
+
+- **C01** — `fct_execution_yields_user_lifetime_metrics.sql`: introduced a `joined` CTE that converts the epoch sentinel to NULL per column (`nullIf(first_lp_date, toDateTime64('1970-01-01 00:00:00',0))`, `toDateTime64(nullIf(first_lending_date, toDate('1970-01-01')),0)` to reconcile the `DateTime64(0)` vs `Date` mismatch), then `least(coalesce(a,b), coalesce(b,a))`. Output type becomes `Nullable(DateTime64(0))` (semantically correct; 0 nulls in practice). **Verified in playground after rebuild**: `epoch = 0` (was 23,864), `null = 0`, max tenure `1,289` days (was 20,627), dates `2022-12-12 -> 2026-05-10`; fix propagates clean to `api_execution_yields_user_kpis`.
+- **C03** — `int_execution_yields_user_activity.sql`: added `token_address` to the ReplacingMergeTree `order_by`; `intermediate/schema.yml`: added `token_address` to the `unique_combination_of_columns` grain test. **Verified in playground after full-refresh**: activity LP rows `= 2,882,679 =` source legs (every token leg retained; ~644,830 previously-dropped legs recovered, ~22%); full-grain uniqueness `3,501,586 = 3,501,586`, 0 dupes -> grain test passes with `--vars '{test_full_refresh: true}'`.
+- **C03 prerequisite (latent bug fixed in the same model)** — `int_execution_yields_user_activity` plumbed `start_month`/`end_month` vars but never applied them to any WHERE clause (the `{% if not (start_month and end_month) %}` guard only *disabled* the incremental macro), so a batched full-refresh scanned all history and OOM'd at the 10.8 GiB ceiling. Added real whole-month window pruning (`toStartOfMonth(block_timestamp)` bounds, matching the partition key) on both the LP and lending branches, plus a `meta.full_refresh` block (`start_date 2022-12-01`, `batch_months 3`) so `scripts/full_refresh/refresh.py` walks it in slices. Continuous (non-windowed) runs are unchanged. NOTE: full-refreshes of this model must now go through `refresh.py`, not a plain `dbt run --full-refresh` (which passes no vars and re-OOMs).
+
+Not applied (need a decision or further verification, deferred to the next pass): C05 (redefine vs drop the broken measures), C12 (rename proxy to `estimated_pnl_usd` + flag), C13 (privacy tagging policy), C14 (canonical active-lender threshold — align with the lending section), C04/C06/C07/C11/C15/C17 doc/structure items.
+
+### Baseline file
+
+`docs/model_review/execution-yields.md` (2026-06-11) still carries the superseded figures ($35.9M, 6,055 rows, "all wallets", C02/C16 open) and the same flawed coalesce fix. It is a dated snapshot superseded by this revisit; left unedited — flag if you want it annotated too.

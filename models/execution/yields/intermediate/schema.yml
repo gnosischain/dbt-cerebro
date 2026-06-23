@@ -92,13 +92,25 @@ models:
 
   tests:
   - dbt_utils.unique_combination_of_columns:
+      # token_address is part of the grain: a single LP event emits one row per
+      # token leg (V3 = 2, Balancer = 2-8) sharing (tx, log_index). It must match
+      # the model's ReplacingMergeTree order_by, otherwise multi-token legs collapse.
       combination_of_columns:
       - block_timestamp
       - source
       - transaction_hash
       - log_index
+      - token_address
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  meta:
+    # Batched full-refresh: the model is monthly-partitioned (insert_overwrite)
+    # and honours start_month/end_month, but a single --full-refresh over all
+    # history OOMs (LP leg union + lending ASOF price join). scripts/full_refresh
+    # reads this block and walks one month per batch instead.
+    full_refresh:
+      start_date: "2022-12-01"
+      batch_months: 3
 - name: int_yields_ocsdai_share_price_daily
   description: |
     Daily share price (sDAI per OC-sDAI share) for the OpenCover OC-sDAI vault
