@@ -14,8 +14,9 @@
 --
 -- Method (contribution-based, value-weighted, monthly): for each month a pool
 -- earns swap fees (int_execution_pools_fees_daily, which now carries Balancer V2
--- and V3), split that month's fees across LPs in proportion to each LP's
--- cumulative net contributed USD (mint - burn) as of month-end. Sum over months.
+-- and V3), take the fees NET of the Balancer protocol-fee cut (50% post ~2023-03,
+-- 0% before) and split that net across LPs in proportion to each LP's cumulative
+-- net contributed USD (mint - burn) as of month-end. Sum over months.
 -- Attributes to the wallet that provided the liquidity (the Join/Exit `provider`),
 -- which is the right target for user analytics even when BPT is later staked in a
 -- gauge. Conserves: sum over LPs of fees_usd == pool fees (shares sum to 1 each
@@ -52,15 +53,51 @@ provider_cum AS (
     FROM monthly_net
 ),
 
-fee_months AS (
+fee_months_gross AS (
     SELECT
         pool_address,
+        protocol,
         toStartOfMonth(date) AS month,
         sum(fees_usd)        AS pool_fee_usd
     FROM {{ ref('int_execution_pools_fees_daily') }}
     WHERE protocol IN ('Balancer V2', 'Balancer V3')
       AND fees_usd > 0
-    GROUP BY pool_address, month
+    GROUP BY pool_address, protocol, month
+),
+
+-- Global Balancer V2 swap protocol-fee timeline (feeType 0). LPs receive swap
+-- fees NET of this cut (0% before ~2023-03, 50% after). The protocol fee is a
+-- global param the pools cache, so a single timeline models it well. Applied to
+-- V2 only; V3 uses a different aggregate-fee mechanism and is left gross here
+-- (~4% of Balancer fees, immaterial).
+protocol_fee_global AS (
+    SELECT month, max(protocol_fraction) AS protocol_fraction
+    FROM (
+        SELECT
+            toStartOfMonth(block_timestamp)                                 AS month,
+            toFloat64OrNull(decoded_params['protocolFeePercentage']) / 1e18 AS protocol_fraction
+        FROM {{ ref('contracts_BalancerV2_Pool_events') }}
+        WHERE event_name = 'ProtocolFeePercentageCacheUpdated'
+          AND decoded_params['feeType'] = '0'
+          AND decoded_params['protocolFeePercentage'] IS NOT NULL
+    )
+    GROUP BY month
+),
+
+-- net-to-LP pool fees: gross swap fees x (1 - prevailing protocol fee), ASOF month
+fee_months AS (
+    SELECT
+        fmg.pool_address                                                                 AS pool_address,
+        fmg.month                                                                        AS month,
+        fmg.pool_fee_usd
+          * if(fmg.protocol = 'Balancer V2', 1 - coalesce(g.protocol_fraction, 0), 1)    AS pool_fee_usd
+    FROM (SELECT *, toUInt8(1) AS jk FROM fee_months_gross) fmg
+    ASOF LEFT JOIN (
+        SELECT toUInt8(1) AS jk, month, protocol_fraction
+        FROM protocol_fee_global
+        ORDER BY jk, month
+    ) g
+        ON fmg.jk = g.jk AND fmg.month >= g.month
 ),
 
 pool_providers AS (
