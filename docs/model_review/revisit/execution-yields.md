@@ -17,14 +17,14 @@ Re-verification of the `execution/yields` baseline (`docs/model_review/execution
 | EXECUTIONYIELDS-C09 | — | `lending_balances_daily` missing `as_of_date` vs peer views | medium | CHANGED | low | high | none | 3 |
 | EXECUTIONYIELDS-C10 | — | `apply_monthly_incremental_filter` unguarded vs siblings | low | CONFIRMED | low | high | none | 3 |
 | EXECUTIONYIELDS-C11 | — | 7 overview cards share single `api:yields_overview` tag | low | CONFIRMED | low | high | none | 3 |
-| EXECUTIONYIELDS-C12 | — | Balancer V2 profit-as-fee proxy mislabels exit/IL PnL as fees | high | CHANGED | medium | high | logs_ingestion_gap | 3 |
+| EXECUTIONYIELDS-C12 | — | Balancer V2 profit-as-fee proxy mislabels exit/IL PnL as fees | high | RESOLVED (real fees implemented + verified in playground 2026-06-23) | resolved | high | logs_ingestion_gap | 3 |
 | EXECUTIONYIELDS-C13 | — | 7 user marts emit plaintext wallets, tier1, no privacy tag/MCP gate | high | CONFIRMED | high | high | none | 3 |
 | EXECUTIONYIELDS-C14 | — | TVL threshold mismatch: portfolio `>0.01` vs overview `>0` | medium | CONFIRMED | medium | high | none | 3 |
 | EXECUTIONYIELDS-C15 | — | sDAI supply card keyed on `symbol='SDAI'` (USDS regime-flip risk) | medium | CONFIRMED | medium | medium | none | 3 |
 | EXECUTIONYIELDS-C16 | — | SparkLend in activity feed but absent from positions/APY join | medium | RESOLVED | resolved | high | none | 3 |
 | EXECUTIONYIELDS-C17 | — | opportunities silently excludes quiet pools (NULL `fee_apr_7d`) | low | CONFIRMED | low | high | none | 3 |
 
-Roll-up: `confirmed=12`, `resolved=2`, `changed=2`, `new=0`, `unverifiable=0`, `unresolved=0`.
+Roll-up: `confirmed=12`, `resolved=3`, `changed=1`, `new=0`, `unverifiable=0`, `unresolved=0`. (Update 2026-06-23: C12 moved CHANGED -> RESOLVED — real Balancer fees implemented; C01/C03/C05 fixes applied + verified in playground.)
 
 ## Delta vs baseline
 
@@ -127,7 +127,7 @@ None — all 17 cases reached a settled status with query-backed evidence over 3
 | P1 (KEEP) | Add `token_address` to the ReplacingMergeTree ORDER BY key; multi-token Balancer V2 legs are being permanently collapsed (`8`→`1` realized; `115,301` colliding groups in 2026). Backfill after fix. | `models/execution/yields/intermediate/int_execution_yields_user_activity.sql`, `intermediate/schema.yml` |
 | P1 (KEEP) | Fix the broken approved-tier semantic measures: either add `apy_7DMA`/`apy_30DMA` columns to the model or rewrite the measures to filter `label='7DMA'/'30DMA'` over the long-format `apy`. Any MCP query of these metrics fails at runtime. | `semantic/authoring/execution/yields/semantic_models.yml`, `models/execution/yields/marts/fct_yields_sdai_apy_daily.sql` |
 | P1 (KEEP) | Reorder CTE `lending_tvl_latest_date` before its first reference; the forward reference is a non-portable maintenance trap (lazy-resolved only by CH today). | `models/execution/yields/marts/fct_execution_yields_overview_snapshot.sql` |
-| P2 (KEEP) | Restrict the Balancer V2 profit-as-fee proxy or relabel it as exit/IL PnL; `$2.57M` (~`76%` of LP fees) is still mislabeled despite the magnitude drop. | `models/execution/yields/intermediate/int_execution_yields_user_lp_positions.sql`, `marts/fct_execution_yields_user_lifetime_metrics.sql` |
+| DONE 2026-06-23 | ~~Restrict/relabel the Balancer V2 profit-as-fee proxy~~ — RESOLVED: proxy removed, replaced with real event-derived swap fees attributed by contribution share (see "C12 — replaced with real Balancer fees"). | `int_execution_yields_user_lp_positions.sql`, `int_execution_yields_balancer_lp_fees.sql`, `int_execution_pools_fees_daily.sql`, `contracts/BalancerV2/*` |
 | P2 (KEEP) | Document or refine the same-day collect-minus-burn netting; `77` groups fully zeroed erasing `$2.89M` of fee claims. | `models/execution/yields/marts/fct_execution_yields_user_fee_collections_daily.sql` |
 | P2 (KEEP) | Align TVL/lender thresholds between portfolio (`>0.01`) and overview (`>0`); `~12,802` dust-band lenders fail to reconcile across surfaces. | `marts/fct_execution_yields_user_lifetime_metrics.sql`, `marts/fct_execution_yields_overview_snapshot.sql` |
 | P2 (KEEP) | Key the sDAI supply card on the vault/token address, not `symbol='SDAI'`, to survive a USDS/sUSDS relabel (latent since `2025-11-07`). | `models/execution/yields/marts/fct_execution_yields_overview_snapshot.sql` |
@@ -178,6 +178,37 @@ Two fully-verified, decision-free correctness fixes applied to the model source,
 - **C03 prerequisite (latent bug fixed in the same model)** — `int_execution_yields_user_activity` plumbed `start_month`/`end_month` vars but never applied them to any WHERE clause (the `{% if not (start_month and end_month) %}` guard only *disabled* the incremental macro), so a batched full-refresh scanned all history and OOM'd at the 10.8 GiB ceiling. Added real whole-month window pruning (`toStartOfMonth(block_timestamp)` bounds, matching the partition key) on both the LP and lending branches, plus a `meta.full_refresh` block (`start_date 2022-12-01`, `batch_months 3`) so `scripts/full_refresh/refresh.py` walks it in slices. Continuous (non-windowed) runs are unchanged. NOTE: full-refreshes of this model must now go through `refresh.py`, not a plain `dbt run --full-refresh` (which passes no vars and re-OOMs).
 
 Not applied (need a decision or further verification, deferred to the next pass): C05 (redefine vs drop the broken measures), C12 (rename proxy to `estimated_pnl_usd` + flag), C13 (privacy tagging policy), C14 (canonical active-lender threshold — align with the lending section), C04/C06/C07/C11/C15/C17 doc/structure items.
+
+### C12 — replaced with real Balancer fees (2026-06-23)
+
+The baseline recommendation (rename the `capital_out - capital_in` proxy to `estimated_pnl_usd` + flag) was superseded by a full fix: Balancer V2/V3 LP fees are now computed from real on-chain swap fees, entirely in dbt. The proxy is gone; `fees_collected_usd` for Balancer positions is genuine attributed swap fees.
+
+Key realization that unblocked this: the V2 Vault `Swap` event carries volume only (no fee), but each pool emits `SwapFeePercentageChanged(uint256)` (inherited from BasePool) — and decoding is dbt-side off `execution.logs` via the `event_signatures` seed. So no rpc-caller / re-indexing was needed.
+
+New infrastructure (all dbt):
+- `seeds/event_signatures.csv` — 2 rows for the reference pool `0xdd4393...91ef7`: `SwapFeePercentageChanged(uint256)` (topic0 `a9ba3ffe...322dafc`) and `ProtocolFeePercentageCacheUpdated(uint256,uint256)` (topic0 `6bfb6895...11959a`). topic0s verified by reproducing the V3 seed entry via keccak.
+- `models/contracts/BalancerV2/contracts_BalancerV2_pool_registry.sql` — all V2 pools -> `abi_source_address` reference (shared-ABI pattern, so 2 signatures cover every pool type).
+- `models/contracts/BalancerV2/contracts_BalancerV2_Pool_events.sql` — `decode_logs` over the registry, `event_name_filter` on the two events (microbatch + `meta.full_refresh`).
+- `int_execution_pools_fees_daily` — Balancer V2 branch: ASOF-join decoded fee history to V2 `Swap` events (`fee_ppm = swapFeePercentage / 1e12`), mirroring the Swapr V3 dynamic-fee CTE.
+- `int_execution_yields_balancer_lp_fees.sql` — monthly contribution-based, value-weighted attribution of pool fees to LPs, NET of the Balancer protocol-fee cut (feeType 0: 0% before ~2023-03, 50% after, from `ProtocolFeePercentageCacheUpdated`, applied ASOF). Attributes to the Join/Exit `provider`.
+- `int_execution_yields_user_lp_positions` — Balancer branch of `fees_collected_usd` now reads the attributed fees (proxy removed).
+
+Verification (playground, all history):
+- Decoder: 1,131 `SwapFeePercentageChanged` across 1,106 pools; fee band min 0.0001% / max 10% (exact Balancer floor/cap); 1,106/1,114 pools covered (8 fall back to 0).
+- Pool fees: blended V2 0.098% / V3 0.069% on $2.72B / $175M volume — sane swap-fee economics.
+- Attribution: gross conserves to pool fees (97.66%; 100% per-pool); after the protocol-fee cut, net-to-LP total is $1.40M (50.3% of $2.79M gross). Reference pool `0xdd4393...` (fully in the 50% era): net LP fees $0.248M vs gross $0.50M vs old PnL proxy $2.26M.
+- Propagation: `fct_execution_yields_user_lifetime_metrics` rebuilt — 0 epoch (C01 intact), total LP fees $2.74M ($1.40M Balancer net + $1.34M V3).
+
+Open tails (non-blocking): 879 pools (~2.3% of fees) have fees but no tracked `provider` (gauge custody / LPs outside our liquidity events) so their fees aren't credited to a wallet; 8 pools lack a decoded fee event (default 0).
+
+Prod deployment runbook (team lead; prod `dbt`, in dependency order):
+1. `dbt seed --select event_signatures`
+2. `dbt run --select contracts_BalancerV2_pool_registry`
+3. `python scripts/full_refresh/refresh.py --select contracts_BalancerV2_Pool_events --inprocess`
+4. `python scripts/full_refresh/refresh.py --select int_execution_pools_fees_daily --inprocess`
+5. `dbt run --select int_execution_yields_balancer_lp_fees int_execution_yields_user_lp_positions`
+6. `dbt run --select fct_execution_yields_user_lifetime_metrics api_execution_yields_user_kpis api_execution_yields_user_top_wallets`
+7. (optional) rebuild `models/execution/pools/marts` so `fct_execution_pools_daily` reflects V2 fees.
 
 ### Baseline file
 
