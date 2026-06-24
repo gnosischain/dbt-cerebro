@@ -37,7 +37,7 @@ gnosis_app_txs AS (
     WHERE tx.to_address = '0000000071727de22e5e9d8baf0edac6f37da032'
       AND lower(tx.from_address) IN (
           SELECT lower(replaceAll(address, '0x', ''))
-          FROM {{ ref('gnosis_app_relayers') }}
+          FROM {{ ref('int_execution_gnosis_app_bundlers') }}
           WHERE is_active = 1
       )
       AND tx.block_timestamp >= toDateTime('2025-11-12')
