@@ -10,7 +10,7 @@ WITH ga_users AS (
 
 relayer_addrs AS (
     SELECT lower(replaceAll(address, '0x', '')) AS addr
-    FROM `dbt`.`gnosis_app_relayers`
+    FROM `dbt`.`int_execution_gnosis_app_bundlers`
     WHERE is_active = 1
 ),
 

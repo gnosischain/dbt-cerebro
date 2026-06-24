@@ -18,27 +18,31 @@
     <p>Long-form heuristic event log for Gnosis App user identification.
 
 Seven rules, all keyed off the same chokepoint: a Cometh ERC-4337
-bundler (one of three relayer addresses in
-seeds/gnosis_app_relayers.csv) sent the outer transaction to the
-canonical EntryPoint v0.7. Any account that appears as a parameter
-inside such a transaction is, by construction, acting through Gnosis
-App for that action.
+bundler (the dynamic allowlist int_execution_gnosis_app_bundlers, which
+supersedes the static seeds/gnosis_app_relayers.csv) sent the outer
+transaction to the canonical EntryPoint v0.7. Any account that appears as
+a parameter inside such a transaction is, by construction, acting through
+Gnosis App for that action.
 
 Rules:
   safe_invitation_module  — Safe created in the same Cometh tx that
                             enabled the Circles InvitationModule
                             (0x00738aca…). The Safe address is the
                             user.
-  circles_fee             — CRC ERC-1155 transfer to the Gnosis App
-                            fee receiver (0x97FD8f78…) inside a
-                            Cometh tx. The receiver was branded
-                            &quot;Metri&quot; before the rebrand to &quot;Gnosis
-                            App&quot;; the address is unchanged.
+  circles_fee             — CRC fee transfer to the Gnosis App fee
+                            receiver (0x97FD8f78…) inside a Cometh tx,
+                            matched as either an ERC-1155 Hub transfer
+                            (rule_app_fee) or, since June 2026, a gCRC
+                            ERC-20 Transfer (rule_app_fee_erc20). The
+                            receiver was branded &quot;Metri&quot; pre-rebrand;
+                            the address is unchanged.
   circles_register_human  — Hub.RegisterHuman event inside a Cometh
                             tx. decoded_params[&#x27;avatar&#x27;] is the user.
-  circles_invite_human    — Same RegisterHuman event with a non-zero
-                            decoded_params[&#x27;inviter&#x27;] — the inviter
-                            is the user.
+  circles_invite_human    — Same RegisterHuman event; the inviter is
+                            the user, canonicalized via
+                            int_execution_circles_v2_inviter_canonical
+                            (invitation-at-scale proxy remapped to the
+                            real origin inviter).
   circles_trust           — Hub.Trust event inside a Cometh tx.
                             decoded_params[&#x27;truster&#x27;] is the user.
   circles_profile_update  — NameRegistry.UpdateMetadataDigest event
@@ -73,7 +77,7 @@ int_execution_gnosis_app_user_identities, one model downstream.
 </td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>The Cometh-relayed transaction hash (lowercase, no 0x prefix).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>address</code> (categorical)</li><li><code>heuristic_kind</code> (categorical)</li><li><code>block_timestamp</code> (time)</li><li><code>transaction_hash</code> (categorical)</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_Hub_events</code></li><li><code>contracts_circles_v2_NameRegistry_events</code></li><li><code>int_execution_circles_v2_mint_events</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_module_events</code></li><li><code>transactions</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_circles_v2_Hub_events</code></li><li><code>contracts_circles_v2_NameRegistry_events</code></li><li><code>int_execution_circles_v2_inviter_canonical</code></li><li><code>int_execution_circles_v2_mint_events</code></li><li><code>int_execution_gnosis_app_bundlers</code></li><li><code>int_execution_safes</code></li><li><code>int_execution_safes_module_events</code></li><li><code>logs</code></li><li><code>transactions</code></li></ul>
     <h2>Downstream</h2><ul><li><code>api_execution_gnosis_app_kpi_total_users</code></li><li><code>api_execution_gnosis_app_user_profile_latest</code></li><li><code>fct_mixpanel_ga_gnosis_app_daily</code></li><li><code>int_execution_gnosis_app_events_chain_unified</code></li><li><code>int_execution_gnosis_app_user_activity_daily</code></li><li><code>int_execution_gnosis_app_users_current</code></li></ul>
     
   </body>
