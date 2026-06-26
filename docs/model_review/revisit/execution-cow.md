@@ -28,6 +28,65 @@ Baseline: `docs/model_review/execution-cow.md` (2026-06-11); 19 cases re-verifie
 
 Rollup: 15 CONFIRMED, 4 RESOLVED (C01, C02, C03, C17), 0 CHANGED, 0 UNVERIFIABLE, 0 NEW.
 
+---
+
+## Re-verification (2026-06-26) — 5 days after the revisit
+
+Re-checked against live code + warehouse (`dbt` prod, `crawlers_data`) on `2026-06-26` (ClickHouse `today()=2026-06-26`). **No CoW model has been remediated since the 2026-06-21 revisit** — `int_execution_cow_trades.sql` L62, `int_execution_cow_batches.sql` L42, `api_execution_cow_top_pairs_weekly.sql`, and `semantic/authoring/execution/cow/semantic_models.yml` are all byte-for-byte unchanged. Three material movements:
+
+1. **C01 (was RESOLVED) — REGRESSED back to high.** The `crawlers_data.cow_api_trade_fees` ingestor re-stalled: `max(ingested_at)=2026-06-16` → `days_stale=10` (was `5d` at revisit). `fct_execution_cow_daily.fees_usd`/`solver_value_usd` are now **NULL for the entire 06-17..06-24 tail (8 days, was ~4)**; `2026-06-16` is already decaying (`fees_usd=0.008`). The full last-7-days window is NULL, so **both 7d KPIs (`kpi_fees_7d`, `kpi_solver_value_7d`) are NULL again**, i.e. the revisit's "no longer NULL" state did not hold. `fee_source='api'` 30d coverage fell `54.69% → 42.71%` (`16,907/39,588`). This is the same instability flagged as Crawlers-N01 in `REPORT.revisit.md` (re-stall ~140h) now grown to 10 days. The "durable recovery" RESOLVED verdict is overturned — the recovery was a one-time backfill, not a fixed pipeline; C01 is mitigated-by-data and re-arms each time the loader lags. Reclassify C01 **RESOLVED → CHANGED (high, latent/recurring)**.
+
+2. **C04/C05 (STILL CONFIRMED) — blast radius materially WIDER.** The revisit's `today()-16` window understated the corrupted span. Scanning the full June partition, solver attribution is 100% NULL for **`2026-06-01 .. 2026-06-19` = 19 contiguous days** (e.g. `06-14: 2376/2376`, `06-07: 2024/2024`), recovered only for the `06-20 .. 06-24` lookback tail (5 days). That is the whole June month so far minus the `addDays(max,-3)` window. Downstream on those 19 days: `active_solvers=0` and per-solver `fct_execution_cow_solvers_daily` rows absent; every multi-trade batch flips `is_cow=TRUE` (`num_interactions=0` ⇒ `cow_n==multi` each day, e.g. `06-14 cow_n=355/multi=355`), inflating `cow_ratio` to `0.066–0.185` vs `0.0` on the clean tail. The footgun is unchanged in code and corrupts a larger window the deeper into a month it is re-run.
+
+3. **C14 — divergence widened (compounded by C04).** `execution_cow_active_solvers_value agg: avg` now yields `2.97/day` (30d) and `6.67/day` (7d) vs period-distinct `uniqExact(solver)=10` (both 7d and 30d) — the 30d mean is further depressed by the C04 zero-solver days, pushing the understatement to `~3.4x`.
+
+Unchanged and re-confirmed this pass: **C19 healthy** (`max(date)=2026-06-24`, `89/89` contiguous days, `0` null/zero volume_usd over 90d); **C09 stable** (`2` NULL `amount_usd` of `39,588` last-30d); **C11** mart `date/label/value` vs semantic `week/pair/volume_usd/num_trades` (static column-diff; no `query_metrics` tool exposed to capture a live bind error, registry path unchanged); **C13** four `Auto-generated candidate metric` measures still `quality_tier: approved`; **C15** still no `solver_value` measure/metric. C02/C03 code (freshness test, production tags) remain in place — but C02's 48h `error_after` would now be **firing** at `days_stale=10` (`~240h`), which is the operator-facing symptom of the C01 re-stall.
+
+Net: of the 4 revisit-RESOLVED items, C01 has regressed (→ CHANGED high); C02/C03/C17 hold. All 15 CONFIRMED cases remain, with C04/C05/C14 measurably worse. Revised rollup: **14 CONFIRMED, 3 RESOLVED (C02, C03, C17), 2 CHANGED (C01 regressed-high, plus the baseline C06/C07 low holds), 0 NEW.**
+
+### Evidence (2026-06-26)
+```sql
+-- C01 ingestor re-stall
+SELECT max(ingested_at), dateDiff('day', max(toDate(ingested_at)), today()) FROM crawlers_data.cow_api_trade_fees;
+-- max=2026-06-16, days_stale=10 (was 5d); fct fees_usd/solver_value_usd NULL for 06-17..06-24 (8d)
+SELECT count(*), countIf(fee_source='api'), round(countIf(fee_source='api')*100.0/count(*),2)
+  FROM dbt.fct_execution_cow_trades WHERE toDate(block_timestamp)>=today()-30 AND toDate(block_timestamp)<today();
+-- 39,588 total; 16,907 api = 42.71% (was 54.69%)
+
+-- C04 full-June corrupted window
+SELECT toDate(block_timestamp) d, count(*), countIf(solver IS NULL OR solver='')
+  FROM dbt.int_execution_cow_trades WHERE block_timestamp>='2026-06-01' GROUP BY d ORDER BY d;
+-- 100% NULL solver 06-01..06-19 (19 contiguous days); 0% 06-20..06-24
+
+-- C05 batch is_cow inflation + downstream cow_ratio / active_solvers
+SELECT date, active_solvers, round(cow_ratio,3), num_cow_batches FROM dbt.fct_execution_cow_daily WHERE date>=today()-20 ORDER BY date;
+-- active_solvers=0 & cow_ratio 0.066-0.185 for 06-01..06-19; active_solvers 6-9 & cow_ratio 0.0 for 06-20..06-24
+
+-- C14 avg vs period-distinct
+SELECT round(avgIf(active_solvers,date>=today()-7),2), round(avgIf(active_solvers,date>=today()-30),2) FROM dbt.fct_execution_cow_daily; -- 6.67 / 2.97
+SELECT uniqExactIf(solver,date>=today()-7 AND num_batches>0), uniqExactIf(solver,date>=today()-30 AND num_batches>0) FROM dbt.fct_execution_cow_solvers_daily; -- 10 / 10
+```
+
+### Fix applied (2026-06-26)
+
+**C04/C05 (lookback mismatch) — FIXED in code.** The three join-side subqueries that used a bare day-level `addDays(max(toDate(block_timestamp)), -3)` now use `apply_monthly_incremental_filter(...)`, matching the whole-month window of the fact CTEs:
+- `int_execution_cow_trades.sql` — settlements→solver join.
+- `int_execution_cow_batches.sql` — interactions→`num_interactions`/`is_cow` join; tx_context→gas join (`add_and=True`).
+
+Why this is the correct/complete repair, and why **no historical full-refresh is needed**: only the *current* month is corrupted (measured `null_pct` by month: every month back 400d = `0.0%`, June-2026 = `79.3%`). Completed months were last written by the batched full-refresh path, which already uses the correct `toStartOfMonth(block_timestamp)` month filter; only the daily incremental path carried the bug. Validated the fix directly: replicating the month-level settlements join for June yields **34,300/34,300 = 100% solver fill** (vs 79.3% NULL served today). A single incremental run of the cow lineage rebuilds the current-month partition and repairs it; the daily cron then keeps it correct.
+
+**C11 (top-pairs semantic drift) — FIXED.** `semantic/.../cow/semantic_models.yml` `execution_cow_top_pairs_weekly` repointed to the mart's real columns via `expr` (dim `week`→`date`, dim `pair`→`label`, measure→`value`); dashboard contract (`SELECT date,label,value`) untouched. The broken `num_trades` measure removed.
+
+**C13 (4 candidate metrics) — RESOLVED.** Checked all four: `execution_cow_batches_value` (→`num_batches`), `execution_cow_cow_batches_value` (→`num_cow_batches`), `execution_cow_gas_native_value` (→`coalesce(total_tx_cost_native,0)`) all bind to real, useful columns → promoted with proper labels/descriptions (disclaimer removed), kept `approved`. `execution_cow_pair_trades_value` bound to the nonexistent `num_trades` (a C11 victim) → metric + measure removed.
+
+**C14 (active_solvers `agg: avg`) — FIXED.** New `execution_cow_solvers_daily` semantic model with `agg: count_distinct expr: solver`; `cow_active_solvers` metric repointed to it so week/month return true period-distinct (~10) instead of the daily mean (~3–7). Old `execution_cow_active_solvers_value` avg measure removed.
+
+**C15 (no solver_value metric) — FIXED.** Added `execution_cow_solver_value_usd_value` (sum) measure + `cow_solver_value_usd` metric on `fct_execution_cow_daily`.
+
+Still open (intentionally not changed): C12 (keep the `fee_source='api'` gate), C16 (Partial-CoW definition — owner decision; its numbers shift once C05 data is rebuilt), C08/C10/C06/C07 (low/cosmetic/non-biting), C01/C02 (ingestion — handled separately). The same lookback pattern is also present in pools (`int_execution_pools_dex_trades.sql` L52, `int_execution_pools_dex_trades_tx_context.sql` L36-39, `int_execution_pools_dex_liquidity_events.sql` L68) — left for the pools pass.
+
+---
+
 ## Delta vs baseline
 
 ### RESOLVED (4)
