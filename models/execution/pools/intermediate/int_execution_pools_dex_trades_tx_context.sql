@@ -32,9 +32,9 @@ WHERE t.transaction_hash IN (
 {% if start_month and end_month %}
 AND t.block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
 AND t.block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
-{% elif is_incremental() %}
-AND t.block_timestamp >= (
-    SELECT addDays(max(toDate(block_timestamp)), -3)
-    FROM {{ this }}
-)
+{% else %}
+  {# Whole-month rebuild: the IN-list (trades_raw) returns COMPLETE months under
+     insert_overwrite, so this transactions filter must cover the same months. A
+     day-level (max-3) bound left most of the rebuilt month with NULL tx_from. #}
+  {{ apply_monthly_incremental_filter('t.block_timestamp', 'block_timestamp', add_and=True) }}
 {% endif %}

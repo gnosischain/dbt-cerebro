@@ -80,8 +80,11 @@ with_bought_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
-        {% elif is_incremental() %}
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
+        {% else %}
+          {# Whole-month rebuild: cover the rebuilt month plus a price runway so
+             ASOF can still find a prior price for early-month trades. Honors the
+             price_lookback_days refill var like other price consumers. #}
+          {{ apply_monthly_incremental_filter('date', 'block_timestamp', lookback_days=31) }}
         {% endif %}
         ORDER BY symbol, date
     ) pb
@@ -100,8 +103,11 @@ with_sold_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
-        {% elif is_incremental() %}
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
+        {% else %}
+          {# Whole-month rebuild: cover the rebuilt month plus a price runway so
+             ASOF can still find a prior price for early-month trades. Honors the
+             price_lookback_days refill var like other price consumers. #}
+          {{ apply_monthly_incremental_filter('date', 'block_timestamp', lookback_days=31) }}
         {% endif %}
         ORDER BY symbol, date
     ) ps
