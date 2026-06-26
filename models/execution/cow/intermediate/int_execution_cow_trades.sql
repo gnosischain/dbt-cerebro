@@ -58,8 +58,11 @@ swaps AS (
         {% if start_month and end_month %}
         WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-        {% elif is_incremental() %}
-        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
+        {% else %}
+          {# Match the trades CTE's whole-month window: under insert_overwrite the
+             month partition is rebuilt in full, so the settlements join must cover
+             the same months or pre-(max-3) trades lose their solver. #}
+          {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp') }}
         {% endif %}
     ) st ON st.transaction_hash = t.transaction_hash
     WHERE t.amount_bought_raw > 0
