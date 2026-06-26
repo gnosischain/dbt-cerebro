@@ -28,7 +28,7 @@ curr AS (
     SELECT b.protocol, countDistinct(b.user_address) AS value
     FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
     CROSS JOIN latest_date d
-    WHERE b.date = d.max_date AND b.balance > 0
+    WHERE b.date = d.max_date AND b.balance_usd > 0.01
     GROUP BY b.protocol
 ),
 
@@ -36,7 +36,7 @@ prev AS (
     SELECT b.protocol, countDistinct(b.user_address) AS value
     FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
     CROSS JOIN latest_date d
-    WHERE b.date = subtractDays(d.max_date, 7) AND b.balance > 0
+    WHERE b.date = subtractDays(d.max_date, 7) AND b.balance_usd > 0.01
     GROUP BY b.protocol
 ),
 
@@ -64,13 +64,13 @@ combined AS (
         SELECT countDistinct(b.user_address) AS value
         FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN latest_date d
-        WHERE b.date = d.max_date AND b.balance > 0
+        WHERE b.date = d.max_date AND b.balance_usd > 0.01
     ) sum_curr
     CROSS JOIN (
         SELECT countDistinct(b.user_address) AS value
         FROM {{ ref('int_execution_lending_aave_user_balances_daily') }} b
         CROSS JOIN latest_date d
-        WHERE b.date = subtractDays(d.max_date, 7) AND b.balance > 0
+        WHERE b.date = subtractDays(d.max_date, 7) AND b.balance_usd > 0.01
     ) sum_prev
 )
 

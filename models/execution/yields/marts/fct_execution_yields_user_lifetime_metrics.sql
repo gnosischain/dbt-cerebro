@@ -34,6 +34,9 @@ lending_latest AS (
         SELECT max(date) FROM {{ ref('int_execution_lending_aave_user_balances_daily') }}
         WHERE date < today()
     )
+      -- "active lender" = supply balance worth > $0.01, filtering sub-cent dust
+      -- (~41% of native-positive wallets are dust-only). Canonical definition,
+      -- consistent across yields surfaces + overview + lending counts (C14).
       AND balance_usd > 0.01
     GROUP BY wallet_address
 ),
