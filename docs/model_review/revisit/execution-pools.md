@@ -2,6 +2,23 @@
 
 Baseline: [`docs/model_review/execution-pools.md`](../execution-pools.md) (dated `2026-06-11`); `25` cases re-verified over `3` rounds on `2026-06-21`. Headline: `2` resolved (dev-tag CI bypass, balances full-rebuild cap), `6` changed (mostly fixed or severity right-sized), `17` still confirmed; no new issues. The two highest-impact open defects remain: the **Balancer V2 omission** silently drops the chain's oldest AMM from every ecosystem volume/fee total (`C02`/`C17`, high), and the **LVR `$500` floor gap** still violates the `net <= fee` contract (`C03`/`C04`/`C18`).
 
+## Remediation applied (2026-06-26): insert_overwrite lookback data-loss (NEW, fixed)
+
+Found during the CoW review (same bug class as cow `C04`/`C05`). After the `delete+insert -> insert_overwrite` migration (commit `0d261e1`, 2026-06-02), three `pools` intermediates rebuild the **whole current-month partition** but joined transaction context through a hardcoded **day-level `addDays(max,-3)`** subquery. Under `insert_overwrite` the month partition is replaced in full, so every trade/event older than `max-3` in the rebuilt month lost its `tx_from`/`tx_to`, which also broke `coalesce(taker, tx_from)`.
+
+Confirmed **live in prod** (`dbt` db): `int_execution_pools_dex_trades` and `int_execution_pools_dex_liquidity_events` showed `100%` NULL `tx_from` for Jun 14-20 (the rebuilt-month days outside the 3-day window), clean only for the last ~3 days.
+
+Fix: replace the day-level join filters with the strategy-aware `apply_monthly_incremental_filter(...)` macro so the join window matches the whole-month recompute. Also aligned the `-30`-day price ASOF windows (here and in cow trades) onto the same macro (`lookback_days=31`), which additionally makes them honor the `price_lookback_days` refill var.
+
+| model | join fixed | before | after |
+|---|---|---|---|
+| `int_execution_pools_dex_trades_tx_context.sql` | outer `t.block_timestamp` filter (root cause) | `AND ... >= addDays(max,-3)` | `apply_monthly_incremental_filter('t.block_timestamp','block_timestamp', add_and=True)` |
+| `int_execution_pools_dex_trades.sql` | `tx` LEFT JOIN + 2 price ASOF joins | `-3` (tx), `-30` (price) | macro (tx), macro `lookback_days=31` (price) |
+| `int_execution_pools_dex_liquidity_events.sql` | `tx_context` CTE | `AND ... >= addDays(max,-3)` | `apply_monthly_incremental_filter(..., add_and=True)` |
+| `int_execution_cow_trades.sql` (cow, consistency) | 2 price ASOF joins | `-30` | macro `lookback_days=31` |
+
+**Prod repair required** — the code fix only prevents recurrence; the already-corrupted current-month rows must be rebuilt once. Recompute the current month for the three pools intermediates and their downstream marts, e.g. `dbt run -s int_execution_pools_dex_trades_tx_context+ int_execution_pools_dex_liquidity_events+` for the live month (the next scheduled incremental run also self-heals since the macro now re-pulls the whole month).
+
 ## Status summary
 
 | case_id | P0 | claim (short) | orig sev | status | new sev | conf | incident | rounds |
