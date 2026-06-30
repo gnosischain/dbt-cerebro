@@ -1,5 +1,37 @@
 version: 2
 models:
+- name: int_execution_circles_v2_inviter_canonical
+  description: |
+    Canonical inviter per Circles v2 Human avatar, resolving the
+    invitation-at-scale "farm". Hub.RegisterHuman records inviter = the farm's
+    proxyInviter (infrastructure), not the real referrer; the GA InvitationModule
+    emits RegisterHuman with (human, proxyInviter, originInviter). We remap by the
+    invitee (human = avatar) — exact, because proxy->origin is many-to-one and
+    2,537 direct invites by addresses that also proxy elsewhere must not be
+    remapped. One row per avatar. Consumed by int_execution_circles_v2_avatars
+    (invited_by) and int_execution_gnosis_app_user_events (rule_invite_human).
+  columns:
+  - name: avatar
+    description: The registered Human avatar (invitee), lowercase 0x-prefixed.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: raw_inviter
+    description: The raw Hub.RegisterHuman inviter (may be a farm proxy).
+    data_type: String
+  - name: origin_inviter
+    description: The farm's originInviter when this avatar registered via the InvitationModule, else NULL.
+    data_type: Nullable(String)
+  - name: canonical_inviter
+    description: origin_inviter when via the farm, else raw_inviter. The address to credit as the real inviter.
+    data_type: String
+  - name: via_farm
+    description: 1 if this registration came through the invitation-at-scale farm.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+
 - name: int_execution_circles_v2_crc20_pools
   description: >
     View of all Uniswap V3 and Swapr V3 pools that contain at least one CRC20
@@ -193,7 +225,7 @@ models:
     description: Avatar category (Human, Group, or Org).
     data_type: String
   - name: invited_by
-    description: Address that invited this human (NULL for Groups/Orgs).
+    description: Address that invited this human, canonicalized to the real origin inviter via int_execution_circles_v2_inviter_canonical (invitation-at-scale proxy remapped; NULL for Groups/Orgs).
     data_type: Nullable(String)
   - name: avatar
     description: Address of the registered avatar.

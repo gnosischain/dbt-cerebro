@@ -22,7 +22,7 @@ WITH ga_users AS (
 
 relayer_addrs AS (
     SELECT lower(replaceAll(address, '0x', '')) AS addr
-    FROM {{ ref('gnosis_app_relayers') }}
+    FROM {{ ref('int_execution_gnosis_app_bundlers') }}
     WHERE is_active = 1
 ),
 

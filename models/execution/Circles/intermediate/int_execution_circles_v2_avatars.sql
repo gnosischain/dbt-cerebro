@@ -6,7 +6,9 @@
         order_by='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'circles_v2', 'avatars']
+        tags=['production', 'execution', 'circles_v2', 'avatars'],
+        pre_hook=["SET join_use_nulls = 1"],
+        post_hook=["SET join_use_nulls = 0"]
     )
 }}
 
@@ -24,12 +26,12 @@ SELECT
         WHEN event_name = 'RegisterOrganization' THEN 'Org'
         ELSE 'Unknown'
     END AS avatar_type,
-    lower(
-        CASE
-            WHEN event_name = 'RegisterHuman' THEN decoded_params['inviter']
-            ELSE NULL
-        END
-    ) AS invited_by,
+    -- canonical inviter (invitation-at-scale farm proxy remapped to origin);
+    -- see int_execution_circles_v2_inviter_canonical
+    CASE
+        WHEN event_name = 'RegisterHuman' THEN ic.canonical_inviter
+        ELSE NULL
+    END AS invited_by,
     lower(
         CASE
             WHEN event_name = 'RegisterHuman' THEN decoded_params['avatar']
@@ -48,7 +50,9 @@ SELECT
         WHEN event_name IN ('RegisterGroup', 'RegisterOrganization') THEN decoded_params['name']
         ELSE NULL
     END AS name
-FROM {{ ref('contracts_circles_v2_Hub_events') }}
+FROM {{ ref('contracts_circles_v2_Hub_events') }} h
+LEFT JOIN {{ ref('int_execution_circles_v2_inviter_canonical') }} ic
+    ON ic.avatar = lower(h.decoded_params['avatar'])
 WHERE
     event_name IN ('RegisterHuman','RegisterGroup','RegisterOrganization')
     {% if start_month and end_month %}
