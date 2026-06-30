@@ -122,7 +122,7 @@ models:
   - name: fee_apr_7d
     data_type: Float64
   - name: lvr_apr_7d
-    description: Annualised 7-day Loss Versus Rebalancing (LVR) — the cost LPs pay to arbitrageurs from swap flows, as a percentage of TVL. Always <= 0 (negative = loss).
+    description: Annualised 7-day Loss Versus Rebalancing (LVR) — the cost LPs pay to arbitrageurs from swap flows, as a percentage of TVL. Usually negative (a loss), but the signed swap-flow proxy can yield small positive values, so it is NOT strictly bounded <= 0. NULL for pools with under $500 7-day-average TVL.
     data_type: Float64
   - name: net_apr_7d
     description: Net APR (fee_apr_7d + lvr_apr_7d). Represents the estimated real return after LVR cost.
@@ -160,7 +160,7 @@ models:
   - name: pool_address
     data_type: String
   - name: lvr_apr_7d
-    description: Annualised 7-day trailing LVR (%). Always <= 0 (negative = loss). Represents the cost of adverse selection from arbitrage swaps, with fee revenue stripped from raw swap flows.
+    description: Annualised 7-day trailing LVR (%). Usually negative (a loss), but the signed swap-flow proxy can yield small positive values, so it is NOT strictly bounded <= 0. NULL for pools with under $500 7-day-average TVL. Represents the cost of adverse selection from arbitrage swaps, with fee revenue stripped from raw swap flows.
     data_type: Nullable(Float64)
 
 - name: api_execution_pools_net_apr_daily
@@ -366,11 +366,14 @@ models:
     data_type: Date
   - name: token
     data_type: String
-  - name: mints
-    description: Total Mint events across all pools containing this token on this day.
-    data_type: UInt64
-  - name: burns
-    description: Total Burn events across all pools containing this token on this day.
+  - name: label
+    description: Pool label (token pair, protocol, address suffix) from fct_execution_pools_daily.
+    data_type: String
+  - name: type
+    description: LP event type — 'Add' (Mint events) or 'Remove' (Burn events).
+    data_type: String
+  - name: value
+    description: Count of LP events of this type across all pools containing this token on this day.
     data_type: UInt64
 
 - name: fct_execution_pools_tvl_token_daily
@@ -500,7 +503,12 @@ models:
     the Trades → Stats tab.
   columns:
   - name: lifetime_volume_usd
-    description: All-time sum of per-tx `trade_usd`.
+    description: >-
+      All-time DEX volume summed at swap (hop/leg) grain — each pool leg of a
+      multi-hop route contributes its amount_usd independently, matching the
+      volume timeseries convention (api_execution_trades_stats_volume_ts). This
+      is a deliberately different grain from lifetime_trade_count (per-tx), so
+      the two are not directly divisible.
     data_type: Float64
   - name: lifetime_trade_count
     description: All-time distinct transaction count.
