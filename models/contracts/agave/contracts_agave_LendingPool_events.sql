@@ -1,5 +1,6 @@
 {{ 
     config(
+        enabled                 = false,
         materialized            = 'incremental',
         incremental_strategy='append',
         engine                  = 'ReplacingMergeTree()',
@@ -23,4 +24,3 @@
         start_blocktime   = '2022-04-19'
     )
 }}
-
