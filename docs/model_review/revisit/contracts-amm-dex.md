@@ -1,5 +1,25 @@
 # Model review (revisit 2026-06-21): contracts/AMM-DEX
 
+## Re-verification 2026-06-30 (live prod `dbt` + `playground_max` + code)
+
+All 16 cases re-checked. `git log` since 06-21 touched this sector twice: `fbd7e35e` (06-24, "refactor logic for fees for balancer") and `0474230d` (06-23, "add contracts for revenue exclusion via non user accounts", touches `seeds/contracts_whitelist.csv`). **Net: 0 fully resolved; 1 genuine partial fix built but not yet in prod; C01/N01 untouched by the whitelist commit (it added unrelated addresses); C07 only half-fixed.**
+
+### C09 (critical) — still fully open on the pools dashboard; a real but narrower fix landed elsewhere
+`fbd7e35e` adds `contracts_BalancerV2_Pool_events` (decodes `SwapFeePercentageChanged`/`ProtocolFeePercentageCacheUpdated`, the pool-level fee rate the Vault Swap event doesn't carry) and wires true V2 fee+volume into `int_execution_pools_fees_daily`. This is well-built — verified in `playground_max`: `1,722` rows, `1,106` distinct pools, `0%` blank `event_name`, `1,131` fee-change + `591` protocol-fee events cleanly decoded. It feeds a **new, separate** model `int_execution_yields_balancer_lp_fees` (per-LP fee attribution for the yields/portfolio surface, replacing a PnL-proxy — this is the fix for `EXECUTIONYIELDS-C12`, a different sector's finding).
+**But it does not fix C09.** `fct_execution_pools_daily.sql` still hardcodes `protocol IN ('Uniswap V3', 'Swapr V3', 'Balancer V3')` at lines 75, 202, 240 — grep of `models/execution/pools/marts/` confirms zero files reference Balancer V2 except the misleading `schema.yml` description text C09 already flagged. So Balancer V2 (`25,975,780` events, the single largest AMM) remains completely absent from every `api_execution_pools_*` TVL/volume/fee-dashboard figure. The 06-24 work improves a *different, narrower* surface (per-LP yields fee attribution), not the one C09 is about.
+**Also not deployed:** `contracts_BalancerV2_Pool_events` / `contracts_BalancerV2_pool_registry` return `UNKNOWN_TABLE` in prod `dbt` — they exist only in `playground_max`. So even the yields fix (`int_execution_yields_balancer_lp_fees`) cannot be live yet; its prerequisite tables aren't in prod.
+
+### C07 (medium) — half-fixed
+The new `contracts_BalancerV2_Pool_events.sql` does carry the `SET max_block_size = 5000` pre_hook. But the original C07 target — `contracts_BalancerV2_Vault_events.sql`, the actual 25.9M-row table — was untouched by this commit and still lacks the hook, as does `contracts_BalancerV3_Vault_events.sql`.
+
+### C01 / N01 (critical / high) — untouched, still fully open
+`0474230d` (06-23) touched `seeds/contracts_whitelist.csv` but added 3 *unrelated* contract types (`AaveV3Collector`, `CowSwapSettlement`, `ATokenVault` — for revenue-exclusion purposes, a different workstream), not the 7 missing UniswapV3 pool addresses from the 05-14/05-21 commits. Confirmed live: deployed `dbt.contracts_whitelist` still resolves `22` UniswapV3Pool / `12` SwaprPool (34 rows, unchanged); CSV on disk now has `29` UniswapV3Pool + `12` SwaprPool + 3 other-type rows (44 total). `dbt seed` has still never been run. `contracts_UniswapV3_Pool_events` still resolves exactly `22` distinct pools (watermark advanced to block `46959493`, i.e. still incrementally running — but only for the same 22 pools). The 7 new pools remain fully unbackfilled.
+
+### All other cases (C02–C06, C08, C10–C15)
+Unchanged — no commit touched Swapr, Curve, GPv2Settlement config, the BalancerV3 wrapper map, or the CoW price-join logic since 06-21. Treat the 06-21 revisit content below as still current for these.
+
+---
+
 Re-verified against baseline `docs/model_review/contracts-amm-dex.md` (dated `2026-06-11`) over `3` rounds; all `16` cases (15 baseline + 1 NEW) settled **CONFIRMED** — `0` resolved, `0` changed, `16` still-confirmed, with the largest still-broken issue being BalancerV2 (the single largest AMM at `25,975,780` events) silently excluded from every served `api_execution_pools_*` volume/fee/TVL figure.
 
 ## Status summary
