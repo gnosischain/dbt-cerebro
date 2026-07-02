@@ -311,6 +311,44 @@ def build_namespaces(registry_models: dict[str, dict[str, Any]]) -> dict[str, di
     return dict(sorted(namespaces.items()))
 
 
+# Metric types whose value is computed FROM other metrics (post-aggregation)
+# rather than from a measure. MVP scope: same-root only — every input metric
+# must resolve to the SAME root_model (validate_registry enforces this).
+DERIVED_METRIC_TYPES = ("ratio", "derived")
+
+
+def derived_metric_input_names(metric_type: str, type_params: dict[str, Any]) -> list[str]:
+    """Input metric names a ratio/derived metric depends on.
+
+    Accepts both the bare-string and the MetricFlow ``{name: ...}`` mapping
+    forms for ratio numerator/denominator and derived ``metrics`` entries.
+    Order is preserved (numerator before denominator). Entries with no
+    resolvable name are dropped — the validator flags structural gaps
+    (missing numerator/denominator, empty metrics list) separately.
+    """
+
+    def _input_name(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return str(value.get("name", "") or "")
+        return ""
+
+    type_params = type_params or {}
+    names: list[str] = []
+    if metric_type == "ratio":
+        for key in ("numerator", "denominator"):
+            name = _input_name(type_params.get(key))
+            if name:
+                names.append(name)
+    elif metric_type == "derived":
+        for item in type_params.get("metrics") or []:
+            name = _input_name(item)
+            if name:
+                names.append(name)
+    return names
+
+
 def build_metrics(
     authored_metrics: dict[str, Any],
     registry_models: dict[str, dict[str, Any]],
@@ -332,7 +370,8 @@ def build_metrics(
 
     for metric_name, authored_metric in authored_metrics.items():
         meta = get_cerebro_meta(authored_metric)
-        measure_name = authored_metric.get("type_params", {}).get("measure", "")
+        type_params = authored_metric.get("type_params", {}) or {}
+        measure_name = type_params.get("measure", "")
         candidate_models = sorted(measure_to_models.get(measure_name, []))
         root_model = candidate_models[0] if candidate_models else ""
         status = canonical_status(meta.get("quality_tier"), default="candidate")
@@ -341,7 +380,12 @@ def build_metrics(
             "label": authored_metric.get("label", metric_name),
             "description": authored_metric.get("description", ""),
             "type": authored_metric.get("type", ""),
+            # `measure` is kept as a flat back-compat key (consumers key off
+            # it); `type_params` is the full authored dict so ratio/derived
+            # inputs (`numerator`, `denominator`, `metrics`, `expr`) reach
+            # the registry and the MCP planner.
             "measure": measure_name,
+            "type_params": copy.deepcopy(type_params),
             "root_model": root_model,
             "module": registry_models.get(root_model, {}).get("module", ""),
             "quality_tier": status,
@@ -360,6 +404,31 @@ def build_metrics(
         metrics[metric_name] = metric_entry
         if root_model:
             registry_models[root_model].setdefault("metric_names", []).append(metric_name)
+
+    # Second pass: ratio/derived metrics have no measure of their own, so the
+    # first pass left root_model empty. Their root is inherited from their
+    # input metrics — which must all exist and share ONE root_model (the
+    # same-root MVP contract; validate_registry flags violations with
+    # derived_metric_unknown_input / derived_metric_cross_root). When the
+    # inputs are unknown or cross-root, root_model stays "" so the validator
+    # has something concrete to point at.
+    for metric_name, metric_entry in metrics.items():
+        if metric_entry.get("type") not in DERIVED_METRIC_TYPES:
+            continue
+        input_names = derived_metric_input_names(
+            metric_entry["type"], metric_entry.get("type_params", {})
+        )
+        if not input_names or any(name not in metrics for name in input_names):
+            continue
+        input_roots = {metrics[name].get("root_model", "") for name in input_names}
+        if len(input_roots) != 1:
+            continue
+        root_model = next(iter(input_roots))
+        if not root_model:
+            continue
+        metric_entry["root_model"] = root_model
+        metric_entry["module"] = registry_models.get(root_model, {}).get("module", "")
+        registry_models[root_model].setdefault("metric_names", []).append(metric_name)
     return metrics
 
 
@@ -1010,7 +1079,10 @@ def validate_registry(
                             "message": f"Approved semantic model {model_name} is missing config.meta.cerebro.{field}",
                         }
                     )
-            if not model.get("measures"):
+            # Dimension/bridge tables (time spines, entity registries, edge
+            # providers) are intentionally measure-less; `role: dimension` is
+            # the author's explicit opt-out from the missing-measures check.
+            if not model.get("measures") and semantic_meta.get("role") != "dimension":
                 warnings.append(
                     {
                         "code": "approved_model_missing_measures",
@@ -1112,8 +1184,105 @@ def validate_registry(
                     ),
                 }
             )
+        # Dead-edge guard: an approved relationship whose endpoint model is not
+        # approved is silently pruned from the runtime join graph (cerebro-mcp
+        # graph.py drops the edge). That regression class took 29 of 55 edges
+        # offline before the join-graph activation wave — fail the build.
+        if relationship.get("quality_tier") in APPROVED_STATUSES:
+            for side, endpoint in (("left", left_model), ("right", right_model)):
+                endpoint_model = models.get(endpoint)
+                if (
+                    endpoint_model is not None
+                    and endpoint_model.get("semantic_status") != "approved"
+                ):
+                    errors.append(
+                        {
+                            "code": "relationship_endpoint_not_approved",
+                            "severity": "error",
+                            "relationship": relationship.get("name", ""),
+                            "model": endpoint,
+                            "message": (
+                                f"Approved relationship {relationship.get('name', '')} has a "
+                                f"non-approved {side} endpoint {endpoint} "
+                                f"({endpoint_model.get('semantic_status')}) — the runtime "
+                                "silently drops this edge; approve the model or demote the "
+                                "relationship"
+                            ),
+                        }
+                    )
 
     for metric_name, metric in metrics.items():
+        # Ratio/derived metrics: computed FROM other metrics post-aggregation.
+        # MVP contract: every input metric must exist in the registry AND all
+        # inputs must share ONE root_model (cross-root derived metrics are not
+        # supported — the MCP compiler can only render a same-branch computed
+        # column). When an input is broken we `continue` past the generic
+        # root-model checks: root_model is legitimately empty for a broken
+        # derived metric and a second `metric_missing_root_model` error would
+        # just be noise on top of the precise derived_metric_* error.
+        metric_type = metric.get("type", "")
+        if metric_type in DERIVED_METRIC_TYPES:
+            type_params = metric.get("type_params", {}) or {}
+            input_names = derived_metric_input_names(metric_type, type_params)
+            derived_issue = False
+            required_inputs = 2 if metric_type == "ratio" else 1
+            if len(input_names) < required_inputs:
+                requirement = (
+                    "both type_params.numerator and type_params.denominator"
+                    if metric_type == "ratio"
+                    else "at least one input metric in type_params.metrics"
+                )
+                errors.append(
+                    {
+                        "code": "derived_metric_unknown_input",
+                        "severity": "error",
+                        "metric": metric_name,
+                        "message": (
+                            f"{metric_type.capitalize()} metric '{metric_name}' "
+                            f"must declare {requirement}"
+                        ),
+                    }
+                )
+                derived_issue = True
+            unknown_inputs = [name for name in input_names if name not in metrics]
+            if unknown_inputs:
+                errors.append(
+                    {
+                        "code": "derived_metric_unknown_input",
+                        "severity": "error",
+                        "metric": metric_name,
+                        "inputs": unknown_inputs,
+                        "message": (
+                            f"{metric_type.capitalize()} metric '{metric_name}' "
+                            f"references unknown input metric(s): {unknown_inputs}. "
+                            "Every input must be a metric defined in the registry."
+                        ),
+                    }
+                )
+                derived_issue = True
+            elif input_names:
+                input_roots = sorted(
+                    {metrics[name].get("root_model", "") for name in input_names}
+                )
+                if len(input_roots) > 1:
+                    errors.append(
+                        {
+                            "code": "derived_metric_cross_root",
+                            "severity": "error",
+                            "metric": metric_name,
+                            "root_models": input_roots,
+                            "message": (
+                                f"{metric_type.capitalize()} metric '{metric_name}' "
+                                f"mixes inputs from multiple root models: {input_roots}. "
+                                "Only same-root post-aggregation derived metrics are "
+                                "supported — query the input metrics separately instead."
+                            ),
+                        }
+                    )
+                    derived_issue = True
+            if derived_issue:
+                continue
+
         # Ambiguous measure binding: the measure name this metric points at
         # is declared in 2+ semantic_models. `build_metrics` picks the first
         # one alphabetically so the registry stays deterministic, but the
@@ -1189,6 +1358,52 @@ def validate_registry(
                     }
                 )
 
+    # Spine-coverage ratchet: every approved metric root with a plain-column
+    # time dimension should be reachable from the shared time spines (the
+    # spine-blitz invariant). Mirrors the blitz filter exactly: measures
+    # present, approved, bare-column time dim (expressions like
+    # toDate(first_seen_at) can't be join keys and are exempt).
+    spine_bridged = {
+        relationship.get("right_model")
+        for relationship in relationships
+        if str(relationship.get("left_model", "")).startswith("dim_time_spine")
+    } | {
+        relationship.get("left_model")
+        for relationship in relationships
+        if str(relationship.get("right_model", "")).startswith("dim_time_spine")
+    }
+    for model_name, model in models.items():
+        if model.get("resource_type") != "model" or model_name in spine_bridged:
+            continue
+        if model.get("semantic_status") != "approved" or not model.get("measures"):
+            continue
+        time_dims = [
+            dimension
+            for dimension in model.get("dimensions", []) or []
+            if dimension.get("type") == "time"
+        ]
+        if not time_dims:
+            continue
+        grain = (time_dims[0].get("type_params") or {}).get("time_granularity", "day")
+        if grain not in ("day", "week", "month"):
+            continue
+        time_col = str(time_dims[0].get("expr") or time_dims[0].get("name") or "")
+        if not time_col.replace("_", "").isalnum():
+            continue
+        warnings.append(
+            {
+                "code": "approved_root_missing_time_spine",
+                "severity": "warning",
+                "model": model_name,
+                "message": (
+                    f"Approved metric root {model_name} has a {grain}-grain time "
+                    f"dimension ({time_col}) but no dim_time_spine bridge in "
+                    "semantic/relationships/ — cross-sector time-axis composition "
+                    "will not reach it"
+                ),
+            }
+        )
+
     return {
         "generated_at": utc_now(),
         "error_count": len(errors),
@@ -1217,6 +1432,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", default="target")
     parser.add_argument("--validate", action="store_true")
+    parser.add_argument(
+        "--max-warnings",
+        type=int,
+        default=None,
+        help=(
+            "With --validate: fail (exit 1) when validation warnings exceed N. "
+            "The warning backlog was zeroed 2026-07 — CI pins 0 so it only "
+            "ratchets down."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -1305,6 +1530,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     status = "success"
     if args.validate and validation["error_count"] > 0:
+        status = "validation_failed"
+    if (
+        args.validate
+        and args.max_warnings is not None
+        and validation["warning_count"] > args.max_warnings
+    ):
+        print(
+            f"validation warnings {validation['warning_count']} exceed "
+            f"--max-warnings {args.max_warnings}"
+        )
         status = "validation_failed"
     metric_quality_counts: dict[str, int] = defaultdict(int)
     for metric in registry["metrics"].values():

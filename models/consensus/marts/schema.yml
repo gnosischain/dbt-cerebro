@@ -1843,27 +1843,92 @@ models:
     date_to.
   columns:
   - name: date
+    description: Day of the income fact (start-of-day UTC timestamp). Grain is one row per (date, validator_index).
     data_type: DateTime64
   - name: validator_index
+    description: Beacon-chain validator index.
     data_type: UInt64
   - name: status
+    description: Validator lifecycle status at end of day (from int_consensus_validators_snapshots_daily).
     data_type: String
   - name: pubkey
+    description: Lowercased validator public key.
     data_type: String
   - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials.
     data_type: String
   - name: withdrawal_address
+    description: 20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL otherwise.
     data_type: Nullable(String)
   - name: balance_gno
+    description: End-of-day validator balance in GNO.
+    data_type: Float64
+  - name: balance_prev_gno
+    description: Previous-day balance in GNO.
+    data_type: Float64
+  - name: effective_balance_gno
+    description: End-of-day effective balance in GNO.
+    data_type: Float64
+  - name: deposits_amount_gno
+    description: Raw reported deposit amount for the date, in GNO. Post-Pectra this is a request amount that the beacon chain may credit gradually via the pending-deposits queue (see int_consensus_validators_income_daily).
+    data_type: Float64
+  - name: deposits_count
+    description: Number of deposit events recorded for the validator on the date.
+    data_type: UInt64
+  - name: withdrawals_amount_gno
+    description: Total amount withdrawn from the validator on the date, in GNO.
+    data_type: Float64
+  - name: withdrawals_count
+    description: Number of withdrawal events for the validator on the date.
+    data_type: UInt64
+  - name: consolidation_inflow_gno
+    description: Consolidation amount received (target role) on the date, in GNO.
+    data_type: Float64
+  - name: consolidation_outflow_gno
+    description: Consolidation amount transferred out (source role) on the date, in GNO.
     data_type: Float64
   - name: consensus_income_amount_gno
+    description: Spec-bounded consensus income on the date, in GNO — balance delta minus effective deposit credits, plus withdrawals, net of consolidations (see int_consensus_validators_income_daily).
     data_type: Float64
+  - name: daily_rate
+    description: consensus_income_amount_gno / NULLIF(balance_prev_gno + effective_deposits_credited_gno + consolidation_inflow_gno, 0).
+    data_type: Nullable(Float64)
   - name: apy
+    description: Annualized percent yield computed from daily_rate.
     data_type: Float64
-  - name: proposer_reward_total_gno
+  - name: cumulative_deposits_gno
+    description: Running sum of effective deposit credits for the validator, in GNO.
+    data_type: Float64
+  - name: cumulative_withdrawals_gno
+    description: Running sum of withdrawal amounts for the validator, in GNO.
+    data_type: Float64
+  - name: cumulative_consolidation_inflow_gno
+    description: Running sum of consolidation inflows for the validator, in GNO.
+    data_type: Float64
+  - name: cumulative_consolidation_outflow_gno
+    description: Running sum of consolidation outflows for the validator, in GNO.
+    data_type: Float64
+  - name: total_income_estimated_gno
+    description: Lifetime estimated consensus income in GNO — balance + cumulative withdrawals − effective cumulative deposits − cumulative consolidation inflow + cumulative consolidation outflow.
     data_type: Float64
   - name: proposed_blocks_count
+    description: Blocks proposed by the validator on the date (0 if none).
     data_type: UInt64
+  - name: proposer_reward_total_gno
+    description: Total proposer reward earned on the date, in GNO (0 if none).
+    data_type: Float64
+  - name: proposer_reward_attestations_gno
+    description: Proposer-reward component from included attestations, in GNO (source Gwei / 1e9).
+    data_type: Float64
+  - name: proposer_reward_sync_aggregate_gno
+    description: Proposer-reward component from sync-aggregate inclusion, in GNO (source Gwei / 1e9).
+    data_type: Float64
+  - name: proposer_reward_proposer_slashings_gno
+    description: Proposer-reward component from included proposer slashings, in GNO (source Gwei / 1e9).
+    data_type: Float64
+  - name: proposer_reward_attester_slashings_gno
+    description: Proposer-reward component from included attester slashings, in GNO (source Gwei / 1e9).
+    data_type: Float64
 
 - name: api_consensus_validators_performance_latest
   description: Public API view — one row per validator with latest snapshot fields plus 30-day and lifetime aggregates.
@@ -2101,6 +2166,7 @@ models:
     upstream crawler starts emitting them.
   columns:
   - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials — the per-operator grouping key; one row per credential.
     data_type: String
   - name: validator_count
     description: Number of validators sharing this withdrawal_credentials.
@@ -2118,22 +2184,31 @@ models:
     description: Validators flagged slashed=true on the latest snapshot (active_slashed + exited_slashed).
     data_type: UInt64
   - name: balance_gno
+    description: Sum of latest-day validator balances under the credential, in GNO.
     data_type: Float64
   - name: effective_balance_gno
+    description: Sum of latest-day effective balances under the credential, in GNO.
     data_type: Float64
   - name: cumulative_deposits_gno
+    description: Sum of lifetime effective deposit credits across validators under the credential, in GNO.
     data_type: Float64
   - name: cumulative_withdrawals_gno
+    description: Sum of lifetime withdrawal amounts across validators under the credential, in GNO.
     data_type: Float64
   - name: total_income_estimated_gno
+    description: Sum of lifetime estimated consensus income across validators under the credential, in GNO (see int_consensus_validators_income_daily.total_income_estimated_gno).
     data_type: Float64
   - name: consensus_income_amount_30d_gno
+    description: Sum of consensus income over the trailing 30 days across validators under the credential, in GNO.
     data_type: Float64
   - name: proposer_reward_total_30d_gno
+    description: Sum of proposer rewards over the trailing 30 days across validators under the credential, in GNO.
     data_type: Float64
   - name: proposed_blocks_count_lifetime
+    description: Lifetime count of blocks proposed by validators under the credential.
     data_type: UInt64
   - name: proposer_reward_total_lifetime_gno
+    description: Lifetime sum of proposer rewards across validators under the credential, in GNO.
     data_type: Float64
   - name: apy_30d
     description: Balance-weighted 30-day APY = SUM(consensus_income) / AVG(effective_balance) * 365 * 100. Excludes zero-balance rows.
@@ -2168,29 +2243,40 @@ models:
       batch_months: 1
   columns:
   - name: date
+    description: Day of the roll-up (start-of-day UTC timestamp). Grain is one row per (date, withdrawal_credentials).
     data_type: DateTime64
   - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials — the per-operator grouping key.
     data_type: String
   - name: balance_gno
+    description: Sum of end-of-day validator balances across validators sharing the credential, in GNO.
     data_type: Float64
   - name: effective_balance_gno
+    description: Sum of end-of-day effective balances across validators sharing the credential, in GNO.
     data_type: Float64
   - name: consensus_income_amount_gno
+    description: Sum of daily spec-bounded consensus income across validators sharing the credential, in GNO.
     data_type: Float64
   - name: apy
     description: Mean APY across validators sharing this credential on the date, outliers filtered.
     data_type: Float64
   - name: proposer_reward_total_gno
+    description: Sum of proposer rewards earned on the date by validators sharing the credential, in GNO.
     data_type: Float64
   - name: proposed_blocks_count
+    description: Total blocks proposed on the date by validators sharing the credential.
     data_type: UInt64
   - name: deposits_amount_gno
+    description: Sum of raw reported deposit amounts on the date, in GNO. Post-Pectra these are request amounts that may be credited gradually via the pending-deposits queue (see int_consensus_validators_income_daily).
     data_type: Float64
   - name: withdrawals_amount_gno
+    description: Sum of amounts withdrawn on the date across validators sharing the credential, in GNO.
     data_type: Float64
   - name: consolidation_inflow_gno
+    description: Sum of consolidation amounts received (target role) on the date, in GNO.
     data_type: Float64
   - name: consolidation_outflow_gno
+    description: Sum of consolidation amounts transferred out (source role) on the date, in GNO.
     data_type: Float64
   - name: validator_count_active
     description: |
@@ -2232,24 +2318,34 @@ models:
     derived dates are toDate(genesis_time_unix + epoch * slots_per_epoch * seconds_per_slot).
   columns:
   - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials the validator sits under — the Validator Explorer's operator grouping key.
     data_type: String
   - name: validator_index
+    description: Beacon-chain validator index.
     data_type: UInt64
   - name: pubkey
+    description: Lowercased validator public key.
     data_type: String
   - name: withdrawal_address
+    description: 20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL for 0x00 BLS credentials.
     data_type: Nullable(String)
   - name: status
+    description: Validator lifecycle status at the latest snapshot (e.g. active_ongoing, pending_initialized, withdrawal_possible, withdrawal_done).
     data_type: String
   - name: slashed
+    description: Whether the validator has been slashed.
     data_type: Bool
   - name: activation_eligibility_epoch
+    description: Raw beacon-state activation-eligibility epoch; FAR_FUTURE_EPOCH sentinel (2^64-1) preserved.
     data_type: UInt64
   - name: activation_epoch
+    description: Raw beacon-state activation epoch; FAR_FUTURE_EPOCH sentinel (2^64-1) preserved.
     data_type: UInt64
   - name: exit_epoch
+    description: Raw beacon-state exit epoch; FAR_FUTURE_EPOCH sentinel (2^64-1) means not exited.
     data_type: UInt64
   - name: withdrawable_epoch
+    description: Raw beacon-state withdrawable epoch; FAR_FUTURE_EPOCH sentinel (2^64-1) preserved.
     data_type: UInt64
   - name: activation_date
     description: Date the validator activated (NULL if activation_epoch is FAR_FUTURE_EPOCH).
@@ -2261,23 +2357,31 @@ models:
     description: Date the validator's balance becomes withdrawable (NULL if not scheduled).
     data_type: Nullable(Date)
   - name: balance_gno
+    description: Latest-day validator balance in GNO (0 for validators with no income rows yet).
     data_type: Float64
   - name: effective_balance_gno
+    description: Latest-day effective balance in GNO (0 for validators with no income rows yet).
     data_type: Float64
   - name: apy_30d
     description: Per-validator balance-weighted 30d APY (%).
     data_type: Float64
   - name: consensus_income_amount_30d_gno
+    description: Sum of consensus income over the trailing 30 days, in GNO.
     data_type: Float64
   - name: proposer_reward_total_30d_gno
+    description: Sum of proposer rewards over the trailing 30 days, in GNO.
     data_type: Float64
   - name: proposed_blocks_count_lifetime
+    description: Lifetime count of blocks proposed by the validator.
     data_type: UInt64
   - name: proposer_reward_total_lifetime_gno
+    description: Lifetime sum of proposer rewards, in GNO.
     data_type: Float64
   - name: total_income_estimated_gno
+    description: Lifetime estimated consensus income in GNO — balance + cumulative withdrawals − effective cumulative deposits, net of consolidations (see int_consensus_validators_income_daily).
     data_type: Float64
   - name: latest_date
+    description: Date of the latest income snapshot the balance/income columns are read from (NULL for validators with no income rows).
     data_type: Nullable(DateTime64)
 
 - name: api_consensus_validators_income_total_daily

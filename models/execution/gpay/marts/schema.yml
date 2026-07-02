@@ -4095,9 +4095,11 @@ models:
   description: Simple API view over latest Gnosis Pay wallet balances.
   columns:
   - name: wallet_address
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: token
+    data_type: String
     tests:
     - not_null
 
@@ -4691,3 +4693,23 @@ models:
     data_type: Date
   meta:
     owner: analytics_team
+
+- name: api_execution_gpay_user_top_wallets
+  description: >
+    API view of the top 50 Gnosis Pay wallets by lifetime payment volume.
+    One row per wallet_address, selected from
+    fct_execution_gpay_user_lifetime_metrics where total_payment_count > 0
+    and ordered by total_payment_volume_usd then tenure_days descending.
+    Adds as_of_date (max date in int_execution_gpay_activity_daily).
+    Tier1 endpoint (api:gpay_user_top_wallets, granularity:snapshot).
+
+- name: fct_execution_gpay_users_distinct
+  description: >
+    Deduplicated Gnosis Pay user projection for the semantic layer's
+    cross-sector user-overlap path. One row per user_pseudonym, collapsed
+    from int_execution_gpay_safe_identities (1 row per user_pseudonym x
+    identity_role x gp_safe), with role-presence flags (has_initial_owner,
+    has_delegate, has_safe_self) and distinct safe/role counts. Kept at
+    1-row-per-user grain so user-keyed semantic metrics can use a plain
+    count aggregation instead of count_distinct, which the semantic-layer
+    planner emits as a raw function name ClickHouse does not expose.

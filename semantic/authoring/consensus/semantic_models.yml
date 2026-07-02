@@ -902,7 +902,7 @@ semantic_models:
   - name: int_consensus_validators_balances_daily__balance_value
     agg: sum
     expr: balance
-  - name: effective_balance_value
+  - name: int_consensus_validators_balances_daily__effective_balance_value
     agg: sum
     expr: effective_balance
   config:
@@ -1097,8 +1097,12 @@ semantic_models:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
+        role: dimension
         question_synonyms:
+        - validator operator labels
+        - who operates validators
+        - staking operator names
         - consensus validators labels
 - name: consensus_validators_per_index_apy_daily
   model: ref('int_consensus_validators_per_index_apy_daily')
@@ -1293,6 +1297,9 @@ semantic_models:
   - name: address
     type: primary
     expr: withdrawal_address
+  - name: validator
+    type: foreign
+    expr: validator_index
   dimensions:
   - name: withdrawal_address
     type: categorical
@@ -1311,6 +1318,7 @@ semantic_models:
       cerebro:
         owner: consensus_team
         quality_tier: approved
+        role: dimension
         question_synonyms:
         - validator withdrawal addresses
         - who controls which validator
@@ -1379,22 +1387,22 @@ semantic_models:
   - name: withdrawal_address
     type: categorical
   measures:
-  - name: consensus_income_amount_gno_value
+  - name: consensus_validators_performance_daily__consensus_income_amount_gno_value
     agg: sum
     expr: consensus_income_amount_gno
-  - name: deposits_amount_gno_value
+  - name: consensus_validators_performance_daily__deposits_amount_gno_value
     agg: sum
     expr: deposits_amount_gno
-  - name: withdrawals_amount_gno_value
+  - name: consensus_validators_performance_daily__withdrawals_amount_gno_value
     agg: sum
     expr: withdrawals_amount_gno
-  - name: proposer_reward_total_gno_value
+  - name: consensus_validators_performance_daily__proposer_reward_total_gno_value
     agg: sum
     expr: proposer_reward_total_gno
-  - name: proposed_blocks_count_value
+  - name: consensus_validators_performance_daily__proposed_blocks_count_value
     agg: sum
     expr: proposed_blocks_count
-  - name: apy_value
+  - name: consensus_validators_performance_daily__apy_value
     agg: average
     expr: apy
   config:
@@ -1423,19 +1431,19 @@ semantic_models:
   - name: withdrawal_address
     type: categorical
   measures:
-  - name: balance_gno_value
+  - name: consensus_validators_performance_latest__balance_gno_value
     agg: sum
     expr: balance_gno
-  - name: total_income_estimated_gno_value
+  - name: consensus_validators_performance_latest__total_income_estimated_gno_value
     agg: sum
     expr: total_income_estimated_gno
-  - name: consensus_income_amount_30d_gno_value
+  - name: consensus_validators_performance_latest__consensus_income_amount_30d_gno_value
     agg: sum
     expr: consensus_income_amount_30d_gno
-  - name: proposer_reward_total_30d_gno_value
+  - name: consensus_validators_performance_latest__proposer_reward_total_30d_gno_value
     agg: sum
     expr: proposer_reward_total_30d_gno
-  - name: proposed_blocks_count_lifetime_value
+  - name: consensus_validators_performance_latest__proposed_blocks_count_lifetime_value
     agg: sum
     expr: proposed_blocks_count_lifetime
   config:
@@ -1463,16 +1471,16 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: attestations_total_value
+  - name: consensus_attestations_performance_daily__attestations_total_value
     agg: sum
     expr: attestations_total
-  - name: avg_inclusion_delay_value
+  - name: consensus_attestations_performance_daily__avg_inclusion_delay_value
     agg: average
     expr: avg_inclusion_delay
-  - name: p50_inclusion_delay_value
+  - name: consensus_attestations_performance_daily__p50_inclusion_delay_value
     agg: average
     expr: p50_inclusion_delay
-  - name: pct_inclusion_distance_1_value
+  - name: consensus_attestations_performance_daily__pct_inclusion_distance_1_value
     agg: average
     expr: pct_inclusion_distance_1
   config:
@@ -1484,6 +1492,1157 @@ semantic_models:
         question_synonyms:
         - attestation inclusion delay
         - attestation kpis
+- name: consensus_consolidations_daily
+  model: ref('api_consensus_consolidations_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus consolidations daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+        grain: day
+- name: consensus_validators_apy_dist_income_daily
+  model: ref('api_consensus_validators_apy_dist_income_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+        - validator income
+        - staking income
+        grain: day
+- name: consensus_validators_apy_mean_daily
+  model: ref('api_consensus_validators_apy_mean_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators apy mean daily
+        - staking APY
+        - validator yield
+        - staking returns
+        grain: day
+- name: consensus_validators_consolidation_flags
+  model: ref('int_consensus_validators_consolidation_flags')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators consolidation flags
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+        - validator flags
+  dimensions:
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  measures:
+  - name: has_source_consolidation_request_value
+    agg: sum
+    expr: has_source_consolidation_request
+  - name: has_target_consolidation_request_value
+    agg: sum
+    expr: has_target_consolidation_request
+- name: consensus_validators_consolidation_requests
+  model: ref('int_consensus_validators_consolidation_requests')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators consolidation requests
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+  defaults:
+    agg_time_dimension: request_date
+  dimensions:
+  - name: request_date
+    type: time
+    expr: request_date
+    type_params:
+      time_granularity: day
+  - name: source_pubkey
+    type: categorical
+    expr: source_pubkey
+  - name: target_pubkey
+    type: categorical
+    expr: target_pubkey
+  measures:
+  - name: request_slot_value
+    agg: sum
+    expr: request_slot
+- name: consensus_validators_consolidations_daily
+  model: ref('int_consensus_validators_consolidations_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators consolidations daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: role
+    type: categorical
+    expr: role
+  measures:
+  - name: counterparty_validator_index_value
+    agg: sum
+    expr: counterparty_validator_index
+  - name: consensus_validators_consolidations_daily__transferred_amount_gno_value
+    agg: sum
+    expr: transferred_amount_gno
+  - name: consensus_validators_consolidations_daily__cnt_value
+    agg: sum
+    expr: cnt
+- name: consensus_validators_deposits_daily
+  model: ref('int_consensus_validators_deposits_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators deposits daily
+        - validator deposits
+        - staking deposits
+        - GNO deposited
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  measures:
+  - name: consensus_validators_deposits_daily__deposits_amount_gno_value
+    agg: sum
+    expr: deposits_amount_gno
+  - name: consensus_validators_deposits_daily__deposits_count_value
+    agg: sum
+    expr: deposits_count
+- name: consensus_validators_explorer_apy_dist_daily
+  model: ref('api_consensus_validators_explorer_apy_dist_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+        - validator explorer
+        grain: day
+- name: consensus_validators_explorer_balance_dist
+  model: ref('api_consensus_validators_explorer_balance_dist')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer balance dist
+        - validator balances
+        - staked GNO
+        - validator explorer
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: bucket
+    type: categorical
+    expr: bucket
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: consensus_validators_explorer_balance_dist__bucket_order_value
+    agg: sum
+    expr: bucket_order
+  - name: consensus_validators_explorer_balance_dist__validator_count_value
+    agg: sum
+    expr: validator_count
+  - name: balance_gno_total_value
+    agg: sum
+    expr: balance_gno_total
+- name: consensus_validators_explorer_daily
+  model: ref('api_consensus_validators_explorer_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer daily
+        - validator explorer
+        - validator set daily overview
+        - daily validator dashboard
+        grain: day
+- name: consensus_validators_explorer_latest
+  model: ref('api_consensus_validators_explorer_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer latest
+        - validator explorer
+        - current validator set overview
+        - latest validator snapshot
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: consensus_validators_explorer_members_table
+  model: ref('api_consensus_validators_explorer_members_table')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer members table
+        - validator set members
+        - validator list
+        - validator explorer
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: consensus_validators_income_daily
+  model: ref('int_consensus_validators_income_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  measures:
+  - name: consensus_validators_income_daily__balance_gno_value
+    agg: sum
+    expr: balance_gno
+  - name: balance_prev_gno_value
+    agg: sum
+    expr: balance_prev_gno
+  - name: consensus_validators_income_daily__effective_balance_gno_value
+    agg: sum
+    expr: effective_balance_gno
+  - name: consensus_validators_income_daily__deposits_amount_gno_value
+    agg: sum
+    expr: deposits_amount_gno
+  - name: effective_deposits_credited_gno_value
+    agg: sum
+    expr: effective_deposits_credited_gno
+  - name: expected_reward_cap_gno_value
+    agg: sum
+    expr: expected_reward_cap_gno
+  - name: consensus_validators_income_daily__deposits_count_value
+    agg: sum
+    expr: deposits_count
+  - name: consensus_validators_income_daily__withdrawals_amount_gno_value
+    agg: sum
+    expr: withdrawals_amount_gno
+  - name: consensus_validators_income_daily__withdrawals_count_value
+    agg: sum
+    expr: withdrawals_count
+  - name: consensus_validators_income_daily__consolidation_inflow_gno_value
+    agg: sum
+    expr: consolidation_inflow_gno
+  - name: consensus_validators_income_daily__consolidation_outflow_gno_value
+    agg: sum
+    expr: consolidation_outflow_gno
+  - name: consensus_validators_income_daily__consensus_income_amount_gno_value
+    agg: sum
+    expr: consensus_income_amount_gno
+  - name: consensus_validators_income_daily__daily_rate_value
+    agg: average
+    expr: daily_rate
+  - name: consensus_validators_income_daily__apy_value
+    agg: average
+    expr: apy
+  - name: consensus_validators_income_daily__cumulative_deposits_gno_value
+    agg: sum
+    expr: cumulative_deposits_gno
+  - name: cumulative_reported_deposits_gno_value
+    agg: sum
+    expr: cumulative_reported_deposits_gno
+  - name: consensus_validators_income_daily__cumulative_withdrawals_gno_value
+    agg: sum
+    expr: cumulative_withdrawals_gno
+  - name: cumulative_consolidation_inflow_gno_value
+    agg: sum
+    expr: cumulative_consolidation_inflow_gno
+  - name: cumulative_consolidation_outflow_gno_value
+    agg: sum
+    expr: cumulative_consolidation_outflow_gno
+  - name: consensus_validators_income_daily__total_income_estimated_gno_value
+    agg: sum
+    expr: total_income_estimated_gno
+- name: consensus_validators_income_total_daily
+  model: ref('api_consensus_validators_income_total_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators income total daily
+        - validator income
+        - staking income
+        - validator earnings
+        grain: day
+- name: consensus_validators_proposer_rewards_daily
+  model: ref('int_consensus_validators_proposer_rewards_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators proposer rewards daily
+        - block proposer rewards
+        - proposal rewards
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  measures:
+  - name: consensus_validators_proposer_rewards_daily__proposed_blocks_count_value
+    agg: sum
+    expr: proposed_blocks_count
+  - name: consensus_validators_proposer_rewards_daily__proposer_reward_total_gno_value
+    agg: sum
+    expr: proposer_reward_total_gno
+  - name: proposer_reward_attestations_gno_value
+    agg: sum
+    expr: proposer_reward_attestations_gno
+  - name: proposer_reward_sync_aggregate_gno_value
+    agg: sum
+    expr: proposer_reward_sync_aggregate_gno
+  - name: proposer_reward_proposer_slashings_gno_value
+    agg: sum
+    expr: proposer_reward_proposer_slashings_gno
+  - name: proposer_reward_attester_slashings_gno_value
+    agg: sum
+    expr: proposer_reward_attester_slashings_gno
+- name: consensus_validators_search
+  model: ref('api_consensus_validators_search')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators search
+        - validator lookup
+        - find validator
+        graph:
+          enabled: false
+          profile: validator_controlled_by
+          source_column: withdrawal_address
+          target_column: validator_index
+          source_kind: address
+          target_kind: validator
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: pubkey
+    type: categorical
+    expr: pubkey
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: withdrawal_address
+    type: categorical
+    expr: withdrawal_address
+  - name: display_name
+    type: categorical
+    expr: display_name
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+- name: consensus_validators_snapshots_daily
+  model: ref('int_consensus_validators_snapshots_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators snapshots daily
+        - validator snapshots
+        - validator state history
+        grain: day
+        graph:
+          enabled: false
+          profile: validator_controlled_by
+          source_column: withdrawal_address
+          target_column: validator_index
+          source_kind: address
+          target_kind: validator
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: status
+    type: categorical
+    expr: status
+  - name: pubkey
+    type: categorical
+    expr: pubkey
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: withdrawal_address
+    type: categorical
+    expr: withdrawal_address
+  measures:
+  - name: balance_gwei_value
+    agg: sum
+    expr: balance_gwei
+  - name: effective_balance_gwei_value
+    agg: sum
+    expr: effective_balance_gwei
+  - name: consensus_validators_snapshots_daily__slashed_value
+    agg: sum
+    expr: slashed
+  - name: consensus_validators_snapshots_daily__activation_epoch_value
+    agg: sum
+    expr: activation_epoch
+  - name: consensus_validators_snapshots_daily__exit_epoch_value
+    agg: sum
+    expr: exit_epoch
+  - name: consensus_validators_snapshots_daily__withdrawable_epoch_value
+    agg: sum
+    expr: withdrawable_epoch
+  - name: last_slot_value
+    agg: sum
+    expr: last_slot
+- name: consensus_validators_status_latest
+  model: ref('api_consensus_validators_status_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        graph:
+          enabled: false
+          profile: validator_controlled_by
+          source_column: withdrawal_address
+          target_column: validator_index
+          source_kind: address
+          target_kind: validator
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: slot_timestamp
+  dimensions:
+  - name: slot
+    type: categorical
+    expr: slot
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: status
+    type: categorical
+    expr: status
+  - name: pubkey
+    type: categorical
+    expr: pubkey
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: withdrawal_address
+    type: categorical
+    expr: withdrawal_address
+  - name: slot_timestamp
+    type: time
+    expr: slot_timestamp
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: consensus_validators_status_latest__balance_value
+    agg: sum
+    expr: balance
+  - name: consensus_validators_status_latest__effective_balance_value
+    agg: sum
+    expr: effective_balance
+  - name: consensus_validators_status_latest__slashed_value
+    agg: sum
+    expr: slashed
+  - name: consensus_validators_status_latest__activation_eligibility_epoch_value
+    agg: sum
+    expr: activation_eligibility_epoch
+  - name: consensus_validators_status_latest__activation_epoch_value
+    agg: sum
+    expr: activation_epoch
+  - name: consensus_validators_status_latest__exit_epoch_value
+    agg: sum
+    expr: exit_epoch
+  - name: consensus_validators_status_latest__withdrawable_epoch_value
+    agg: sum
+    expr: withdrawable_epoch
+- name: consensus_validators_withdrawals_daily
+  model: ref('int_consensus_validators_withdrawals_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators withdrawals daily
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  measures:
+  - name: consensus_validators_withdrawals_daily__withdrawals_amount_gno_value
+    agg: sum
+    expr: withdrawals_amount_gno
+  - name: consensus_validators_withdrawals_daily__withdrawals_count_value
+    agg: sum
+    expr: withdrawals_count
+- name: fct_consensus_attestations_performance_daily
+  model: ref('fct_consensus_attestations_performance_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus attestations performance daily
+        - attestation performance
+        - attestation inclusion delay
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: fct_consensus_attestations_performance_daily__attestations_total_value
+    agg: sum
+    expr: attestations_total
+  - name: fct_consensus_attestations_performance_daily__avg_inclusion_delay_value
+    agg: average
+    expr: avg_inclusion_delay
+  - name: fct_consensus_attestations_performance_daily__p50_inclusion_delay_value
+    agg: average
+    expr: p50_inclusion_delay
+  - name: fct_consensus_attestations_performance_daily__pct_inclusion_distance_1_value
+    agg: average
+    expr: pct_inclusion_distance_1
+  - name: pct_inclusion_distance_le_2_value
+    agg: average
+    expr: pct_inclusion_distance_le_2
+  - name: pct_inclusion_distance_gt_1_value
+    agg: average
+    expr: pct_inclusion_distance_gt_1
+- name: fct_consensus_consolidations_daily
+  model: ref('fct_consensus_consolidations_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus consolidations daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: role
+    type: categorical
+    expr: role
+  measures:
+  - name: fct_consensus_consolidations_daily__cnt_value
+    agg: sum
+    expr: cnt
+  - name: fct_consensus_consolidations_daily__transferred_amount_gno_value
+    agg: sum
+    expr: transferred_amount_gno
+- name: fct_consensus_validators_apy_mean_daily
+  model: ref('fct_consensus_validators_apy_mean_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators apy mean daily
+        - staking APY
+        - validator yield
+        - staking returns
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: fct_consensus_validators_apy_mean_daily__apy_value
+    agg: average
+    expr: apy
+  - name: fct_consensus_validators_apy_mean_daily__apy_rolling_7d_median_value
+    agg: average
+    expr: apy_rolling_7d_median
+  - name: fct_consensus_validators_apy_mean_daily__apy_rolling_30d_median_value
+    agg: average
+    expr: apy_rolling_30d_median
+- name: fct_consensus_validators_explorer_daily
+  model: ref('fct_consensus_validators_explorer_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer daily
+        - validator explorer
+        - validator set daily aggregates
+        - daily staking overview
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  measures:
+  - name: fct_consensus_validators_explorer_daily__balance_gno_value
+    agg: sum
+    expr: balance_gno
+  - name: fct_consensus_validators_explorer_daily__effective_balance_gno_value
+    agg: sum
+    expr: effective_balance_gno
+  - name: fct_consensus_validators_explorer_daily__consensus_income_amount_gno_value
+    agg: sum
+    expr: consensus_income_amount_gno
+  - name: fct_consensus_validators_explorer_daily__apy_value
+    agg: average
+    expr: apy
+  - name: fct_consensus_validators_explorer_daily__proposer_reward_total_gno_value
+    agg: sum
+    expr: proposer_reward_total_gno
+  - name: fct_consensus_validators_explorer_daily__proposed_blocks_count_value
+    agg: sum
+    expr: proposed_blocks_count
+  - name: fct_consensus_validators_explorer_daily__deposits_amount_gno_value
+    agg: sum
+    expr: deposits_amount_gno
+  - name: fct_consensus_validators_explorer_daily__withdrawals_amount_gno_value
+    agg: sum
+    expr: withdrawals_amount_gno
+  - name: fct_consensus_validators_explorer_daily__consolidation_inflow_gno_value
+    agg: sum
+    expr: consolidation_inflow_gno
+  - name: fct_consensus_validators_explorer_daily__consolidation_outflow_gno_value
+    agg: sum
+    expr: consolidation_outflow_gno
+  - name: fct_consensus_validators_explorer_daily__validator_count_active_value
+    agg: sum
+    expr: validator_count_active
+- name: fct_consensus_validators_explorer_latest
+  model: ref('fct_consensus_validators_explorer_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer latest
+        - validator explorer
+        - current validator set totals
+        - latest staking overview
+  dimensions:
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  measures:
+  - name: fct_consensus_validators_explorer_latest__validator_count_value
+    agg: sum
+    expr: validator_count
+  - name: active_count_value
+    agg: sum
+    expr: active_count
+  - name: exited_count_value
+    agg: sum
+    expr: exited_count
+  - name: pending_count_value
+    agg: sum
+    expr: pending_count
+  - name: slashed_count_value
+    agg: sum
+    expr: slashed_count
+  - name: fct_consensus_validators_explorer_latest__balance_gno_value
+    agg: sum
+    expr: balance_gno
+  - name: fct_consensus_validators_explorer_latest__effective_balance_gno_value
+    agg: sum
+    expr: effective_balance_gno
+  - name: fct_consensus_validators_explorer_latest__cumulative_deposits_gno_value
+    agg: sum
+    expr: cumulative_deposits_gno
+  - name: fct_consensus_validators_explorer_latest__cumulative_withdrawals_gno_value
+    agg: sum
+    expr: cumulative_withdrawals_gno
+  - name: fct_consensus_validators_explorer_latest__total_income_estimated_gno_value
+    agg: sum
+    expr: total_income_estimated_gno
+  - name: fct_consensus_validators_explorer_latest__consensus_income_amount_30d_gno_value
+    agg: sum
+    expr: consensus_income_amount_30d_gno
+  - name: fct_consensus_validators_explorer_latest__proposer_reward_total_30d_gno_value
+    agg: sum
+    expr: proposer_reward_total_30d_gno
+  - name: fct_consensus_validators_explorer_latest__proposed_blocks_count_lifetime_value
+    agg: sum
+    expr: proposed_blocks_count_lifetime
+  - name: fct_consensus_validators_explorer_latest__proposer_reward_total_lifetime_gno_value
+    agg: sum
+    expr: proposer_reward_total_lifetime_gno
+  - name: fct_consensus_validators_explorer_latest__apy_30d_value
+    agg: average
+    expr: apy_30d
+- name: fct_consensus_validators_explorer_members_table
+  model: ref('fct_consensus_validators_explorer_members_table')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer members table
+        - validator set members
+        - validator list
+        - validator explorer
+        graph:
+          enabled: false
+          profile: validator_controlled_by
+          source_column: withdrawal_address
+          target_column: validator_index
+          source_kind: address
+          target_kind: validator
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: activation_date
+  dimensions:
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: pubkey
+    type: categorical
+    expr: pubkey
+  - name: withdrawal_address
+    type: categorical
+    expr: withdrawal_address
+  - name: status
+    type: categorical
+    expr: status
+  - name: activation_date
+    type: time
+    expr: activation_date
+    type_params:
+      time_granularity: day
+  - name: exit_date
+    type: time
+    expr: exit_date
+    type_params:
+      time_granularity: day
+  - name: withdrawable_date
+    type: time
+    expr: withdrawable_date
+    type_params:
+      time_granularity: day
+  - name: latest_date
+    type: time
+    expr: latest_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: fct_consensus_validators_explorer_members_table__activation_eligibility_epoch_value
+    agg: sum
+    expr: activation_eligibility_epoch
+  - name: fct_consensus_validators_explorer_members_table__activation_epoch_value
+    agg: sum
+    expr: activation_epoch
+  - name: fct_consensus_validators_explorer_members_table__exit_epoch_value
+    agg: sum
+    expr: exit_epoch
+  - name: fct_consensus_validators_explorer_members_table__withdrawable_epoch_value
+    agg: sum
+    expr: withdrawable_epoch
+  - name: fct_consensus_validators_explorer_members_table__balance_gno_value
+    agg: sum
+    expr: balance_gno
+  - name: fct_consensus_validators_explorer_members_table__effective_balance_gno_value
+    agg: sum
+    expr: effective_balance_gno
+  - name: fct_consensus_validators_explorer_members_table__apy_30d_value
+    agg: average
+    expr: apy_30d
+  - name: fct_consensus_validators_explorer_members_table__consensus_income_amount_30d_gno_value
+    agg: sum
+    expr: consensus_income_amount_30d_gno
+  - name: fct_consensus_validators_explorer_members_table__proposer_reward_total_30d_gno_value
+    agg: sum
+    expr: proposer_reward_total_30d_gno
+  - name: fct_consensus_validators_explorer_members_table__proposed_blocks_count_lifetime_value
+    agg: sum
+    expr: proposed_blocks_count_lifetime
+  - name: fct_consensus_validators_explorer_members_table__proposer_reward_total_lifetime_gno_value
+    agg: sum
+    expr: proposer_reward_total_lifetime_gno
+  - name: fct_consensus_validators_explorer_members_table__total_income_estimated_gno_value
+    agg: sum
+    expr: total_income_estimated_gno
+- name: fct_consensus_validators_income_total_daily
+  model: ref('fct_consensus_validators_income_total_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators income total daily
+        - validator income
+        - staking income
+        - validator earnings
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: income_gno_value
+    agg: sum
+    expr: income_gno
+  - name: income_gno_rolling_7d_median_value
+    agg: average
+    expr: income_gno_rolling_7d_median
+  - name: income_gno_rolling_30d_median_value
+    agg: average
+    expr: income_gno_rolling_30d_median
+  - name: validators_snapshot_count_value
+    agg: sum
+    expr: validators_snapshot_count
+  - name: anomaly_flag_value
+    agg: sum
+    expr: anomaly_flag
+- name: fct_consensus_validators_status_latest
+  model: ref('fct_consensus_validators_status_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        graph:
+          enabled: false
+          profile: validator_controlled_by
+          source_column: withdrawal_address
+          target_column: validator_index
+          source_kind: address
+          target_kind: validator
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: slot_timestamp
+  dimensions:
+  - name: slot
+    type: categorical
+    expr: slot
+  - name: validator_index
+    type: categorical
+    expr: validator_index
+  - name: status
+    type: categorical
+    expr: status
+  - name: pubkey
+    type: categorical
+    expr: pubkey
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  - name: withdrawal_address
+    type: categorical
+    expr: withdrawal_address
+  - name: slot_timestamp
+    type: time
+    expr: slot_timestamp
+    type_params:
+      time_granularity: day
+  measures:
+  - name: fct_consensus_validators_status_latest__balance_value
+    agg: sum
+    expr: balance
+  - name: fct_consensus_validators_status_latest__effective_balance_value
+    agg: sum
+    expr: effective_balance
+  - name: fct_consensus_validators_status_latest__slashed_value
+    agg: sum
+    expr: slashed
+  - name: fct_consensus_validators_status_latest__activation_eligibility_epoch_value
+    agg: sum
+    expr: activation_eligibility_epoch
+  - name: fct_consensus_validators_status_latest__activation_epoch_value
+    agg: sum
+    expr: activation_epoch
+  - name: fct_consensus_validators_status_latest__exit_epoch_value
+    agg: sum
+    expr: exit_epoch
+  - name: fct_consensus_validators_status_latest__withdrawable_epoch_value
+    agg: sum
+    expr: withdrawable_epoch
+- name: int_consensus_validators_apy_dist_income_daily
+  model: ref('int_consensus_validators_apy_dist_income_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+        - validator income
+        - staking income
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: int_consensus_validators_apy_dist_income_daily__q05_apy_value
+    agg: average
+    expr: q05_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q10_apy_value
+    agg: average
+    expr: q10_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q25_apy_value
+    agg: average
+    expr: q25_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q50_apy_value
+    agg: average
+    expr: q50_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q75_apy_value
+    agg: average
+    expr: q75_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q90_apy_value
+    agg: average
+    expr: q90_apy
+  - name: int_consensus_validators_apy_dist_income_daily__q95_apy_value
+    agg: average
+    expr: q95_apy
+  - name: avg_apy_weighted_value
+    agg: average
+    expr: avg_apy_weighted
+  - name: validators_included_value
+    agg: sum
+    expr: validators_included
+- name: int_consensus_validators_explorer_apy_dist_daily
+  model: ref('int_consensus_validators_explorer_apy_dist_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+        - validator explorer
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: withdrawal_credentials
+    type: categorical
+    expr: withdrawal_credentials
+  measures:
+  - name: int_consensus_validators_explorer_apy_dist_daily__q05_apy_value
+    agg: average
+    expr: q05_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q10_apy_value
+    agg: average
+    expr: q10_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q25_apy_value
+    agg: average
+    expr: q25_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q50_apy_value
+    agg: average
+    expr: q50_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q75_apy_value
+    agg: average
+    expr: q75_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q90_apy_value
+    agg: average
+    expr: q90_apy
+  - name: int_consensus_validators_explorer_apy_dist_daily__q95_apy_value
+    agg: average
+    expr: q95_apy
+  - name: apy_weighted_value
+    agg: average
+    expr: apy_weighted
+  - name: int_consensus_validators_explorer_apy_dist_daily__validator_count_active_value
+    agg: sum
+    expr: validator_count_active
+  - name: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_7d_median_value
+    agg: average
+    expr: apy_rolling_7d_median
+  - name: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_30d_median_value
+    agg: average
+    expr: apy_rolling_30d_median
 metrics:
 - name: validators_active
   label: Validators Active
@@ -3470,7 +4629,7 @@ metrics:
     promote before relying on it.
   type: simple
   type_params:
-    measure: effective_balance_value
+    measure: int_consensus_validators_balances_daily__effective_balance_value
   config:
     meta:
       cerebro:
@@ -4376,13 +5535,13 @@ metrics:
         question_synonyms:
         - consensus validators dists last 30 days q95 apy
         - q95 apy
-- name: consensus_validators_per_index_apy_daily__amount_value
-  label: Consensus Validators Per Index Apy Daily - Amount
-  description: consensus validators per index apy daily - amount (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+- name: consensus_validators_per_index_apy_daily__apy_avg
+  label: Consensus Validators Per-Index APY (Daily Avg)
+  description: "Average per-validator APY per day (spec-bounded, derived from income). READ AS AN AVERAGE \u2014 do not sum\
+    \ across days or validator indexes."
   type: simple
   type_params:
-    measure: consensus_validators_per_index_apy_daily__amount_value
+    measure: consensus_validators_per_index_apy_daily__apy_avg
   config:
     meta:
       cerebro:
@@ -4399,8 +5558,9 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - consensus validators per index apy daily amount
-        - amount
+        - per validator apy
+        - validator apy daily
+        - staking yield per validator
 - name: consensus_validators_status_daily__cnt_value
   label: Consensus Validators Status Daily - Cnt
   description: consensus validators status daily - cnt (sum). Auto-generated candidate metric; review and promote before relying
@@ -4657,7 +5817,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: consensus_income_amount_gno_value
+    measure: consensus_validators_performance_daily__consensus_income_amount_gno_value
   config:
     meta:
       cerebro:
@@ -4685,7 +5845,7 @@ metrics:
     and promote before relying on it.
   type: simple
   type_params:
-    measure: deposits_amount_gno_value
+    measure: consensus_validators_performance_daily__deposits_amount_gno_value
   config:
     meta:
       cerebro:
@@ -4713,7 +5873,7 @@ metrics:
     and promote before relying on it.
   type: simple
   type_params:
-    measure: withdrawals_amount_gno_value
+    measure: consensus_validators_performance_daily__withdrawals_amount_gno_value
   config:
     meta:
       cerebro:
@@ -4741,7 +5901,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: proposer_reward_total_gno_value
+    measure: consensus_validators_performance_daily__proposer_reward_total_gno_value
   config:
     meta:
       cerebro:
@@ -4769,7 +5929,7 @@ metrics:
     and promote before relying on it.
   type: simple
   type_params:
-    measure: proposed_blocks_count_value
+    measure: consensus_validators_performance_daily__proposed_blocks_count_value
   config:
     meta:
       cerebro:
@@ -4797,7 +5957,7 @@ metrics:
     it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
   type: simple
   type_params:
-    measure: apy_value
+    measure: consensus_validators_performance_daily__apy_value
   config:
     meta:
       cerebro:
@@ -4825,7 +5985,7 @@ metrics:
     before relying on it.
   type: simple
   type_params:
-    measure: balance_gno_value
+    measure: consensus_validators_performance_latest__balance_gno_value
   config:
     meta:
       cerebro:
@@ -4850,7 +6010,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: total_income_estimated_gno_value
+    measure: consensus_validators_performance_latest__total_income_estimated_gno_value
   config:
     meta:
       cerebro:
@@ -4875,7 +6035,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: consensus_income_amount_30d_gno_value
+    measure: consensus_validators_performance_latest__consensus_income_amount_30d_gno_value
   config:
     meta:
       cerebro:
@@ -4900,7 +6060,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: proposer_reward_total_30d_gno_value
+    measure: consensus_validators_performance_latest__proposer_reward_total_30d_gno_value
   config:
     meta:
       cerebro:
@@ -4925,7 +6085,7 @@ metrics:
     review and promote before relying on it.
   type: simple
   type_params:
-    measure: proposed_blocks_count_lifetime_value
+    measure: consensus_validators_performance_latest__proposed_blocks_count_lifetime_value
   config:
     meta:
       cerebro:
@@ -4950,7 +6110,7 @@ metrics:
     and promote before relying on it.
   type: simple
   type_params:
-    measure: attestations_total_value
+    measure: consensus_attestations_performance_daily__attestations_total_value
   config:
     meta:
       cerebro:
@@ -4974,7 +6134,7 @@ metrics:
     grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
   type: simple
   type_params:
-    measure: avg_inclusion_delay_value
+    measure: consensus_attestations_performance_daily__avg_inclusion_delay_value
   config:
     meta:
       cerebro:
@@ -4998,7 +6158,7 @@ metrics:
     grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
   type: simple
   type_params:
-    measure: p50_inclusion_delay_value
+    measure: consensus_attestations_performance_daily__p50_inclusion_delay_value
   config:
     meta:
       cerebro:
@@ -5023,7 +6183,7 @@ metrics:
     it.
   type: simple
   type_params:
-    measure: pct_inclusion_distance_1_value
+    measure: consensus_attestations_performance_daily__pct_inclusion_distance_1_value
   config:
     meta:
       cerebro:
@@ -5041,3 +6201,2803 @@ metrics:
         question_synonyms:
         - consensus attestations performance daily pct inclusion distance 1
         - pct inclusion distance 1
+- name: has_source_consolidation_request_value
+  label: Consensus Validators Consolidation Flags - Has Source Consolidation Request
+  description: consensus validators consolidation flags - has source consolidation request (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: has_source_consolidation_request_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - validator_index
+        question_synonyms:
+        - consensus validators consolidation flags has source consolidation request
+        - has source consolidation request
+        - consensus validators consolidation flags
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: has_target_consolidation_request_value
+  label: Consensus Validators Consolidation Flags - Has Target Consolidation Request
+  description: consensus validators consolidation flags - has target consolidation request (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: has_target_consolidation_request_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - validator_index
+        question_synonyms:
+        - consensus validators consolidation flags has target consolidation request
+        - has target consolidation request
+        - consensus validators consolidation flags
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: request_slot_value
+  label: Consensus Validators Consolidation Requests - Request Slot
+  description: consensus validators consolidation requests - request slot (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: request_slot_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - request_date
+        - source_pubkey
+        - target_pubkey
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators consolidation requests request slot
+        - request slot
+        - consensus validators consolidation requests
+- name: counterparty_validator_index_value
+  label: Consensus Validators Consolidations Daily - Counterparty Validator Index
+  description: consensus validators consolidations daily - counterparty validator index (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: counterparty_validator_index_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - role
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators consolidations daily counterparty validator index
+        - counterparty validator index
+        - consensus validators consolidations daily
+        - validator counts
+- name: consensus_validators_consolidations_daily__transferred_amount_gno_value
+  label: Consensus Validators Consolidations Daily - Transferred Amount GNO
+  description: consensus validators consolidations daily - transferred amount gno (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_consolidations_daily__transferred_amount_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - role
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators consolidations daily transferred amount gno
+        - transferred amount gno
+        - consensus validators consolidations daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: consensus_validators_deposits_daily__deposits_count_value
+  label: Consensus Validators Deposits Daily - Deposits Count
+  description: consensus validators deposits daily - deposits count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_deposits_daily__deposits_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators deposits daily deposits count
+        - deposits count
+        - consensus validators deposits daily
+        - validator deposits
+        - staking deposits
+        - GNO deposited
+- name: consensus_validators_explorer_balance_dist__validator_count_value
+  label: Consensus Validators Explorer Balance Dist - Validator Count
+  description: consensus validators explorer balance dist - validator count (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_explorer_balance_dist__validator_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - bucket
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer balance dist validator count
+        - validator count
+        - consensus validators explorer balance dist
+        - validator balances
+        - staked GNO
+        - validator explorer
+- name: balance_gno_total_value
+  label: Consensus Validators Explorer Balance Dist - Balance GNO Total
+  description: consensus validators explorer balance dist - balance gno total (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: balance_gno_total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - bucket
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer balance dist balance gno total
+        - balance gno total
+        - consensus validators explorer balance dist
+        - validator balances
+        - staked GNO
+- name: balance_prev_gno_value
+  label: Consensus Validators Income Daily - Balance Prev GNO
+  description: consensus validators income daily - balance prev gno (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: balance_prev_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily balance prev gno
+        - balance prev gno
+        - consensus validators income daily
+        - validator balances
+        - staked GNO
+- name: consensus_validators_income_daily__effective_balance_gno_value
+  label: Consensus Validators Income Daily - Effective Balance GNO
+  description: consensus validators income daily - effective balance gno (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__effective_balance_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily effective balance gno
+        - effective balance gno
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: effective_deposits_credited_gno_value
+  label: Consensus Validators Income Daily - Effective Deposits Credited GNO
+  description: consensus validators income daily - effective deposits credited gno (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: effective_deposits_credited_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily effective deposits credited gno
+        - effective deposits credited gno
+        - consensus validators income daily
+        - validator deposits
+        - staking deposits
+        - GNO deposited
+- name: expected_reward_cap_gno_value
+  label: Consensus Validators Income Daily - Expected Reward Cap GNO
+  description: consensus validators income daily - expected reward cap gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: expected_reward_cap_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily expected reward cap gno
+        - expected reward cap gno
+        - consensus validators income daily
+- name: consensus_validators_income_daily__deposits_count_value
+  label: Consensus Validators Income Daily - Deposits Count
+  description: consensus validators income daily - deposits count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__deposits_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily deposits count
+        - deposits count
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: consensus_validators_income_daily__withdrawals_count_value
+  label: Consensus Validators Income Daily - Withdrawals Count
+  description: consensus validators income daily - withdrawals count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__withdrawals_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily withdrawals count
+        - withdrawals count
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: consensus_validators_income_daily__consolidation_inflow_gno_value
+  label: Consensus Validators Income Daily - Consolidation Inflow GNO
+  description: consensus validators income daily - consolidation inflow gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__consolidation_inflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily consolidation inflow gno
+        - consolidation inflow gno
+        - consensus validators income daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: consensus_validators_income_daily__consolidation_outflow_gno_value
+  label: Consensus Validators Income Daily - Consolidation Outflow GNO
+  description: consensus validators income daily - consolidation outflow gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__consolidation_outflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily consolidation outflow gno
+        - consolidation outflow gno
+        - consensus validators income daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: consensus_validators_income_daily__cumulative_deposits_gno_value
+  label: Consensus Validators Income Daily - Cumulative Deposits GNO
+  description: 'consensus validators income daily - cumulative deposits gno (sum). This is a cumulative/running-total measure:
+    read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote before
+    relying on it.'
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__cumulative_deposits_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily cumulative deposits gno
+        - cumulative deposits gno
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: cumulative_reported_deposits_gno_value
+  label: Consensus Validators Income Daily - Cumulative Reported Deposits GNO
+  description: 'consensus validators income daily - cumulative reported deposits gno (sum). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: cumulative_reported_deposits_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily cumulative reported deposits gno
+        - cumulative reported deposits gno
+        - consensus validators income daily
+        - validator deposits
+        - staking deposits
+        - GNO deposited
+- name: consensus_validators_income_daily__cumulative_withdrawals_gno_value
+  label: Consensus Validators Income Daily - Cumulative Withdrawals GNO
+  description: 'consensus validators income daily - cumulative withdrawals gno (sum). This is a cumulative/running-total measure:
+    read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote before
+    relying on it.'
+  type: simple
+  type_params:
+    measure: consensus_validators_income_daily__cumulative_withdrawals_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily cumulative withdrawals gno
+        - cumulative withdrawals gno
+        - consensus validators income daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: cumulative_consolidation_inflow_gno_value
+  label: Consensus Validators Income Daily - Cumulative Consolidation Inflow GNO
+  description: 'consensus validators income daily - cumulative consolidation inflow gno (sum). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: cumulative_consolidation_inflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily cumulative consolidation inflow gno
+        - cumulative consolidation inflow gno
+        - consensus validators income daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: cumulative_consolidation_outflow_gno_value
+  label: Consensus Validators Income Daily - Cumulative Consolidation Outflow GNO
+  description: 'consensus validators income daily - cumulative consolidation outflow gno (sum). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: cumulative_consolidation_outflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income daily cumulative consolidation outflow gno
+        - cumulative consolidation outflow gno
+        - consensus validators income daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: proposer_reward_attestations_gno_value
+  label: Consensus Validators Proposer Rewards Daily - Proposer Reward Attestations GNO
+  description: consensus validators proposer rewards daily - proposer reward attestations gno (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: proposer_reward_attestations_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators proposer rewards daily proposer reward attestations gno
+        - proposer reward attestations gno
+        - consensus validators proposer rewards daily
+        - block proposer rewards
+        - proposal rewards
+        - attestation performance
+- name: proposer_reward_sync_aggregate_gno_value
+  label: Consensus Validators Proposer Rewards Daily - Proposer Reward Sync Aggregate GNO
+  description: consensus validators proposer rewards daily - proposer reward sync aggregate gno (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: proposer_reward_sync_aggregate_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators proposer rewards daily proposer reward sync aggregate gno
+        - proposer reward sync aggregate gno
+        - consensus validators proposer rewards daily
+        - block proposer rewards
+        - proposal rewards
+- name: proposer_reward_proposer_slashings_gno_value
+  label: Consensus Validators Proposer Rewards Daily - Proposer Reward Proposer Slashings GNO
+  description: consensus validators proposer rewards daily - proposer reward proposer slashings gno (sum). Auto-generated
+    candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: proposer_reward_proposer_slashings_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators proposer rewards daily proposer reward proposer slashings gno
+        - proposer reward proposer slashings gno
+        - consensus validators proposer rewards daily
+        - block proposer rewards
+        - proposal rewards
+        - slashed validators
+- name: proposer_reward_attester_slashings_gno_value
+  label: Consensus Validators Proposer Rewards Daily - Proposer Reward Attester Slashings GNO
+  description: consensus validators proposer rewards daily - proposer reward attester slashings gno (sum). Auto-generated
+    candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: proposer_reward_attester_slashings_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators proposer rewards daily proposer reward attester slashings gno
+        - proposer reward attester slashings gno
+        - consensus validators proposer rewards daily
+        - block proposer rewards
+        - proposal rewards
+        - slashed validators
+- name: balance_gwei_value
+  label: Consensus Validators Snapshots Daily - Balance Gwei
+  description: consensus validators snapshots daily - balance gwei (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: balance_gwei_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily balance gwei
+        - balance gwei
+        - consensus validators snapshots daily
+        - validator balances
+        - staked GNO
+- name: effective_balance_gwei_value
+  label: Consensus Validators Snapshots Daily - Effective Balance Gwei
+  description: consensus validators snapshots daily - effective balance gwei (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: effective_balance_gwei_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily effective balance gwei
+        - effective balance gwei
+        - consensus validators snapshots daily
+        - validator balances
+        - staked GNO
+- name: consensus_validators_snapshots_daily__slashed_value
+  label: Consensus Validators Snapshots Daily - Slashed
+  description: consensus validators snapshots daily - slashed (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_snapshots_daily__slashed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily slashed
+        - slashed
+        - consensus validators snapshots daily
+        - validator snapshots
+        - validator state history
+        - slashed validators
+- name: consensus_validators_snapshots_daily__activation_epoch_value
+  label: Consensus Validators Snapshots Daily - Activation Epoch
+  description: consensus validators snapshots daily - activation epoch (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_snapshots_daily__activation_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily activation epoch
+        - activation epoch
+        - consensus validators snapshots daily
+        - validator snapshots
+        - validator state history
+        - validator lifecycle epochs
+- name: consensus_validators_snapshots_daily__exit_epoch_value
+  label: Consensus Validators Snapshots Daily - Exit Epoch
+  description: consensus validators snapshots daily - exit epoch (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_snapshots_daily__exit_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily exit epoch
+        - exit epoch
+        - consensus validators snapshots daily
+        - validator snapshots
+        - validator state history
+        - validator lifecycle epochs
+- name: consensus_validators_snapshots_daily__withdrawable_epoch_value
+  label: Consensus Validators Snapshots Daily - Withdrawable Epoch
+  description: consensus validators snapshots daily - withdrawable epoch (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_snapshots_daily__withdrawable_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily withdrawable epoch
+        - withdrawable epoch
+        - consensus validators snapshots daily
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: last_slot_value
+  label: Consensus Validators Snapshots Daily - Last Slot
+  description: consensus validators snapshots daily - last slot (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: last_slot_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators snapshots daily last slot
+        - last slot
+        - consensus validators snapshots daily
+- name: consensus_validators_status_latest__balance_value
+  label: Consensus Validators Status Latest - Balance
+  description: consensus validators status latest - balance (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__balance_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest balance
+        - balance
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator balances
+- name: consensus_validators_status_latest__slashed_value
+  label: Consensus Validators Status Latest - Slashed
+  description: consensus validators status latest - slashed (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__slashed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest slashed
+        - slashed
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - slashed validators
+- name: consensus_validators_status_latest__activation_eligibility_epoch_value
+  label: Consensus Validators Status Latest - Activation Eligibility Epoch
+  description: consensus validators status latest - activation eligibility epoch (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__activation_eligibility_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest activation eligibility epoch
+        - activation eligibility epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: consensus_validators_status_latest__activation_epoch_value
+  label: Consensus Validators Status Latest - Activation Epoch
+  description: consensus validators status latest - activation epoch (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__activation_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest activation epoch
+        - activation epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: consensus_validators_status_latest__exit_epoch_value
+  label: Consensus Validators Status Latest - Exit Epoch
+  description: consensus validators status latest - exit epoch (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__exit_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest exit epoch
+        - exit epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: consensus_validators_status_latest__withdrawable_epoch_value
+  label: Consensus Validators Status Latest - Withdrawable Epoch
+  description: consensus validators status latest - withdrawable epoch (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_status_latest__withdrawable_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest withdrawable epoch
+        - withdrawable epoch
+        - consensus validators status latest
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: consensus_validators_withdrawals_daily__withdrawals_count_value
+  label: Consensus Validators Withdrawals Daily - Withdrawals Count
+  description: consensus validators withdrawals daily - withdrawals count (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: consensus_validators_withdrawals_daily__withdrawals_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - validator_index
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators withdrawals daily withdrawals count
+        - withdrawals count
+        - consensus validators withdrawals daily
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: pct_inclusion_distance_le_2_value
+  label: Consensus Attestations Performance Daily - Pct Inclusion Distance <= 2
+  description: consensus attestations performance daily - pct inclusion distance le 2 (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: pct_inclusion_distance_le_2_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus attestations performance daily pct inclusion distance le 2
+        - pct inclusion distance le 2
+        - consensus attestations performance daily
+        - attestation inclusion delay
+        - inclusion distance
+- name: pct_inclusion_distance_gt_1_value
+  label: Consensus Attestations Performance Daily - Pct Inclusion Distance > 1
+  description: consensus attestations performance daily - pct inclusion distance gt 1 (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: pct_inclusion_distance_gt_1_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus attestations performance daily pct inclusion distance gt 1
+        - pct inclusion distance gt 1
+        - consensus attestations performance daily
+        - attestation inclusion delay
+        - inclusion distance
+- name: fct_consensus_consolidations_daily__transferred_amount_gno_value
+  label: Consensus Consolidations Daily - Transferred Amount GNO
+  description: consensus consolidations daily - transferred amount gno (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_consolidations_daily__transferred_amount_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - role
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus consolidations daily transferred amount gno
+        - transferred amount gno
+        - consensus consolidations daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: fct_consensus_validators_apy_mean_daily__apy_rolling_7d_median_value
+  label: Consensus Validators APY Mean Daily - APY Rolling 7D Median
+  description: consensus validators apy mean daily - apy rolling 7d median (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_apy_mean_daily__apy_rolling_7d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy mean daily apy rolling 7d median
+        - apy rolling 7d median
+        - consensus validators apy mean daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: fct_consensus_validators_apy_mean_daily__apy_rolling_30d_median_value
+  label: Consensus Validators APY Mean Daily - APY Rolling 30D Median
+  description: consensus validators apy mean daily - apy rolling 30d median (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_apy_mean_daily__apy_rolling_30d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy mean daily apy rolling 30d median
+        - apy rolling 30d median
+        - consensus validators apy mean daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: fct_consensus_validators_explorer_daily__effective_balance_gno_value
+  label: Consensus Validators Explorer Daily - Effective Balance GNO
+  description: consensus validators explorer daily - effective balance gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_daily__effective_balance_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer daily effective balance gno
+        - effective balance gno
+        - consensus validators explorer daily
+        - validator balances
+        - staked GNO
+        - validator explorer
+- name: fct_consensus_validators_explorer_daily__consolidation_inflow_gno_value
+  label: Consensus Validators Explorer Daily - Consolidation Inflow GNO
+  description: consensus validators explorer daily - consolidation inflow gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_daily__consolidation_inflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer daily consolidation inflow gno
+        - consolidation inflow gno
+        - consensus validators explorer daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: fct_consensus_validators_explorer_daily__consolidation_outflow_gno_value
+  label: Consensus Validators Explorer Daily - Consolidation Outflow GNO
+  description: consensus validators explorer daily - consolidation outflow gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_daily__consolidation_outflow_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer daily consolidation outflow gno
+        - consolidation outflow gno
+        - consensus validators explorer daily
+        - validator consolidations
+        - EIP-7251 consolidations
+        - validator merges
+- name: fct_consensus_validators_explorer_daily__validator_count_active_value
+  label: Consensus Validators Explorer Daily - Validator Count Active
+  description: consensus validators explorer daily - validator count active (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_daily__validator_count_active_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer daily validator count active
+        - validator count active
+        - consensus validators explorer daily
+        - validator explorer
+        - validator counts
+- name: fct_consensus_validators_explorer_latest__validator_count_value
+  label: Consensus Validators Explorer Latest - Validator Count
+  description: consensus validators explorer latest - validator count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__validator_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest validator count
+        - validator count
+        - consensus validators explorer latest
+        - validator explorer
+        - validator counts
+- name: active_count_value
+  label: Consensus Validators Explorer Latest - Active Count
+  description: consensus validators explorer latest - active count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: active_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest active count
+        - active count
+        - consensus validators explorer latest
+        - validator counts
+- name: exited_count_value
+  label: Consensus Validators Explorer Latest - Exited Count
+  description: consensus validators explorer latest - exited count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: exited_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest exited count
+        - exited count
+        - consensus validators explorer latest
+        - validator counts
+- name: pending_count_value
+  label: Consensus Validators Explorer Latest - Pending Count
+  description: consensus validators explorer latest - pending count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: pending_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest pending count
+        - pending count
+        - consensus validators explorer latest
+        - validator counts
+- name: slashed_count_value
+  label: Consensus Validators Explorer Latest - Slashed Count
+  description: consensus validators explorer latest - slashed count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: slashed_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest slashed count
+        - slashed count
+        - consensus validators explorer latest
+        - slashed validators
+        - slashing events
+        - validator counts
+- name: fct_consensus_validators_explorer_latest__effective_balance_gno_value
+  label: Consensus Validators Explorer Latest - Effective Balance GNO
+  description: consensus validators explorer latest - effective balance gno (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__effective_balance_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest effective balance gno
+        - effective balance gno
+        - consensus validators explorer latest
+        - validator balances
+        - staked GNO
+        - validator explorer
+- name: fct_consensus_validators_explorer_latest__cumulative_deposits_gno_value
+  label: Consensus Validators Explorer Latest - Cumulative Deposits GNO
+  description: 'consensus validators explorer latest - cumulative deposits gno (sum). This is a cumulative/running-total measure:
+    read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote before
+    relying on it.'
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__cumulative_deposits_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest cumulative deposits gno
+        - cumulative deposits gno
+        - consensus validators explorer latest
+        - validator deposits
+        - staking deposits
+        - GNO deposited
+- name: fct_consensus_validators_explorer_latest__cumulative_withdrawals_gno_value
+  label: Consensus Validators Explorer Latest - Cumulative Withdrawals GNO
+  description: 'consensus validators explorer latest - cumulative withdrawals gno (sum). This is a cumulative/running-total
+    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
+    before relying on it.'
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__cumulative_withdrawals_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest cumulative withdrawals gno
+        - cumulative withdrawals gno
+        - consensus validators explorer latest
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: fct_consensus_validators_explorer_latest__proposer_reward_total_lifetime_gno_value
+  label: Consensus Validators Explorer Latest - Proposer Reward Total Lifetime GNO
+  description: consensus validators explorer latest - proposer reward total lifetime gno (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__proposer_reward_total_lifetime_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest proposer reward total lifetime gno
+        - proposer reward total lifetime gno
+        - consensus validators explorer latest
+        - block proposer rewards
+        - proposal rewards
+        - validator explorer
+- name: fct_consensus_validators_explorer_latest__apy_30d_value
+  label: Consensus Validators Explorer Latest - APY 30D
+  description: consensus validators explorer latest - apy 30d (average). Read this as an average over the grain; do NOT sum
+    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_latest__apy_30d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - withdrawal_credentials
+        question_synonyms:
+        - consensus validators explorer latest apy 30d
+        - apy 30d
+        - consensus validators explorer latest
+        - staking APY
+        - validator yield
+        - staking returns
+- name: fct_consensus_validators_explorer_members_table__activation_eligibility_epoch_value
+  label: Consensus Validators Explorer Members Table - Activation Eligibility Epoch
+  description: consensus validators explorer members table - activation eligibility epoch (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__activation_eligibility_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table activation eligibility epoch
+        - activation eligibility epoch
+        - consensus validators explorer members table
+        - validator lifecycle epochs
+        - validator set members
+        - validator list
+- name: fct_consensus_validators_explorer_members_table__activation_epoch_value
+  label: Consensus Validators Explorer Members Table - Activation Epoch
+  description: consensus validators explorer members table - activation epoch (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__activation_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table activation epoch
+        - activation epoch
+        - consensus validators explorer members table
+        - validator lifecycle epochs
+        - validator set members
+        - validator list
+- name: fct_consensus_validators_explorer_members_table__exit_epoch_value
+  label: Consensus Validators Explorer Members Table - Exit Epoch
+  description: consensus validators explorer members table - exit epoch (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__exit_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table exit epoch
+        - exit epoch
+        - consensus validators explorer members table
+        - validator lifecycle epochs
+        - validator set members
+        - validator list
+- name: fct_consensus_validators_explorer_members_table__withdrawable_epoch_value
+  label: Consensus Validators Explorer Members Table - Withdrawable Epoch
+  description: consensus validators explorer members table - withdrawable epoch (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__withdrawable_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table withdrawable epoch
+        - withdrawable epoch
+        - consensus validators explorer members table
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: fct_consensus_validators_explorer_members_table__effective_balance_gno_value
+  label: Consensus Validators Explorer Members Table - Effective Balance GNO
+  description: consensus validators explorer members table - effective balance gno (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__effective_balance_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table effective balance gno
+        - effective balance gno
+        - consensus validators explorer members table
+        - validator balances
+        - staked GNO
+        - validator set members
+- name: fct_consensus_validators_explorer_members_table__apy_30d_value
+  label: Consensus Validators Explorer Members Table - APY 30D
+  description: consensus validators explorer members table - apy 30d (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__apy_30d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table apy 30d
+        - apy 30d
+        - consensus validators explorer members table
+        - staking APY
+        - validator yield
+        - staking returns
+- name: fct_consensus_validators_explorer_members_table__proposer_reward_total_lifetime_gno_value
+  label: Consensus Validators Explorer Members Table - Proposer Reward Total Lifetime GNO
+  description: consensus validators explorer members table - proposer reward total lifetime gno (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_explorer_members_table__proposer_reward_total_lifetime_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - withdrawal_credentials
+        - validator_index
+        - pubkey
+        - withdrawal_address
+        - status
+        - activation_date
+        - exit_date
+        - withdrawable_date
+        - latest_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer members table proposer reward total lifetime gno
+        - proposer reward total lifetime gno
+        - consensus validators explorer members table
+        - block proposer rewards
+        - proposal rewards
+        - validator set members
+- name: income_gno_value
+  label: Consensus Validators Income Total Daily - Income GNO
+  description: consensus validators income total daily - income gno (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: income_gno_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income total daily income gno
+        - income gno
+        - consensus validators income total daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: income_gno_rolling_7d_median_value
+  label: Consensus Validators Income Total Daily - Income GNO Rolling 7D Median
+  description: consensus validators income total daily - income gno rolling 7d median (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: income_gno_rolling_7d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income total daily income gno rolling 7d median
+        - income gno rolling 7d median
+        - consensus validators income total daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: income_gno_rolling_30d_median_value
+  label: Consensus Validators Income Total Daily - Income GNO Rolling 30D Median
+  description: consensus validators income total daily - income gno rolling 30d median (average). Read this as an average
+    over the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying
+    on it.
+  type: simple
+  type_params:
+    measure: income_gno_rolling_30d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income total daily income gno rolling 30d median
+        - income gno rolling 30d median
+        - consensus validators income total daily
+        - validator income
+        - staking income
+        - validator earnings
+- name: validators_snapshot_count_value
+  label: Consensus Validators Income Total Daily - Validators Snapshot Count
+  description: consensus validators income total daily - validators snapshot count (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: validators_snapshot_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income total daily validators snapshot count
+        - validators snapshot count
+        - consensus validators income total daily
+        - validator snapshots
+        - validator state history
+        - validator counts
+- name: anomaly_flag_value
+  label: Consensus Validators Income Total Daily - Anomaly Flag
+  description: consensus validators income total daily - anomaly flag (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: anomaly_flag_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators income total daily anomaly flag
+        - anomaly flag
+        - consensus validators income total daily
+        - validator flags
+- name: fct_consensus_validators_status_latest__balance_value
+  label: Consensus Validators Status Latest - Balance
+  description: consensus validators status latest - balance (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__balance_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest balance
+        - balance
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator balances
+- name: fct_consensus_validators_status_latest__slashed_value
+  label: Consensus Validators Status Latest - Slashed
+  description: consensus validators status latest - slashed (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__slashed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest slashed
+        - slashed
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - slashed validators
+- name: fct_consensus_validators_status_latest__activation_eligibility_epoch_value
+  label: Consensus Validators Status Latest - Activation Eligibility Epoch
+  description: consensus validators status latest - activation eligibility epoch (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__activation_eligibility_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest activation eligibility epoch
+        - activation eligibility epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: fct_consensus_validators_status_latest__activation_epoch_value
+  label: Consensus Validators Status Latest - Activation Epoch
+  description: consensus validators status latest - activation epoch (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__activation_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest activation epoch
+        - activation epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: fct_consensus_validators_status_latest__exit_epoch_value
+  label: Consensus Validators Status Latest - Exit Epoch
+  description: consensus validators status latest - exit epoch (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__exit_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest exit epoch
+        - exit epoch
+        - consensus validators status latest
+        - validator status
+        - validator lifecycle state
+        - validator lifecycle epochs
+- name: fct_consensus_validators_status_latest__withdrawable_epoch_value
+  label: Consensus Validators Status Latest - Withdrawable Epoch
+  description: consensus validators status latest - withdrawable epoch (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: fct_consensus_validators_status_latest__withdrawable_epoch_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - slot
+        - validator_index
+        - status
+        - pubkey
+        - withdrawal_credentials
+        - withdrawal_address
+        - slot_timestamp
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators status latest withdrawable epoch
+        - withdrawable epoch
+        - consensus validators status latest
+        - validator withdrawals
+        - staking withdrawals
+        - GNO withdrawn
+- name: int_consensus_validators_apy_dist_income_daily__q05_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q05 APY
+  description: consensus validators apy dist income daily - q05 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q05_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q05 apy
+        - q05 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q10_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q10 APY
+  description: consensus validators apy dist income daily - q10 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q10_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q10 apy
+        - q10 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q25_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q25 APY
+  description: consensus validators apy dist income daily - q25 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q25_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q25 apy
+        - q25 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q50_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q50 APY
+  description: consensus validators apy dist income daily - q50 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q50_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q50 apy
+        - q50 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q75_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q75 APY
+  description: consensus validators apy dist income daily - q75 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q75_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q75 apy
+        - q75 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q90_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q90 APY
+  description: consensus validators apy dist income daily - q90 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q90_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q90 apy
+        - q90 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_apy_dist_income_daily__q95_apy_value
+  label: Consensus Validators APY Dist Income Daily - Q95 APY
+  description: consensus validators apy dist income daily - q95 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_apy_dist_income_daily__q95_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily q95 apy
+        - q95 apy
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: avg_apy_weighted_value
+  label: Consensus Validators APY Dist Income Daily - Avg APY Weighted
+  description: consensus validators apy dist income daily - avg apy weighted (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: avg_apy_weighted_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily avg apy weighted
+        - avg apy weighted
+        - consensus validators apy dist income daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: validators_included_value
+  label: Consensus Validators APY Dist Income Daily - Validators Included
+  description: consensus validators apy dist income daily - validators included (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: validators_included_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators apy dist income daily validators included
+        - validators included
+        - consensus validators apy dist income daily
+- name: int_consensus_validators_explorer_apy_dist_daily__q05_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q05 APY
+  description: consensus validators explorer apy dist daily - q05 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q05_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q05 apy
+        - q05 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q10_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q10 APY
+  description: consensus validators explorer apy dist daily - q10 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q10_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q10 apy
+        - q10 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q25_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q25 APY
+  description: consensus validators explorer apy dist daily - q25 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q25_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q25 apy
+        - q25 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q50_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q50 APY
+  description: consensus validators explorer apy dist daily - q50 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q50_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q50 apy
+        - q50 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q75_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q75 APY
+  description: consensus validators explorer apy dist daily - q75 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q75_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q75 apy
+        - q75 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q90_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q90 APY
+  description: consensus validators explorer apy dist daily - q90 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q90_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q90 apy
+        - q90 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__q95_apy_value
+  label: Consensus Validators Explorer APY Dist Daily - Q95 APY
+  description: consensus validators explorer apy dist daily - q95 apy (average). Read this as an average over the grain; do
+    NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__q95_apy_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily q95 apy
+        - q95 apy
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: apy_weighted_value
+  label: Consensus Validators Explorer APY Dist Daily - APY Weighted
+  description: consensus validators explorer apy dist daily - apy weighted (average). Read this as an average over the grain;
+    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: apy_weighted_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily apy weighted
+        - apy weighted
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__validator_count_active_value
+  label: Consensus Validators Explorer APY Dist Daily - Validator Count Active
+  description: consensus validators explorer apy dist daily - validator count active (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__validator_count_active_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily validator count active
+        - validator count active
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_7d_median_value
+  label: Consensus Validators Explorer APY Dist Daily - APY Rolling 7D Median
+  description: consensus validators explorer apy dist daily - apy rolling 7d median (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_7d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily apy rolling 7d median
+        - apy rolling 7d median
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns
+- name: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_30d_median_value
+  label: Consensus Validators Explorer APY Dist Daily - APY Rolling 30D Median
+  description: consensus validators explorer apy dist daily - apy rolling 30d median (average). Read this as an average over
+    the grain; do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on
+    it.
+  type: simple
+  type_params:
+    measure: int_consensus_validators_explorer_apy_dist_daily__apy_rolling_30d_median_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - withdrawal_credentials
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - consensus validators explorer apy dist daily apy rolling 30d median
+        - apy rolling 30d median
+        - consensus validators explorer apy dist daily
+        - staking APY
+        - validator yield
+        - staking returns

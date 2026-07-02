@@ -98,10 +98,19 @@ jobs:
       - name: Enforce API tag/schema convention
         # api: endpoints must be grain/window-free (grain -> granularity:, window ->
         # window:), carry granularity + tier, and have complete typed column schemas.
-        # See scripts/checks/check_api_tags.py (+ check_api_tags.allow for staged cleanup).
+        # See scripts/checks/check_api_tags.py (+ check_api_tags.allow for staged
+        # cleanup — the allowlist is shrink-only: entries that stop suppressing a
+        # violation fail the build until deleted).
         run: |
           dbt parse
           python scripts/checks/check_api_tags.py
+
+      - name: Enforce doc-coverage floors
+        # Per-module description/ownership coverage can only ratchet UP. Floors
+        # live in scripts/checks/doc_coverage_floors.json; re-baseline after a
+        # docs wave with `python scripts/checks/check_doc_coverage.py --update-floors`.
+        run: |
+          python scripts/checks/check_doc_coverage.py
 
       - name: Install test dependencies
         # pytest is only needed for the semantic-registry guard tests below;
@@ -135,34 +144,25 @@ jobs:
         # etc. Without it the build would silently produce a registry
         # that passes JSON-schema checks but breaks at query time.
         #
-        # TRANSITION STATE — `continue-on-error: true`. The repo currently
-        # has ~23 pre-existing validate errors (missing required
-        # `meta.cerebro.grain` on approved models, unreachable metric
-        # dimensions, metrics with no root_model binding). These need a
-        # cleanup pass before validation can be strict. Run
+        # STRICT — the validation backlog was zeroed (0 errors / 0 warnings);
+        # any new validation error OR warning fails the build. Triage via
         # `python scripts/semantic/build_registry.py --target-dir target
-        # --validate` locally and triage `target/semantic_validation_report
-        # .json` to drive the cleanup. Once the count is zero, drop
-        # `continue-on-error: true` so a regression future-breaks CI.
-        continue-on-error: true
+        # --validate` + target/semantic_validation_report.json.
         run: |
-          python scripts/semantic/build_registry.py --target-dir target --validate
+          python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0
 
       - name: Graph metadata gate (blocking)
-        # Scoped, BLOCKING counterpart to the continue-on-error validate step
-        # above. Fails the build only on net-new `graph_meta_*` errors (unknown
-        # node kind, missing/unknown column, duplicate profile id, ...) relative
-        # to semantic/validation/baseline.json. This keeps the knowledge-graph
-        # contract strict without waiting for the legacy non-graph cleanup.
+        # Scoped gate for the knowledge-graph contract: fails the build on
+        # net-new `graph_meta_*` errors (unknown node kind, missing/unknown
+        # column, duplicate profile id, ...) relative to
+        # semantic/validation/baseline.json.
         run: |
           python scripts/semantic/graph_gate.py --target-dir target
 
       - name: Surface validation report in build summary
-        # Print the validation summary into the GitHub Actions step log
-        # so reviewers see the error count even when the step itself is
-        # `continue-on-error: true`. Once validation is strict, this step
-        # becomes redundant (failures will block the build) but it's
-        # harmless to leave in.
+        # Print the validation summary into the GitHub Actions step log so
+        # reviewers see the error/warning counts at a glance (validation is
+        # strict now, so failures also block the build on their own).
         if: always()
         run: |
           if [ -f target/semantic_validation_report.json ]; then

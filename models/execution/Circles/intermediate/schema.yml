@@ -1988,3 +1988,25 @@ models:
   meta: {owner: analytics_team, authoritative: false}
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
+
+- name: int_execution_circles_v2_referrers
+  description: >
+    "Users who start referring" — one row per inviter, i.e. each address
+    that appears as invited_by on a Circles v2 Human avatar registration
+    (int_execution_circles_v2_avatars). Carries the first referral
+    timestamp/week, total n_referrals, first_referral_in_app (1 if the
+    first invitee's registration tx was routed through an active Gnosis App
+    bundler via the ERC-4337 EntryPoint), and first_inviter_fee_at — the
+    first time the inviter received a CRC invitation fee per
+    int_execution_circles_v2_inviter_fees (NULL when no fee was observed;
+    fee-less invites still count as referrals).
+
+- name: int_execution_circles_v2_trust_pair_ranges
+  description: >
+    Validity ranges for Circles v2 trust relations. One row per (truster,
+    trustee) pair, with parallel arrays valid_from_agg/valid_to_agg holding
+    the intervals during which trust was active, plus range_count. Built by
+    sorting each pair's events from int_execution_circles_v2_trust_updates
+    and closing every interval at the earlier of its expiry_time and the
+    next update's start; the final open interval ends at the DateTime max
+    sentinel (2106-02-07), and zero-length ranges are dropped.

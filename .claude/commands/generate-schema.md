@@ -41,7 +41,6 @@ models:
     description: Business meaning in one sentence, capitalized.
     data_type: ClickHouseType
   meta:
-    owner: analytics-team
     authoritative: false
     generated_by: dbt-schema-gen
     _generated_at: '<ISO timestamp>'
@@ -54,13 +53,23 @@ models:
 ## Rules
 
 - **Columns**: only from the final SELECT. Every column gets `name`, `description`, `data_type`.
-- **Types**: ClickHouse — `Date`, `DateTime64(0, 'UTC')`, `String`, `Float64`, `UInt64`,
-  `Int256`, `Nullable(String)`, `AggregateFunction(groupBitmap, UInt64)`, etc.
-- **Meta**: always `owner: analytics-team`, `authoritative: false`. Include `generated_by`,
-  `_generated_at`, `_generated_fields` (list only fields you generated, not preserved ones).
+- **Types**: prefer the ACTUAL warehouse type from `target/catalog.json` when the model is
+  catalogued there; fall back to inference from SQL casts. ClickHouse types — `Date`,
+  `DateTime64(0, 'UTC')`, `String`, `Float64`, `UInt64`, `Int256`, `Nullable(String)`,
+  `AggregateFunction(groupBitmap, UInt64)`, etc.
+- **Never invent semantics**: a description may only assert what is provable from the model
+  SQL, upstream schema.yml descriptions, macros, or seeds. If a column's business meaning is
+  not provable, LEAVE ITS DESCRIPTION EMPTY and report the column under
+  "uncertain — needs human input" at the end of the run. A wrong description poisons the
+  semantic search corpus; an empty one is an honest, measurable gap.
+- **Meta**: `authoritative: false` plus `generated_by`, `_generated_at`, `_generated_fields`
+  (list only fields you generated, not preserved ones). Do NOT emit `owner` — module-tree
+  defaults in dbt_project.yml supply it (`+meta: owner: analytics_team`); only preserve an
+  existing model-level owner if one is already present.
 - **No tests**: do not generate `tests:` blocks.
 - **No full_refresh**: do not generate — only preserve existing or add when user explicitly asks.
-- **Preserve**: keep untouched models' entries and all manually written meta intact.
+- **Preserve**: keep untouched models' entries and all manually written meta intact. Never
+  overwrite a non-empty human-written description.
 
 ## Description style
 
@@ -90,7 +99,6 @@ Safe / Pay wallet = Gnosis Safe smart contract wallet
     description: The blockchain address of a Gnosis Pay wallet.
     data_type: String
   meta:
-    owner: analytics-team
     authoritative: false
 ```
 
@@ -115,7 +123,6 @@ Safe / Pay wallet = Gnosis Safe smart contract wallet
     description: The token balance converted to USD.
     data_type: Float64
   meta:
-    owner: analytics-team
     authoritative: false
 ```
 
@@ -128,6 +135,5 @@ Safe / Pay wallet = Gnosis Safe smart contract wallet
     description: The total balance value across all Gnosis Pay wallets.
     data_type: Float64
   meta:
-    owner: analytics-team
     authoritative: false
 ```
