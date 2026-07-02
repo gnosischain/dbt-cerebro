@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """CI guard: enforce the zero-duplicate, mutation-free incremental policy.
 
-Walks target/manifest.json and fails if any incremental model:
+Scope: FIRST-PARTY models only (package_name == 'gnosis_dbt'). Vendored dbt
+packages (e.g. Elementary) ship their own materialization strategy that we do
+not control and must not edit — `dbt deps` would clobber any change — so they are
+exempt from this policy. Without this scoping, enabling a package like Elementary
+would fail the check on its internal append/incremental models (e.g.
+elementary.test_result_rows).
+
+Walks target/manifest.json and fails if any FIRST-PARTY incremental model:
 
   1. resolves to incremental_strategy='delete+insert'
      -> banned: emits ALTER ... DELETE mutations on ClickHouse.
@@ -14,8 +21,8 @@ Walks target/manifest.json and fails if any incremental model:
         risks overlap-append duplicates.
 
 A transient allowlist (scripts/checks/no_delete_insert.allow, one unique_id per
-line, '#' comments allowed) suppresses not-yet-migrated models during rollout.
-Shrink it per wave; delete it when empty.
+line, '#' comments allowed) suppresses not-yet-migrated FIRST-PARTY models during
+rollout. Shrink it per wave; delete it when empty.
 
 Usage:
     dbt parse            # refresh target/manifest.json first
@@ -31,6 +38,10 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "target" / "manifest.json"
 ALLOWLIST = pathlib.Path(__file__).resolve().parent / "no_delete_insert.allow"
+
+# The policy governs only this project's own models. Vendored packages (e.g.
+# Elementary) manage their own materialization and are not ours to migrate.
+PROJECT_PACKAGE = "gnosis_dbt"
 
 
 def load_allowlist() -> set[str]:
@@ -60,6 +71,10 @@ def main() -> int:
     violations: list[tuple[str, str]] = []
     for node in manifest.get("nodes", {}).values():
         if node.get("resource_type") != "model":
+            continue
+        # First-party models only — vendored packages (Elementary, etc.) ship
+        # their own materialization and are exempt from this policy.
+        if node.get("package_name") != PROJECT_PACKAGE:
             continue
         config = node.get("config", {}) or {}
         if config.get("materialized") != "incremental":
