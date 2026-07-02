@@ -14,6 +14,14 @@
 -- under nightly load; joins spill with grace_hash).
 WITH non_users AS (
     SELECT address FROM `dbt`.`int_execution_accounts_non_user_contracts`
+
+    UNION ALL
+
+    -- Label-derived protocol/token/infra contracts (Dune labels) that the
+    -- trace-built non_user_contracts set misses (e.g. Balancer Vault). Small
+    -- separate model so this batched stream stays memory-safe without
+    -- rebuilding the large non_user_contracts table.
+    SELECT address FROM `dbt`.`int_execution_accounts_label_contracts`
 ),
 
 base AS (
