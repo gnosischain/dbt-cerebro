@@ -56,6 +56,25 @@ models:
     description: Timestamp of the most recent event for this position.
     data_type: DateTime
 
+- name: int_execution_yields_balancer_lp_fees
+  description: >
+    True Balancer (V2/V3) LP swap fees per (provider, pool), used by
+    int_execution_yields_user_lp_positions to replace the capital_out - capital_in
+    PnL proxy (model review EXECUTIONYIELDS-C12). Monthly contribution-based,
+    value-weighted attribution of int_execution_pools_fees_daily pool fees: each
+    month's pool fees are split across LPs by cumulative net contributed USD
+    (mint - burn) as of month-end. Conserves to pool totals.
+  columns:
+  - name: pool_address
+    description: Balancer pool address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: provider
+    description: LP wallet that provided the liquidity (Join/Exit caller).
+    data_type: String
+  - name: fees_usd
+    description: Lifetime attributed swap fees in USD for this wallet in this pool, net of the Balancer protocol-fee cut (50% post ~2023-03).
+    data_type: Float64
+
 - name: int_execution_yields_user_activity
   description: >
     Unified yield activity feed combining LP events (Add/Remove Liquidity,
@@ -92,13 +111,53 @@ models:
 
   tests:
   - dbt_utils.unique_combination_of_columns:
+      # token_address is part of the grain: a single LP event emits one row per
+      # token leg (V3 = 2, Balancer = 2-8) sharing (tx, log_index). It must match
+      # the model's ReplacingMergeTree order_by, otherwise multi-token legs collapse.
       combination_of_columns:
       - block_timestamp
       - source
       - transaction_hash
       - log_index
+      - token_address
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  meta:
+    # Batched full-refresh: the model is monthly-partitioned (insert_overwrite)
+    # and honours start_month/end_month, but a single --full-refresh over all
+    # history OOMs (LP leg union + lending ASOF price join). scripts/full_refresh
+    # reads this block and walks one month per batch instead.
+    full_refresh:
+      start_date: "2022-12-01"
+      batch_months: 3
+- name: int_yields_ocsdai_share_price_daily
+  description: |
+    Daily share price (sDAI per OC-sDAI share) for the OpenCover OC-sDAI vault
+    ("Covered Savings xDAI", 0x0ac34fe133bde3a2ef589a18a4e10b6a7d253829), an
+    ERC-4626 covered vault whose asset() is sDAI. Reconstructs end-of-day share
+    price = assets / shares from the vault's ERC-4626 Deposit/Withdraw events
+    (contracts_ocsdai_events), forward-filled across event-less days from the
+    2026-03-16 launch. Used by int_revenue_ocsdai_user_balances_daily to value
+    OC-sDAI holders' underlying sDAI for the revenue sDAI stream. Emits only the
+    share-price level (no APY/rate windows), unlike int_yields_savings_xdai_rate_daily.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+    tests:
+    - not_null
+    - unique
+  - name: share_price
+    description: sDAI per OC-sDAI share (assets/shares), forward-filled.
+    data_type: Float64
+    tests:
+    - not_null
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2026-03-16"
+      batch_months: 12
 - name: int_yields_savings_xdai_rate_daily
   description: |
     Canonical daily Savings xDAI vault rate for the Gnosis Savings xDAI vault
@@ -140,7 +199,7 @@ models:
     description: End-of-day share price (assets / shares) from the ERC4626 vault.
     data_type: Float64
   - name: daily_rate
-    description: Proper daily rate as (share_price_t / share_price_t_minus_1) - 1. Never null in the output (null-rate rows are filtered).
+    description: Daily rate as the 7-day GEOMETRIC SLOPE of share_price ((share_price_today / share_price_7d_ago) ** (1/7) - 1), which spreads the vault's lump-sum yield distributions across the week; NOT a day-over-day ratio. Never null in the output (null-rate rows are filtered).
     data_type: Float64
   - name: canonical_label
     description: Canonical asset label ("Savings xDAI").
@@ -170,5 +229,5 @@ models:
     description: End-of-day share price (alias for share_price).
     data_type: Float64
   - name: rate
-    description: Daily rate (alias for daily_rate — now a proper ratio, not diff).
+    description: Daily rate (alias for daily_rate — the 7-day geometric slope of share_price, not a day-over-day ratio).
     data_type: Float64

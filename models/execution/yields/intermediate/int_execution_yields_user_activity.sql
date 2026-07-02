@@ -3,7 +3,7 @@
         materialized='incremental',
         incremental_strategy='insert_overwrite',
         engine='ReplacingMergeTree()',
-        order_by='(block_timestamp, source, transaction_hash, log_index)',
+        order_by='(block_timestamp, source, transaction_hash, log_index, token_address)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
         tags=['production', 'execution', 'yields', 'user_portfolio', 'intermediate']
@@ -36,7 +36,13 @@ lp_events AS (
     FROM {{ ref('int_execution_pools_dex_liquidity_events') }}
     WHERE provider IS NOT NULL
       AND provider != ''
-      {% if not (start_month and end_month) %}
+      {% if start_month and end_month %}
+        -- Batched backfill: prune to whole months in the window. Matches the
+        -- toStartOfMonth partition key so ClickHouse reads only this slice
+        -- (not full history) and insert_overwrite replaces only these partitions.
+        AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
         {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', 'true') }}
       {% endif %}
 ),
@@ -92,7 +98,10 @@ lending_events AS (
       AND e.decoded_params['reserve'] IS NOT NULL
       AND e.decoded_params['amount'] IS NOT NULL
       AND e.block_timestamp < today()
-      {% if not (start_month and end_month) %}
+      {% if start_month and end_month %}
+        AND toStartOfMonth(e.block_timestamp) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(e.block_timestamp) <= toDate('{{ end_month }}')
+      {% else %}
         {{ apply_monthly_incremental_filter('e.block_timestamp', 'block_timestamp', 'true') }}
       {% endif %}
 )

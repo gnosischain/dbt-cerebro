@@ -89,6 +89,189 @@ semantic_models:
         - lending borrows volume
         - aave weekly
         - sparklend weekly
+- name: execution_lending_tvl_by_token_latest
+  model: ref('api_execution_lending_tvl_by_token_latest')
+  defaults:
+    agg_time_dimension: as_of_date
+  entities:
+  - name: lending_tvl_row
+    type: primary
+    expr: concat(protocol, '|', token)
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: token
+    type: categorical
+    expr: token
+  measures:
+  - name: execution_lending_tvl_value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - lending tvl
+        - aave tvl
+        - sparklend tvl
+        - lending tvl by token
+        - total value locked lending
+- name: execution_lending_lenders_count
+  model: ref('api_execution_lending_lenders_count_7d')
+  defaults:
+    agg_time_dimension: as_of_date
+  entities:
+  - name: lending_lenders_row
+    type: primary
+    expr: concat(protocol, '|', token)
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  - name: protocol
+    type: categorical
+    expr: protocol
+  measures:
+  - name: execution_lending_lenders_count_value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - lending lenders count
+        - active lenders
+        - aave lenders
+        - sparklend lenders
+- name: execution_lending_borrowers_count
+  model: ref('api_execution_lending_borrowers_count_7d')
+  defaults:
+    agg_time_dimension: as_of_date
+  entities:
+  - name: lending_borrowers_row
+    type: primary
+    expr: concat(protocol, '|', token)
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  - name: protocol
+    type: categorical
+    expr: protocol
+  measures:
+  - name: execution_lending_borrowers_count_value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - lending borrowers count
+        - active borrowers
+        - aave borrowers
+        - sparklend borrowers
+- name: execution_lending_balance_cohorts_value
+  model: ref('api_execution_lending_balance_cohorts_value_daily')
+  defaults:
+    agg_time_dimension: date
+  entities:
+  - name: lending_cohort_value_row
+    type: primary
+    expr: concat(toString(date), '|', protocol, '|', token, '|', cohort_unit, '|', label)
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: token
+    type: categorical
+    expr: token
+  - name: cohort_unit
+    type: categorical
+    expr: cohort_unit
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: execution_lending_cohort_value_usd_value
+    agg: sum
+    expr: value_usd
+  - name: execution_lending_cohort_value_native_value
+    agg: sum
+    expr: value_native
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - lending balance cohorts value
+        - lending tvl by balance bucket
+        - lending value distribution
+- name: execution_lending_balance_cohorts_holders
+  model: ref('api_execution_lending_balance_cohorts_holders_daily')
+  defaults:
+    agg_time_dimension: date
+  entities:
+  - name: lending_cohort_holders_row
+    type: primary
+    expr: concat(toString(date), '|', protocol, '|', token, '|', cohort_unit, '|', label)
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: token
+    type: categorical
+    expr: token
+  - name: cohort_unit
+    type: categorical
+    expr: cohort_unit
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: execution_lending_cohort_holders_value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - lending balance cohorts holders
+        - lending holder count by balance bucket
+        - lending holder distribution
 metrics:
 - name: lending_apy_daily
   label: Lending APY (Daily)
@@ -228,3 +411,136 @@ metrics:
         question_synonyms:
         - execution lending weekly execution lending borrow apy weekly
         - execution lending borrow apy weekly
+- name: lending_tvl_by_token
+  label: Lending TVL by Token (USD, latest)
+  description: |
+    Latest-snapshot TVL (sum of supplied balance_usd) per (protocol, token) across Aave V3
+    and SparkLend. One row per protocol/token (no 'ALL' aggregate), so summing across the
+    token/protocol dimensions is safe. USD understates on price-feed gap days (see the
+    balance_usd price-gap detector on the source model).
+  type: simple
+  type_params:
+    measure: execution_lending_tvl_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        - protocol
+        - token
+        supported_time_grains:
+        - day
+        question_synonyms:
+        - lending tvl
+        - aave tvl
+        - sparklend tvl
+        - tvl by token
+- name: lending_lenders_count
+  label: Lending Active Lenders (STOCK, latest)
+  description: |
+    Distinct wallets with a positive supply balance on the latest date (point-in-time STOCK).
+    IMPORTANT: the source carries per-protocol rows PLUS a protocol='ALL' cross-protocol
+    aggregate row, so do NOT sum across the protocol dimension — either group BY protocol or
+    filter protocol='ALL' for the total. NOT comparable to lending_borrowers_count (a 7-day flow).
+  type: simple
+  type_params:
+    measure: execution_lending_lenders_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        - protocol
+        supported_time_grains:
+        - day
+        question_synonyms:
+        - active lenders
+        - lenders count
+        - number of lenders
+- name: lending_borrowers_count
+  label: Lending Active Borrowers (7-day FLOW)
+  description: |
+    Distinct wallets that borrowed within the trailing 7 days (FLOW, not a debt-balance stock).
+    IMPORTANT: the source carries per-protocol rows PLUS a protocol='ALL' aggregate row, so do
+    NOT sum across protocol — group BY protocol or filter protocol='ALL'. NOT directly comparable
+    to lending_lenders_count, which is a point-in-time balance STOCK.
+  type: simple
+  type_params:
+    measure: execution_lending_borrowers_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - as_of_date
+        - protocol
+        supported_time_grains:
+        - day
+        question_synonyms:
+        - active borrowers
+        - borrowers count
+        - number of borrowers
+- name: lending_balance_cohorts_value_usd
+  label: Lending Balance Cohorts - Value (USD)
+  description: |
+    USD value held per balance bucket per (protocol, token), daily. Use `label` for the bucket
+    and `cohort_unit` to pick the USD vs native bucketing basis. One row per
+    (date, protocol, token, cohort_unit, bucket); safe to sum across buckets.
+  type: simple
+  type_params:
+    measure: execution_lending_cohort_value_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - protocol
+        - token
+        - cohort_unit
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - lending value by balance bucket
+        - lending tvl distribution
+- name: lending_balance_cohorts_holders
+  label: Lending Balance Cohorts - Holders
+  description: |
+    Distinct holder count per balance bucket per (protocol, token), daily. Use `label` for the
+    bucket and `cohort_unit` for the bucketing basis. One row per
+    (date, protocol, token, cohort_unit, bucket).
+  type: simple
+  type_params:
+    measure: execution_lending_cohort_holders_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - protocol
+        - token
+        - cohort_unit
+        - label
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - lending holders by balance bucket
+        - lending holder distribution

@@ -2,7 +2,15 @@ version: 2
 models:
 
 - name: int_execution_lending_aave_daily
-  description: Daily lending metrics per (protocol, reserve) on Gnosis Chain, covering both Aave V3 and SparkLend. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
+  description: |
+    Daily lending metrics per (protocol, reserve) on Gnosis Chain, covering both Aave V3 and SparkLend. Includes supply/borrow APY (forward-filled from ReserveDataUpdated events), activity metrics (unique lenders/borrowers via bitmaps, deposit/borrow/withdraw/repay volumes), and net supply change for TVL tracking. Liquidation collateral seizures are subtracted from net supply.
+
+    SCOPE — Aave V3 + SparkLend only. Agave (Aave V2 fork) is intentionally
+    EXCLUDED from this entire unit: it is effectively wound down on Gnosis Chain
+    (0 deposits in the last 90 days, only housekeeping logs), and its decoded
+    source events are unusable anyway (event_name is blank — no ABI registered).
+    Any "all Gnosis lending" TVL/user figure from this unit therefore excludes
+    Agave by design.
   columns:
   - name: date
     data_type: Date
@@ -206,7 +214,17 @@ models:
         vars:
           reserve_symbol: "GNO,sDAI,USDC,USDC.e"
 
-  tests: []
+  tests:
+  # Price-gap detector: a positive native balance with balance_usd = 0 means the price
+  # join (int_execution_token_prices_daily) found no price and coalesced to 0, silently
+  # understating TVL/cohorts for that reserve-day. All lending reserves are priced, so
+  # this should never hold; warn (not error) so a transient price-feed lag surfaces
+  # loudly instead of shipping a zeroed TVL.
+  - dbt_utils.expression_is_true:
+      expression: "balance_usd > 0 OR balance <= 0"
+      config:
+        severity: warn
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_execution_lending_aave_balance_cohorts_daily
   description: Daily lender balance cohort distributions per (protocol, reserve) across Aave V3 and SparkLend on Gnosis. Buckets users by deposit size (USD and native units) for concentration analysis.
   columns:

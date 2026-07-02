@@ -284,7 +284,13 @@ SELECT
              AND i.variable_borrow_index_eod  > toUInt256OrZero('0')
         THEN
             toFloat64(
-                toUInt256(c.cumulative_scaled_borrow) * i.variable_borrow_index_eod
+                -- Clamp the scaled borrow at 0 before the unsigned cast. A small NEGATIVE
+                -- cumulative_scaled_borrow is repay-rounding noise (rayDivCeil over-subtracts
+                -- up to 1 scaled unit per repay) for reserves with ~zero net borrow. Without
+                -- the clamp, toUInt256(negative) wraps to ~2^256 and produces a garbage
+                -- utilization (~e30). Clamping yields ~0% utilization, which is correct for a
+                -- reserve carrying essentially no borrow.
+                toUInt256(greatest(c.cumulative_scaled_borrow, toInt256(0))) * i.variable_borrow_index_eod
             )
             / toFloat64(
                 toUInt256(c.cumulative_scaled_supply) * i.liquidity_index_eod

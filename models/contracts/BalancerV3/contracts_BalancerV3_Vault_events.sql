@@ -10,8 +10,8 @@
                                     'allow_nullable_key': 1 
                                 },
         tags                    = ['production','contracts','balancerv3','events', 'microbatch'],
-        pre_hook=["SET allow_experimental_json_type = 1"],
-        post_hook=["SET allow_experimental_json_type = 0"]
+        pre_hook=["SET allow_experimental_json_type = 1", "SET max_block_size = 5000"],
+        post_hook=["SET allow_experimental_json_type = 0", "SET max_block_size = 65505"]
     )
 }}
 {{ 

@@ -35,12 +35,12 @@ semantic_models:
   - name: execution_cow_cow_ratio_value
     agg: avg
     expr: cow_ratio
-  - name: execution_cow_active_solvers_value
-    agg: avg
-    expr: active_solvers
   - name: execution_cow_gas_native_value
     agg: sum
     expr: coalesce(total_tx_cost_native, 0)
+  - name: execution_cow_solver_value_usd_value
+    agg: sum
+    expr: coalesce(solver_value_usd, 0)
   config:
     meta:
       cerebro:
@@ -53,30 +53,60 @@ semantic_models:
         - cow trading daily
         - cow batch auction daily
         - dex activity cow
+- name: execution_cow_solvers_daily
+  model: ref('fct_execution_cow_solvers_daily')
+  defaults:
+    agg_time_dimension: date
+  entities:
+  - name: cow_solver_day
+    type: primary
+    expr: concat(toString(date), '|', solver)
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  # Period-correct distinct solver count. A daily avg of the pre-aggregated
+  # active_solvers column understates the true period figure (daily means are
+  # not additive); count_distinct over the solver-day grain matches the
+  # api_execution_cow_kpi_active_solvers definition.
+  - name: execution_cow_active_solvers_distinct
+    agg: count_distinct
+    expr: solver
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - cow solver daily detail
+        - cow per-solver metrics
+        - cow solver activity
 - name: execution_cow_top_pairs_weekly
   model: ref('api_execution_cow_top_pairs_weekly')
   defaults:
     agg_time_dimension: week
   entities:
+  # Mart grain is (date, label): top-8 directional pairs + 'Other', weekly.
   - name: cow_pair_week
     type: primary
-    expr: concat(toString(week), '|', pair)
+    expr: concat(toString(date), '|', label)
   dimensions:
   - name: week
     type: time
-    expr: week
+    expr: date
     type_params:
       time_granularity: week
   - name: pair
     type: categorical
-    expr: pair
+    expr: label
   measures:
   - name: execution_cow_pair_volume_value
     agg: sum
-    expr: volume_usd
-  - name: execution_cow_pair_trades_value
-    agg: sum
-    expr: num_trades
+    expr: value
   config:
     meta:
       cerebro:
@@ -214,14 +244,16 @@ metrics:
         - cow direct matching rate
         - cowswap p2p rate
 - name: cow_active_solvers
-  label: CoW Active Solvers (Daily)
-  description: 'Distinct solvers that settled batches on this day. Solvers compete in the batch-auction to win settlement
-    rights; this measures the competitive intensity of the solver ecosystem.
+  label: CoW Active Solvers
+  description: 'Count of distinct solvers that settled at least one batch in the selected period. Computed as a period
+    count-distinct over the solver-day grain (not a daily average), so week/month totals reflect the true number of
+    unique solvers, matching api_execution_cow_kpi_active_solvers. Solvers compete in the batch auction to win
+    settlement rights; this measures the competitive intensity of the solver ecosystem.
 
     '
   type: simple
   type_params:
-    measure: execution_cow_active_solvers_value
+    measure: execution_cow_active_solvers_distinct
   config:
     meta:
       cerebro:
@@ -264,10 +296,39 @@ metrics:
         - cow top pairs
         - top traded cow pairs
         - cow volume by token pair
+- name: cow_solver_value_usd
+  label: CoW Protocol Solver Value (USD, Daily)
+  description: 'Daily gross value found by solvers beyond the reference price (priceImprovement + surplus fee policies),
+    in USD, before the protocol takes its cut. Sourced from API fee data (fee_source = api, Sep 2024 onwards); NULL for
+    pre-Sep-2024 trades and volume-only fee policies.
+
+    '
+  type: simple
+  type_params:
+    measure: execution_cow_solver_value_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - cow solver value
+        - cowswap solver value
+        - cow solver generated value
+        - solver value usd cow
 - name: execution_cow_batches_value
-  label: Execution Cow Daily - Execution Cow Batches
-  description: execution cow daily - execution cow batches (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: CoW Protocol Settlement Batches (Daily)
+  description: 'Daily count of settlement batches (each batch is one settlement transaction bundling one or more matched
+    orders) on CoW Protocol.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_batches_value
@@ -289,9 +350,11 @@ metrics:
         - execution cow daily execution cow batches
         - execution cow batches
 - name: execution_cow_cow_batches_value
-  label: Execution Cow Daily - Execution Cow Cow Batches
-  description: execution cow daily - execution cow cow batches (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: CoW Protocol Pure-CoW Batches (Daily)
+  description: 'Daily count of batches settled via pure Coincidence of Wants (multi-trade batches with zero AMM
+    interactions). Numerator of cow_ratio.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_cow_batches_value
@@ -313,9 +376,11 @@ metrics:
         - execution cow daily execution cow cow batches
         - execution cow cow batches
 - name: execution_cow_gas_native_value
-  label: Execution Cow Daily - Execution Cow Gas Native
-  description: execution cow daily - execution cow gas native (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: CoW Protocol Solver Gas Cost (xDAI, Daily)
+  description: 'Daily total gas cost (in native xDAI) paid across all CoW Protocol settlement batches, i.e. the gas
+    solvers spent settling on Gnosis Chain.
+
+    '
   type: simple
   type_params:
     measure: execution_cow_gas_native_value
@@ -336,27 +401,3 @@ metrics:
         question_synonyms:
         - execution cow daily execution cow gas native
         - execution cow gas native
-- name: execution_cow_pair_trades_value
-  label: Execution Cow Top Pairs Weekly - Execution Cow Pair Trades
-  description: execution cow top pairs weekly - execution cow pair trades (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
-  type: simple
-  type_params:
-    measure: execution_cow_pair_trades_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: week
-        allowed_dimensions:
-        - week
-        - pair
-        supported_time_grains:
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution cow top pairs weekly execution cow pair trades
-        - execution cow pair trades

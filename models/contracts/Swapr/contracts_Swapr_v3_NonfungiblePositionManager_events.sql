@@ -3,7 +3,7 @@
         materialized            = 'incremental',
         incremental_strategy='append',
         engine                  = 'ReplacingMergeTree()',
-        order_by                = '(block_timestamp, transaction_hash, log_index)',
+        order_by                = '(transaction_hash, log_index)',
         unique_key              = '(transaction_hash, log_index)',
         partition_by            = 'toStartOfMonth(block_timestamp)',
         settings                = { 

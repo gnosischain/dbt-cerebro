@@ -128,11 +128,16 @@ models:
 
 - name: api_execution_lending_borrowers_count_7d
   description: |
-    KPI view of currently-active borrowers on Gnosis (Aave V3, SparkLend).
-    Mirror of api_execution_lending_lenders_count_7d but for borrowers.
-    "Active borrowers" is a STOCK measure — unique wallets currently holding
-    a positive debt position. One row per protocol plus an 'ALL'-protocols
-    aggregate. change_pct compares against the count 7 days earlier.
+    KPI view of recently-active borrowers on Gnosis (Aave V3, SparkLend).
+    IMPORTANT — this is a 7-day FLOW, not a stock: unique wallets that emitted a
+    Borrow within the trailing 7 days (bitmap-merged from fct_execution_lending_latest,
+    granularity:last_7d). It is NOT symmetric with api_execution_lending_lenders_count_7d,
+    which is a point-in-time balance STOCK (wallets with a positive supply balance on
+    the latest date). Do not compare the two side by side as like-for-like — lenders =
+    balance stock, borrowers = 7-day borrow activity. (A true borrower STOCK would
+    require per-wallet debt balances, which user_balances_daily does not currently track.)
+    One row per protocol plus an 'ALL'-protocols aggregate. change_pct compares against
+    the equivalent 7-day count one week earlier.
   columns:
   - name: token
     description: Always 'ALL' (no per-token slice exposed).
@@ -141,7 +146,7 @@ models:
     description: Lending protocol identifier or 'ALL' for the cross-protocol aggregate.
     data_type: String
   - name: value
-    description: Distinct borrower count with positive debt balance on the latest available date.
+    description: Distinct wallets that borrowed within the trailing 7 days (FLOW, not a debt-balance stock).
     data_type: Float64
   - name: change_pct
     description: Percent change vs the count 7 days earlier (NULL when prior is zero or missing).

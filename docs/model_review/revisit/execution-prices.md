@@ -4,12 +4,85 @@ Baseline: `docs/model_review/execution-prices.md` (2026-06-11). 20 cases re-veri
 
 ---
 
+## Resolution (2026-06-24): forward-fill staleness fixed (C01 / C02 / C18-SAFE)
+
+The critical forward-fill defect was driven to a fix. Two findings from the fix work that
+correct/extend the revisit:
+
+1. **It was not only SAFE — COW was also being served wrong.** Re-measuring drift against the
+   live Dune feed (the true measure of harm, vs. the days-stale proxy) on `2026-06-23`:
+   - **SAFE**: served `0.366661`, frozen `266` served-days, Dune `0.084022` → **4.36x**
+     (`fct_execution_tokens_metrics_daily` SAFE `supply 6,920,345 × 0.366661 = $2,537,423` vs
+     `$581,461` at Dune → **~$1.96M/day**).
+   - **COW**: served `0.179992`, frozen `23` served-days, Dune `0.157489` → **+14.3%**
+     (`COW supply 23,016,458 × 0.18 = $4,142,789` vs `$3,624,839` at Dune → **~$0.52M/day**).
+   - Combined the defect overstated **~$2.47M/day** across the two symbols.
+   - **BRZ and sGNO are NOT frozen** (revisit's `dex_ratios` staleness was a red herring): they
+     refresh daily via the BRZ←BRLA and sGNO←GNO fallbacks (served-days-frozen = 1, within ~1%
+     of Dune). The only genuinely frozen, no-fallback DEX symbols are SAFE, COW, GBPe.
+
+2. **Threshold chosen = 7 days, not 30.** The revisit/earlier-analysis floated ~30 days; the
+   live drift disproves it — COW reached +14% in just 22 days, and 30 days would also have let
+   SAFE run wrong for a month before triggering. Drift is roughly monotonic with staleness
+   (GBPe @ 4d = 0.3% off; COW @ 22d = 14% off). The cost is asymmetric (demoting early ≈
+   harmless because Dune is dense+fresh for every DEX symbol; demoting late = served error), so
+   a small budget is correct. `7` caps drift to low single digits and does not flap (liquid
+   tokens get near-daily obs, keeping served-staleness < 7). Tunable via the
+   `native_price_max_staleness_days` dbt var.
+
+**Fix (implemented, pending prod rebuild):**
+- `int_execution_prices_native_daily.sql` — `filled` CTE now also carries `last_obs_date`
+  (`last_value(d.date) IGNORE NULLS`), the date of the last REAL (non-forward-filled)
+  observation; exposed as a new output column.
+- `int_execution_token_prices_daily.sql` — native priority is now
+  `if(dateDiff('day', last_obs_date, date) > {{ var('native_price_max_staleness_days', 7) }}, 5, 1)`.
+  Fresh native = 1 (unchanged); native stale beyond the budget = 5 (below Dune's 3), so the live
+  Dune feed wins. Stale native is kept as a last-resort priority-5 so a symbol with no Dune
+  coverage still gets a value rather than a gap (no series ever goes empty).
+- `schema.yml` — documents the new `last_obs_date` column.
+
+**Proven against live prod (no rebuild needed) — `2026-06-23`:** reconstructing `last_obs_date`
+from the DEX source and applying the exact rule, SAFE → `0.084022` (4.36x→1.00x), COW →
+`0.157489` (+14%→1.00x), GBPe stays native `1.328927` (4d stale, not demoted, already ≈Dune).
+
+**Build-verification bug found + fixed (2026-06-24, `join_use_nulls` epoch trap).** The first
+`playground_max` rebuild fixed SAFE/COW but `last_obs_date` came back as `1970-01-01` for every
+forward-filled row, so `stale_days` was a nonsensical ~20,627 and the threshold effectively
+collapsed to N=0 (any fill demoted — GBPe was wrongly demoted to Dune at 4d stale). Root cause:
+`d.date` is a JOIN-KEY column, and on a non-matching LEFT JOIN row ClickHouse returns the Date
+default (`1970-01-01`), not NULL — so `last_value(d.date) IGNORE NULLS` forward-fills epoch. (The
+`price` fill is unaffected because `price` is a non-key column that does come back NULL.) Fix:
+derive the obs date from the spine date gated on the real-match signal —
+`last_value(if(d.price IS NOT NULL, sp.date, NULL)) IGNORE NULLS` — never from the join-key
+column. Same `join_use_nulls=0` family of bug noted in the yields review. **Requires a re-run of
+the native → hub rebuild** to take effect.
+
+**Verified GREEN after re-run (2026-06-24, playground_max).** `last_obs_date` now holds real
+dates; staleness behaves exactly as designed: SAFE (last obs 2025-10-01, 265d) → demoted → Dune
+`0.084022` (1.00x); COW (2026-06-01, 22d) → demoted → Dune `0.157489` (1.00x); GBPe (2026-06-19,
+4d < 7) → correctly stays native `1.328927`; fresh symbols (GNO/BRZ/sGNO/BRLA, 0d) stay native.
+Integrity: 0 grain dupes, fresh to `2026-06-23`, 44 symbols / 68,956 rows (identical to prod — no
+rows dropped or duplicated). A third symbol, sDAI, was demoted in playground_max only because the
+dev `int_yields_savings_xdai_rate_daily` is 63d stale (last 2026-04-21); prod's rate is fresh
+(`2026-06-23`), so sDAI stays native in prod — confirming the guard generalizes and self-corrects.
+Ready for promotion to prod `dbt`.
+
+**Dune fallback coverage verified:** SAFE/COW/GBPe/BRLA/BRZ/sGNO are all present in
+`stg_crawlers_data__dune_prices`, dense, fresh to `2026-06-23` — every DEX symbol has a live
+fallback to land on.
+
+**To apply in prod:** rebuild `int_execution_prices_native_daily` → `int_execution_token_prices_daily`
+→ then the downstream `fct_execution_tokens_metrics_daily` (and any other hub consumers) on their
+next run. One root fix closes C01 + C02 + C18-SAFE.
+
+---
+
 ## Status summary
 
 | Case | P0 | Claim (short) | Orig sev | Status | New sev | Conf | Incident | Rounds |
 |---|---|---|---|---|---|---|---|---|
-| EXECUTIONPRICES-C01 | P0-16 | SAFE 3.1x overstated via uncapped forward-fill beating Dune | critical | CONFIRMED | critical | high | none | 3 |
-| EXECUTIONPRICES-C02 |  | No forward-fill staleness guard / no demotion vs Dune (structural) | high | CONFIRMED | high | high | none | 3 |
+| EXECUTIONPRICES-C01 | P0-16 | SAFE (4.36x) + COW (+14%) overstated via uncapped forward-fill beating Dune | critical | FIXED (pending rebuild) | critical | high | none | 3 |
+| EXECUTIONPRICES-C02 |  | No forward-fill staleness guard / no demotion vs Dune (structural) | high | FIXED (pending rebuild) | high | high | none | 3 |
 | EXECUTIONPRICES-C03 |  | Hub lacks `unique_combination_of_columns` on `(date,symbol)` | high | CONFIRMED | high | high | none | 3 |
 | EXECUTIONPRICES-C04 |  | sGNO coverage doc omits sGNO from dex_ratios prose | high | CHANGED | medium | high | none | 3 |
 | EXECUTIONPRICES-C05 |  | WxDAI dual-sourced at equal priority=1 (non-deterministic dedup) | medium | CONFIRMED | medium | high | none | 3 |
@@ -25,7 +98,7 @@ Baseline: `docs/model_review/execution-prices.md` (2026-06-11). 20 cases re-veri
 | EXECUTIONPRICES-C15 |  | BRZ relies entirely on BRLA proxy; no availability monitor | low | CONFIRMED | low | high | none | 3 |
 | EXECUTIONPRICES-C16 |  | Forex-peg approximations not surfaced as schema.yml caveat | low | CONFIRMED | low | high | none | 3 |
 | EXECUTIONPRICES-C17 |  | Only semantic metric is candidate-tier unfiltered avg; no api: tag | low | CONFIRMED | low | high | none | 3 |
-| EXECUTIONPRICES-C18 | P0-16 | Data: SAFE 3.1x; hub max 3d behind; dex max 2026-06-07 | critical | CHANGED | critical | high | none | 3 |
+| EXECUTIONPRICES-C18 | P0-16 | Data: SAFE 3.1x; hub max 3d behind; dex max 2026-06-07 | critical | FIXED (SAFE) / freshness DROP | critical | high | none | 3 |
 | EXECUTIONPRICES-C19 |  | Data: hub 0 duplicate-grain (date,symbol) | low | CONFIRMED | low | high | none | 3 |
 | EXECUTIONPRICES-C20 |  | Data: wstETH oracle 2-day gap (1,117 vs 1,119) | low | CHANGED | low | high | none | 3 |
 
@@ -211,7 +284,7 @@ FROM dbt.int_execution_prices_oracle_daily WHERE symbol='wstETH';
 
 | Priority | Recommendation | Affected models |
 |---|---|---|
-| P0 (ESCALATE) | Cap the forward-fill age and/or demote a stale native price below Dune so a DEX-only token that loses liquidity stops serving a frozen price. SAFE is serving `4.32x` (`~$1.95M/day` overstatement into `fct_execution_tokens_metrics_daily`). One root fix covers C01/C02/C18-SAFE. | `models/execution/prices/intermediate/int_execution_prices_native_daily.sql` (lines 117-126), `int_execution_token_prices_daily.sql` (priority stack lines 79/87/89) |
+| P0 (DONE 2026-06-24) | ~~Cap the forward-fill age and/or demote a stale native price below Dune~~ — IMPLEMENTED. `native` now exposes `last_obs_date`; the hub demotes native to priority 5 (below Dune) once `date - last_obs_date > native_price_max_staleness_days` (default 7). Fixed SAFE (4.36x→1.00x) and COW (+14%→1.00x); ~$2.47M/day combined overstatement removed. One root fix covered C01/C02/C18-SAFE. Pending prod rebuild of native → hub → `fct_execution_tokens_metrics_daily`. | `int_execution_prices_native_daily.sql` (`filled` CTE), `int_execution_token_prices_daily.sql` (native CTE + `all_prices` priority), `schema.yml` |
 | P1 (KEEP) | Add `dbt_utils.unique_combination_of_columns` on `(date, symbol)` to the hub — the three sublayers carry it; no consumer tests the hub grain. Latent today (0 dupes) but a dedup regression fans out to all 26 consumers untested. | `models/execution/prices/intermediate/schema.yml` (hub entry) |
 | P1 (KEEP) | Document the USDC/USDT oracle-market-over-peg intent (priority 4 peg loses to priority 1 oracle, so the 2023 SVB depeg is served historically). C12/C13: 229 off-peg USDC rows, all `<=2023-03-12`. | `int_execution_token_prices_daily.sql`, `schema.yml` |
 | P2 (KEEP) | Give the two priority=1 WXDAI sources distinct priorities or add a `row_number` tiebreaker (currently non-deterministic but provably never value-divergent). | `int_execution_token_prices_daily.sql` (lines 79/83/102) |

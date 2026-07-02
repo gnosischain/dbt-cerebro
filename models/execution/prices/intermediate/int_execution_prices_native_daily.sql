@@ -115,16 +115,29 @@ spine AS (
       AND s.day <  today()
 ),
 filled AS (
+    -- Forward-fill the price, and alongside it carry the date of the last REAL
+    -- (non-filled) observation. last_obs_date lets the hub measure how stale a
+    -- forward-filled price is and demote it below the Dune fallback once it goes
+    -- stale, so a DEX-only token that loses liquidity stops serving a frozen price.
+    -- NB: derive last_obs_date from the SPINE date gated on a real match
+    -- (d.price IS NOT NULL), NOT from d.date. d.date is a join-key column, and on a
+    -- non-matching LEFT JOIN row ClickHouse returns the Date default (1970-01-01), not
+    -- NULL, so `last_value(d.date) IGNORE NULLS` would forward-fill epoch instead of the
+    -- last real observation. d.price is a non-key column and correctly comes back NULL on
+    -- a fill row, so it is the reliable "was this day a real observation?" signal.
     SELECT
         sp.symbol,
         sp.date,
         last_value(d.price) IGNORE NULLS OVER (
             PARTITION BY sp.symbol ORDER BY sp.date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS price
+        ) AS price,
+        last_value(if(d.price IS NOT NULL, sp.date, NULL)) IGNORE NULLS OVER (
+            PARTITION BY sp.symbol ORDER BY sp.date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS last_obs_date
     FROM spine sp
     LEFT JOIN deduped d ON d.symbol = sp.symbol AND d.date = sp.date
 )
 
-SELECT date, symbol, price
+SELECT date, symbol, price, last_obs_date
 FROM filled
 WHERE price IS NOT NULL

@@ -48,8 +48,11 @@ swaps AS (
         {% if start_month and end_month %}
         WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
           AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-        {% elif is_incremental() %}
-        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
+        {% else %}
+          {# Whole-month rebuild: tx_context returns COMPLETE months under
+             insert_overwrite; a day-level (max-3) bound dropped tx_from/tx_to for
+             most of the rebuilt month and broke the coalesce(taker, tx_from). #}
+          {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp') }}
         {% endif %}
     ) tx ON tx.transaction_hash = s.transaction_hash
 ),
@@ -65,8 +68,11 @@ with_bought_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
-        {% elif is_incremental() %}
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
+        {% else %}
+          {# Whole-month rebuild: cover the rebuilt month plus a price runway so
+             ASOF can still find a prior price for early-month trades. Honors the
+             price_lookback_days refill var like other price consumers. #}
+          {{ apply_monthly_incremental_filter('date', 'block_timestamp', lookback_days=31) }}
         {% endif %}
         ORDER BY symbol, date
     ) pb
@@ -85,8 +91,11 @@ with_sold_price AS (
         {% if start_month and end_month %}
         WHERE date BETWEEN toDate('{{ start_month }}') - INTERVAL 30 DAY
                        AND toDate('{{ end_month }}') + INTERVAL 32 DAY
-        {% elif is_incremental() %}
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM {{ this }})
+        {% else %}
+          {# Whole-month rebuild: cover the rebuilt month plus a price runway so
+             ASOF can still find a prior price for early-month trades. Honors the
+             price_lookback_days refill var like other price consumers. #}
+          {{ apply_monthly_incremental_filter('date', 'block_timestamp', lookback_days=31) }}
         {% endif %}
         ORDER BY symbol, date
     ) ps

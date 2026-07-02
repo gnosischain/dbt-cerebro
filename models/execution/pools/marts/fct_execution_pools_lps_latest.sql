@@ -45,6 +45,18 @@ pool_token_map AS (
     FROM {{ ref('stg_pools__v3_pool_registry') }} pt
     INNER JOIN {{ ref('stg_pools__tokens_meta') }} tm ON tm.token_address = pt.token1_address
     WHERE tm.token IS NOT NULL
+
+    UNION ALL
+
+    {# Balancer V3 pools are multi-token, so they are absent from the token0/token1
+       registry above and were silently dropped from LP counts (C19). Pull their
+       (pool, token) pairs from balances instead, parity with the registry_pool_tokens
+       BV3 branch in fct_execution_pools_daily. Each pool's LP set is attributed to
+       every token it holds, exactly as a Uniswap/Swapr LP counts under token0+token1. #}
+    SELECT DISTINCT b.pool_address, b.protocol, b.token
+    FROM {{ ref('int_execution_pools_balances_daily') }} b
+    WHERE b.protocol = 'Balancer V3'
+      AND b.token IS NOT NULL AND b.token != ''
 ),
 
 curr_lps AS (

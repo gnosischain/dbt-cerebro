@@ -72,3 +72,52 @@ models:
       - block_number
       - transaction_index
       - log_index
+
+- name: contracts_BalancerV2_pool_registry
+  description: |
+    Registry of all Balancer V2 pools (from the Vault PoolRegistered event),
+    used by contracts_BalancerV2_Pool_events to decode pool-level events. Every
+    pool maps to a single reference ABI (abi_source_address) because all V2 pool
+    types share the BasePool SwapFeePercentageChanged / ProtocolFeePercentageCacheUpdated
+    events; the reference pool's two events are registered once in the
+    event_signatures seed.
+  columns:
+  - name: address
+    description: Balancer V2 pool contract address (lowercase, 0x-prefixed).
+    data_type: String
+  - name: contract_type
+    description: Always 'BalancerV2Pool'; the decode_logs contract_type_filter.
+    data_type: String
+  - name: abi_source_address
+    description: Reference pool whose ABI (event signatures) is shared by all V2 pools.
+    data_type: String
+
+- name: contracts_BalancerV2_Pool_events
+  description: |
+    Pool-level Balancer V2 events decoded from execution.logs across all pools in
+    contracts_BalancerV2_pool_registry. Carries the swap-fee rate
+    (SwapFeePercentageChanged) and protocol-fee cut (ProtocolFeePercentageCacheUpdated)
+    that the Vault Swap event does not expose. Used to compute true Balancer V2
+    LP fees in int_execution_pools_fees_daily. Backfilled from 2021-01-01 in
+    1-month batches; the event_name_filter keeps the raw-log scan to these rare
+    config events.
+  columns: *event_columns
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2021-01-01"
+      batch_months: 1
+
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - block_timestamp
+      - transaction_hash
+      - log_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"

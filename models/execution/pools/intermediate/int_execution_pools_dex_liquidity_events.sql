@@ -63,11 +63,11 @@ tx_context AS (
       {% if start_month and end_month %}
       AND block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
       AND block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
-      {% elif is_incremental() %}
-      AND block_timestamp >= (
-          SELECT addDays(max(toDate(block_timestamp)), -3)
-          FROM {{ this }}
-      )
+      {% else %}
+        {# Whole-month rebuild: events_base returns COMPLETE months under
+           insert_overwrite, so this transactions filter must too; a day-level
+           (max-3) bound left most of the rebuilt month with NULL tx_from/tx_to. #}
+        {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True) }}
       {% endif %}
 ),
 

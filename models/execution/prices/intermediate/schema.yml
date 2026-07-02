@@ -54,6 +54,12 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
 - name: int_execution_prices_oracle_daily
   description: >
@@ -204,6 +210,14 @@ models:
   - name: price
     description: Forward-filled native USD price for the token on the given day.
     data_type: Float64
+
+  - name: last_obs_date
+    description: >
+      Date of the last REAL (non-forward-filled) observation backing this row's price.
+      On a day with a fresh observation this equals `date`; on a forward-filled day it is
+      the most recent real-observation date. The hub uses `date - last_obs_date` to demote
+      a stale native price below the Dune fallback (see int_execution_token_prices_daily).
+    data_type: Date
   meta:
     owner: analytics_team
     authoritative: false
