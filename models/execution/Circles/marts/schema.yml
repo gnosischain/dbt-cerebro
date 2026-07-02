@@ -883,14 +883,19 @@ models:
     preserves the historical mart name for downstream consumers.
   columns:
   - name: date
+    description: Calendar date.
     data_type: Date
   - name: token_address
+    description: Address of the Circles v2 token contract.
     data_type: String
   - name: supply_raw
+    description: Raw supply in token base units (negated zero-address balance).
     data_type: Int256
   - name: supply
+    description: Supply in CRC (raw / 1e18).
     data_type: Float64
   - name: demurraged_supply
+    description: Demurrage-adjusted supply in CRC.
     data_type: Float64
   meta: *meta_fct
 - name: fct_execution_circles_v2_total_supply_daily
@@ -1097,8 +1102,10 @@ models:
   description: Time-series view over fct_execution_circles_v2_active_minters_daily; latest day excluded.
   columns:
   - name: date
+    description: Calendar day (UTC).
     data_type: Date
   - name: active_minters
+    description: Distinct avatars meeting the active-minter criteria on this day.
     data_type: UInt64
 
 - name: fct_execution_circles_v2_minter_cohort_daily
@@ -1127,22 +1134,26 @@ models:
   description: Time-series view over fct_execution_circles_v2_minter_cohort_daily; latest day excluded.
   columns:
   - name: date
+    description: Calendar day (UTC).
     data_type: Date
   - name: cohort
+    description: Human-readable 14-day mint-coverage bucket label.
     data_type: String
   - name: cohort_order
+    description: 1..6 ordering for stable stacking (low → high coverage).
     data_type: UInt8
   - name: cnt
+    description: Distinct avatars in this bucket on this day.
     data_type: UInt64
 
 - name: api_execution_circles_v2_hub_events_daily
   description: Time-series view over int_execution_circles_v2_hub_events_daily; latest day excluded.
   columns:
-  - {name: date, data_type: Date}
-  - {name: event_name, data_type: String}
-  - {name: n_events, data_type: UInt64}
-  - {name: n_tx, data_type: UInt64}
-  - {name: n_distinct_addresses, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: event_name, description: "Hub event name (RegisterHuman, Trust, TransferSingle, …).", data_type: String}
+  - {name: n_events, description: "Number of events of this kind on this day.", data_type: UInt64}
+  - {name: n_tx, description: "Number of distinct transactions emitting this event on this day.", data_type: UInt64}
+  - {name: n_distinct_addresses, description: "Distinct participant addresses across all event-specific fields.", data_type: UInt64}
 
 - name: api_execution_circles_v2_mints_daily
   description: >
@@ -1151,21 +1162,21 @@ models:
     mints from group mints and V1→V2 migrations; aggregate across kinds
     for the network-total grain.
   columns:
-  - {name: date, data_type: Date}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
   - {name: mint_kind, description: "personal | group | migration | other.", data_type: String}
-  - {name: n_mint_events, data_type: UInt64}
-  - {name: n_minters, data_type: UInt64}
-  - {name: amount_minted, data_type: Float64}
+  - {name: n_mint_events, description: "Number of mint events for this (date, mint_kind).", data_type: UInt64}
+  - {name: n_minters, description: "Distinct recipient addresses (to_address) for this (date, mint_kind).", data_type: UInt64}
+  - {name: amount_minted, description: "Total CRC minted for this (date, mint_kind) (raw / 1e18).", data_type: Float64}
 
 - name: api_execution_circles_v2_trusts_daily
   description: Time-series view over int_execution_circles_v2_trusts_daily; latest day excluded.
   columns:
-  - {name: date, data_type: Date}
-  - {name: n_trust_events, data_type: UInt64}
-  - {name: n_new_trusts, data_type: UInt64}
-  - {name: n_revoked_trusts, data_type: UInt64}
-  - {name: n_distinct_trusters, data_type: UInt64}
-  - {name: n_distinct_trustees, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: n_trust_events, description: "Total Trust events on this day.", data_type: UInt64}
+  - {name: n_new_trusts, description: "Events granting or extending trust (expiry > now).", data_type: UInt64}
+  - {name: n_revoked_trusts, description: "Events setting expiry <= now (revoke).", data_type: UInt64}
+  - {name: n_distinct_trusters, description: "Distinct truster addresses active that day.", data_type: UInt64}
+  - {name: n_distinct_trustees, description: "Distinct trustee addresses active that day.", data_type: UInt64}
 
 - name: api_execution_circles_v2_inviters_ranking
   description: >
@@ -1173,7 +1184,7 @@ models:
     Pre-joins the inviter's display name, preview image URL (IPFS profile),
     and current blacklist flag so the dashboard renders the table directly.
   columns:
-  - {name: rank, data_type: UInt64}
+  - {name: rank, description: Leaderboard rank by invite count (1 = most invites)., data_type: UInt64}
   - {name: inviter, description: Lowercase inviter avatar address., data_type: String}
   - {name: display_name, description: IPFS profile display name (empty string when unset)., data_type: String}
   - {name: preview_image_url, description: IPFS profile previewImageUrl (empty string when unset)., data_type: String}
@@ -1222,8 +1233,8 @@ models:
 - name: api_execution_circles_v2_kpi_active_minters_latest
   description: "KPI: yesterday's Active Minters count with WoW pct change."
   columns:
-  - {name: value, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Active Minters count on the latest complete day., data_type: UInt64}
+  - {name: change_pct, description: Percent change vs the count 7 days earlier., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1233,7 +1244,7 @@ models:
   columns:
   - {name: value, description: Total new trusts in last 7 days., data_type: UInt64}
   - {name: revoked, description: Total revoked trusts in last 7 days., data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: change_pct, description: Percent change in new trusts vs the prior 7-day window., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1242,7 +1253,7 @@ models:
   description: "KPI: latest network-wide CRC supply with 7-day pct change."
   columns:
   - {name: value, description: Latest total CRC supply (raw / 1e18)., data_type: Float64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: change_pct, description: Percent change vs the total supply 7 days earlier., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1258,22 +1269,22 @@ models:
 - name: api_execution_circles_v2_backing_events_daily
   description: Time-series of Circles v2 backing-lifecycle events, by stage.
   columns:
-  - {name: date, data_type: Date}
-  - {name: lifecycle_stage, data_type: String}
-  - {name: n_events, data_type: UInt64}
-  - {name: n_distinct_backers, data_type: UInt64}
-  - {name: n_distinct_assets, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: lifecycle_stage, description: "Backing lifecycle stage (initiated / deployed / lbp_deployed / completed / released / asset_status_updated / global_release_updated).", data_type: String}
+  - {name: n_events, description: "Number of backing events in this stage on this day.", data_type: UInt64}
+  - {name: n_distinct_backers, description: "Distinct backer addresses emitting an event in this stage on this day.", data_type: UInt64}
+  - {name: n_distinct_assets, description: "Distinct backing assets pledged in this stage on this day.", data_type: UInt64}
 
 - name: api_execution_circles_v2_backing_depositors_current
   description: Snapshot of distinct depositor addresses.
   columns:
-  - {name: backer, data_type: String}
-  - {name: first_initiated_at, data_type: DateTime}
-  - {name: last_event_at, data_type: DateTime}
-  - {name: n_initiated, data_type: UInt64}
-  - {name: n_completed, data_type: UInt64}
-  - {name: n_released, data_type: UInt64}
-  - {name: n_distinct_assets, data_type: UInt64}
+  - {name: backer, description: "Depositor address (emitted at least one backing event).", data_type: String}
+  - {name: first_initiated_at, description: "Timestamp of the depositor's earliest backing event.", data_type: DateTime}
+  - {name: last_event_at, description: "Timestamp of the depositor's most recent backing event.", data_type: DateTime}
+  - {name: n_initiated, description: "Number of 'initiated' backing events by this depositor.", data_type: UInt64}
+  - {name: n_completed, description: "Number of 'completed' backing events by this depositor.", data_type: UInt64}
+  - {name: n_released, description: "Number of 'released' backing events by this depositor.", data_type: UInt64}
+  - {name: n_distinct_assets, description: "Distinct backing assets this depositor has pledged.", data_type: UInt64}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1281,40 +1292,40 @@ models:
 - name: api_execution_circles_v2_groups_overview_daily
   description: Daily group registrations + collateral activity, with cumulative group total.
   columns:
-  - {name: date, data_type: Date}
-  - {name: n_new_groups, data_type: UInt64}
-  - {name: n_collateral_events, data_type: UInt64}
-  - {name: n_distinct_groups_acting, data_type: UInt64}
-  - {name: n_groups_total, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: n_new_groups, description: "Group avatars registered on this day.", data_type: UInt64}
+  - {name: n_collateral_events, description: "StandardTreasury lock/burn/return collateral events on this day.", data_type: UInt64}
+  - {name: n_distinct_groups_acting, description: "Distinct groups touching collateral on this day.", data_type: UInt64}
+  - {name: n_groups_total, description: "Cumulative running total of registered groups up to and including this day.", data_type: UInt64}
 
 - name: api_execution_circles_v2_transfers_daily
   description: Time-series of Circles v2 transfers by category.
   columns:
-  - {name: date, data_type: Date}
-  - {name: transfer_category, data_type: String}
-  - {name: n_transfers, data_type: UInt64}
-  - {name: n_senders, data_type: UInt64}
-  - {name: n_receivers, data_type: UInt64}
-  - {name: amount, data_type: Float64}
-  - {name: amount_demurraged, data_type: Float64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: transfer_category, description: "Transfer category (mint / burn / wrap / unwrap / p2p).", data_type: String}
+  - {name: n_transfers, description: "Number of transfers in this category on this day.", data_type: UInt64}
+  - {name: n_senders, description: "Distinct sender addresses in this category on this day (zero address excluded).", data_type: UInt64}
+  - {name: n_receivers, description: "Distinct recipient addresses in this category on this day (zero address excluded).", data_type: UInt64}
+  - {name: amount, description: "Sum of native transfer amount in CRC (raw / 1e18).", data_type: Float64}
+  - {name: amount_demurraged, description: "Sum of demurrage-adjusted transfer amount in CRC.", data_type: Float64}
 
 - name: api_execution_circles_v2_p2p_velocity_daily
   description: Peer-to-peer transfer velocity (mint/burn/wrap/unwrap excluded).
   columns:
-  - {name: date, data_type: Date}
-  - {name: n_transfers, data_type: UInt64}
-  - {name: n_senders, data_type: UInt64}
-  - {name: n_receivers, data_type: UInt64}
-  - {name: amount, data_type: Float64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: n_transfers, description: "Number of peer-to-peer transfers on this day.", data_type: UInt64}
+  - {name: n_senders, description: "Distinct p2p sender addresses on this day.", data_type: UInt64}
+  - {name: n_receivers, description: "Distinct p2p recipient addresses on this day.", data_type: UInt64}
+  - {name: amount, description: "Total p2p transfer volume in CRC (raw / 1e18).", data_type: Float64}
 
 - name: api_execution_circles_v2_wrapper_share_daily
   description: Network wrapped vs unwrapped supply share over time.
   columns:
-  - {name: date, data_type: Date}
-  - {name: wrapped_supply, data_type: Float64}
-  - {name: unwrapped_supply, data_type: Float64}
-  - {name: total_supply, data_type: Float64}
-  - {name: wrapped_pct, data_type: Nullable(Float64)}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: wrapped_supply, description: "Cumulative ERC-20 wrapped CRC across all wrappers on this day.", data_type: Float64}
+  - {name: unwrapped_supply, description: "Native (unwrapped) CRC supply on this day (total_supply - wrapped_supply).", data_type: Float64}
+  - {name: total_supply, description: "Network-wide total CRC supply on this day.", data_type: Float64}
+  - {name: wrapped_pct, description: "wrapped_supply / total_supply × 100, rounded to 2 decimals. NULL when total_supply = 0.", data_type: Nullable(Float64)}
 
 - name: api_execution_circles_v2_invite_funnel_cohort_monthly
   description: >
@@ -1323,19 +1334,19 @@ models:
     percentile latency to "came back" (second mint on a different day).
     Skips the trivial acceptance mint, which always fires.
   columns:
-  - {name: cohort_month, data_type: Date}
+  - {name: cohort_month, description: "Month the cohort was invited (toStartOfMonth of invited_at); the row grain.", data_type: Date}
   - {name: n_invited, description: "Total invitees in this cohort.", data_type: UInt64}
   - {name: n_minted_2_days, description: "Invitees with >= 2 distinct mint days in the first 30 days.", data_type: UInt64}
   - {name: n_minted_7_days, description: "Invitees with >= 7 distinct mint days in the first 30 days.", data_type: UInt64}
   - {name: n_minted_14_days, description: "Invitees with >= 14 distinct mint days in the first 30 days.", data_type: UInt64}
   - {name: n_active_minter, description: "Invitees that ever reached canonical Active Minter status (mint_days_14dw = 14 AND mint_14dw >= 80% of 336).", data_type: UInt64}
-  - {name: pct_minted_2_days, data_type: Float64}
-  - {name: pct_minted_7_days, data_type: Float64}
-  - {name: pct_minted_14_days, data_type: Float64}
-  - {name: pct_active_minter, data_type: Float64}
+  - {name: pct_minted_2_days, description: "n_minted_2_days / n_invited × 100, rounded to 1 decimal.", data_type: Float64}
+  - {name: pct_minted_7_days, description: "n_minted_7_days / n_invited × 100, rounded to 1 decimal.", data_type: Float64}
+  - {name: pct_minted_14_days, description: "n_minted_14_days / n_invited × 100, rounded to 1 decimal.", data_type: Float64}
+  - {name: pct_active_minter, description: "n_active_minter / n_invited × 100, rounded to 1 decimal.", data_type: Float64}
   - {name: median_days_to_second_mint, description: "Median days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
-  - {name: p25_days_to_second_mint, data_type: Nullable(Int64)}
-  - {name: p75_days_to_second_mint, data_type: Nullable(Int64)}
+  - {name: p25_days_to_second_mint, description: "25th-percentile days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
+  - {name: p75_days_to_second_mint, description: "75th-percentile days from invite to the first mint on a different day.", data_type: Nullable(Int64)}
 
 # ---------- Cross-sector user-overlap entry (Circles humans) ----------
 
@@ -1376,9 +1387,9 @@ models:
 - name: api_execution_circles_v2_group_size_distribution
   description: Histogram of Circles v2 group sizes (members per group).
   columns:
-  - {name: bucket, data_type: String}
+  - {name: bucket, description: "Group-size bucket label, prefixed with its order (e.g. '1. 0', '2. 1–5', … '6. 500+').", data_type: String}
   - {name: bucket_order, description: "1..6 ordering for stable stacking.", data_type: UInt8}
-  - {name: n_groups, data_type: UInt64}
+  - {name: n_groups, description: "Number of groups falling into this size bucket.", data_type: UInt64}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1389,15 +1400,15 @@ models:
     supply / wrapped / unwrapped / wrapped_pct and demurraged variants, plus
     display_name + preview_image_url pre-joined from avatar metadata.
   columns:
-  - {name: group_avatar, data_type: String}
-  - {name: supply, data_type: Float64}
-  - {name: wrapped, data_type: Float64}
-  - {name: unwrapped, data_type: Float64}
-  - {name: wrapped_pct, data_type: Nullable(Float64)}
-  - {name: supply_demurraged, data_type: Float64}
-  - {name: wrapped_demurraged, data_type: Float64}
-  - {name: display_name, data_type: Nullable(String)}
-  - {name: preview_image_url, data_type: Nullable(String)}
+  - {name: group_avatar, description: "Lowercase group avatar address.", data_type: String}
+  - {name: supply, description: "Circulating supply of the group's personal CRC token (sum across all holder categories).", data_type: Float64}
+  - {name: wrapped, description: "Portion of the supply currently held by the avatar's ERC-20 wrapper contracts.", data_type: Float64}
+  - {name: unwrapped, description: "Portion of the supply held as native ERC-1155 (supply − wrapped).", data_type: Float64}
+  - {name: wrapped_pct, description: "wrapped / supply × 100. NULL when supply = 0.", data_type: Nullable(Float64)}
+  - {name: supply_demurraged, description: "Demurrage-adjusted equivalent of supply.", data_type: Float64}
+  - {name: wrapped_demurraged, description: "Demurrage-adjusted equivalent of wrapped.", data_type: Float64}
+  - {name: display_name, description: "Group display name — IPFS metadata name, falling back to the on-chain name. NULL if none.", data_type: Nullable(String)}
+  - {name: preview_image_url, description: "Preview image URL from the group's IPFS profile metadata. NULL if none.", data_type: Nullable(String)}
 
 - name: api_execution_circles_v2_group_token_supply_top_latest
   description: Top 100 Circles v2 groups by personal-token supply (leaderboard view).
@@ -1422,13 +1433,13 @@ models:
     ERC-1155 and wrapped ERC-20 forms. Aggregated across all group tokens
     by resolving token_address → issuer through the wrapper registry.
   columns:
-  - {name: date, data_type: Date}
-  - {name: supply_total, data_type: Float64}
-  - {name: supply_native_erc1155, data_type: Float64}
-  - {name: supply_wrapped_erc20, data_type: Float64}
-  - {name: supply_total_demurraged, data_type: Float64}
-  - {name: supply_native_demurraged, data_type: Float64}
-  - {name: supply_wrapped_demurraged, data_type: Float64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: supply_total, description: "Total group-token supply across all groups on this day (native + wrapped), in CRC.", data_type: Float64}
+  - {name: supply_native_erc1155, description: "Portion of group-token supply held as native ERC-1155 on this day, in CRC.", data_type: Float64}
+  - {name: supply_wrapped_erc20, description: "Portion of group-token supply held as ERC-20 wrappers on this day, in CRC.", data_type: Float64}
+  - {name: supply_total_demurraged, description: "Demurrage-adjusted equivalent of supply_total.", data_type: Float64}
+  - {name: supply_native_demurraged, description: "Demurrage-adjusted equivalent of supply_native_erc1155.", data_type: Float64}
+  - {name: supply_wrapped_demurraged, description: "Demurrage-adjusted equivalent of supply_wrapped_erc20.", data_type: Float64}
 
 - name: api_execution_circles_v2_group_token_supply_daily
   description: >
@@ -1436,10 +1447,10 @@ models:
     fct_execution_circles_v2_group_token_supply_daily, ready for a stacked-area
     chart with seriesField='label'. Latest day excluded.
   columns:
-  - {name: date, data_type: Date}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
   - {name: label, description: "'ERC-1155 (native)' or 'ERC-20 (wrapped)'.", data_type: String}
-  - {name: value, data_type: Float64}
-  - {name: value_demurraged, data_type: Float64}
+  - {name: value, description: "Group-token supply for this label's form on this day, in CRC.", data_type: Float64}
+  - {name: value_demurraged, description: "Demurrage-adjusted equivalent of value.", data_type: Float64}
 
 # ---------- Backing: trust-defined backers (vs depositors) ----------
 
@@ -1450,24 +1461,24 @@ models:
     Distinct from the depositor population in
     int_execution_circles_v2_backing_depositors_current.
   columns:
-  - {name: date, data_type: Date}
-  - {name: new_backers, data_type: UInt64}
-  - {name: cumulative_backers, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: new_backers, description: "Trust-defined backers first trusted by the backers group on this day.", data_type: UInt64}
+  - {name: cumulative_backers, description: "Running total of distinct trust-defined backers up to and including this day.", data_type: UInt64}
 
 - name: api_execution_circles_v2_backers_cumulative_daily
   description: Time-series view of trust-defined cumulative backers; latest day excluded.
   columns:
-  - {name: date, data_type: Date}
-  - {name: new_backers, data_type: UInt64}
-  - {name: cumulative_backers, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: new_backers, description: "Trust-defined backers first trusted by the backers group on this day.", data_type: UInt64}
+  - {name: cumulative_backers, description: "Running total of distinct trust-defined backers up to and including this day.", data_type: UInt64}
 
 # ---------- New KPI tiles (tier 0) ----------
 
 - name: api_execution_circles_v2_kpi_new_groups_7d
   description: "KPI: groups registered in the last 7 days with WoW change."
   columns:
-  - {name: value, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Groups registered in the last 7 days., data_type: UInt64}
+  - {name: change_pct, description: Percent change vs the prior 7-day window., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1475,8 +1486,8 @@ models:
 - name: api_execution_circles_v2_kpi_group_token_supply_latest
   description: "KPI: aggregate group-token supply with 7d change."
   columns:
-  - {name: value, data_type: Float64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Latest aggregate group-token supply across all groups, in CRC., data_type: Float64}
+  - {name: change_pct, description: Percent change vs the aggregate group-token supply 7 days earlier., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1484,8 +1495,8 @@ models:
 - name: api_execution_circles_v2_kpi_group_wrapped_pct_latest
   description: "KPI: share of group-token supply held as ERC-20 wrappers, with 7d delta."
   columns:
-  - {name: value, data_type: Nullable(Float64)}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Latest share of aggregate group-token supply held as ERC-20 wrappers (percent, 2 decimals)., data_type: Nullable(Float64)}
+  - {name: change_pct, description: Percentage-point change vs the wrapped share 7 days earlier., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1493,9 +1504,9 @@ models:
 - name: api_execution_circles_v2_kpi_avg_members_per_group_latest
   description: "KPI: average and median members per group."
   columns:
-  - {name: value, data_type: Nullable(Float64)}
-  - {name: median_members, data_type: Float64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Average member count across all groups, rounded to 1 decimal., data_type: Nullable(Float64)}
+  - {name: median_members, description: Median member count across all groups., data_type: Float64}
+  - {name: change_pct, description: Always NULL — no time series for group size upstream, so no delta is computed., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1503,8 +1514,8 @@ models:
 - name: api_execution_circles_v2_kpi_total_backers_latest
   description: "KPI: total trust-defined backers with 7d change."
   columns:
-  - {name: value, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Total trust-defined backers (cumulative, latest complete day)., data_type: UInt64}
+  - {name: change_pct, description: Percent change vs the cumulative backers count 7 days earlier., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1512,8 +1523,8 @@ models:
 - name: api_execution_circles_v2_kpi_new_backers_7d
   description: "KPI: backers newly trusted in the last 7 days with WoW change."
   columns:
-  - {name: value, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Backers newly trusted by the backers group in the last 7 days., data_type: UInt64}
+  - {name: change_pct, description: Percent change vs the prior 7-day window., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1521,9 +1532,9 @@ models:
 - name: api_execution_circles_v2_kpi_total_depositors_latest
   description: "KPI: total distinct depositors with 7d-new and WoW change."
   columns:
-  - {name: value, data_type: UInt64}
-  - {name: new_last_7d, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Total distinct depositors (addresses that have emitted a CirclesBackingInitiated event)., data_type: UInt64}
+  - {name: new_last_7d, description: Depositors whose first initiation was in the last 7 days., data_type: UInt64}
+  - {name: change_pct, description: Percent change in newly-initiated depositors vs the prior 7-day window., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -1531,10 +1542,10 @@ models:
 - name: api_execution_circles_v2_kpi_depositors_in_backers_pct_latest
   description: "KPI: % of depositors that ended up trusted by the backers group."
   columns:
-  - {name: value, data_type: Nullable(Float64)}
-  - {name: total_depositors, data_type: UInt64}
-  - {name: depositors_in_backers, data_type: UInt64}
-  - {name: change_pct, data_type: Nullable(Float64)}
+  - {name: value, description: Percent of distinct depositors that are also trust-defined backers (depositors_in_backers / total_depositors × 100)., data_type: Nullable(Float64)}
+  - {name: total_depositors, description: Total distinct depositor addresses., data_type: UInt64}
+  - {name: depositors_in_backers, description: Depositors that are also trusted by the backers group., data_type: UInt64}
+  - {name: change_pct, description: Always NULL — no time series, so no delta is computed., data_type: Nullable(Float64)}
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date

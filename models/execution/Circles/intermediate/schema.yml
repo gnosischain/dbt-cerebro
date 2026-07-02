@@ -1519,12 +1519,16 @@ models:
     downstream so this stays event-grain and incremental-safe.
   columns:
   - name: block_number
+    description: Block number containing the inviter-fee transfer.
     data_type: UInt64
   - name: block_timestamp
+    description: UTC timestamp of the block.
     data_type: DateTime
   - name: transaction_hash
+    description: Hash of the transaction (the personal-mint tx carrying the fee).
     data_type: String
   - name: log_index
+    description: Index of the ERC-20 Transfer log within the block.
     data_type: UInt32
   - name: token_address
     description: Wrapped CRC ERC-20 token address.
@@ -1833,11 +1837,11 @@ models:
     set — addresses that emit a backing event. NOT the trust-defined
     "backers" set (which awaits the backers-group address).
   columns:
-  - {name: date, data_type: Date}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
   - {name: lifecycle_stage, description: "initiated / deployed / lbp_deployed / completed / released / asset_status_updated / global_release_updated.", data_type: String}
-  - {name: n_events, data_type: UInt64}
-  - {name: n_distinct_backers, data_type: UInt64}
-  - {name: n_distinct_assets, data_type: UInt64}
+  - {name: n_events, description: "Number of backing events in this lifecycle stage on this day.", data_type: UInt64}
+  - {name: n_distinct_backers, description: "Distinct backer addresses emitting an event in this stage on this day.", data_type: UInt64}
+  - {name: n_distinct_assets, description: "Distinct backing assets pledged in this stage on this day.", data_type: UInt64}
   meta:
     owner: analytics_team
     authoritative: false
@@ -1856,13 +1860,13 @@ models:
 - name: int_execution_circles_v2_backing_depositors_current
   description: Current snapshot of distinct depositor addresses with lifecycle counts.
   columns:
-  - {name: backer, data_type: String}
-  - {name: first_initiated_at, data_type: DateTime}
-  - {name: last_event_at, data_type: DateTime}
-  - {name: n_initiated, data_type: UInt64}
-  - {name: n_completed, data_type: UInt64}
-  - {name: n_released, data_type: UInt64}
-  - {name: n_distinct_assets, data_type: UInt64}
+  - {name: backer, description: "Depositor address (emitted at least one backing event).", data_type: String}
+  - {name: first_initiated_at, description: "Timestamp of the depositor's earliest backing event.", data_type: DateTime}
+  - {name: last_event_at, description: "Timestamp of the depositor's most recent backing event.", data_type: DateTime}
+  - {name: n_initiated, description: "Number of 'initiated' backing events by this depositor.", data_type: UInt64}
+  - {name: n_completed, description: "Number of 'completed' backing events by this depositor.", data_type: UInt64}
+  - {name: n_released, description: "Number of 'released' backing events by this depositor.", data_type: UInt64}
+  - {name: n_distinct_assets, description: "Distinct backing assets this depositor has pledged.", data_type: UInt64}
   meta: {owner: analytics_team, authoritative: false}
   tests:
   - elementary.schema_changes: {severity: warn, tags: [elementary]}
@@ -1870,10 +1874,10 @@ models:
 - name: int_execution_circles_v2_groups_overview_daily
   description: Network-level daily group metrics — new groups + collateral activity.
   columns:
-  - {name: date, data_type: Date}
-  - {name: n_new_groups, data_type: UInt64}
-  - {name: n_collateral_events, data_type: UInt64}
-  - {name: n_distinct_groups_acting, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: n_new_groups, description: "Group avatars registered on this day (RegisterGroup events).", data_type: UInt64}
+  - {name: n_collateral_events, description: "StandardTreasury lock/burn/return collateral events on this day.", data_type: UInt64}
+  - {name: n_distinct_groups_acting, description: "Distinct groups touching collateral on this day.", data_type: UInt64}
   meta:
     owner: analytics_team
     authoritative: false
@@ -1885,18 +1889,18 @@ models:
     one of mint / burn / wrap / unwrap / p2p. (Matrix-routed p2p subdivision
     deferred — see model header.)
   columns:
-  - {name: block_number, data_type: UInt64}
-  - {name: block_timestamp, data_type: DateTime64}
-  - {name: transaction_hash, data_type: String}
-  - {name: transaction_index, data_type: UInt64}
-  - {name: log_index, data_type: UInt64}
-  - {name: batch_index, data_type: UInt64}
-  - {name: transfer_type, data_type: String}
-  - {name: from_address, data_type: String}
-  - {name: to_address, data_type: String}
-  - {name: token_address, data_type: String}
-  - {name: amount_raw, data_type: UInt256}
-  - {name: amount_demurraged_raw, data_type: UInt256}
+  - {name: block_number, description: "Block number containing the transfer.", data_type: UInt64}
+  - {name: block_timestamp, description: "UTC timestamp of the block.", data_type: DateTime64}
+  - {name: transaction_hash, description: "Hash of the transaction.", data_type: String}
+  - {name: transaction_index, description: "Index of the transaction within the block.", data_type: UInt64}
+  - {name: log_index, description: "Index of the log within the block.", data_type: UInt64}
+  - {name: batch_index, description: "Index within a TransferBatch (0 for single and wrapper transfers).", data_type: UInt64}
+  - {name: transfer_type, description: "Transfer classification (CrcV2_TransferSingle, CrcV2_TransferBatch, or CrcV2_ERC20WrapperTransfer).", data_type: String}
+  - {name: from_address, description: "Sender address.", data_type: String}
+  - {name: to_address, description: "Recipient address.", data_type: String}
+  - {name: token_address, description: "Avatar address for Hub transfers, wrapper contract address for ERC-20 wrapper transfers.", data_type: String}
+  - {name: amount_raw, description: "Original on-chain transfer amount in token base units (18 decimals).", data_type: UInt256}
+  - {name: amount_demurraged_raw, description: "Transfer amount converted to demurrage units.", data_type: UInt256}
   - {name: transfer_category, description: "mint / burn / wrap / unwrap / p2p.", data_type: String}
   - {name: mint_kind, description: "For mint rows: personal | group | migration | other (see int_execution_circles_v2_mint_events). NULL for non-mint rows.", data_type: Nullable(String)}
   meta:
@@ -1919,11 +1923,11 @@ models:
 - name: int_execution_circles_v2_transfers_daily
   description: Daily transfer counts + volume per category.
   columns:
-  - {name: date, data_type: Date}
-  - {name: transfer_category, data_type: String}
-  - {name: n_transfers, data_type: UInt64}
-  - {name: n_senders, data_type: UInt64}
-  - {name: n_receivers, data_type: UInt64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: transfer_category, description: "Transfer category (mint / burn / wrap / unwrap / p2p).", data_type: String}
+  - {name: n_transfers, description: "Number of transfers in this category on this day.", data_type: UInt64}
+  - {name: n_senders, description: "Distinct sender addresses in this category on this day (zero address excluded).", data_type: UInt64}
+  - {name: n_receivers, description: "Distinct recipient addresses in this category on this day (zero address excluded).", data_type: UInt64}
   - {name: amount, description: "Sum of native amount (raw / 1e18).", data_type: Float64}
   - {name: amount_demurraged, description: "Sum of demurrage-adjusted amount.", data_type: Float64}
   meta:
@@ -1944,11 +1948,11 @@ models:
 - name: int_execution_circles_v2_wrapper_supply_daily
   description: Daily wrapped-supply delta per ERC-20 wrapper token.
   columns:
-  - {name: date, data_type: Date}
-  - {name: wrapper_address, data_type: String}
-  - {name: wrap_amount, data_type: Float64}
-  - {name: unwrap_amount, data_type: Float64}
-  - {name: supply_delta, data_type: Float64}
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: wrapper_address, description: "ERC-20 wrapper token contract address.", data_type: String}
+  - {name: wrap_amount, description: "CRC wrapped into this token on this day (mint from the zero address, raw / 1e18).", data_type: Float64}
+  - {name: unwrap_amount, description: "CRC unwrapped from this token on this day (burn to the zero address, raw / 1e18).", data_type: Float64}
+  - {name: supply_delta, description: "Net wrapped-supply change on this day (wrap_amount - unwrap_amount).", data_type: Float64}
   meta:
     owner: analytics_team
     authoritative: false
@@ -1962,9 +1966,9 @@ models:
     the first 30 / 60 days post-invite and the date the avatar first reached
     canonical Active Minter status.
   columns:
-  - {name: avatar, data_type: String}
-  - {name: inviter, data_type: String}
-  - {name: invited_at, data_type: DateTime}
+  - {name: avatar, description: "Lowercase address of the invited Human avatar.", data_type: String}
+  - {name: inviter, description: "Address that invited this avatar (invited_by on the registration).", data_type: String}
+  - {name: invited_at, description: "Timestamp of the avatar's registration (invitation acceptance).", data_type: DateTime}
   - {name: first_mint_at, description: "First mint event timestamp (typically equals the acceptance mint).", data_type: Nullable(DateTime)}
   - {name: second_mint_date, description: "First calendar day with a mint that is NOT the invited_at day. NULL = invitee never came back.", data_type: Nullable(Date)}
   - {name: days_to_second_mint, description: "Days from invited_at date to second_mint_date. NULL when no second mint.", data_type: Nullable(Int64)}
@@ -2000,6 +2004,13 @@ models:
     first time the inviter received a CRC invitation fee per
     int_execution_circles_v2_inviter_fees (NULL when no fee was observed;
     fee-less invites still count as referrals).
+  columns:
+  - {name: inviter, description: "Lowercase inviter address (appears as invited_by on at least one Human registration).", data_type: String}
+  - {name: first_referral_at, description: "Timestamp of the inviter's earliest referral (first invitee's registration).", data_type: DateTime}
+  - {name: first_referral_week, description: "Monday-aligned start of the week of first_referral_at (UTC).", data_type: Date}
+  - {name: n_referrals, description: "Total Human avatars this address has invited.", data_type: UInt64}
+  - {name: first_referral_in_app, description: "1 if the first invitee's registration tx was routed through an active Gnosis App relayer (registered in-app), else 0.", data_type: UInt8}
+  - {name: first_inviter_fee_at, description: "Timestamp the inviter first received a CRC invitation fee (int_execution_circles_v2_inviter_fees); NULL when no fee was ever observed.", data_type: Nullable(DateTime)}
 
 - name: int_execution_circles_v2_trust_pair_ranges
   description: >
@@ -2010,3 +2021,9 @@ models:
     and closing every interval at the earlier of its expiry_time and the
     next update's start; the final open interval ends at the DateTime max
     sentinel (2106-02-07), and zero-length ranges are dropped.
+  columns:
+  - {name: truster, description: "Address of the entity granting trust.", data_type: String}
+  - {name: trustee, description: "Address of the entity receiving trust.", data_type: String}
+  - {name: valid_from_agg, description: "Array of interval start timestamps during which trust was active for this pair.", data_type: Array(DateTime)}
+  - {name: valid_to_agg, description: "Array of interval end timestamps, parallel to valid_from_agg; the final open interval ends at the DateTime max sentinel (2106-02-07).", data_type: Array(DateTime)}
+  - {name: range_count, description: "Number of active-trust intervals for this pair (length of valid_from_agg).", data_type: UInt64}

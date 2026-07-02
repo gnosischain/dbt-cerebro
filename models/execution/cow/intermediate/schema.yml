@@ -14,33 +14,46 @@ models:
       batch_months: 3
   columns:
   - name: block_number
+    description: Block height containing the GPv2 Trade event.
     data_type: UInt64
   - name: block_timestamp
+    description: UTC timestamp of the block containing the trade fill.
     data_type: DateTime
   - name: transaction_hash
     description: Settlement transaction hash, 0x-prefixed lowercase (matches the repo-wide address / tx-hash convention).
     data_type: String
   - name: log_index
+    description: Log index of the Trade event within the block.
     data_type: UInt64
   - name: protocol
+    description: Protocol identifier for the event source.
     data_type: String
   - name: pool_address
+    description: GPv2Settlement contract address (same for all rows; CoW has no per-pool contracts).
     data_type: String
   - name: token_bought_address
+    description: Address of the token the trader received (buyToken).
     data_type: String
   - name: token_bought_symbol
+    description: Symbol of the bought token from pools token metadata. NULL when unknown.
     data_type: Nullable(String)
   - name: amount_bought_raw
+    description: Raw buyAmount in token atoms (before decimal scaling).
     data_type: Nullable(UInt256)
   - name: amount_bought
+    description: Bought amount scaled to human units (token decimals, default 18).
     data_type: Nullable(Float64)
   - name: token_sold_address
+    description: Address of the token the trader sold (sellToken).
     data_type: String
   - name: token_sold_symbol
+    description: Symbol of the sold token from pools token metadata. NULL when unknown.
     data_type: Nullable(String)
   - name: amount_sold_raw
+    description: Raw sellAmount in token atoms (before decimal scaling).
     data_type: Nullable(UInt256)
   - name: amount_sold
+    description: Sold amount scaled to human units (token decimals, default 18).
     data_type: Nullable(Float64)
   - name: fee_amount_raw
     description: >
@@ -57,6 +70,7 @@ models:
     description: Order owner address.
     data_type: String
   - name: order_uid
+    description: CoW order identifier. Not unique per row — partially-fillable orders settle across multiple fills sharing an order_uid.
     data_type: String
   - name: solver
     description: Solver that settled this trade's batch.
@@ -81,10 +95,13 @@ models:
       batch_months: 6
   columns:
   - name: block_timestamp
+    description: UTC timestamp of the batch settlement (earliest trade timestamp in the batch).
     data_type: DateTime
   - name: transaction_hash
+    description: Settlement transaction hash, 0x-prefixed lowercase. One row per settlement transaction.
     data_type: String
   - name: solver
+    description: Solver that settled this batch.
     data_type: Nullable(String)
   - name: num_trades
     description: Number of individual trade fills in this batch.
@@ -98,10 +115,13 @@ models:
       pure Coincidence of Wants (peer-to-peer matching without AMM routing).
     data_type: Bool
   - name: batch_value_usd
+    description: Total USD trade value across all fills in this batch (sum of amount_usd).
     data_type: Nullable(Float64)
   - name: gas_used
+    description: Gas used by the settlement transaction (from execution.transactions).
     data_type: Nullable(UInt64)
   - name: gas_price
+    description: Gas price of the settlement transaction (from execution.transactions).
     data_type: Nullable(UInt64)
   - name: tx_cost_native
     description: Transaction cost in xDAI (gas_used * gas_price / 1e18).

@@ -89,6 +89,136 @@ semantic_models:
         - lending borrows volume
         - aave weekly
         - sparklend weekly
+- name: execution_lending_top_lenders_latest
+  model: ref('api_execution_lending_top_lenders_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - top lenders by protocol
+        - largest lending suppliers
+        - lending whale concentration
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: user_address
+    type: categorical
+    expr: user_address
+  - name: label
+    type: categorical
+    expr: label
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_lending_top_lenders_latest__rank_value
+    agg: sum
+    expr: rank
+  - name: execution_lending_top_lenders_latest__balance_value
+    agg: sum
+    expr: balance
+  - name: execution_lending_top_lenders_latest__balance_usd_value
+    agg: sum
+    expr: balance_usd
+  - name: execution_lending_top_lenders_latest__pct_of_total_value
+    agg: average
+    expr: pct_of_total
+  - name: execution_lending_top_lenders_latest__cumulative_pct_value
+    agg: average
+    expr: cumulative_pct
+  - name: execution_lending_top_lenders_latest__change_usd_7d_value
+    agg: sum
+    expr: change_usd_7d
+- name: execution_lending_top_lenders_ranked
+  model: ref('fct_execution_lending_top_lenders_ranked')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution lending top lenders ranked
+  dimensions:
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: reserve_address
+    type: categorical
+    expr: reserve_address
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: user_address
+    type: categorical
+    expr: user_address
+  measures:
+  - name: execution_lending_top_lenders_ranked__balance_value
+    agg: sum
+    expr: balance
+  - name: execution_lending_top_lenders_ranked__balance_usd_value
+    agg: sum
+    expr: balance_usd
+  - name: execution_lending_top_lenders_ranked__pct_of_total_value
+    agg: average
+    expr: pct_of_total
+  - name: execution_lending_top_lenders_ranked__rank_value
+    agg: sum
+    expr: rank
+- name: fct_execution_lending_top_lenders_latest
+  model: ref('fct_execution_lending_top_lenders_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution lending top lenders latest
+  dimensions:
+  - name: protocol
+    type: categorical
+    expr: protocol
+  - name: reserve_address
+    type: categorical
+    expr: reserve_address
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: user_address
+    type: categorical
+    expr: user_address
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: fct_execution_lending_top_lenders_latest__rank_value
+    agg: sum
+    expr: rank
+  - name: fct_execution_lending_top_lenders_latest__balance_value
+    agg: sum
+    expr: balance
+  - name: fct_execution_lending_top_lenders_latest__balance_usd_value
+    agg: sum
+    expr: balance_usd
+  - name: fct_execution_lending_top_lenders_latest__pct_of_total_value
+    agg: average
+    expr: pct_of_total
+  - name: fct_execution_lending_top_lenders_latest__cumulative_pct_value
+    agg: average
+    expr: cumulative_pct
+  - name: fct_execution_lending_top_lenders_latest__change_usd_7d_value
+    agg: sum
+    expr: change_usd_7d
 metrics:
 - name: lending_apy_daily
   label: Lending APY (Daily)
@@ -177,9 +307,9 @@ metrics:
         - sparklend borrows weekly
         - weekly borrow volume
 - name: execution_lending_apy_weekly_value
-  label: Execution Lending Weekly - Execution Lending Apy Weekly
-  description: execution lending weekly - execution lending apy weekly (avg). Read this as an average over the grain; do NOT
-    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  label: Lending Supply APY (Weekly)
+  description: Weekly average supply APY per protocol and token. Read as an average over the grain; do NOT sum it across rows
+    or periods.
   type: simple
   type_params:
     measure: execution_lending_apy_weekly_value
@@ -200,12 +330,13 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution lending weekly execution lending apy weekly
-        - execution lending apy weekly
+        - weekly supply apy
+        - aave supply apy weekly
+        - lending yield weekly
 - name: execution_lending_borrow_apy_weekly_value
-  label: Execution Lending Weekly - Execution Lending Borrow Apy Weekly
-  description: execution lending weekly - execution lending borrow apy weekly (avg). Read this as an average over the grain;
-    do NOT sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  label: Lending Borrow APY (Weekly)
+  description: Weekly average borrow APY per protocol and token. Read as an average over the grain; do NOT sum it across rows
+    or periods.
   type: simple
   type_params:
     measure: execution_lending_borrow_apy_weekly_value
@@ -226,5 +357,214 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution lending weekly execution lending borrow apy weekly
-        - execution lending borrow apy weekly
+        - weekly borrow apy
+        - aave borrow rate weekly
+        - lending borrow cost weekly
+- name: execution_lending_top_lenders_latest__balance_value
+  label: Top Lender Supplied Balance (Token Units)
+  description: Latest supplied balance of a top lender per protocol and reserve, in human-readable token units. Slice by protocol,
+    symbol, or user.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_latest__balance_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - protocol
+        - symbol
+        - user_address
+        - label
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - top lender supplied balance
+        - lending supply balance by user
+        - aave supplier token balance
+- name: execution_lending_top_lenders_latest__balance_usd_value
+  label: Top Lender Supplied Balance (USD)
+  description: Latest USD value supplied by a top lender per protocol and reserve. The headline metric for ranking lending
+    suppliers; slice by protocol, symbol, or user.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_latest__balance_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - protocol
+        - symbol
+        - user_address
+        - label
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - top lender supplied usd
+        - largest lending suppliers usd
+        - aave supply balance in dollars
+- name: execution_lending_top_lenders_latest__pct_of_total_value
+  label: Top Lender Share of Supply (%)
+  description: Share of a reserve's total supply held by a top lender. Read as an average over the grain; do NOT sum it across
+    rows or periods.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_latest__pct_of_total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - protocol
+        - symbol
+        - user_address
+        - label
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - lender share of supply
+        - percent of reserve supplied
+        - lending supply concentration percent
+- name: execution_lending_top_lenders_latest__cumulative_pct_value
+  label: Top Lenders Cumulative Supply Share (%)
+  description: 'Cumulative share of supply held by the top-N lenders (running total down the rank). This is a cumulative measure:
+    read the latest value in a period; do NOT sum across periods.'
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_latest__cumulative_pct_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - protocol
+        - symbol
+        - user_address
+        - label
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - cumulative supply concentration
+        - top-n lender share of reserve
+        - lending supply herfindahl proxy
+- name: execution_lending_top_lenders_latest__change_usd_7d_value
+  label: Top Lender 7-Day Supply Change (USD)
+  description: 7-day change in a top lender's supplied USD value. Positive means net supply added, negative means withdrawn.
+    Slice by protocol, symbol, or user.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_latest__change_usd_7d_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - protocol
+        - symbol
+        - user_address
+        - label
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - lender supply change 7d usd
+        - weekly change in supplied balance
+        - lending inflow outflow 7 day
+- name: execution_lending_top_lenders_ranked__balance_value
+  label: Execution Lending Top Lenders Ranked - Balance
+  description: execution lending top lenders ranked - balance (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_ranked__balance_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - protocol
+        - reserve_address
+        - symbol
+        - user_address
+        question_synonyms:
+        - execution lending top lenders ranked balance
+        - balance
+        - execution lending top lenders ranked
+- name: execution_lending_top_lenders_ranked__balance_usd_value
+  label: Execution Lending Top Lenders Ranked - Balance Usd
+  description: execution lending top lenders ranked - balance usd (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_ranked__balance_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - protocol
+        - reserve_address
+        - symbol
+        - user_address
+        question_synonyms:
+        - execution lending top lenders ranked balance usd
+        - balance usd
+        - execution lending top lenders ranked
+- name: execution_lending_top_lenders_ranked__pct_of_total_value
+  label: Execution Lending Top Lenders Ranked - Pct Of Total
+  description: execution lending top lenders ranked - pct of total (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: execution_lending_top_lenders_ranked__pct_of_total_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - protocol
+        - reserve_address
+        - symbol
+        - user_address
+        question_synonyms:
+        - execution lending top lenders ranked pct of total
+        - pct of total
+        - execution lending top lenders ranked

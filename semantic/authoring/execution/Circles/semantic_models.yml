@@ -1372,7 +1372,7 @@ semantic_models:
   - name: total_crc_sold_volume_value
     agg: sum
     expr: total_crc_sold_volume
-  - name: trade_count_value
+  - name: execution_circles_v2_crc20_prices_daily__trade_count_value
     agg: sum
     expr: trade_count
   - name: pool_count_value
@@ -1615,7 +1615,7 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: bucket_order_value
+  - name: execution_circles_v2_group_size_distribution__bucket_order_value
     agg: sum
     expr: bucket_order
   - name: n_groups_value
@@ -2925,7 +2925,7 @@ semantic_models:
   - name: unwrapped_supply_value
     agg: sum
     expr: unwrapped_supply
-  - name: total_supply_value
+  - name: execution_circles_v2_wrapper_share_daily__total_supply_value
     agg: sum
     expr: total_supply
   - name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
@@ -3715,12 +3715,40 @@ semantic_models:
     expr: date
     type_params:
       time_granularity: day
+- name: execution_circles_v2_inviter_canonical
+  model: ref('int_execution_circles_v2_inviter_canonical')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 inviter canonical
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: raw_inviter
+    type: categorical
+    expr: raw_inviter
+  - name: origin_inviter
+    type: categorical
+    expr: origin_inviter
+  - name: canonical_inviter
+    type: categorical
+    expr: canonical_inviter
+  measures:
+  - name: via_farm_value
+    agg: sum
+    expr: via_farm
 metrics:
 - name: circles_distinct_human_users
   label: Circles Distinct Human Users
-  description: "Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same\
-    \ hash space as revenue / gpay / gnosis_app / Mixpanel \u2014 use semantic-layer joins on `user_pseudonym` for cross-sector\
-    \ overlap questions.\n"
+  description: 'Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same
+    hash space as revenue / gpay / gnosis_app / Mixpanel — use semantic-layer joins on `user_pseudonym` for cross-sector overlap
+    questions.
+
+    '
   type: simple
   type_params:
     measure: execution_circles_human_avatars_distinct_count
@@ -4622,33 +4650,6 @@ metrics:
         - execution circles v2 crc20 prices daily total crc sold volume
         - total crc sold volume
         - execution circles v2 crc20 prices daily
-- name: trade_count_value
-  label: Execution Circles V2 Crc20 Prices Daily - Trade Count
-  description: execution circles v2 crc20 prices daily - trade count (sum).
-  type: simple
-  type_params:
-    measure: trade_count_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - crc20_token
-        - avatar
-        - symbol
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 crc20 prices daily trade count
-        - trade count
-        - execution circles v2 crc20 prices daily
 - name: pool_count_value
   label: Execution Circles V2 Crc20 Prices Daily - Pool Count
   description: execution circles v2 crc20 prices daily - pool count (sum).
@@ -4746,32 +4747,6 @@ metrics:
         - execution circles v2 group size current n members
         - n members
         - execution circles v2 group size current
-- name: bucket_order_value
-  label: Execution Circles V2 Group Size Distribution - Bucket Order
-  description: execution circles v2 group size distribution - bucket order (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
-  type: simple
-  type_params:
-    measure: bucket_order_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - bucket
-        - as_of_date
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 group size distribution bucket order
-        - bucket order
-        - execution circles v2 group size distribution
 - name: n_groups_value
   label: Execution Circles V2 Group Size Distribution - N Groups
   description: execution circles v2 group size distribution - n groups (sum). Auto-generated candidate metric; review and
@@ -6993,30 +6968,6 @@ metrics:
         - execution circles v2 wrapper share daily unwrapped supply
         - unwrapped supply
         - execution circles v2 wrapper share daily
-- name: total_supply_value
-  label: Execution Circles V2 Wrapper Share Daily - Total Supply
-  description: execution circles v2 wrapper share daily - total supply (sum).
-  type: simple
-  type_params:
-    measure: total_supply_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 wrapper share daily total supply
-        - total supply
-        - execution circles v2 wrapper share daily
 - name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
   label: Execution Circles V2 Wrapper Share Daily - Wrapped Pct
   description: execution circles v2 wrapper share daily - wrapped pct (average). Read this as an average over the grain; do
@@ -7069,3 +7020,24 @@ metrics:
         - circles active trusts
         - trust connections
         - circles trust network size
+- name: via_farm_value
+  label: Execution Circles V2 Inviter Canonical - Via Farm
+  description: execution circles v2 inviter canonical - via farm (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: via_farm_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - avatar
+        - raw_inviter
+        - origin_inviter
+        - canonical_inviter
+        question_synonyms:
+        - execution circles v2 inviter canonical via farm
+        - via farm
+        - execution circles v2 inviter canonical
