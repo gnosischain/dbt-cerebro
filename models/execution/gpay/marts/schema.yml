@@ -4107,7 +4107,10 @@ models:
 - name: fct_execution_gpay_journeys_30d
   description: |
     Pre-joined GP-side journey spine with a 30-day lookback. One row per
-    (conversion, prior-30d touchpoint) pair. Built via
+    (user_pseudonym, identity_role, conversion_kind, conversion_ts,
+    conversion_date, event_kind) group — one row per conversion × distinct
+    prior-30d touchpoint event_kind (n_touches / first_touch_ts / last_touch_ts
+    / td_sum measures), NOT one row per touch. Built via
     `build_journey_lookback(30, 'gpay')` — the same macro that powers
     the GA spine, with `identity_role` matched on both sides of the
     conversion ↔ events join so role-grain semantics are preserved
@@ -4159,36 +4162,25 @@ models:
   - name: conversion_token
     description: Token symbol of the converted asset.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the prior touchpoint.
-    data_type: DateTime
-    tests: [not_null]
   - name: event_source
     description: Always `'chain'` in v1 (GP unified events are chain-only).
     data_type: LowCardinality(String)
   - name: event_kind
     description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
-    data_type: String
-  - name: event_dedup_key
-    description: Carried from upstream events table.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive.
-    data_type: Int64
-    tests:
-    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
-    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
-    # the column name in `expression` (that produced a SYNTAX_ERROR before).
-    - dbt_utils.expression_is_true:
-        expression: "> 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution lag, used by the time-decay weight.
-    data_type: Int64
+    tests: [not_null]
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   tests:
   - elementary.schema_changes:
       severity: warn
@@ -4315,7 +4307,10 @@ models:
 - name: fct_execution_gpay_journeys_7d
   description: |
     Pre-joined GP-side journey spine with a 7-day lookback. One row per
-    (conversion, prior-7d touchpoint) pair. Built via
+    (user_pseudonym, identity_role, conversion_kind, conversion_ts,
+    conversion_date, event_kind) group — one row per conversion × distinct
+    prior-7d touchpoint event_kind (n_touches / first_touch_ts / last_touch_ts
+    / td_sum measures), NOT one row per touch. Built via
     `build_journey_lookback(7, 'gpay')` — the same macro that powers
     the GA spine, with `identity_role` matched on both sides of the
     conversion ↔ events join so role-grain semantics are preserved
@@ -4367,36 +4362,25 @@ models:
   - name: conversion_token
     description: Token symbol of the converted asset.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the prior touchpoint.
-    data_type: DateTime
-    tests: [not_null]
   - name: event_source
     description: Always `'chain'` in v1 (GP unified events are chain-only).
     data_type: LowCardinality(String)
   - name: event_kind
     description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
-    data_type: String
-  - name: event_dedup_key
-    description: Carried from upstream events table.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive.
-    data_type: Int64
-    tests:
-    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
-    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
-    # the column name in `expression` (that produced a SYNTAX_ERROR before).
-    - dbt_utils.expression_is_true:
-        expression: "> 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution lag, used by the time-decay weight.
-    data_type: Int64
+    tests: [not_null]
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   tests:
   - elementary.schema_changes:
       severity: warn
@@ -4578,36 +4562,25 @@ models:
   - name: conversion_token
     description: Token symbol of the converted asset.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the prior touchpoint.
-    data_type: DateTime
-    tests: [not_null]
   - name: event_source
     description: Always `'chain'` in v1 (GP unified events are chain-only).
     data_type: LowCardinality(String)
   - name: event_kind
     description: Touchpoint event kind. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Raw `action` provenance (`Payment`, `Fiat Top Up`, etc.).
-    data_type: String
-  - name: event_dedup_key
-    description: Carried from upstream events table.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive.
-    data_type: Int64
-    tests:
-    # As a column-level test, dbt_utils prepends `{{ column_name }}` to the
-    # expression, so this renders to `NOT(lag_seconds > 0)`. Do NOT repeat
-    # the column name in `expression`.
-    - dbt_utils.expression_is_true:
-        expression: "> 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution lag, used by the time-decay weight.
-    data_type: Int64
+    tests: [not_null]
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   tests:
   - elementary.schema_changes:
       severity: warn

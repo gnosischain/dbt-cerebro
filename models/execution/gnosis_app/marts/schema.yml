@@ -1609,8 +1609,10 @@ models:
 - name: fct_execution_gnosis_app_journeys_30d
   description: |
     Pre-joined GA-side journey spine with a 30-day lookback. One row per
-    (conversion, prior-30d touchpoint) pair with the conversion's own
-    event kind excluded from touches. Built via
+    (user_pseudonym, conversion_kind, conversion_ts, conversion_date,
+    event_kind) group — one row per conversion × distinct prior-30d touchpoint
+    event_kind (n_touches / first_touch_ts / last_touch_ts / td_sum measures),
+    NOT one row per touch; the conversion's own event kind is excluded. Built via
     `build_journey_lookback(30, 'gnosis_app')` so the leakage guards
     (`event_ts < conversion_ts` and
     `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
@@ -1655,34 +1657,26 @@ models:
   - name: conversion_token
     description: Token symbol or offer name associated with the conversion.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
-    data_type: DateTime
-    tests:
-    - not_null
   - name: event_source
     description: '`chain` or `mixpanel` — provenance of the touchpoint.'
     data_type: LowCardinality(String)
   - name: event_kind
     description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Provenance subtype of the touchpoint.
-    data_type: LowCardinality(String)
-  - name: event_dedup_key
-    description: Carried from upstream events table for downstream dedup if needed.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
-    data_type: Int64
     tests:
-    - dbt_utils.expression_is_true:
-        expression: "lag_seconds > 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
-    data_type: Int64
+    - not_null
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   meta:
     owner: analytics_team
   tests:
@@ -1877,8 +1871,10 @@ models:
 - name: fct_execution_gnosis_app_journeys_7d
   description: |
     Pre-joined GA-side journey spine with a 7-day lookback. One row per
-    (conversion, prior-7d touchpoint) pair with the conversion's own
-    event kind excluded from touches. Built via
+    (user_pseudonym, conversion_kind, conversion_ts, conversion_date,
+    event_kind) group — one row per conversion × distinct prior-7d touchpoint
+    event_kind (n_touches / first_touch_ts / last_touch_ts / td_sum measures),
+    NOT one row per touch; the conversion's own event kind is excluded. Built via
     `build_journey_lookback(7, 'gnosis_app')` so the leakage guards
     (`event_ts < conversion_ts` and
     `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
@@ -1923,34 +1919,26 @@ models:
   - name: conversion_token
     description: Token symbol or offer name associated with the conversion.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
-    data_type: DateTime
-    tests:
-    - not_null
   - name: event_source
     description: '`chain` or `mixpanel` — provenance of the touchpoint.'
     data_type: LowCardinality(String)
   - name: event_kind
     description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Provenance subtype of the touchpoint.
-    data_type: LowCardinality(String)
-  - name: event_dedup_key
-    description: Carried from upstream events table for downstream dedup if needed.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
-    data_type: Int64
     tests:
-    - dbt_utils.expression_is_true:
-        expression: "lag_seconds > 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
-    data_type: Int64
+    - not_null
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   meta:
     owner: analytics_team
   tests:
@@ -2084,8 +2072,10 @@ models:
 - name: fct_execution_gnosis_app_journeys_60d
   description: |
     Pre-joined GA-side journey spine with a 60-day lookback. One row per
-    (conversion, prior-60d touchpoint) pair with the conversion's own
-    event kind excluded from touches. Built via
+    (user_pseudonym, conversion_kind, conversion_ts, conversion_date,
+    event_kind) group — one row per conversion × distinct prior-60d touchpoint
+    event_kind (n_touches / first_touch_ts / last_touch_ts / td_sum measures),
+    NOT one row per touch; the conversion's own event kind is excluded. Built via
     `build_journey_lookback(60, 'gnosis_app')` so the leakage guards
     (`event_ts < conversion_ts` and
     `event_kind != conversion_kind_to_event_kind(conversion_kind)`) are
@@ -2130,34 +2120,26 @@ models:
   - name: conversion_token
     description: Token symbol or offer name associated with the conversion.
     data_type: Nullable(String)
-  - name: touch_ts
-    description: UTC timestamp of the touchpoint event (= upstream `event_ts`).
-    data_type: DateTime
-    tests:
-    - not_null
   - name: event_source
     description: '`chain` or `mixpanel` — provenance of the touchpoint.'
     data_type: LowCardinality(String)
   - name: event_kind
     description: Canonical event kind of the touchpoint. Guaranteed != the conversion's own mapped event_kind.
     data_type: LowCardinality(String)
-  - name: event_subkind
-    description: Provenance subtype of the touchpoint.
-    data_type: LowCardinality(String)
-  - name: event_dedup_key
-    description: Carried from upstream events table for downstream dedup if needed.
+  - name: n_touches
+    description: Number of prior touchpoints of this event_kind within the lookback window (count over the group).
     data_type: UInt64
-  - name: lag_seconds
-    description: Seconds between touchpoint and conversion. Strictly positive (leakage guard tested below).
-    data_type: Int64
     tests:
-    - dbt_utils.expression_is_true:
-        expression: "lag_seconds > 0"
-        config:
-          severity: error
-  - name: lag_days
-    description: Day-resolution version of `lag_seconds`, used by the time-decay weight `exp(-lag_days/7)`.
-    data_type: Int64
+    - not_null
+  - name: first_touch_ts
+    description: Earliest touchpoint timestamp in the group (min of upstream event_ts).
+    data_type: DateTime
+  - name: last_touch_ts
+    description: Latest touchpoint timestamp in the group (max of upstream event_ts).
+    data_type: DateTime
+  - name: td_sum
+    description: Time-decay weight sum over the group's touches — sum(exp(-lag_days / 7)).
+    data_type: Float64
   meta:
     owner: analytics_team
   tests:

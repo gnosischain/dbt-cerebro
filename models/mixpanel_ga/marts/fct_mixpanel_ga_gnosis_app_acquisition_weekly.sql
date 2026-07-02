@@ -13,7 +13,8 @@
 -- 70-83% — both describe the same app.gnosis.io population on the same
 -- on-chain identity bridge — so the UTM attribution here is meaningful.
 --
--- conversion_kind ∈ {topup, swap_filled, token_offer_claim, marketplace_buy}.
+-- conversion_kind ∈ {topup, swap_filled, token_offer_claim, marketplace_buy,
+--                     starts_referring}.
 -- 'topup' is GP card funding initiated from inside the app — the closest
 -- UTM-attributable "first funded" signal on this side.
 --

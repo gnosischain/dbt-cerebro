@@ -148,6 +148,15 @@ jobs:
         run: |
           python scripts/semantic/build_registry.py --target-dir target --validate
 
+      - name: Graph metadata gate (blocking)
+        # Scoped, BLOCKING counterpart to the continue-on-error validate step
+        # above. Fails the build only on net-new `graph_meta_*` errors (unknown
+        # node kind, missing/unknown column, duplicate profile id, ...) relative
+        # to semantic/validation/baseline.json. This keeps the knowledge-graph
+        # contract strict without waiting for the legacy non-graph cleanup.
+        run: |
+          python scripts/semantic/graph_gate.py --target-dir target
+
       - name: Surface validation report in build summary
         # Print the validation summary into the GitHub Actions step log
         # so reviewers see the error count even when the step itself is
@@ -176,11 +185,27 @@ jobs:
         run: |
           python scripts/semantic/build_semantic_docs.py --target-dir target
 
+      - name: Generate graph diagram data
+        # Exercise generate_graph_diagram.py in CI (previously a manual-only doc
+        # step) so its model-lineage extraction can't silently rot. Emits the
+        # graph_data.json the cerebro-docs explorer consumes.
+        run: |
+          python scripts/semantic/generate_graph_diagram.py \
+            --target-dir target --json-output target/graph_data.json
+
+      - name: Stage standalone graph explorer
+        # Publish the dependency-free ontology explorer (WS12) alongside the
+        # catalog it reads (./semantic_graph_catalog.json) under gh-pages.
+        run: |
+          cp web/graph_explorer.html target/explore.html
+
       - name: Assert semantic outputs
         run: |
           test -f target/semantic_registry.json
           test -f target/semantic_validation_report.json
+          test -f target/semantic_graph_catalog.json
           test -f target/semantic_docs_index.json
+          test -f target/graph_data.json
           test -f target/semantic_build_summary.json
           test -f target/semantic_build_metrics.prom
 

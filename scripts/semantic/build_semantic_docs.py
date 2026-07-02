@@ -173,6 +173,83 @@ def build_cross_module_explorer(registry: dict[str, Any]) -> str:
     return page_template("Cross-Module Semantic Explorer", body)
 
 
+def build_node_type_page(node_type: dict[str, Any], catalog: dict[str, Any]) -> str:
+    """One page per node KIND (not per instance) — the ontology browser (WS12)."""
+    name = node_type.get("name", "")
+    providers = "".join(
+        f"<li><code>{html.escape(p)}</code></li>" for p in node_type.get("provider_profiles", [])
+    ) or "<li>None (relationship axis)</li>"
+    synonyms = ", ".join(node_type.get("synonyms", [])) or "—"
+    # Edge types where this kind is an endpoint.
+    edges = [
+        e for e in catalog.get("edge_types", [])
+        if name in (e.get("source_kind"), e.get("target_kind"))
+    ]
+    edges_html = "".join(
+        f"<tr><td><code>{html.escape(e['name'])}</code></td>"
+        f"<td>{html.escape(e.get('source_kind', ''))} &rarr; {html.escape(e.get('target_kind', ''))}</td>"
+        f"<td>{'directed' if e.get('directed') else 'undirected'}</td></tr>"
+        for e in edges
+    ) or "<tr><td colspan='3'>None</td></tr>"
+    body = f"""
+    <h1>Node type: {html.escape(name)}</h1>
+    <p>{html.escape(node_type.get('description', ''))}</p>
+    <p><strong>FQN:</strong> <code>{html.escape(node_type.get('fqn', ''))}</code></p>
+    <p><strong>Synonyms:</strong> {html.escape(synonyms)}</p>
+    <p><strong>Parent type:</strong> {html.escape(str(node_type.get('parent_type') or '—'))}</p>
+    <p><strong>Relationship axis only:</strong> {node_type.get('is_relationship_axis', False)}</p>
+    <h2>Provider edge profiles</h2><ul>{providers}</ul>
+    <h2>Edges touching this kind</h2>
+    <table><thead><tr><th>Edge profile</th><th>Endpoints</th><th>Direction</th></tr></thead>
+    <tbody>{edges_html}</tbody></table>
+    """
+    return page_template(f"Node type {name}", body)
+
+
+def build_edge_type_page(edge_type: dict[str, Any], catalog: dict[str, Any]) -> str:
+    """One page per edge profile."""
+    name = edge_type.get("name", "")
+    profile = (catalog.get("profiles", {}) or {}).get(name, {})
+    rows = "".join(
+        f"<tr><td><strong>{html.escape(k)}</strong></td><td><code>{html.escape(str(v))}</code></td></tr>"
+        for k, v in profile.items()
+    )
+    body = f"""
+    <h1>Edge type: {html.escape(name)}</h1>
+    <p><strong>Endpoints:</strong> {html.escape(edge_type.get('source_kind', ''))} &rarr; {html.escape(edge_type.get('target_kind', ''))}</p>
+    <p><strong>Directed:</strong> {edge_type.get('directed')} &nbsp;
+       <strong>Temporal:</strong> {edge_type.get('temporal')} &nbsp;
+       <strong>Weighted:</strong> {edge_type.get('weighted')}</p>
+    <h2>Profile</h2>
+    <table><tbody>{rows}</tbody></table>
+    """
+    return page_template(f"Edge type {name}", body)
+
+
+def build_ontology_overview(catalog: dict[str, Any]) -> str:
+    meta = catalog.get("metadata", {})
+    nodes = "".join(
+        f"<li><a href='node_types/{html.escape(n['name'])}.html'><code>{html.escape(n['name'])}</code></a>"
+        f" — {html.escape(n.get('description', ''))}</li>"
+        for n in catalog.get("node_types", [])
+    )
+    edges = "".join(
+        f"<li><a href='edge_types/{html.escape(e['name'])}.html'><code>{html.escape(e['name'])}</code></a>"
+        f" ({html.escape(e.get('source_kind', ''))} &rarr; {html.escape(e.get('target_kind', ''))})</li>"
+        for e in catalog.get("edge_types", [])
+    )
+    body = f"""
+    <h1>Knowledge Graph Ontology</h1>
+    <p><strong>Schema version:</strong> {meta.get('schema_version')} &nbsp;
+       <strong>Node types:</strong> {meta.get('node_type_count')} &nbsp;
+       <strong>Edge types:</strong> {meta.get('edge_type_count')} &nbsp;
+       <strong>Join edges:</strong> {meta.get('join_edge_count')}</p>
+    <h2>Node types</h2><ul>{nodes}</ul>
+    <h2>Edge types</h2><ul>{edges}</ul>
+    """
+    return page_template("Knowledge Graph Ontology", body)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", default="target")
@@ -211,6 +288,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             "namespace": 0,
             "module": 0,
             "overview": 0,
+            "graph_node_type": 0,
+            "graph_edge_type": 0,
         }
 
         models_by_module: dict[str, list[str]] = defaultdict(list)
@@ -327,6 +406,59 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "path": str(explorer_path.relative_to(target_dir)),
             }
         )
+
+        # Knowledge-graph ontology pages (WS12 surface). One page per node KIND
+        # and per edge profile (TYPE pages, not per-instance — avoids exploding
+        # the index by the 53 relationships). Skipped when no catalog is built.
+        catalog_path = target_dir / "semantic_graph_catalog.json"
+        if catalog_path.exists():
+            catalog = load_json(catalog_path)
+            node_dir = docs_root / "node_types"
+            edge_dir = docs_root / "edge_types"
+            for node_type in catalog.get("node_types", []):
+                kind = node_type.get("name", "")
+                path = node_dir / f"{kind}.html"
+                write_text(path, build_node_type_page(node_type, catalog))
+                page_counts["graph_node_type"] += 1
+                docs_index.append(
+                    {
+                        "uri": f"gnosis://semantic-graph-node/{kind}",
+                        "type": "graph_node_type",
+                        "title": f"Node type: {kind}",
+                        "module": "",
+                        "keywords": [kind, "node", "graph", "ontology"]
+                        + list(node_type.get("synonyms", [])),
+                        "path": str(path.relative_to(target_dir)),
+                    }
+                )
+            for edge_type in catalog.get("edge_types", []):
+                name = edge_type.get("name", "")
+                path = edge_dir / f"{name}.html"
+                write_text(path, build_edge_type_page(edge_type, catalog))
+                page_counts["graph_edge_type"] += 1
+                docs_index.append(
+                    {
+                        "uri": f"gnosis://semantic-graph-edge/{name}",
+                        "type": "graph_edge_type",
+                        "title": f"Edge type: {name}",
+                        "module": "",
+                        "keywords": [name, "edge", "graph", "ontology"],
+                        "path": str(path.relative_to(target_dir)),
+                    }
+                )
+            ontology_path = docs_root / "ontology.html"
+            write_text(ontology_path, build_ontology_overview(catalog))
+            page_counts["overview"] += 1
+            docs_index.append(
+                {
+                    "uri": "gnosis://semantic-graph-ontology",
+                    "type": "overview",
+                    "title": "Knowledge Graph Ontology",
+                    "module": "",
+                    "keywords": ["ontology", "graph", "node types", "edge types"],
+                    "path": str(ontology_path.relative_to(target_dir)),
+                }
+            )
 
         write_text(
             target_dir / "semantic_docs_index.json",

@@ -323,3 +323,214 @@ def test_validate_no_false_positive_when_unique_measure_resolves():
     # No ambiguous / missing errors for the metric itself.
     for err in report["errors"]:
         assert err.get("metric") != "good_metric", err
+
+
+# ---------------------------------------------------------------------------
+# Graph metadata validation + taxonomy registry (WS2/WS3)
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+GRAPH_KINDS_PATH = (
+    Path(build_registry.__file__).resolve().parents[2] / "semantic" / "graph_kinds.yml"
+)
+
+# Node kinds that appear as source_kind/target_kind in authored graph blocks.
+# This guard fails if a kind is authored without being registered in
+# graph_kinds.yml (which would surface at build time as graph_meta_unknown_kind).
+_AUTHORED_GRAPH_KINDS = {
+    "address",
+    "bridge",
+    "circles_avatar",
+    "gpay_wallet",
+    "pool",
+    "project_label",
+    "safe",
+    "token",
+    "validator",
+}
+
+
+def _graph_model(graph: dict, *, columns=("a", "b"), entities=()) -> dict:
+    return {
+        "columns": {c: {} for c in columns},
+        "entities": [{"name": e} for e in entities],
+        "semantic": {"meta": {"graph": graph}},
+    }
+
+
+def _enabled_graph(**overrides) -> dict:
+    graph = {
+        "enabled": True,
+        "profile": "p1",
+        "source_column": "a",
+        "target_column": "b",
+        "source_kind": "address",
+        "target_kind": "token",
+    }
+    graph.update(overrides)
+    return graph
+
+
+def test_graph_ontology_doc_pages_render():
+    catalog = {
+        "metadata": {"schema_version": 1, "node_type_count": 1, "edge_type_count": 1, "join_edge_count": 0},
+        "node_types": [
+            {"name": "address", "fqn": "node:address", "description": "an account",
+             "synonyms": ["wallet"], "provider_profiles": ["token_transfers"], "is_relationship_axis": False}
+        ],
+        "edge_types": [
+            {"name": "token_transfers", "source_kind": "address", "target_kind": "address",
+             "directed": True, "temporal": True, "weighted": False}
+        ],
+        "profiles": {"token_transfers": {"profile": "token_transfers", "source_kind": "address"}},
+    }
+    node_html = build_semantic_docs.build_node_type_page(catalog["node_types"][0], catalog)
+    assert "Node type: address" in node_html and "token_transfers" in node_html
+    edge_html = build_semantic_docs.build_edge_type_page(catalog["edge_types"][0], catalog)
+    assert "Edge type: token_transfers" in edge_html
+    overview = build_semantic_docs.build_ontology_overview(catalog)
+    assert "Knowledge Graph Ontology" in overview and "address" in overview
+
+
+def test_load_graph_kinds_covers_authored_kinds():
+    kinds = build_registry.load_graph_kinds(GRAPH_KINDS_PATH)
+    assert isinstance(kinds, dict) and kinds
+    missing = _AUTHORED_GRAPH_KINDS - set(kinds)
+    assert not missing, f"graph_kinds.yml missing authored kinds: {sorted(missing)}"
+
+
+def test_load_graph_kinds_missing_file_returns_empty(tmp_path):
+    assert build_registry.load_graph_kinds(tmp_path / "nope.yml") == {}
+
+
+def test_validate_graph_meta_unknown_kind_is_error():
+    model = _graph_model(_enabled_graph(source_kind="not_a_kind"))
+    issues = build_registry.validate_graph_meta(
+        "m", model, {"m": model}, allowed_kinds={"address", "token"}
+    )
+    codes = {i["code"] for i in issues if i["severity"] == "error"}
+    assert "graph_meta_unknown_kind" in codes
+
+
+def test_validate_graph_meta_known_kinds_no_unknown_kind_error():
+    model = _graph_model(_enabled_graph())
+    issues = build_registry.validate_graph_meta(
+        "m", model, {"m": model}, allowed_kinds={"address", "token"}
+    )
+    assert "graph_meta_unknown_kind" not in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_unknown_column_is_error():
+    model = _graph_model(_enabled_graph(source_column="missing"))
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unknown_column" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_missing_required_is_error():
+    graph = _enabled_graph()
+    del graph["target_kind"]
+    model = _graph_model(graph)
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_missing_required" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_disabled_block_is_skipped():
+    model = _graph_model({"enabled": False, "profile": "p"})
+    assert build_registry.validate_graph_meta("m", model, {"m": model}) == []
+
+
+def _typed_graph_model(graph: dict, columns: dict) -> dict:
+    return {
+        "resource_type": "model",
+        "semantic_status": "candidate",
+        "quality_tier": "candidate",
+        "columns": columns,
+        "entities": [],
+        "dimensions": [],
+        "measures": [],
+        "semantic": {"meta": {"graph": graph}},
+    }
+
+
+def test_validate_graph_meta_weight_not_numeric_is_error():
+    model = _typed_graph_model(
+        _enabled_graph(weight_column="transfer_count"),
+        {"a": {}, "b": {}, "transfer_count": {"data_type": "String"}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_weight_not_numeric" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_weight_numeric_ok():
+    model = _typed_graph_model(
+        _enabled_graph(weight_column="amount_usd"),
+        {"a": {}, "b": {}, "amount_usd": {"data_type": "Float64"}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_weight_not_numeric" not in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_unsafe_identifier_is_error():
+    model = _typed_graph_model(
+        _enabled_graph(source_column="a; DROP TABLE x"),
+        {"a": {}, "b": {}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unsafe_identifier" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_backtick_column_is_safe():
+    model = _typed_graph_model(
+        _enabled_graph(source_column="`from`"),
+        {"`from`": {}, "b": {}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unsafe_identifier" not in {i["code"] for i in issues}
+
+
+def test_validate_registry_duplicate_profile_id_is_error():
+    g = _enabled_graph()
+    models = {
+        "model_a": _typed_graph_model(dict(g), {"a": {}, "b": {}}),
+        "model_b": _typed_graph_model(dict(g), {"a": {}, "b": {}}),
+    }
+    report = build_registry.validate_registry({"models": models, "metrics": {}, "relationships": []})
+    dups = [e for e in report["errors"] if e["code"] == "graph_meta_duplicate_profile"]
+    assert len(dups) == 1
+    assert "model_a" in dups[0]["message"] and "model_b" in dups[0]["message"]
+
+
+def test_infer_graph_meta_from_from_to_columns():
+    cols = {"`from`": {}, "`to`": {}, "amount": {}}
+    g = scaffold_candidates.infer_graph_meta("int_x_transfers", cols)
+    assert g is not None
+    assert g["profile"] == "token_transfers"
+    assert g["enabled"] is False  # inert until reviewed
+    assert g["source_column"] == "`from`" and g["target_column"] == "`to`"
+    assert g["source_kind"] == "address" and g["target_kind"] == "address"
+
+
+def test_infer_graph_meta_owner_safe_pattern():
+    g = scaffold_candidates.infer_graph_meta("m", {"owner": {}, "safe_address": {}})
+    assert g["profile"] == "safe_ownership"
+    assert (g["source_kind"], g["target_kind"]) == ("address", "safe")
+
+
+def test_infer_graph_meta_no_match_returns_none():
+    assert scaffold_candidates.infer_graph_meta("m", {"x": {}, "y": {}}) is None
+
+
+def test_candidate_model_includes_inferred_graph_block_as_review_required():
+    node = {
+        "name": "int_pools_lp",
+        "columns": {"provider": {}, "pool_address": {}, "amount_usd": {"data_type": "Float64"}},
+        "fqn": ["gnosis_dbt", "execution"],
+    }
+    model = scaffold_candidates._candidate_model(node)
+    cerebro = model["config"]["meta"]["cerebro"]
+    assert cerebro["graph"]["profile"] == "lp_in_pool"
+    assert cerebro["graph"]["enabled"] is False
+    assert cerebro["graph_review_required"] is True
+    # The graph block must stay schema-clean (no unknown keys for the validator).
+    assert set(cerebro["graph"]) <= build_registry.GRAPH_ALLOWED

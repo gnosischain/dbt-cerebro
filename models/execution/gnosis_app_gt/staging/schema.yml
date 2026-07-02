@@ -1,0 +1,352 @@
+version: 2
+models:
+- name: stg_envio_ga__users
+  description: Registered Circles identity universe (dedup via envio_latest). INTERNAL (raw address).
+  columns:
+  - name: address
+    tests:
+    - not_null
+    - unique
+  - name: created_at_block
+    description: Block number at which the Circles identity was registered (from gnosis_app_user, carried via argMax).
+  - name: lifetime_cashback_atoms
+    description: Lifetime Gnosis Pay cashback for this identity as RAW ATOMS (toFloat64(lifetime_cashback), a native Int256).
+      Unit UNVERIFIED (CASH-D02) — never /1e18 into a KPI until decimals are confirmed.
+- name: stg_envio_ga__avatars
+  description: Circles avatar state — the active-user spine (composite-version dedup). INTERNAL.
+  columns:
+  - name: avatar_address
+    tests:
+    - not_null
+    - unique
+  - name: avatar_type
+    description: Circles avatar registration/type label (Signup, RegisterHuman, RegisterGroup, RegisterOrganization, Migrating,
+      Invite, Unclaimed, Unknown, ...). Deduped with the composite version (_synced_block, ingested_at) because ~35 ids tie
+      on _synced_block.
+  - name: invited_by
+    description: Lower()-cased inviter avatar address; may reference a non-registry address.
+  - name: verification_badge
+    description: Circles verification-badge value for the avatar (NONE if unverified).
+  - name: is_early_supporter
+    description: 1 iff the avatar is flagged an early Circles supporter.
+  - name: is_base_group
+    description: 1 iff the avatar is a Circles base group (rather than an individual human).
+  - name: profile_id
+    description: Lower()-cased FK to the avatar's Circles profile record.
+  - name: accepted_invite_at
+    description: DateTime the avatar accepted its invite; NULL when accepted_invite_timestamp = 0 (never accepted).
+  - name: created_at
+    description: Avatar creation/registration timestamp (toDateTime of the source `timestamp`).
+  - name: earned_from_invites_crc
+    description: CRC this avatar earned from inviting others, DECIMAL-normalized (toFloat64(earned_from_invites)/1e18 from
+      a native Int256).
+- name: stg_envio_ga__profiles
+  description: Circles profile per identity (dedup required — version-superseding dup ids). INTERNAL.
+  columns:
+  - name: address
+    tests:
+    - not_null
+    - unique
+  - name: profile_name
+    description: Circles profile display name (raw source `name`).
+  - name: profile_location
+    description: Circles profile location string (raw source `location`).
+  - name: last_updated_block_number
+    description: Block number of the profile's last update (carried via argMax).
+- name: stg_envio_ga__swaps
+  description: CoW order records (grain = order id). No fill timestamp; status is a real enum. INTERNAL.
+  columns:
+  - name: id
+    tests:
+    - not_null
+    - unique
+  - name: status
+    tests:
+    - accepted_values:
+        values:
+        - Filled
+        - Expired
+        - NONE
+        - Open
+        - PayTopUp
+        config:
+          severity: warn
+  - name: order_uid
+    description: CoW Protocol order UID (unique order identifier).
+  - name: app_code
+    description: appCode string extracted from the order app_data JSON (JSONExtractString(app_data,'appCode')) — identifies
+      the submitting app.
+  - name: app_flow
+    description: The order app_data `flow` field (CoW order flow type).
+  - name: app_scope
+    description: 'Derived app bucket from app_code: gnosis_app (app.gnosis.io = CURRENT Gnosis App), metri (app.metri.xyz
+      = LEGACY Gnosis App), test (test appCodes), unknown (empty app_code), third_party (all other CoW apps). gnosis_app +
+      metri both roll up to Gnosis App.'
+  - name: owner
+    description: Lower()-cased order owner (the placing account / identity).
+  - name: receiver
+    description: Lower()-cased order receiver address.
+  - name: sell_token
+    description: Lower()-cased sell-side token contract address.
+  - name: buy_token
+    description: Lower()-cased buy-side token contract address.
+  - name: sell_amount_atoms
+    description: Sell amount in RAW token atoms (toFloat64(sell_amount); native Int256, not decimal-normalized — per-token
+      decimals unknown here).
+  - name: buy_amount_atoms
+    description: Buy amount in RAW token atoms (toFloat64(buy_amount)).
+  - name: fee_amount_atoms
+    description: CoW orderbook QUOTED fee in raw atoms (toFloat64(fee_amount)) — quoted fee, NOT settled revenue; do not substitute
+      for the heuristic swap-fee marts.
+  - name: transaction_hash
+    description: Settlement transaction hash for the order (pass-through).
+- name: stg_envio_ga__guardian_module
+  description: Append-only module Enabled/Disabled events (grain = event id). INTERNAL.
+  columns:
+  - name: id
+    tests:
+    - not_null
+    - unique
+  - name: label
+    description: Module event type (Enabled / Disabled / Recovery* / ...). Membership is derived downstream by NETTING Enabled-Disabled,
+      NOT by argMax latest-state.
+  - name: safe_address
+    description: Lower()-cased Safe (pay-wallet candidate) the module event applies to.
+  - name: module_address
+    description: Lower()-cased module contract address enabled/disabled on the Safe.
+  - name: block_number
+    description: Block number of the module event.
+  - name: event_at
+    description: DateTime of the module event (toDateTime of source `timestamp`).
+  - name: transaction_hash
+    description: Transaction hash of the module event (pass-through).
+- name: stg_envio_ga__earned_from_invite
+  description: GA-native invite-reward ledger (grain = event id). INTERNAL.
+  columns:
+  - name: id
+    tests:
+    - not_null
+    - unique
+  - name: invitee_address
+    description: Lower()-cased address of the invitee (the invited identity that earned a reward).
+  - name: inviter_address
+    description: Lower()-cased address of the inviter.
+  - name: amount_crc
+    description: Reward amount in CRC, DECIMAL-normalized (toFloat64(amount)/1e18 from a native BE Int256). GA-native ledger
+      — never reconcile against the circles_v2 inviter_fee stream.
+- name: stg_envio_ga__investment_accounts
+  description: Metri auto-invest accounts (grain = account address). INTERNAL.
+  columns:
+  - name: account_address
+    tests:
+    - not_null
+    - unique
+  - name: owner
+    description: Lower()-cased owner address (the Metri user who owns the auto-invest account; the join key — account_address
+      is a different address space).
+  - name: coordinator
+    description: Lower()-cased coordinator contract address.
+  - name: investment_token
+    description: Lower()-cased token the account auto-invests into.
+  - name: is_active
+    description: 1 iff the auto-invest account is currently active.
+- name: stg_envio_ga__cashbacks
+  description: Gnosis Pay cashback NFT mints (grain = mint id). INTERNAL.
+  columns:
+  - name: id
+    tests:
+    - not_null
+    - unique
+  - name: owner
+    description: Lower()-cased owner address of the cashback NFT.
+  - name: gnosis_pay_address
+    description: Lower()-cased Gnosis Pay Safe linked to the cashback; NULL when empty (~47% of rows), so GP-Safe joins drop
+      ~half.
+  - name: status
+    description: Cashback NFT status integer enum (1 = minted, 0 = reverted).
+  - name: minted_at
+    description: DateTime the cashback NFT was minted (toDateTime of source minted_at).
+  - name: minted_block
+    description: Block number of the mint.
+- name: stg_envio_ga__transfer_actions
+  description: 'STRETCH — compact per-(participant, transfer_type) aggregate from ONE full scan of envio_ga.transfer (108M,
+    no pruning). App / Circles-in-app action signals (MetriFee/MetriTransfer/HubTransfer/PersonalMint/PrimaryGroupFee/ wrap/invitation/pay-topup).
+    participant = the human actor (from or to per type). INTERNAL.
+
+    '
+  columns:
+  - name: participant
+    description: Actor address (lowercase) — payer/sender for fees & sends, recipient for mints & invites.
+  - name: transfer_type
+    description: envio_ga action type.
+  - name: n_events
+    description: Count of raw transfer rows for this (participant, transfer_type) after the app-relevant-type + live (_deleted=0)
+      filter. Activity intensity only — the activity model uses presence (the flag), not this count.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - participant
+      - transfer_type
+- name: stg_envio_ga__transaction_actions
+  description: 'STRETCH — per-identity first/last action timestamp + count from ONE full scan of envio_ga.transaction_action
+    (208M, no pruning). The missing on-chain timestamp for the GT suite. avatar_id spans all of Circles since 2020 (~626k)
+    — a recency enrichment, never a user count. INTERNAL.
+
+    '
+  columns:
+  - name: address
+    description: Avatar identity address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: last_action_at
+    description: Most recent action timestamp for this identity.
+  - name: first_action_at
+    description: Earliest action timestamp for this identity (toDateTime(min(timestamp)) over transaction_action).
+  - name: n_actions
+    description: Total transaction_action rows attributed to this avatar_id (activity volume; whole-ecosystem, since 2020).
+- name: stg_envio_ga__auto_topups
+  description: 'Circles auto-topup CONFIG event ledger from the envio_ga indexer (source envio_ga.auto_topup), materialized
+    as a view. Grain = one row per opaque event `id`. It is an append-only ledger of auto-topup coordinator configuration
+    events typed by `label` (AutoTopupActivated / AutoTopupDeactivated / NewRecipient / ThresholdUpdated), NOT a running balance
+    or a transfer feed. Dedup logic: the `envio_latest(''envio_ga'',''auto_topup'', ...)` macro emits one row per `id` taking
+    the live value of each carried column via argMax(col, _synced_block) — never FINAL, since envio_ga has no insert_version
+    and `_synced_block` is the only correct version key — and guards tombstones with `HAVING max(_deleted)=0`, which is order-independent
+    so it drops any id tombstoned at ANY block (a plain argMax(_deleted, _synced_block) would miss a tombstone written at
+    block 0). Address columns (owner, recipient, recipient_token, coordinator) are lower()-cased; `threshold` is a native
+    big-endian Int256 decoded with toFloat64 into raw atoms (no reinterpretAsUInt256, no byte-reversal, no decimal division).
+    GOTCHA: this is the Circles/Metri legacy auto-topup CONFIG primitive, explicitly NOT a Gnosis Pay top-up source — do not
+    use it as the GT topup metric. threshold_atoms is un-normalized atoms because per-token decimals are not known here, so
+    it is not a spendable/decimal amount. INTERNAL only (raw addresses; privacy_tier=internal, excluded from MCP/API). Downstream,
+    only `owner` is consumed (as the identity/actor address behind the `has_auto_topup` legacy-app signal in int_execution_gnosis_app_gt_user_activity).'
+  columns:
+  - name: id
+    description: Opaque event identifier from the envio_ga indexer; the dedup key (`key='id'`) and the model grain. After
+      envio_latest collapses version-superseding duplicates via argMax(_synced_block) and drops tombstoned ids (HAVING max(_deleted)=0),
+      one row survives per id. Not an address or a chain-native id; treat as an opaque string. Effectively unique/not-null.
+    tests:
+    - not_null
+    - unique
+  - name: label
+    description: 'Event-type enum tagging what this auto-topup CONFIG record represents. Carried live via argMax(label, _synced_block).
+      Known values: ''AutoTopupActivated'' and ''AutoTopupDeactivated'' (owner enables/disables auto-topup on the coordinator),
+      ''NewRecipient'' (a top-up destination/token was (re)configured), and ''ThresholdUpdated'' (the trigger threshold changed).
+      This is a config-event taxonomy, NOT a money-movement action type — an AutoTopupActivated row does not mean a top-up
+      occurred.'
+  - name: owner
+    description: 'Lower()-cased address of the account that owns / configured this auto-topup coordinator (the human/identity
+      actor). Derived as lower(argMax(owner, _synced_block)). This is the only column consumed downstream: DISTINCT owner
+      (where owner != '''') feeds the `has_auto_topup` legacy-app signal in int_execution_gnosis_app_gt_user_activity, i.e.
+      owner is the identity credited with having set up auto-topup. Can be the empty string for label rows that carry no owner.'
+  - name: recipient
+    description: Lower()-cased address of the configured top-up destination account (where the auto-topup would send funds).
+      Derived as lower(argMax(recipient, _synced_block)). Descriptive config field only — presence does not imply any transfer
+      happened. May be empty string on labels that do not set a recipient.
+  - name: recipient_token
+    description: Lower()-cased ERC-20 token contract address that the auto-topup is configured to top up (the token in which
+      `threshold`/top-ups are denominated). Derived as lower(argMax(recipient_token, _synced_block)). This is the token whose
+      decimals would be needed to turn threshold_atoms into a decimal amount (not applied here). May be empty string when
+      the label does not carry a token.
+  - name: coordinator
+    description: Lower()-cased address of the Circles auto-topup coordinator contract that emitted / owns this configuration
+      (the on-chain coordinator instance, one owner per coordinator per the sibling coordinator_state model). Derived as lower(argMax(coordinator,
+      _synced_block)). Identifies the coordinator, not the acting user.
+  - name: threshold_atoms
+    description: 'Configured auto-topup trigger threshold in RAW ATOMS (base units), as a Float64. Derived as toFloat64(argMax(threshold,
+      _synced_block)) from the source `threshold`, a native big-endian Int256 — decoded with toFloat64 only (no reinterpretAsUInt256,
+      no byte-reversal, no /1e18). NOT decimal-normalized: it is atoms of `recipient_token`, and because per-token decimals
+      are unknown in this staging layer it is intentionally left un-divided; do not read it as a human/decimal amount. Meaningful
+      mainly on ThresholdUpdated (and initial-config) rows; may be 0 / not meaningful on activation-only or recipient-only
+      labels. Float64 can lose precision at very large Int256 magnitudes.'
+  - name: transaction_hash
+    description: Lower-case-as-stored transaction hash of the on-chain transaction that produced this config event (carried
+      live via argMax(transaction_hash, _synced_block)). Passed through unmodified for lineage/join-back to the raw transaction;
+      the event grain is `id`, so a single transaction_hash can back multiple config-event ids.
+- name: stg_envio_ga__cashback_status_history
+  description: 'Staging view over the envio_ga indexer''s `cashback_status_history` source: one row per cashback-NFT status-transition
+    event (grain = event `id`). Purpose: expose the status lifecycle of the Gnosis Pay cashback NFT-mint program (launched
+    2026-02) — the FK-linked transition log for `stg_envio_ga__cashbacks` — so downstream can see when a mint was recorded
+    active vs. later reverted. This is the NFT-mint cashback family and is a SEPARATE lineage from the gCRC-transfer `gpay_cashback_*`
+    models; never treat as a drop-in or share a time axis. Key logic: dedup is done ONLY via the `envio_latest` macro, which
+    emits one row per `id` taking `argMax(col, _synced_block)` for each carried column (`cashback_id`, `status`, `timestamp`)
+    and applies the order-independent tombstone guard `HAVING max(_deleted)=0` to drop any id ever soft-deleted (never uses
+    FINAL, never `insert_version` — that column does not exist in envio_ga; `_synced_block` is the only valid version key).
+    No Int256/money reinterpret is performed here — `status` is a small integer enum and `timestamp` is unix-seconds cast
+    to DateTime; the only transform beyond dedup is `toDateTime(timestamp) AS status_at`. Gotchas: (1) `id` is an OPAQUE COMPOSITE
+    key of the form `{cashback_id}-{unix_timestamp}` (e.g. `916-1781867865`), NOT an address and NOT the cashback id — do
+    not parse or join it as either. (2) Grain is the event, not the cashback: most cashbacks have exactly one event, but a
+    mint that is later reverted produces a second row (validated: 918 events over 916 distinct cashback_id — the 2 status=0
+    reverts are the extra rows), so this table can be many-to-one against `stg_envio_ga__cashbacks` and must be windowed (latest-by-status_at)
+    if you need current status per cashback. (3) The tombstone guard is armed but currently no rows are deleted. (4) INTERNAL-only
+    (privacy_tier=internal, excluded from MCP/API); the built view is blocked from ad-hoc query — reason about it from the
+    raw source. (5) Currently no downstream model consumes this view.'
+  columns:
+  - name: id
+    description: Event grain and unique key (one row per status-transition event). OPAQUE COMPOSITE STRING of the form `{cashback_id}-{unix_timestamp}`
+      (e.g. `916-1781867865`) minted by the indexer — it is NOT an address and NOT equal to cashback_id, so never parse, split,
+      or join it as either. Passed through from the source `id`; envio_latest groups on it and never merges distinct transition
+      ids.
+    tests:
+    - not_null
+    - unique
+  - name: cashback_id
+    description: 'Foreign key to the cashback NFT mint this event belongs to — a numeric STRING ordinal (mint sequence number,
+      e.g. ''916'') that equals `stg_envio_ga__cashbacks.id`. Carried as the live value via argMax(cashback_id, _synced_block).
+      Not unique here: a cashback with a later revert appears on 2 rows (join is many-to-one against stg_envio_ga__cashbacks).'
+  - name: status
+    description: 'Integer status enum recorded by this transition event (live value via argMax(status, _synced_block)). Value
+      set: 1 = minted / active (the overwhelming majority; 916 of 918 rows) and 0 = reverted / inactive (2 rows). Same 1=minted/0=reverted
+      convention as stg_envio_ga__cashbacks.status; NOT a boolean and NOT the CoW swap status enum. Because a cashback can
+      have multiple events, the CURRENT status of a cashback is the status of its latest-by-status_at row, not any single
+      row here.'
+  - name: status_at
+    description: Timestamp of the status transition, as ClickHouse DateTime (UTC). Derived `toDateTime(timestamp)` where the
+      source `timestamp` is a unix-EPOCH-SECONDS integer (live value via argMax(timestamp, _synced_block)); NOT milliseconds,
+      NOT a block number. This is also the value embedded as the second segment of the composite `id`. Use max(status_at)
+      per cashback_id to pick the current status; program history begins ~2026-02 (launch).
+- name: stg_envio_ga__coordinator_states
+  description: 'Current-state (grain = one row per coordinator address) view of Circles auto-topup coordinators, sourced from
+    the envio_ga indexer entity table `coordinator_state`. Purpose: expose the live per-coordinator config (owner, recipient,
+    recipient token, active flag, threshold) as the point-in-time snapshot, distinct from the append-only `auto_topup` CONFIG
+    event ledger. KEY LOGIC: dedup is delegated to the `envio_latest` macro, which for each `id` takes the latest live value
+    of each carried column via `argMax(col, _synced_block)` (NEVER `FINAL`; `_synced_block` is the only correct version key
+    since envio_ga lacks `insert_version` and `_seen_version` is a per-table constant) and applies the ORDER-INDEPENDENT tombstone
+    guard `HAVING max(_deleted) = 0`, dropping any coordinator that was tombstoned at ANY block. All address-like columns
+    (`id`/`owner`/`recipient`/`recipient_token`) are lowercased for join-safety. `threshold` is a native big-endian Int256
+    balance in atoms and is cast via `toFloat64(threshold)` — a lossless numeric widening (NOT a hex/money reinterpret), so
+    the value stays in atoms and is NOT scaled to decimal token units. GOTCHAS: (1) coordinator/owner is 1:1 (one owner per
+    coordinator) — this is a config entity, not a transfer/event stream, so there is no from/to direction and no per-event
+    history here (use the `auto_topup` ledger for the event trail). (2) `threshold_atoms` is Float64 atoms — apply the recipient
+    token''s decimals (e.g. /1e18) downstream to get human units, and beware Float64 precision loss for extreme Int256 magnitudes.
+    (3) internal-only model: materialized as a view, tagged `internal_only`/`privacy:tier_internal`, excluded from MCP and
+    the API (`expose_to_mcp=false`, `api.exclude_from_api=true`).'
+  columns:
+  - name: coordinator_address
+    description: The coordinator's on-chain contract/entity address; derived as lower(id) where `id` is the dedup grain of
+      the envio_ga `coordinator_state` entity (one row per coordinator). Lowercased hex string. This is the primary key of
+      the model (1:1 with owner).
+    tests:
+    - not_null
+    - unique
+  - name: owner
+    description: The address that owns/controls this auto-topup coordinator; latest live value via argMax(owner, _synced_block),
+      then lower(). Lowercased hex string. 1:1 with coordinator_address (one owner per coordinator).
+  - name: recipient
+    description: The address configured to RECEIVE the auto-topup transfer for this coordinator; latest live value via argMax(recipient,
+      _synced_block), then lower(). Lowercased hex string. This is the destination/beneficiary side of the topup config, not
+      the payer.
+  - name: recipient_token
+    description: The ERC-20 token address in which the auto-topup is denominated / delivered to the recipient; latest live
+      value via argMax(recipient_token, _synced_block), then lower(). Lowercased hex string. Its decimals govern the unit
+      conversion of threshold_atoms.
+  - name: is_active
+    description: 'Whether the coordinator is currently enabled/active per its latest config; carried unchanged from the source
+      via argMax(is_active, _synced_block). Boolean: true = coordinator active (auto-topup armed), false = deactivated. Reflects
+      only the latest live state (tombstoned coordinators are excluded upstream by max(_deleted)=0), so this is an active-vs-paused
+      flag, not a deleted flag.'
+  - name: threshold_atoms
+    description: 'The auto-topup trigger/target threshold amount, in ATOMS (raw base units, NOT decimal-scaled token units).
+      Derived as toFloat64(threshold) where `threshold` is the latest live value via argMax(threshold, _synced_block) of a
+      native big-endian Int256 balance — the toFloat64 cast is a lossless numeric widening, not a hex/money reinterpret. To
+      get human-readable units, divide by 10^decimals of recipient_token (typically 1e18). Float64 type: may lose precision
+      for very large Int256 magnitudes.'

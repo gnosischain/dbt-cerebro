@@ -1,0 +1,271 @@
+version: 2
+models:
+- name: fct_execution_gnosis_app_gt_swaps_by_pair
+  description: 'FILLED swaps by app_scope x token pair. gnosis_app = CURRENT Gnosis App,
+
+    metri = LEGACY Gnosis App (both roll up to Gnosis App); filter ''gnosis_app''
+
+    for the current app only. Token addresses only; no USD (no envio_ga price
+
+    feed) and no daily grain (no fill timestamp) — point-in-time.
+
+    GT-feasible cross-check: the pair SHAPE reconciles with the heuristic by_pair
+
+    mart (populations differ by the bundler gate — do NOT reconcile raw counts 1:1).
+
+    '
+  columns:
+  - name: app_scope
+    description: gnosis_app | metri | third_party | unknown | test.
+  - name: sell_token
+    description: Sold token contract address (lowercase).
+  - name: buy_token
+    description: Bought token contract address (lowercase).
+  - name: n_filled_swaps
+    description: Filled native orders for this pair.
+  - name: n_swappers
+    description: Distinct native owners who filled this pair.
+  - name: sell_volume_atoms
+    description: Sum of sell-side amounts in token atoms (NOT USD — no price feed in envio_ga).
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - app_scope
+      - sell_token
+      - buy_token
+- name: fct_execution_gnosis_app_gt_swaps_summary
+  description: Swap counts by app_scope x real CoW status enum. app_scope separates the Gnosis App VERSIONS sharing the Circles
+    indexer — gnosis_app = current app.gnosis.io, metri = legacy app.metri.xyz. Both roll up to Gnosis App (sum for all-time
+    Gnosis App; filter 'gnosis_app' for the current app only).
+  columns:
+  - name: app_scope
+    description: gnosis_app (current Gnosis App) | metri (legacy Gnosis App) | third_party | unknown | test.
+    tests:
+    - accepted_values:
+        values:
+        - gnosis_app
+        - metri
+        - third_party
+        - unknown
+        - test
+        config:
+          severity: warn
+  - name: status
+    description: CoW order status enum (Filled/Expired/NONE/Open/PayTopUp/...).
+    tests:
+    - accepted_values:
+        values:
+        - Filled
+        - Expired
+        - NONE
+        - Open
+        - PayTopUp
+        config:
+          severity: warn
+  - name: n_swaps
+    description: Order count in this (scope, status) cell.
+  - name: n_swappers
+    description: Distinct owners in this cell.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - app_scope
+      - status
+- name: fct_execution_gnosis_app_gt_cashback_nft
+  description: 'Gnosis Pay cashback NFT-mint program — daily mint series x status. A SEPARATE
+
+    family from gpay_cashback_* (gCRC transfers) on a disjoint time axis: no USD
+
+    value column, no shared axis, no pct_delta vs the heuristic.
+
+    '
+  columns:
+  - name: mint_date
+    description: Calendar date of the mint (from minted_at).
+  - name: status
+    description: Cashback NFT status (1 = minted, 0 = reverted).
+    tests:
+    - accepted_values:
+        values:
+        - 0
+        - 1
+        config:
+          severity: warn
+  - name: n_mints
+    description: Mints on this date with this status.
+  - name: n_owners
+    description: Distinct owners.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - mint_date
+      - status
+- name: fct_execution_gnosis_app_gt_referrals
+  description: 'Two DISTINCT referral metrics side by side: `earned` (GA-native paid-reward
+
+    ledger) and `full_invite_graph` (every accepted invite, a ~2.2x superset with
+
+    a heuristic twin int_execution_circles_v2_inviter_canonical). reward_usd is
+
+    permanently NULL (CRC has no price feed). Never reconcile `earned` against
+
+    circles_v2 inviter_fee.
+
+    '
+  columns:
+  - name: metric_scope
+    description: earned | full_invite_graph.
+    tests:
+    - accepted_values:
+        values:
+        - earned
+        - full_invite_graph
+    - not_null
+    - unique
+  - name: n_inviters
+    description: Distinct inviters in this scope.
+  - name: n_invitees
+    description: Distinct invitees in this scope.
+  - name: n_edges
+    description: Invite edges in this scope.
+  - name: total_reward_crc
+    description: Sum of native CRC rewards (earned scope only; NULL for full graph).
+  - name: total_reward_usd
+    description: Permanently NULL — CRC has no USD price feed in envio_ga (validated:false).
+- name: fct_execution_gnosis_app_gt_investments
+  description: Metri auto-invest accounts by active flag (GT-only; no Gnosis Pay analogue). Owner-keyed.
+  columns:
+  - name: is_active
+    description: Whether the investment account is active.
+    tests:
+    - not_null
+    - unique
+  - name: n_accounts
+    description: Accounts with this flag.
+  - name: n_owners
+    description: Distinct owners.
+  - name: n_tokens
+    description: Distinct investment tokens.
+  - name: product
+    description: Constant 'metri' — marks these as Metri (legacy Gnosis App) auto-invest accounts; a version marker, NOT 'not
+      Gnosis App'.
+- name: fct_execution_gnosis_app_gt_user_identities_public
+  description: PUBLIC identity boundary — pseudonym-only registry attributes. Join surface to mixpanel/gpay/circles (shared
+    CEREBRO_PII_SALT). No raw address.
+  columns:
+  - name: user_pseudonym
+    description: sipHash64 pseudonym of the registered address.
+    tests:
+    - not_null
+    - unique
+  - name: user_segment
+    description: Circles avatar segment (or registry_only_no_avatar).
+  - name: has_circles_avatar
+    description: 1 iff the identity has a live avatar.
+  - name: has_profile
+    description: 1 iff the identity has a profile.
+  - name: has_lifetime_cashback
+    description: 1 iff lifetime_cashback_atoms > 0.
+  - name: is_engaged
+    description: 1 iff the identity is the CANONICAL engaged/active user (is_registered_active from the activity model, ~26.6k).
+  - name: is_heuristic_active
+    description: 1 iff the identity is in the heuristic active-user set (int_execution_gnosis_app_users_current).
+  - name: has_ga_signal
+    description: 1 iff a CURRENT-Gnosis-App signal is present (heuristic-active OR swapped app.gnosis.io OR cashback OR lifetime
+      cashback).
+  - name: has_metri_signal
+    description: 1 iff a Metri (legacy) signal is present (swapped app.metri.xyz OR Metri auto-invest).
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - user_pseudonym
+- name: api_execution_gnosis_app_gt_user_reconciliation
+  description: Public reconciliation snapshot — registered (GT registry) vs active (heuristic) containment.
+  columns:
+  - name: heuristic_users
+    description: Distinct heuristic active-user addresses.
+    data_type: UInt64
+  - name: gt_registry_users
+    description: GT registry (gnosis_app_user) count.
+    data_type: UInt64
+  - name: gt_avatar_users
+    description: GT avatar (active spine) count.
+    data_type: UInt64
+  - name: heuristic_in_registry
+    description: Heuristic users present in the GT registry.
+    data_type: UInt64
+  - name: heuristic_in_avatar
+    description: Heuristic users present in the GT avatar spine.
+    data_type: UInt64
+  - name: heuristic_only_vs_registry
+    description: Heuristic users absent from the GT registry.
+    data_type: UInt64
+  - name: registry_containment
+    description: heuristic_in_registry / heuristic_users (cutover gate >= 0.90).
+    data_type: Float64
+  - name: avatar_containment
+    description: heuristic_in_avatar / heuristic_users (expected ~1.0).
+    data_type: Float64
+  - name: as_of_date
+    description: Snapshot date (query/build date).
+    data_type: Date
+  - name: gt_registered_active
+    description: Canonical GT active users (registry + any app-tagged action).
+    data_type: UInt64
+  - name: gt_registered_active_incl_circles
+    description: Broad variant incl. generic Circles actions + referrals (sizing only).
+    data_type: UInt64
+  - name: gt_active_in_heuristic
+    description: Registered-active identities also in the heuristic active set.
+    data_type: UInt64
+  - name: gt_active_missed_by_heuristic
+    description: Registered-active identities the current-app heuristic misses (legacy/Metri/non-current).
+    data_type: UInt64
+  - name: gt_active_legacy_only
+    description: Registered-active identities with only legacy (Metri) signals, no current-app signal.
+    data_type: UInt64
+  - name: active_vs_heuristic_ratio
+    description: gt_registered_active / heuristic_users.
+    data_type: Float64
+- name: api_execution_gnosis_app_gt_swaps
+  description: Public swap counts by scope x CoW status enum.
+  columns:
+  - name: app_scope
+    description: native | all_cow.
+    data_type: String
+  - name: status
+    description: CoW order status enum.
+    data_type: String
+  - name: n_swaps
+    description: Order count.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct owners.
+    data_type: UInt64
+  - name: as_of_date
+    description: Snapshot date (query/build date).
+    data_type: Date
+- name: api_execution_gnosis_app_gt_referrals
+  description: Public referral metrics — earned ledger vs full invite graph.
+  columns:
+  - name: metric_scope
+    description: earned | full_invite_graph.
+    data_type: String
+  - name: n_inviters
+    description: Distinct inviters.
+    data_type: UInt64
+  - name: n_invitees
+    description: Distinct invitees.
+    data_type: UInt64
+  - name: n_edges
+    description: Invite edges.
+    data_type: UInt64
+  - name: total_reward_crc
+    description: Native CRC rewards (earned scope only).
+    data_type: Nullable(Float64)
+  - name: total_reward_usd
+    description: Permanently NULL (no CRC price feed).
+    data_type: Nullable(Float64)
+  - name: as_of_date
+    description: Snapshot date (query/build date).
+    data_type: Date
