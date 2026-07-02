@@ -10,9 +10,13 @@ models:
   - name: month_date
     description: Month start date for the carbon intensity measurement or estimate.
     data_type: Date
+    tests:
+    - not_null
   - name: country_code
     description: ISO 3-letter country code or 'WORLD' for global average.
     data_type: String
+    tests:
+    - not_null
   - name: carbon_intensity_mean
     description: Point estimate of carbon intensity in gCO2/kWh, seasonally adjusted.
     data_type: Float64
@@ -22,6 +26,11 @@ models:
   - name: is_estimated
     description: True if the value is forward-filled from the last known Ember data rather than a real measurement.
     data_type: Bool
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - country_code
+      - month_date
 
 - name: int_quarterly_esg_carbon_footprint_with_fallback
   description: >
@@ -33,6 +42,11 @@ models:
   - name: date
     description: Observation date for the carbon footprint data point.
     data_type: Date
+    tests:
+    - not_null
+    - unique:
+        config:
+          severity: warn
   - name: annual_co2_tonnes_projected
     description: Annualised CO2 emissions in tonnes, projected from the daily value (daily × 365 / 1000).
     data_type: Float64

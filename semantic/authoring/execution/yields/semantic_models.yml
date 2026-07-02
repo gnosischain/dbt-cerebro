@@ -378,16 +378,13 @@ semantic_models:
   - name: address
     type: categorical
     expr: address
-  - name: yield_label
-    type: categorical
-    expr: yield_label
   - name: protocol
     type: categorical
     expr: protocol
   measures:
   - name: yield_pct_value
     agg: average
-    expr: yield_pct
+    expr: yield_apy
   - name: borrow_apy_value
     agg: average
     expr: borrow_apy
@@ -403,9 +400,6 @@ semantic_models:
   - name: fees_7d_value
     agg: sum
     expr: fees_7d
-  - name: fct_execution_yields_opportunities_latest__lvr_apr_7d_value
-    agg: sum
-    expr: lvr_apr_7d
   - name: fct_execution_yields_opportunities_latest__net_apr_7d_value
     agg: sum
     expr: net_apr_7d
@@ -843,18 +837,11 @@ semantic_models:
   - name: token
     type: categorical
     expr: token
-  measures:
-  - name: mints_value
-    agg: sum
-    expr: mints
-  - name: burns_value
-    agg: sum
-    expr: burns
   config:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: approved
+        quality_tier: candidate
         question_synonyms:
         - execution yields pools lp activity daily
         - pool lp activity
@@ -1243,12 +1230,6 @@ semantic_models:
   - name: yields_sdai_apy_value
     agg: average
     expr: apy
-  - name: yields_sdai_apy_7dma_value
-    agg: average
-    expr: apy_7DMA
-  - name: yields_sdai_apy_30dma_value
-    agg: average
-    expr: apy_30DMA
   config:
     meta:
       cerebro:
@@ -1912,54 +1893,6 @@ metrics:
         - sdai yield
         - sdai rate
         - gnosis savings rate
-- name: yields_sdai_apy_7dma
-  label: sDAI APY (7-Day Moving Average)
-  description: 7-day moving average of sDAI APY. Less noisy than the raw daily rate; useful for trend visualisation. Read
-    this as an average over the grain; do NOT sum it across rows or periods.
-  type: simple
-  type_params:
-    measure: yields_sdai_apy_7dma_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        grain: day
-        owner: analytics_team
-        allowed_dimensions:
-        - date
-        - label
-        supported_time_grains:
-        - day
-        - week
-        - month
-        question_synonyms:
-        - sdai apy 7 day
-        - sdai apy smoothed
-        - sdai weekly average
-- name: yields_sdai_apy_30dma
-  label: sDAI APY (30-Day Moving Average)
-  description: 30-day moving average of sDAI APY. Strong smoothing for quarterly-trend charts. Read this as an average over
-    the grain; do NOT sum it across rows or periods.
-  type: simple
-  type_params:
-    measure: yields_sdai_apy_30dma_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        grain: day
-        owner: analytics_team
-        allowed_dimensions:
-        - date
-        - label
-        supported_time_grains:
-        - day
-        - week
-        - month
-        question_synonyms:
-        - sdai apy 30 day
-        - sdai apy monthly average
-        - sdai apy 30 day moving average
 - name: execution_lending_aave_balance_cohorts_daily__holders_in_bucket_value
   label: Aave Balance Cohorts - Holders in Bucket
   description: execution lending aave balance cohorts daily - holders in bucket (sum).
@@ -2536,7 +2469,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity apy
@@ -2560,7 +2492,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity borrow apy
@@ -2582,7 +2513,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity tvl
@@ -2605,7 +2535,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity supplied
@@ -2628,7 +2557,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity borrowed
@@ -2651,36 +2579,12 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity fees 7d
         - 7 day fees per venue
         - fees earned yield venue
         - weekly yield fees
-- name: fct_execution_yields_opportunities_latest__lvr_apr_7d_value
-  label: Yield Opportunity LVR APR (7d)
-  description: execution yields opportunities latest - lvr apr 7d (sum). Read this as an average over the grain; do NOT sum
-    it across rows or periods.
-  type: simple
-  type_params:
-    measure: fct_execution_yields_opportunities_latest__lvr_apr_7d_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        allowed_dimensions:
-        - type
-        - token
-        - name
-        - address
-        - yield_label
-        - protocol
-        question_synonyms:
-        - yield opportunity lvr apr
-        - loss versus rebalancing apr
-        - lvr apr per venue
 - name: fct_execution_yields_opportunities_latest__net_apr_7d_value
   label: Yield Opportunity Net APR (7d)
   description: execution yields opportunities latest - net apr 7d (sum). Read this as an average over the grain; do NOT sum
@@ -2698,7 +2602,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity net apr
@@ -2722,7 +2625,6 @@ metrics:
         - token
         - name
         - address
-        - yield_label
         - protocol
         question_synonyms:
         - yield opportunity utilization
@@ -3278,58 +3180,6 @@ metrics:
         - pool token1 price usd
         - lp swap token1 price
         - impermanent loss token1 price
-- name: mints_value
-  label: Pool LP Mints (Daily)
-  description: execution pools lp activity daily - mints (sum).
-  type: simple
-  type_params:
-    measure: mints_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - token
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - pool lp mints
-        - liquidity provision mints
-        - lp position mints
-        - pool add liquidity events
-- name: burns_value
-  label: Pool LP Burns (Daily)
-  description: execution pools lp activity daily - burns (sum).
-  type: simple
-  type_params:
-    measure: burns_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - token
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - pool lp burns
-        - liquidity removal burns
-        - lp position burns
-        - pool remove liquidity events
 - name: execution_pools_lps_count_7d__value_value
   label: Pool LPs Count (7d)
   description: execution pools lps count 7d - value (sum).
