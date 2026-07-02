@@ -1310,106 +1310,529 @@ models:
 
 - name: api_execution_gnosis_app_users_daily
   description: "FastAPI view over fct_execution_gnosis_app_users_daily. Params: start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was on this date.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this date.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity on this date.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this date and also active in the immediately prior period.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this date after a dormancy gap, having been active earlier.
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_users_weekly
   description: "FastAPI view over fct_execution_gnosis_app_users_weekly. Params: start_date, end_date."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this week.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this week.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this week.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this week and also active in the immediately prior week.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this week after a dormancy gap, having been active earlier.
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_users_monthly
   description: "FastAPI view over fct_execution_gnosis_app_users_monthly. Params: start_month, end_month."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this month.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this month.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this month.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this month and also active in the immediately prior month.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this month after a dormancy gap, having been active earlier.
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_retention_monthly
   description: "FastAPI view over fct_execution_gnosis_app_retention_monthly. Params: start_month, end_month."
+  columns:
+  - name: x
+    description: Activity month as a string (toString(activity_month)); x-axis of the retention grid.
+    data_type: String
+  - name: y
+    description: Onboard cohort month as a string (toString(cohort_month)); y-axis of the retention grid.
+    data_type: String
+  - name: retention_pct
+    description: Share of the onboard cohort active in activity_month (users / initial_users x 100).
+    data_type: Float64
+  - name: value_abs
+    description: Distinct cohort users active in this cell (renamed from users).
+    data_type: UInt64
+  - name: amount_retention_pct
+    description: Activity USD as a share of the cohort's earliest activity-month USD (x100).
+    data_type: Nullable(Float64)
+  - name: value_usd
+    description: USD amount transacted by the cohort in activity_month (renamed from amount_usd).
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_retention_by_action_monthly
   description: "FastAPI view over fct_execution_gnosis_app_retention_by_action_monthly. Params: activity_kind, start_month, end_month."
+  columns:
+  - name: x
+    description: Activity month as a string (toString(activity_month)); x-axis of the retention grid.
+    data_type: String
+  - name: y
+    description: Onboard cohort month as a string (toString(cohort_month)); y-axis of the retention grid.
+    data_type: String
+  - name: activity_kind
+    description: Type of activity the retention is sliced on (swap_filled / swap_signed / topup / marketplace_buy / token_offer_claim / circles_* / ...).
+    data_type: String
+  - name: retention_pct
+    description: Share of the onboard cohort doing this action in activity_month (users / initial_users x 100).
+    data_type: Float64
+  - name: value_abs
+    description: Distinct cohort users doing this activity_kind in activity_month (renamed from users).
+    data_type: UInt64
+  - name: initial_users
+    description: Onboard-cohort size = distinct users onboarded in cohort_month (retention denominator).
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_churn_monthly
   description: "FastAPI view over fct_execution_gnosis_app_churn_monthly. Params: scope, start_month, end_month."
+  columns:
+  - name: scope
+    description: Metric scope label ('Any' or 'Swap').
+    data_type: String
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this month.
+    data_type: UInt64
+  - name: retained_users
+    description: Active in this month and the previous month.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this month and also active in the immediately prior period.
+    data_type: UInt64
+  - name: churned_users
+    description: Active this month but not the next.
+    data_type: UInt64
+  - name: total_active
+    description: Total distinct active users in the month.
+    data_type: UInt64
+  - name: churn_rate
+    description: Share of users churned into the next month (percent).
+    data_type: Float64
+  - name: retention_rate
+    description: Share of users retained into the next month (percent).
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swaps_weekly
   description: "FastAPI view over fct_execution_gnosis_app_swaps_weekly."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: n_swaps
+    description: Number of swap orders.
+    data_type: UInt64
+  - name: n_swaps_filled
+    description: Number of swap orders that filled.
+    data_type: UInt64
+  - name: n_swaps_unfilled
+    description: Number of swap orders that did not fill.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct addresses that swapped.
+    data_type: UInt64
+  - name: n_orders
+    description: Number of distinct orders.
+    data_type: UInt64
+  - name: volume_usd_filled
+    description: USD volume of filled swaps.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swaps_monthly
   description: "FastAPI view over fct_execution_gnosis_app_swaps_monthly."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: n_swaps
+    description: Number of swap orders.
+    data_type: UInt64
+  - name: n_swaps_filled
+    description: Number of swap orders that filled.
+    data_type: UInt64
+  - name: n_swaps_unfilled
+    description: Number of swap orders that did not fill.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct addresses that swapped.
+    data_type: UInt64
+  - name: n_orders
+    description: Number of distinct orders.
+    data_type: UInt64
+  - name: volume_usd_filled
+    description: USD volume of filled swaps.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swaps_by_pair_daily
   description: "FastAPI view over fct_execution_gnosis_app_swaps_by_pair_daily. Params: pair, start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: pair
+    description: Token pair label (sold -> bought).
+    data_type: String
+  - name: token_sold_symbol
+    description: Symbol of the token sold.
+    data_type: Nullable(String)
+  - name: token_bought_symbol
+    description: Symbol of the token bought.
+    data_type: Nullable(String)
+  - name: n_swaps
+    description: Number of swap orders.
+    data_type: UInt64
+  - name: n_swaps_filled
+    description: Number of swap orders that filled.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct addresses that swapped.
+    data_type: UInt64
+  - name: volume_usd_filled
+    description: USD volume of filled swaps.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swaps_by_solver_daily
   description: "FastAPI view over fct_execution_gnosis_app_swaps_by_solver_daily. Params: solver, start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: solver
+    description: CoW solver that settled the trade.
+    data_type: String
+  - name: n_swaps_filled
+    description: Number of swap orders that filled.
+    data_type: UInt64
+  - name: n_swappers
+    description: Distinct addresses that swapped.
+    data_type: UInt64
+  - name: volume_usd_filled
+    description: USD volume of filled swaps.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_gpay_topups_weekly
   description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_weekly."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: n_topups
+    description: Number of in-app top-up events.
+    data_type: UInt64
+  - name: n_ga_users
+    description: Distinct Gnosis App users.
+    data_type: UInt64
+  - name: n_gp_wallets
+    description: Distinct Gnosis Pay wallets.
+    data_type: UInt64
+  - name: volume_usd
+    description: USD volume.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_gpay_topups_monthly
   description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_monthly."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: n_topups
+    description: Number of in-app top-up events.
+    data_type: UInt64
+  - name: n_ga_users
+    description: Distinct Gnosis App users.
+    data_type: UInt64
+  - name: n_gp_wallets
+    description: Distinct Gnosis Pay wallets.
+    data_type: UInt64
+  - name: volume_usd
+    description: USD volume.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_gpay_topups_cohort_monthly
   description: "FastAPI view over fct_execution_gnosis_app_gpay_topups_cohort_monthly. Params: start_month, end_month."
+  columns:
+  - name: x
+    description: Activity month as a string (toString(activity_month)); x-axis of the retention grid.
+    data_type: String
+  - name: y
+    description: First-top-up cohort month as a string (toString(cohort_month)); y-axis of the retention grid.
+    data_type: String
+  - name: retention_pct
+    description: Share of the first-top-up cohort still topping up in activity_month (users / initial_users x 100).
+    data_type: Float64
+  - name: value_abs
+    description: Distinct cohort users who topped up in this cell (renamed from users).
+    data_type: UInt64
+  - name: amount_retention_pct
+    description: Retained USD amount as a share of the cohort's initial amount (x100).
+    data_type: Nullable(Float64)
+  - name: value_usd
+    description: USD amount (renamed from amount_usd).
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claims_daily
   description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_daily. Params: start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: n_claims
+    description: Number of token-offer claims.
+    data_type: UInt64
+  - name: n_claimers
+    description: Distinct addresses that claimed.
+    data_type: UInt64
+  - name: n_offers
+    description: Distinct token offers.
+    data_type: UInt64
+  - name: volume_received_token
+    description: Token amount received by claimers (native units), rounded to 6 decimals.
+    data_type: Float64
+  - name: volume_received_usd
+    description: USD value received by claimers, rounded to 2 decimals.
+    data_type: Float64
+  - name: volume_spent_crc
+    description: CRC spent by claimers, rounded to 2 decimals.
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claims_weekly
   description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_weekly. Params: start_date, end_date."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: n_claims
+    description: Number of token-offer claims.
+    data_type: UInt64
+  - name: n_claimers
+    description: Distinct addresses that claimed.
+    data_type: UInt64
+  - name: n_offers
+    description: Distinct token offers.
+    data_type: UInt64
+  - name: volume_received_token
+    description: Token amount received by claimers (native units), rounded to 6 decimals.
+    data_type: Float64
+  - name: volume_received_usd
+    description: USD value received by claimers, rounded to 2 decimals.
+    data_type: Float64
+  - name: volume_spent_crc
+    description: CRC spent by claimers, rounded to 2 decimals.
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claims_monthly
   description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_monthly. Params: start_date, end_date."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: n_claims
+    description: Number of token-offer claims.
+    data_type: UInt64
+  - name: n_claimers
+    description: Distinct addresses that claimed.
+    data_type: UInt64
+  - name: n_offers
+    description: Distinct token offers.
+    data_type: UInt64
+  - name: volume_received_token
+    description: Token amount received by claimers (native units), rounded to 6 decimals.
+    data_type: Float64
+  - name: volume_received_usd
+    description: USD value received by claimers, rounded to 2 decimals.
+    data_type: Float64
+  - name: volume_spent_crc
+    description: CRC spent by claimers, rounded to 2 decimals.
+    data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claims_by_offer_daily
   description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_by_offer_daily. Params: offer_address, cycle_address, offer_token_symbol, start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: offer_address
+    description: Address of the token offer (nextOffer).
+    data_type: String
+  - name: cycle_address
+    description: Address of the offer cycle, if any.
+    data_type: Nullable(String)
+  - name: offer_token_symbol
+    description: Symbol of the token sold by the offer.
+    data_type: Nullable(String)
+  - name: n_claims
+    description: Number of token-offer claims.
+    data_type: UInt64
+  - name: n_claimers
+    description: Distinct addresses that claimed.
+    data_type: UInt64
+  - name: volume_received_token
+    description: Token amount received by claimers (native units), rounded to 6 decimals.
+    data_type: Float64
+  - name: volume_received_usd
+    description: USD value received by claimers, rounded to 2 decimals.
+    data_type: Float64
+  - name: volume_spent_crc
+    description: CRC spent by claimers, rounded to 2 decimals.
+    data_type: Float64
+  - name: offer_price_in_crc
+    description: Offer sticker price in CRC at creation time, rounded to 6 decimals.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claims_cohort_monthly
   description: "FastAPI view over fct_execution_gnosis_app_token_offer_claims_cohort_monthly. Params: start_month, end_month."
+  columns:
+  - name: x
+    description: Activity month as a string (toString(activity_month)); x-axis of the retention grid.
+    data_type: String
+  - name: y
+    description: First-claim cohort month as a string (toString(cohort_month)); y-axis of the retention grid.
+    data_type: String
+  - name: retention_pct
+    description: Share of the first-claim cohort still claiming in activity_month (users / initial_users x 100).
+    data_type: Float64
+  - name: value_abs
+    description: Distinct cohort users in this cell (renamed from users).
+    data_type: UInt64
+  - name: amount_retention_pct
+    description: Retained USD amount as a share of the cohort's initial amount (x100).
+    data_type: Nullable(Float64)
+  - name: value_usd
+    description: USD amount (renamed from amount_usd).
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_activity_by_action_daily
   description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_daily. Params: activity_kind, start_date, end_date."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: activity_kind
+    description: Type of activity (swap_filled / topup / marketplace_buy / circles_* / ...).
+    data_type: String
+  - name: n_events
+    description: Number of events.
+    data_type: UInt64
+  - name: n_users
+    description: Distinct users.
+    data_type: UInt64
+  - name: amount_usd
+    description: USD amount.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_activity_by_action_weekly
   description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_weekly."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: activity_kind
+    description: Type of activity (swap_filled / topup / marketplace_buy / circles_* / ...).
+    data_type: String
+  - name: n_events
+    description: Number of events.
+    data_type: UInt64
+  - name: n_users
+    description: Distinct users.
+    data_type: UInt64
+  - name: amount_usd
+    description: USD amount.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_activity_by_action_monthly
   description: "FastAPI view over fct_execution_gnosis_app_activity_by_action_monthly."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: activity_kind
+    description: Type of activity (swap_filled / topup / marketplace_buy / circles_* / ...).
+    data_type: String
+  - name: n_events
+    description: Number of events.
+    data_type: UInt64
+  - name: n_users
+    description: Distinct users.
+    data_type: UInt64
+  - name: amount_usd
+    description: USD amount.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
@@ -2343,6 +2766,16 @@ models:
     authoritative: false
 - name: api_execution_gnosis_app_weekly_economically_active_users
   description: "Time-series view over fct_execution_gnosis_app_weekly_economically_active_users (latest week excluded)."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC). Time-series grain.
+    data_type: Date
+  - name: is_blacklisted
+    description: True if the address appears in the circles blacklist snapshot.
+    data_type: Bool
+  - name: cnt
+    description: Distinct economically active addresses in this week × blacklist bucket.
+    data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
@@ -2367,16 +2800,76 @@ models:
 
 - name: api_execution_gnosis_app_swap_fees_daily
   description: "Daily CoW protocol fee revenue from GA swaps (filled trades, pro-rated to USD)."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: n_filled_swaps
+    description: Number of filled swaps on this date.
+    data_type: UInt64
+  - name: n_distinct_takers
+    description: Distinct taker (GA user) addresses with a filled swap on this date.
+    data_type: UInt64
+  - name: volume_usd
+    description: Filled-swap USD volume on this date.
+    data_type: Nullable(Float64)
+  - name: fee_native_total
+    description: Sum of fee_amount in sold-token native units.
+    data_type: Nullable(Float64)
+  - name: fee_usd_total
+    description: Pro-rated fee in USD.
+    data_type: Nullable(Float64)
+  - name: fee_pct_of_volume
+    description: fee_usd_total / volume_usd × 100.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swap_fees_weekly
   description: "Weekly rollup of swap_fees_daily."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC).
+    data_type: Date
+  - name: n_filled_swaps
+    description: Number of filled swaps in this week.
+    data_type: UInt64
+  - name: volume_usd
+    description: Filled-swap USD volume in this week.
+    data_type: Nullable(Float64)
+  - name: fee_native_total
+    description: Sum of fee_amount in sold-token native units.
+    data_type: Nullable(Float64)
+  - name: fee_usd_total
+    description: Pro-rated fee in USD.
+    data_type: Nullable(Float64)
+  - name: fee_pct_of_volume
+    description: fee_usd_total / volume_usd × 100.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
 - name: api_execution_gnosis_app_swap_fees_monthly
   description: "Monthly rollup of swap_fees_daily."
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: n_filled_swaps
+    description: Number of filled swaps in this month.
+    data_type: UInt64
+  - name: volume_usd
+    description: Filled-swap USD volume in this month.
+    data_type: Nullable(Float64)
+  - name: fee_native_total
+    description: Sum of fee_amount in sold-token native units.
+    data_type: Nullable(Float64)
+  - name: fee_usd_total
+    description: Pro-rated fee in USD.
+    data_type: Nullable(Float64)
+  - name: fee_pct_of_volume
+    description: fee_usd_total / volume_usd × 100.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
@@ -2445,6 +2938,28 @@ models:
     authoritative: false
 - name: api_execution_gnosis_app_token_offer_claim_funnel_daily
   description: "Daily per-offer token-offer claim conversion (claims, claimers, USD received, claim_rate_pct)."
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: offer_address
+    description: Address of the token offer (nextOffer).
+    data_type: String
+  - name: n_claims
+    description: Number of token-offer claims on this date/offer.
+    data_type: UInt64
+  - name: n_claimers
+    description: Distinct addresses that claimed.
+    data_type: UInt64
+  - name: amount_received_usd
+    description: USD value of offer tokens received by claimers.
+    data_type: Float64
+  - name: n_active_pool_30d
+    description: Rolling 30-day active GA users (proxy eligible pool / funnel denominator).
+    data_type: UInt64
+  - name: claim_rate_pct
+    description: n_claimers / n_active_pool_30d × 100 (NULL when the pool is empty).
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
