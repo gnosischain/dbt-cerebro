@@ -25,6 +25,7 @@ typed AS (
         multiIf(
             p.master_copy = '0x4a97e65188a950dd4b0f21f9b5434daee0bbf9f5', 'DelayModule',
             p.master_copy = '0x9646fdad06d3e24444381f44362a3b0eb343d337', 'RolesModule',
+            p.master_copy = '0x732b9e9f259fba6f65a1a012dc89c20872ffbd2f', 'RolesModule',
             p.master_copy = '0x70db53617d170a4e407e00dff718099539134f9a', 'SpenderModule',
             'Unknown'
         )                                                              AS contract_type,
@@ -35,9 +36,16 @@ typed AS (
     FROM enabled_on_gp e
     INNER JOIN `dbt`.`int_execution_zodiac_module_proxies` p
         ON p.proxy_address = e.module_proxy
+    -- 0x732b9e9f... = post-June-2026-migration Zodiac Roles mastercopy (71,425 new card proxies), so the
+    -- allowances / spender-delegate models see migrated cards. The migration's new DELAY mastercopy
+    -- 0x22d903fd... is intentionally NOT registered: registering it would give migrated safes a real
+    -- DelayModule row, trip the canonical-inheritance guard in int_execution_gpay_safe_modules, and
+    -- re-break GA top-up attribution. Migrated safes keep the OLD safe's DelayModule (inherited) for
+    -- GA-ownership continuity across the migration.
     WHERE p.master_copy IN (
         '0x4a97e65188a950dd4b0f21f9b5434daee0bbf9f5',
         '0x9646fdad06d3e24444381f44362a3b0eb343d337',
+        '0x732b9e9f259fba6f65a1a012dc89c20872ffbd2f',
         '0x70db53617d170a4e407e00dff718099539134f9a'
     )
 )
