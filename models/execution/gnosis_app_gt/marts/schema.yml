@@ -269,3 +269,220 @@ models:
   - name: as_of_date
     description: Snapshot date (query/build date).
     data_type: Date
+- name: fct_execution_gnosis_app_gt_wallet_metrics_public
+  description: PUBLIC per-wallet rollup — pseudonym-only mirror of int_execution_gnosis_app_gt_wallet_metrics (raw address
+    dropped; same CEREBRO_PII_SALT). Full lifecycle/engagement/trust/segment surface.
+  columns:
+  - name: user_pseudonym
+    description: sipHash64 pseudonym of the wallet address.
+    tests:
+    - not_null
+    - unique
+  - name: engagement_tier
+    description: inactive | casual | core | power.
+  - name: app_generation
+    description: current | legacy | both | none.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - user_pseudonym
+- name: fct_execution_gnosis_app_gt_active_wallets
+  description: Active-wallet time-series (DAU/WAU/MAU) from real transaction_action.timestamp, scoped to app-engaged wallets.
+    One table, three grains via period_type; new_wallets = wallets whose first activity falls in the period.
+  columns:
+  - name: period_type
+    description: day | week | month.
+    tests:
+    - accepted_values:
+        values:
+        - day
+        - week
+        - month
+  - name: period_start
+    description: Start date of the period (day=date, week=Monday, month=1st).
+  - name: active_wallets
+    description: Distinct app-active wallets in the period (DAU/WAU/MAU).
+  - name: new_wallets
+    description: Wallets whose first-ever activity falls in this period.
+  - name: active_wallets_app_tagged
+    description: Distinct wallets with a deliberate app-feature action in the period (comparable to heuristic DAU).
+  - name: new_wallets_app_tagged
+    description: Wallets whose FIRST app-tagged activity falls in this period.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - period_type
+      - period_start
+- name: fct_execution_gnosis_app_gt_wallet_cohort_retention_monthly
+  description: 'Acquisition-cohort retention: retained wallets / cohort size at month_index N after first activity. Denominator
+    = cohort size (active wallets), never the raw registry. month_index 0 = acquisition month.'
+  columns:
+  - name: basis
+    description: any_action (broad) | app_tagged (deliberate app-feature action; comparable to heuristic).
+    tests:
+    - accepted_values:
+        values:
+        - any_action
+        - app_tagged
+  - name: cohort_month
+    description: Month of the wallet's first on-chain app activity.
+  - name: month_index
+    description: Months since acquisition (0 = acquisition month).
+  - name: retained_wallets
+    description: Distinct cohort wallets active in this month_index.
+  - name: cohort_size
+    description: Total wallets in the cohort (denominator).
+  - name: retention_pct
+    description: retained_wallets / cohort_size (0-1).
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: <= 1
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - basis
+      - cohort_month
+      - month_index
+- name: api_execution_gnosis_app_gt_active_wallets
+  description: Public DAU series (active app-engaged wallets per day). WAU/MAU in the underlying fct.
+  columns:
+  - name: date
+    description: Calendar day.
+    data_type: Date
+  - name: active_wallets
+    description: Distinct active wallets that day.
+    data_type: UInt64
+  - name: new_wallets
+    description: First-ever-active wallets that day.
+    data_type: UInt64
+  - name: active_wallets_app_tagged
+    description: App-feature-active wallets that day (heuristic-comparable).
+    data_type: UInt64
+  - name: new_wallets_app_tagged
+    description: First-app-tagged-active wallets that day.
+    data_type: UInt64
+- name: api_execution_gnosis_app_gt_wallet_cohort_retention
+  description: Public acquisition-cohort retention matrix (point-in-time; as_of_date).
+  columns:
+  - name: basis
+    description: any_action | app_tagged.
+    data_type: String
+  - name: cohort_month
+    description: Acquisition cohort month.
+    data_type: Date
+  - name: month_index
+    description: Months since acquisition.
+    data_type: Int32
+  - name: retained_wallets
+    description: Retained wallets at this index.
+    data_type: UInt64
+  - name: cohort_size
+    description: Cohort denominator.
+    data_type: UInt64
+  - name: retention_pct
+    description: retained / cohort_size.
+    data_type: Float64
+  - name: as_of_date
+    description: Snapshot (build) date.
+    data_type: Date
+- name: api_execution_gnosis_app_gt_wallet_metrics
+  description: Public per-wallet metric endpoint (pseudonym-only; curated lifecycle/engagement/trust/segment surface). Point-in-time
+    (as_of_date).
+  columns:
+  - name: user_pseudonym
+    description: sipHash64 pseudonym (joinable to mixpanel/gpay/circles).
+    data_type: UInt64
+  - name: app_generation
+    description: current | legacy | both | none.
+    data_type: String
+  - name: engagement_tier
+    description: inactive | casual | core | power.
+    data_type: String
+  - name: is_registered_active
+    description: Canonical active flag.
+    data_type: Bool
+  - name: is_active_30d
+    description: Active within 30 days.
+    data_type: Bool
+  - name: is_active_90d
+    description: Active within 90 days.
+    data_type: Bool
+  - name: tenure_days
+    description: Days between first and last action.
+    data_type: Nullable(Int64)
+  - name: days_since_last_action
+    description: Days since last action.
+    data_type: Nullable(Int64)
+  - name: n_actions
+    description: Total on-chain actions.
+    data_type: UInt64
+  - name: app_action_breadth
+    description: Distinct app-tagged action types (0-8).
+    data_type: UInt16
+  - name: n_swaps_gnosis_app
+    description: Swaps under app.gnosis.io.
+    data_type: UInt64
+  - name: n_swaps_metri
+    description: Swaps under app.metri.xyz.
+    data_type: UInt64
+  - name: n_metri_transfer
+    description: MetriTransfer events.
+    data_type: UInt64
+  - name: n_personal_mint
+    description: PersonalMint (CRC claim) events.
+    data_type: UInt64
+  - name: n_cashback
+    description: Cashback NFT mints.
+    data_type: UInt64
+  - name: n_investment
+    description: Metri auto-invest accounts.
+    data_type: UInt64
+  - name: n_invitees
+    description: Distinct invitees referred.
+    data_type: UInt64
+  - name: trusts_given
+    description: Trust out-degree.
+    data_type: Int64
+  - name: trusts_received
+    description: Trust in-degree.
+    data_type: Int64
+  - name: trusts_mutual
+    description: Mutual trust count.
+    data_type: Int64
+  - name: referral_crc_earned
+    description: CRC earned as inviter.
+    data_type: Float64
+  - name: earned_from_invites_crc
+    description: Lifetime CRC from invites.
+    data_type: Float64
+  - name: is_gp_card_user
+    description: Linked to a GP card.
+    data_type: Bool
+  - name: is_investor
+    description: Owns an auto-invest account.
+    data_type: Bool
+  - name: is_power_user
+    description: High-breadth + recently active.
+    data_type: Bool
+  - name: circles_version
+    description: Avatar Circles version (1/2).
+    data_type: Nullable(Int32)
+  - name: as_of_date
+    description: Snapshot (build) date.
+    data_type: Date
+- name: fct_execution_gnosis_app_gt_registrations_monthly
+  description: New identity/profile REGISTRATIONS per month (avatar.created_at = account/profile creation; 100% of avatars
+    have a profile). Spans Circles v1+v2 back to 2020 — broader/real onboarding vs the heuristic new_users. Split by version.
+  columns:
+  - name: month
+    description: Registration month (toStartOfMonth of avatar.created_at).
+  - name: new_registrations
+    description: New avatar/profile registrations that month.
+  - name: v2_registrations
+    description: Of which Circles v2.
+  - name: v1_registrations
+    description: Of which Circles v1.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - month

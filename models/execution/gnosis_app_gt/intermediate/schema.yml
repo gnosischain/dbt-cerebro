@@ -368,3 +368,93 @@ models:
     description: 'Ratio of the canonical GT active-user count to the heuristic user count: round(gt_registered_active / heuristic_users,
       4). >1 means the GT active set is larger than what the heuristic captures (sizing the heuristic''s under-count vs ground
       truth); can exceed 1. Gotcha: unguarded division -> NaN/Inf if heuristic_users = 0. Unit: ratio (dimensionless).'
+- name: int_execution_gnosis_app_gt_wallet_metrics
+  description: 'Per-wallet analytical rollup (one row per registry-or-avatar identity): lifecycle (tenure/recency/cohort),
+    engagement (per-action-type counts + breadth), trust/social, referrals, and derived segments. COUNT/LIFECYCLE only — money
+    limited to the validated CRC fields. Lifecycle from transaction_action.timestamp; raw registry never an active denominator.
+    INTERNAL (raw address).'
+  columns:
+  - name: address
+    description: Canonical identity address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: app_generation
+    description: current (app.gnosis.io) | legacy (Metri) | both | none (from the activity model).
+  - name: is_registered_active
+    description: 1 iff a registered identity that did any app-tagged action (the canonical active flag).
+  - name: is_app_active
+    description: 1 iff the identity did any app-tagged action (regardless of registration).
+  - name: is_gp_card_user
+    description: 1 iff linked to a Gnosis Pay card (cashback owner or top-up funder).
+  - name: is_heuristic_active
+    description: 1 iff present in the heuristic active-user set.
+  - name: first_action_at
+    description: First on-chain action timestamp (transaction_action.timestamp); NULL if none.
+  - name: last_action_at
+    description: Most recent on-chain action timestamp; NULL if none.
+  - name: n_actions
+    description: Total transaction_action rows for this identity (activity volume).
+  - name: tenure_days
+    description: dateDiff('day', first_action_at, last_action_at); NULL when no action.
+  - name: days_since_last_action
+    description: dateDiff('day', last_action_at, now()); NULL when no action.
+  - name: is_active_30d
+    description: 1 iff last action within 30 days of build time (coalesced to false when no action).
+  - name: is_active_90d
+    description: 1 iff last action within 90 days.
+  - name: acquisition_cohort_month
+    description: toStartOfMonth(first_action_at) — the acquisition cohort; NULL when no action.
+  - name: n_swaps_gnosis_app
+    description: Count of filled/placed swaps under app.gnosis.io (owner-side).
+  - name: n_swaps_metri
+    description: Count of swaps under app.metri.xyz (legacy).
+  - name: n_metri_transfer
+    description: Count of MetriTransfer events by this wallet (from-side).
+  - name: n_metri_fee
+    description: Count of MetriFee payments (Metri-app fee events).
+  - name: n_hub_transfer
+    description: Count of Circles HubTransfer events.
+  - name: n_personal_mint
+    description: Count of PersonalMint (CRC UBI claim) events (recipient side).
+  - name: n_group_fee
+    description: Count of PrimaryGroupFee (group-join) events.
+  - name: n_pay_topup
+    description: Count of PayTopUp + AutoTopup transfer events (GP-card funding).
+  - name: n_cashback
+    description: Count of Gnosis Pay cashback NFT mints owned.
+  - name: n_investment
+    description: Count of Metri auto-invest accounts owned.
+  - name: n_invitees
+    description: Distinct invitees this wallet referred (earned_from_invite inviter side).
+  - name: referral_crc_earned
+    description: CRC earned as inviter (earned_from_invite ledger, validated toFloat64/1e18).
+  - name: trusts_given
+    description: Trust-graph out-degree (avatar.trusts_given_count).
+  - name: trusts_received
+    description: Trust-graph in-degree (avatar.trusts_received_count).
+  - name: trusts_mutual
+    description: Mutual (two-way) trust count (avatar.trusts_mutual_count).
+  - name: earned_from_invites_crc
+    description: Lifetime CRC earned from invites (avatar ledger, validated decode).
+  - name: circles_version
+    description: Circles protocol version of the avatar (1 v1 / 2 v2); NULL if no avatar.
+  - name: app_action_breadth
+    description: Number of distinct app-tagged action TYPES the wallet used (0-8) — the engagement-depth driver.
+  - name: engagement_tier
+    description: inactive | casual | core | power (from breadth x recency).
+    tests:
+    - accepted_values:
+        values:
+        - inactive
+        - casual
+        - core
+        - power
+        config:
+          severity: warn
+  - name: is_investor
+    description: 1 iff owns >=1 Metri auto-invest account.
+  - name: is_power_user
+    description: 1 iff app_action_breadth>=3 AND active in last 30 days.
+  - name: is_registered
+    description: 1 iff present in the gnosis_app_user registry.

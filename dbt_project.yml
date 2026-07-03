@@ -8,6 +8,15 @@ flags:
 profile: 'gnosis_dbt'
 
 vars:
+  # Elementary re-uploads the FULL artifact catalog (~1137 models + ~2023 tests)
+  # on EVERY dbt invocation via its on-run-end hook. The orchestrator runs dbt as
+  # hundreds of invocations (microbatch slices + plain flushes + the live job), and
+  # each catalog upload was measured at 35-68s on ClickHouse (no temp-table support),
+  # which dominated cron_preview wall time. Disable the per-invocation autoupload and
+  # refresh the catalog exactly once per run via the elementary-artifacts-refresh step
+  # in scripts/run_dbt_observability.sh. Run results, test results, source freshness and
+  # invocation records still upload every invocation (cheap, incremental) — no data lost.
+  disable_dbt_artifacts_autoupload: true
   symbol_exclude: "aGnoGNO,aGnoWXDAI,aGnosDAI,aGnoUSDC,aGnoEURe,aGnoUSDCe,spGNO,spUSDT,spUSDC,spUSDC.e,spWETH,spwstETH,spWXDAI,spsDAI,spEURe"
   circles_base_group_abi_source_address: "0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac"
   circles_cm_group_abi_source_address: "0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac"

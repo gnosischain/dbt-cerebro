@@ -40,6 +40,14 @@ models:
   - name: earned_from_invites_crc
     description: CRC this avatar earned from inviting others, DECIMAL-normalized (toFloat64(earned_from_invites)/1e18 from
       a native Int256).
+  - name: trusts_given
+    description: Trust-graph out-degree (avatar.trusts_given_count) — how many other avatars this avatar trusts (v2 count).
+  - name: trusts_received
+    description: Trust-graph in-degree (avatar.trusts_received_count) — how many avatars trust this avatar.
+  - name: trusts_mutual
+    description: Count of mutual (two-way) trust relationships (avatar.trusts_mutual_count).
+  - name: circles_version
+    description: Circles protocol version (1 = v1, 2 = v2). Validated 99.9% against int_execution_circles_v2_avatars.
 - name: stg_envio_ga__profiles
   description: Circles profile per identity (dedup required — version-superseding dup ids). INTERNAL.
   columns:
@@ -350,3 +358,19 @@ models:
       native big-endian Int256 balance — the toFloat64 cast is a lossless numeric widening, not a hex/money reinterpret. To
       get human-readable units, divide by 10^decimals of recipient_token (typically 1e18). Float64 type: may lose precision
       for very large Int256 magnitudes.'
+- name: stg_envio_ga__wallet_activity_daily
+  description: STRETCH — distinct (app-active wallet, calendar-day) from ONE full scan of envio_ga.transaction_action (209M).
+    The DAU/WAU/MAU + cohort-retention spine; scoped to is_app_active identities. INTERNAL.
+  columns:
+  - name: address
+    description: App-active wallet identity address (lowercase).
+  - name: activity_date
+    description: Calendar day the wallet had >=1 on-chain action (toDate(transaction_action.timestamp)).
+  - name: is_app_tagged_day
+    description: 1 iff the wallet did a deliberate app-feature action that day (swap / auto-topup / MetriFee·PayTopUp·AutoTopup
+      transfer); MetriTransfer excluded. Broad activity is the row grain.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - address
+      - activity_date

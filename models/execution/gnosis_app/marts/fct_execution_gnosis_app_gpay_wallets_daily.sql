@@ -8,19 +8,24 @@
 }}
 
 WITH base AS (
+    -- Canonicalize the card: a June-2026-migrated pair (old safe + its canonical new safe) is ONE
+    -- card. Both rows are GA-owned (old kept for historical top-up attribution, new inherited), so
+    -- collapse to the canonical address to avoid double-counting the migrated cards.
     SELECT
-        toDate(first_ga_owner_at) AS date,
-        onboarding_class,
-        pay_wallet
-    FROM {{ ref('int_execution_gnosis_app_gpay_wallets') }}
-    WHERE first_ga_owner_at IS NOT NULL
+        toDate(w.first_ga_owner_at)                                        AS date,
+        w.onboarding_class                                                 AS onboarding_class,
+        if(c.canonical_address != '', c.canonical_address, w.pay_wallet)   AS card
+    FROM {{ ref('int_execution_gnosis_app_gpay_wallets') }} w
+    LEFT JOIN {{ ref('int_execution_gpay_safe_canonical') }} c
+        ON c.address = w.pay_wallet
+    WHERE w.first_ga_owner_at IS NOT NULL
 ),
 
 daily AS (
     SELECT
         date,
         onboarding_class,
-        count(DISTINCT pay_wallet) AS n_ga_wallets_new
+        count(DISTINCT card) AS n_ga_wallets_new
     FROM base
     GROUP BY date, onboarding_class
 ),

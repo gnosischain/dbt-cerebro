@@ -3,6 +3,8 @@
     engine='ReplacingMergeTree()',
     order_by='(address)',
     settings={'allow_nullable_key': 1},
+    pre_hook=["SET join_use_nulls = 1"],
+    post_hook=["SET join_use_nulls = 0"],
     tags=['production', 'execution', 'gnosis_app_gt', 'internal_only', 'privacy:tier_internal'],
     meta={
         'expose_to_mcp': false,
