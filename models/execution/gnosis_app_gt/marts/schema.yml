@@ -1,5 +1,29 @@
 version: 2
 models:
+- name: fct_execution_gnosis_app_gpay_migration_daily
+  description: 'Daily Gnosis Pay exploit -> Safe migration recovery time-series (June-2026
+    incident). One row per calendar date from the 2026-06-04 cutover through the latest
+    observed data, backing the Migration tab KPIs / line charts. The 66,001 OLD->NEW
+    safe pairs come 1:1 from int_execution_gpay_safe_canonical; refund USD is priced
+    with the same per-token USD/native ratio as int_execution_gpay_balances_daily, so
+    refund USD reconciles with the balance USD series.'
+  columns:
+  - name: date
+    description: Calendar date — grain, one row per day since the 2026-06-04 cutover.
+  - name: usd_old_safes
+    description: Latest-known USD still held in the migrated OLD safes as of the date (forward-filled).
+  - name: usd_new_safes
+    description: Latest-known USD held in the migrated NEW (canonical) safes as of the date (forward-filled).
+  - name: cum_reactivated_any
+    description: Cumulative distinct NEW safes with ANY activity on or before the date (since cutover).
+  - name: cum_reactivated_spend
+    description: Cumulative distinct NEW safes with a card Payment on or before the date (since cutover).
+  - name: refunds_landed_usd
+    description: Exploit-recovery refund USD credited to NEW safes ON that date (refunds land 2026-06-05..09).
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
 - name: fct_execution_gnosis_app_gt_swaps_by_pair
   description: 'FILLED swaps by app_scope x token pair. gnosis_app = CURRENT Gnosis App,
 
