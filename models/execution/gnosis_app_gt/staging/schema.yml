@@ -374,3 +374,20 @@ models:
       combination_of_columns:
       - address
       - activity_date
+
+- name: stg_envio_ga__pay_topups
+  description: STRETCH — distinct (card, funder) pairs for app-initiated top-ups (PayTopUp / AutoTopup) from ONE full
+    scan of envio_ga.transfer (108M, id-sorted so transfer_type does not prune). funder (transfer `from`) is the Gnosis
+    App account that funded the card (`to`) through the app — a card -> GA-account link consumed by
+    int_execution_gnosis_app_gt_card_owner (gated there to registered GA accounts). Built once per run; do NOT
+    microbatch (each batch re-scans the whole table). INTERNAL (raw addresses).
+  columns:
+  - name: card
+    description: Gnosis Pay card Safe address that received the top-up (lowercase, transfer `to`).
+  - name: funder
+    description: Gnosis App account that funded the card through the app (lowercase, transfer `from`).
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - card
+      - funder

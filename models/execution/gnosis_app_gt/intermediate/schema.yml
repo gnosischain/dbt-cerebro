@@ -458,3 +458,27 @@ models:
     description: 1 iff app_action_breadth>=3 AND active in last 30 days.
   - name: is_registered
     description: 1 iff present in the gnosis_app_user registry.
+
+- name: int_execution_gnosis_app_gt_card_owner
+  description: Reusable GP card (Safe) -> Gnosis App account bridge — the UNION of three on-chain signals gated to the
+    envio_ga registry (stg_envio_ga__users) — Delay-module controller
+    (int_execution_gnosis_app_gpay_wallets.first_ga_owner_address), cashback owner (stg_envio_ga__cashbacks), and app
+    top-up funder (stg_envio_ga__pay_topups). Maps a card the GP Safe owner controls (relayer / exchange / GP-direct
+    cardholder, invisible to Mixpanel) to the human GA account(s) that control or fund it, so a GP conversion can reach
+    a Mixpanel user (and campaign). ~6.4% of recent funded cards link this way; cashback + top-ups add ~+108 beyond the
+    Delay path. INTERNAL (raw addresses + pseudonym); only aggregate downstream views are semantic-exposed.
+  columns:
+  - name: card
+    description: Gnosis Pay card Safe address (lowercase).
+  - name: ga_account
+    description: Registered Gnosis App account address linked to the card (lowercase).
+  - name: source
+    description: Which signal produced the link — delay_module, cashback, or topup_funder.
+  - name: ga_account_pseudonym
+    description: pseudonymize_address(ga_account) — the Mixpanel / user_pseudonym join key.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - card
+      - ga_account
+      - source
