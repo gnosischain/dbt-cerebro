@@ -69,17 +69,22 @@ events AS (
     SELECT * FROM first_payment
 ),
 
--- App<>GP link: GP Safe → the Gnosis App controller's pseudonym. One row per
--- Safe (grain guaranteed by int_execution_gnosis_app_gpay_wallets).
-ga_link AS (
+-- App<>GP link: GP card → GA-account, via the reusable card-owner bridge
+-- (int_execution_gnosis_app_gt_card_owner = Delay-module controller ∪ cashback owner ∪ top-up
+-- funder, gated to registered GA accounts). Pick ONE account per card, preferring one that carries
+-- a real first-touch campaign, so the touch tuple stays consistent and the account grain never
+-- fans out the events. Replaces the Delay-only link (recovers ~+108 funded cards).
+card_acct AS (
     SELECT
-        lower(w.pay_wallet)                                    AS gp_safe,
-        {{ pseudonymize_address('w.first_ga_owner_address') }} AS ga_user_pseudonym
-    FROM {{ ref('int_execution_gnosis_app_gpay_wallets') }} w
-    WHERE w.first_ga_owner_address IS NOT NULL
+        b.card                                                             AS gp_safe,
+        argMax(b.ga_account_pseudonym, a.first_touch_campaign != 'unknown') AS ga_user_pseudonym
+    FROM {{ ref('int_execution_gnosis_app_gt_card_owner') }} b
+    INNER JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
+        ON a.user_id_hash = b.ga_account_pseudonym
+    GROUP BY b.card
 ),
 
--- UTM for the GA controller (pseudonym → Mixpanel user_id_hash space).
+-- UTM for the chosen GA account (pseudonym → Mixpanel user_id_hash space).
 ga_acq AS (
     SELECT
         l.gp_safe,
@@ -89,7 +94,7 @@ ga_acq AS (
         a.last_touch_source    AS ga_last_touch_source,
         a.first_touch_medium   AS ga_first_touch_medium,
         a.last_touch_medium    AS ga_last_touch_medium
-    FROM ga_link l
+    FROM card_acct l
     INNER JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
         ON a.user_id_hash = l.ga_user_pseudonym
 )

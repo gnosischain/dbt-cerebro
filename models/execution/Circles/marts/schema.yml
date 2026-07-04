@@ -1196,6 +1196,37 @@ models:
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
 
+- name: fct_execution_circles_v2_inviter_farm_quota
+  description: >
+    Per-inviter Circles-v2 InvitationFarm ("invitation-at-scale") state: invites claimed from the farm
+    and latest granted quota. Complements int_execution_circles_v2_inviter_canonical (who invited whom,
+    via InvitationModule.originInviter) with the farm's inviter activity/allowance. One row per inviter
+    seen in InvitesClaimed or InviterQuotaUpdated.
+  columns:
+  - {name: inviter, description: Lowercase inviter address (farm member)., data_type: String}
+  - {name: invites_claimed, description: Total invites claimed from the farm (sum of InvitesClaimed.count)., data_type: Int64}
+  - {name: n_claim_events, description: Number of InvitesClaimed events for this inviter., data_type: UInt64}
+  - {name: current_quota, description: Latest granted invite quota (InviterQuotaUpdated.quota); NULL if never set., data_type: Nullable(Int64)}
+  - {name: first_claim_at, description: First InvitesClaimed timestamp; NULL if none., data_type: Nullable(DateTime)}
+  - {name: last_claim_at, description: Most recent InvitesClaimed timestamp; NULL if none., data_type: Nullable(DateTime)}
+  - {name: quota_updated_at, description: Latest InviterQuotaUpdated timestamp; NULL if none., data_type: Nullable(DateTime)}
+
+- name: api_execution_circles_v2_inviter_farm_quota
+  description: >
+    Inviter InvitationFarm leaderboard (invites claimed + current quota), ordered by invites_claimed.
+    Passthrough over fct_execution_circles_v2_inviter_farm_quota with an as_of_date snapshot stamp.
+  columns:
+  - {name: inviter, description: Lowercase inviter address., data_type: String}
+  - {name: invites_claimed, description: Total invites claimed from the farm., data_type: Int64}
+  - {name: n_claim_events, description: Number of claim events., data_type: UInt64}
+  - {name: current_quota, description: Latest granted invite quota; NULL if never set., data_type: Nullable(Int64)}
+  - {name: first_claim_at, description: First claim timestamp; NULL if none., data_type: Nullable(DateTime)}
+  - {name: last_claim_at, description: Most recent claim timestamp; NULL if none., data_type: Nullable(DateTime)}
+  - {name: quota_updated_at, description: Latest quota-update timestamp; NULL if none., data_type: Nullable(DateTime)}
+  - name: as_of_date
+    description: Date the snapshot is computed as of (max InvitationFarm event date).
+    data_type: Date
+
 - name: api_execution_circles_v2_trusts_distribution
   description: >
     Distribution histogram of trust degree (given / received) across avatars.

@@ -3724,7 +3724,87 @@ semantic_models:
   - name: canonical_inviter
     type: categorical
     expr: canonical_inviter
+- name: execution_circles_v2_inviter_farm_quota
+  model: ref('api_execution_circles_v2_inviter_farm_quota')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - invitation farm quota per inviter
+        - invites claimed from the invitation farm
+        - circles inviter farm claims and quota
+        - how many farm invites has each inviter claimed
+        grain: latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: inviter
+    type: categorical
+    expr: inviter
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+    agg: sum
+    expr: invites_claimed
+  - name: execution_circles_v2_inviter_farm_quota__n_claim_events_value
+    agg: sum
+    expr: n_claim_events
+  - name: execution_circles_v2_inviter_farm_quota__current_quota_value
+    agg: sum
+    expr: current_quota
 metrics:
+- name: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+  label: Invitation Farm - Invites Claimed
+  description: Total invites claimed from the Circles v2 Invitation Farm (sum of per-inviter InvitesClaimed).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: latest
+        allowed_dimensions:
+        - inviter
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - invites claimed from the invitation farm
+        - total farm invites claimed
+        - invitation farm claims
+- name: execution_circles_v2_inviter_farm_quota__current_quota_value
+  label: Invitation Farm - Current Quota
+  description: Total current farm quota across inviters (sum of the latest per-inviter InviterQuotaUpdated quota).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_inviter_farm_quota__current_quota_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: latest
+        allowed_dimensions:
+        - inviter
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - invitation farm quota
+        - total inviter quota
+        - remaining farm invite quota
 - name: circles_distinct_human_users
   label: Circles Distinct Human Users
   description: 'Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same

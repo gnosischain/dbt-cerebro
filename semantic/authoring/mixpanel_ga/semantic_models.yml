@@ -1397,6 +1397,100 @@ semantic_models:
   - name: user_id_hash
     type: categorical
     expr: user_id_hash
+- name: mixpanel_ga_growth_campaign_weekly
+  model: ref('api_mixpanel_ga_growth_campaign_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: conversion_kind
+    type: categorical
+    expr: conversion_kind
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  - name: utm_source
+    type: categorical
+    expr: utm_source
+  - name: utm_medium
+    type: categorical
+    expr: utm_medium
+  measures:
+  - name: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+    agg: sum
+    expr: new_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - campaign attributable gnosis app conversions by week
+        - app topups by campaign
+        - starts referring by campaign
+        - which campaigns drove app conversions
+        grain: week
+- name: mixpanel_ga_gpay_funded_totals_weekly
+  model: ref('api_mixpanel_ga_gpay_funded_totals_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: event_type
+    type: categorical
+    expr: event_type
+  measures:
+  - name: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+    agg: sum
+    expr: new_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - weekly funded accounts total
+        - gnosis pay funded and first payment totals
+        - new gnosis pay funded accounts per week
+        grain: week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly
+  model: ref('api_mixpanel_ga_gpay_card_spend_totals_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+    agg: sum
+    expr: payment_volume_usd
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+    agg: sum
+    expr: payments
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+    agg: sum
+    expr: active_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - weekly gnosis pay card spend
+        - card payment volume per week
+        - gnosis pay payments total weekly
+        grain: week
 metrics:
 - name: gnosis_app_mixpanel_dau
   label: Gnosis App DAU (Mixpanel / Web)
@@ -2435,6 +2529,128 @@ metrics:
         - card transactions by marketing campaign
         - gnosis pay acquisition by utm campaign
         - new gnosis pay accounts by campaign weekly
+- name: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+  label: Growth Campaign Weekly - Attributed Conversions
+  description: Campaign-attributable Gnosis App conversions per week (sum). Causally gated (campaign touch precedes
+    the conversion) and clipped to the Mixpanel era (>= 2025-10). Filter conversion_kind - topup is the funded proxy;
+    also starts_referring, swap_filled, token_offer_claim. Only ~4-7% of in-era app conversions carry a valid campaign.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - conversion_kind
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - campaign attributable app conversions
+        - app topups by campaign
+        - starts referring by campaign
+        - which campaigns drove app conversions
+- name: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+  label: Gnosis Pay Funded Totals - Weekly New Accounts
+  description: Weekly new Gnosis Pay accounts reaching funded / first_payment (sum), totalled across all campaigns.
+    GP-side campaign attribution is structural ~0.2%, so this is exposed as totals (split by event_type), not by campaign.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - event_type
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly funded accounts total
+        - gnosis pay funded and first payment totals
+        - new gnosis pay funded accounts per week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+  label: Gnosis Pay Card Spend - Weekly USD Volume
+  description: Weekly Gnosis Pay card payment USD volume (sum), totalled across all campaigns.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly card spend usd
+        - gnosis pay payment volume per week
+        - card payment volume weekly
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+  label: Gnosis Pay Card Spend - Weekly Payments
+  description: Weekly Gnosis Pay card payment count (sum), totalled across all campaigns.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly card payments count
+        - gnosis pay number of payments per week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+  label: Gnosis Pay Card Spend - Weekly Active Accounts
+  description: Distinct Gnosis Pay accounts making at least one card payment in the week (sum over disjoint campaign partitions).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly active gnosis pay card accounts
+        - spending gnosis pay accounts per week
 - name: mixpanel_ga_gpay_acquisition_weekly__cumulative_accounts_value
   label: Mixpanel Ga Gpay Acquisition Weekly - Cumulative Accounts
   description: 'mixpanel ga gpay acquisition weekly - cumulative accounts (max). This is a cumulative/running-total measure:

@@ -1073,6 +1073,98 @@ models:
         description: Running total within (conversion_kind, attribution_model, utm_campaign).
         data_type: UInt64
 
+  - name: api_mixpanel_ga_growth_campaign_weekly
+    description: |
+      GROWTH — campaign-attributable Gnosis App conversion funnel by UTM campaign x week.
+      Aggregate-only projection of api_mixpanel_ga_gnosis_app_acquisition_weekly with the
+      causal-validity treatment applied: first_touch only, clipped to week >= 2025-10-01
+      (Mixpanel era), and the touch-precedence gate (a campaign is credited only when its
+      touch preceded the conversion). conversion_kind in (topup, starts_referring,
+      swap_filled, token_offer_claim); topup is the attributable "funded" proxy. Only ~4-7%
+      of in-era app conversions carry a causally-valid campaign; the rest are
+      utm_campaign='unknown'. Served via the metrics-dashboard x-api-key layer
+      (blanket-excluded from cerebro-api).
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC), clipped to >= 2025-10-01.
+        data_type: Date
+      - name: conversion_kind
+        description: "topup (funded proxy), starts_referring, swap_filled, token_offer_claim."
+        data_type: String
+      - name: utm_campaign
+        description: First-touch marketing campaign (causally gated), 'unknown' if unmatched.
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: new_accounts
+        description: New accounts of this conversion_kind attributed to the campaign in the week.
+        data_type: UInt64
+
+  - name: api_mixpanel_ga_gpay_funded_totals_weekly
+    description: |
+      GROWTH — Gnosis Pay funded / first_payment as weekly TOTALS (no campaign dimension).
+      GP-side conversions are keyed to the Safe owner (relayer / exchange / cardholder) that
+      Mixpanel never sees, so campaign attribution is structurally ~0.2% and 26-82%
+      back-leaked; the honest signal is the uncut total. The attributable funding proxy is
+      the app-side 'topup' in api_mixpanel_ga_growth_campaign_weekly. Summed over campaign
+      within one attribution window. Aggregate-only; served via x-api-key.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: event_type
+        description: "funded (first Safe inflow) or first_payment (first card payment)."
+        data_type: String
+      - name: new_accounts
+        description: New GP accounts reaching this event_type in the week (all campaigns).
+        data_type: UInt64
+
+  - name: api_mixpanel_ga_gpay_card_spend_totals_weekly
+    description: |
+      GROWTH — Gnosis Pay card-spend as weekly TOTALS (no campaign dimension). Summed over
+      campaign from api_mixpanel_ga_gpay_campaign_metrics_weekly; each account has one
+      first-touch campaign so the partitions are disjoint and counts/USD sum cleanly.
+      avg_payments_per_account is recomputed (a ratio, never summed). Aggregate-only;
+      served via x-api-key.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: active_accounts
+        description: Distinct GP accounts making >= 1 card payment in the week.
+        data_type: UInt64
+      - name: payments
+        description: Total card payments in the week.
+        data_type: UInt64
+      - name: payment_volume_usd
+        description: Total card payment USD volume in the week.
+        data_type: Nullable(Float64)
+      - name: cashback_usd
+        description: Total cashback USD claimed in the week.
+        data_type: Nullable(Float64)
+      - name: avg_payments_per_account
+        description: payments / active_accounts. Ratio — do NOT sum.
+        data_type: Float64
+
   - name: fct_mixpanel_ga_campaign_funnel_weekly
     description: >
       Weekly growth funnel by UTM, first-touch attribution. Every funnel step in

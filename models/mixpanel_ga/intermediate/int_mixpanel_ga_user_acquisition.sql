@@ -38,6 +38,10 @@ SELECT
     coalesce(argMaxIf(source,   event_time, source   IS NOT NULL), 'unknown') AS last_touch_source,
     coalesce(argMinIf(medium,   event_time, medium   IS NOT NULL), 'unknown') AS first_touch_medium,
     coalesce(argMaxIf(medium,   event_time, medium   IS NOT NULL), 'unknown') AS last_touch_medium,
+    -- Touch timestamps (of the first/last UTM-bearing hit) for the causal-validity gate downstream:
+    -- a campaign is only credited to a conversion when its touch preceded the conversion.
+    minIf(event_time, campaign IS NOT NULL)                                   AS first_touch_ts,
+    maxIf(event_time, campaign IS NOT NULL)                                   AS last_touch_ts,
     min(event_time)                                                           AS first_seen_at
 FROM events
 GROUP BY user_id_hash
