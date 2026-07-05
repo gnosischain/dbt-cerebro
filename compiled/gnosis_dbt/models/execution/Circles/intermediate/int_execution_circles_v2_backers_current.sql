@@ -17,7 +17,11 @@
 WITH ranges AS (
     SELECT
         lower(trustee) AS backer,
-        valid_from_agg
+        valid_from_agg,
+        -- currently trusted = at least one trust interval is still open; open
+        -- intervals carry the DateTime max sentinel (2106-02-07) as valid_to,
+        -- so untrusted (all intervals closed) backers evaluate to 0.
+        arrayExists(x -> x > now(), valid_to_agg) AS is_currently_trusted
     FROM `dbt`.`int_execution_circles_v2_trust_pair_ranges`
     WHERE lower(truster) = lower('0x1aca75e38263c79d9d4f10df0635cc6fcfe6f026')
 ),
@@ -25,13 +29,15 @@ WITH ranges AS (
 flattened AS (
     SELECT
         backer,
+        is_currently_trusted,
         valid_from
     FROM ranges
     ARRAY JOIN valid_from_agg AS valid_from
 )
 
 SELECT
-    backer                  AS backer,
-    min(valid_from)         AS first_trusted_at
+    backer                       AS backer,
+    max(is_currently_trusted)    AS is_currently_trusted,
+    min(valid_from)              AS first_trusted_at
 FROM flattened
 GROUP BY backer
