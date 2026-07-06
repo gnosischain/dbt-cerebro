@@ -38,13 +38,19 @@ time_helpers AS (
     LIMIT 1
 ),
 
+-- NOTE all "_gno" columns from int_consensus_validators_income_daily and
+-- int_consensus_validators_proposer_rewards_daily are actually mGNO-denominated
+-- (Gnosis Beacon Chain internally mirrors Ethereum's 32-unit-per-validator
+-- convention; 32 mGNO = 1 real GNO — confirmed via Gnosis docs, a raw on-chain
+-- deposit decode, and the official beacon explorer). Every absolute figure
+-- pulled from those two tables is divided by 32 below to convert to real GNO.
 latest_income AS (
     SELECT
         i.validator_index
         ,i.date AS latest_date
-        ,i.balance_gno
-        ,i.effective_balance_gno
-        ,i.total_income_estimated_gno
+        ,i.balance_gno / 32 AS balance_gno
+        ,i.effective_balance_gno / 32 AS effective_balance_gno
+        ,i.total_income_estimated_gno / 32 AS total_income_estimated_gno
     FROM {{ ref('int_consensus_validators_income_daily') }} i
     WHERE i.date = (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }})
 ),
@@ -52,7 +58,7 @@ latest_income AS (
 income_30d AS (
     SELECT
         validator_index
-        ,SUM(consensus_income_amount_gno) AS consensus_income_amount_30d_gno
+        ,SUM(consensus_income_amount_gno) / 32 AS consensus_income_amount_30d_gno
         -- Per-validator 30d APY: simple average of the already-correct per-day
         -- compound-annualized `apy` column (int_consensus_validators_income_daily.apy),
         -- NOT a from-scratch sum(income)/avg(eff_balance)*365*100 recomputation — the
@@ -69,7 +75,7 @@ income_30d AS (
 proposer_30d AS (
     SELECT
         validator_index
-        ,SUM(proposer_reward_total_gno) AS proposer_reward_total_30d_gno
+        ,SUM(proposer_reward_total_gno) / 32 AS proposer_reward_total_30d_gno
     FROM {{ ref('int_consensus_validators_proposer_rewards_daily') }}
     WHERE date >= (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }}) - INTERVAL 30 DAY
     GROUP BY validator_index
@@ -79,7 +85,7 @@ proposer_lifetime AS (
     SELECT
         validator_index
         ,SUM(proposed_blocks_count) AS proposed_blocks_count_lifetime
-        ,SUM(proposer_reward_total_gno) AS proposer_reward_total_lifetime_gno
+        ,SUM(proposer_reward_total_gno) / 32 AS proposer_reward_total_lifetime_gno
     FROM {{ ref('int_consensus_validators_proposer_rewards_daily') }}
     GROUP BY validator_index
 )

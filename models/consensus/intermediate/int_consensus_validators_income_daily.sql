@@ -41,6 +41,19 @@
 -- int_consensus_validators_income_daily — per-(date, validator_index) income fact
 -- =============================================================================
 --
+-- *** UNIT WARNING: every "_gno" column below is actually mGNO, not real GNO. ***
+-- Gnosis Beacon Chain internally mirrors Ethereum's 32-unit-per-validator
+-- convention (a pre-Pectra validator's max effective balance is "32", same as
+-- Ethereum's 32 ETH) even though the real-world deposit is 1 GNO. The wrap
+-- ratio is fixed: 32 mGNO = 1 real GNO. Confirmed via Gnosis's own docs
+-- ("1 GNO wrapped into 32 mGNO"), a raw on-chain GBCDeposit decode (a genuine
+-- 1-GNO deposit's raw amount decodes to 32), and the official Gnosis beacon
+-- explorer (labels the value "32 mGNO" directly). Six downstream marts were
+-- found serving this raw mGNO figure as if it were GNO (32x overstated) before
+-- being fixed — divide by 32 at the point of any absolute-value display.
+-- Ratio/percentage columns (daily_rate, apy) are NOT affected: numerator and
+-- denominator share the same mGNO scale, which cancels in the division.
+--
 -- GRAIN: one row per (date, validator_index), including exited / zero-balance.
 --
 -- COLUMNS emitted downstream:

@@ -33,9 +33,15 @@ WITH time_helpers AS (
 SELECT
     i.date AS date
     ,wl.withdrawal_credentials AS withdrawal_credentials
-    ,SUM(i.balance_gno) AS balance_gno
-    ,SUM(i.effective_balance_gno) AS effective_balance_gno
-    ,SUM(i.consensus_income_amount_gno) AS consensus_income_amount_gno
+    -- NOTE all "_gno" columns from int_consensus_validators_income_daily and
+    -- int_consensus_validators_proposer_rewards_daily are actually mGNO-denominated
+    -- (Gnosis Beacon Chain internally mirrors Ethereum's 32-unit-per-validator
+    -- convention; 32 mGNO = 1 real GNO). Divided by 32 below wherever an absolute
+    -- amount is emitted; the apy ratio below is unaffected (numerator/denominator
+    -- share the same mGNO scale, which cancels).
+    ,SUM(i.balance_gno) / 32 AS balance_gno
+    ,SUM(i.effective_balance_gno) / 32 AS effective_balance_gno
+    ,SUM(i.consensus_income_amount_gno) / 32 AS consensus_income_amount_gno
     -- Balance-weighted APY (drops apy=0 idle validators); see api_consensus_validators_apy_mean_daily
     -- for the rationale. Falls back to simple mean when balance_prev sum is 0.
     ,IF(
@@ -44,11 +50,11 @@ SELECT
           / SUMIf(i.balance_prev_gno, i.apy > 0 AND i.apy < 200 AND i.balance_prev_gno > 0),
         0
     ) AS apy
-    ,SUM(i.deposits_amount_gno) AS deposits_amount_gno
-    ,SUM(i.withdrawals_amount_gno) AS withdrawals_amount_gno
-    ,coalesce(SUM(i.consolidation_inflow_gno), 0) AS consolidation_inflow_gno
-    ,SUM(i.consolidation_outflow_gno) AS consolidation_outflow_gno
-    ,SUM(COALESCE(p.proposer_reward_total_gno, 0)) AS proposer_reward_total_gno
+    ,SUM(i.deposits_amount_gno) / 32 AS deposits_amount_gno
+    ,SUM(i.withdrawals_amount_gno) / 32 AS withdrawals_amount_gno
+    ,coalesce(SUM(i.consolidation_inflow_gno), 0) / 32 AS consolidation_inflow_gno
+    ,SUM(i.consolidation_outflow_gno) / 32 AS consolidation_outflow_gno
+    ,SUM(COALESCE(p.proposer_reward_total_gno, 0)) / 32 AS proposer_reward_total_gno
     ,SUM(COALESCE(p.proposed_blocks_count, 0)) AS proposed_blocks_count
     -- v2 (2026-04): count of distinct active validators under the credential on the date.
     -- Dashboard uses this to decide whether to show quantile bands (N>1) or collapse to

@@ -14,6 +14,13 @@
     )
 }}
 
+-- *** UNIT WARNING: every "_gno" column below is actually mGNO, not real GNO. ***
+-- Same convention as int_consensus_validators_income_daily (see that model for
+-- the full explanation): 32 mGNO = 1 real GNO. Confirmed empirically here too —
+-- proposer_reward_total_gno lands in the same order of magnitude as the
+-- confirmed-mGNO consensus_income_amount_gno for the same validator/day.
+-- Divide by 32 at the point of any absolute-value display.
+
 {% set range_sql %}
   {% if validator_index_start is not none and validator_index_end is not none %}
     AND validator_index >= {{ validator_index_start }}

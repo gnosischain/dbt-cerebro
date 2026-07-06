@@ -87,7 +87,7 @@ latest_income AS (
 income_30d AS (
     SELECT
         validator_index
-        ,SUM(consensus_income_amount_gno) AS consensus_income_amount_30d_gno
+        ,SUM(consensus_income_amount_gno) / 32 AS consensus_income_amount_30d_gno
     FROM {{ ref('int_consensus_validators_income_daily') }}
     WHERE date >= (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }}) - INTERVAL 30 DAY
     GROUP BY validator_index
@@ -96,7 +96,7 @@ income_30d AS (
 proposer_30d AS (
     SELECT
         validator_index
-        ,SUM(proposer_reward_total_gno) AS proposer_reward_total_30d_gno
+        ,SUM(proposer_reward_total_gno) / 32 AS proposer_reward_total_30d_gno
     FROM {{ ref('int_consensus_validators_proposer_rewards_daily') }}
     WHERE date >= (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }}) - INTERVAL 30 DAY
     GROUP BY validator_index
@@ -106,11 +106,16 @@ proposer_lifetime AS (
     SELECT
         validator_index
         ,SUM(proposed_blocks_count) AS proposed_blocks_count_lifetime
-        ,SUM(proposer_reward_total_gno) AS proposer_reward_total_lifetime_gno
+        ,SUM(proposer_reward_total_gno) / 32 AS proposer_reward_total_lifetime_gno
     FROM {{ ref('int_consensus_validators_proposer_rewards_daily') }}
     GROUP BY validator_index
 )
 
+-- NOTE l.balance_gno etc. below come from latest_income's `i.*` (wildcard
+-- passthrough of int_consensus_validators_income_daily), which is actually
+-- mGNO-denominated (Gnosis Beacon Chain mirrors Ethereum's 32-unit-per-validator
+-- convention; 32 mGNO = 1 real GNO). Divided by 32 here at the point each
+-- column is named, since the CTE itself can't be edited column-by-column.
 SELECT
     l.date AS latest_date
     ,l.validator_index AS validator_index
@@ -118,13 +123,13 @@ SELECT
     ,l.pubkey AS pubkey
     ,l.withdrawal_credentials AS withdrawal_credentials
     ,l.withdrawal_address AS withdrawal_address
-    ,l.balance_gno AS balance_gno
-    ,l.effective_balance_gno AS effective_balance_gno
-    ,l.cumulative_deposits_gno AS cumulative_deposits_gno
-    ,l.cumulative_withdrawals_gno AS cumulative_withdrawals_gno
-    ,l.cumulative_consolidation_inflow_gno AS cumulative_consolidation_inflow_gno
-    ,l.cumulative_consolidation_outflow_gno AS cumulative_consolidation_outflow_gno
-    ,l.total_income_estimated_gno AS total_income_estimated_gno
+    ,l.balance_gno / 32 AS balance_gno
+    ,l.effective_balance_gno / 32 AS effective_balance_gno
+    ,l.cumulative_deposits_gno / 32 AS cumulative_deposits_gno
+    ,l.cumulative_withdrawals_gno / 32 AS cumulative_withdrawals_gno
+    ,l.cumulative_consolidation_inflow_gno / 32 AS cumulative_consolidation_inflow_gno
+    ,l.cumulative_consolidation_outflow_gno / 32 AS cumulative_consolidation_outflow_gno
+    ,l.total_income_estimated_gno / 32 AS total_income_estimated_gno
     ,COALESCE(i30.consensus_income_amount_30d_gno, 0) AS consensus_income_amount_30d_gno
     ,COALESCE(p30.proposer_reward_total_30d_gno, 0) AS proposer_reward_total_30d_gno
     ,COALESCE(pl.proposed_blocks_count_lifetime, 0) AS proposed_blocks_count_lifetime
