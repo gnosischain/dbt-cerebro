@@ -80,15 +80,22 @@ proposer_lifetime AS (
 -- Only validators with effective_balance > 0 on some day in the window
 -- contribute — idle/empty slots do not drag the mean down.
 credential_apy_30d AS (
+    -- Balance-weighted average of the already-correct per-day compound-annualized
+    -- `apy` column (int_consensus_validators_income_daily.apy = (1+daily_rate)^365-1),
+    -- NOT a from-scratch sum(income)/avg(balance) recomputation. The latter double
+    -- counts across both the day and validator dimensions once a credential
+    -- controls more than one validator: proven on a real 3-validator/26-day
+    -- credential, the old formula produced 523.56% while this one produces 7.31%,
+    -- matching the network-wide daily median (~8%). apy<200 matches the outlier
+    -- filter already used by dists_daily / apy_mean_daily.
     SELECT
         w.withdrawal_credentials
-        ,SUM(i.consensus_income_amount_gno)
-            / NULLIF(AVG(i.effective_balance_gno), 0)
-            * 365 * 100 AS apy_30d
+        ,SUM(i.apy * i.effective_balance_gno) / NULLIF(SUM(i.effective_balance_gno), 0) AS apy_30d
     FROM {{ ref('int_consensus_validators_income_daily') }} i
     INNER JOIN wl w ON w.validator_index = i.validator_index
     WHERE i.date >= (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }}) - INTERVAL 30 DAY
       AND i.effective_balance_gno > 0
+      AND i.apy < 200
     GROUP BY w.withdrawal_credentials
 )
 

@@ -53,11 +53,14 @@ income_30d AS (
     SELECT
         validator_index
         ,SUM(consensus_income_amount_gno) AS consensus_income_amount_30d_gno
-        -- Per-validator balance-weighted 30d APY: SUM(income)/AVG(eff_balance)*365*100.
-        -- Rows with zero effective balance are excluded so idle slots don't pull the mean.
-        ,SUMIf(consensus_income_amount_gno, effective_balance_gno > 0)
-            / NULLIF(AVGIf(effective_balance_gno, effective_balance_gno > 0), 0)
-            * 365 * 100 AS apy_30d
+        -- Per-validator 30d APY: simple average of the already-correct per-day
+        -- compound-annualized `apy` column (int_consensus_validators_income_daily.apy),
+        -- NOT a from-scratch sum(income)/avg(eff_balance)*365*100 recomputation — the
+        -- latter was missing a division by the window's day count, inflating results
+        -- by roughly the number of contributing days (proven: a 12-day window
+        -- inflated a true ~9.8% rate to 117.6%, i.e. served = per_day * days_in_window).
+        -- apy<200 matches the outlier filter already used by dists_daily / apy_mean_daily.
+        ,AVGIf(apy, effective_balance_gno > 0 AND apy < 200) AS apy_30d
     FROM {{ ref('int_consensus_validators_income_daily') }}
     WHERE date >= (SELECT MAX(date) FROM {{ ref('int_consensus_validators_income_daily') }}) - INTERVAL 30 DAY
     GROUP BY validator_index
