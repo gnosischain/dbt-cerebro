@@ -199,3 +199,41 @@ models:
       - insert_id
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(event_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: stg_mixpanel_ga__profiles
+  description: |
+    One row per Mixpanel People/profile (latest snapshot), privacy-safe.
+    Collapses the daily full-snapshot source (mixpanel_ga.mixpanel_raw_profiles)
+    to the newest row per distinct_id. `pay` (the profile's Gnosis Pay Safe
+    address) is pseudonymized with the same salted macro used on the on-chain
+    gp_safe, so pay_safe_pseudonym joins directly to pseudonymize_address(gp_safe);
+    0 means no Gnosis Pay Safe set. initial_utm_* are Mixpanel's set-once
+    first-touch campaign values (present on profiles even though absent from the
+    event stream). No raw address or distinct_id is emitted.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: ga_user_id_hash
+    description: >
+      Keyed pseudonym of the profile's distinct_id (Gnosis App wallet). Same
+      hash space as stg_mixpanel_ga__events.user_id_hash and
+      int_mixpanel_ga_user_acquisition.user_id_hash.
+    data_type: UInt64
+  - name: pay_safe_pseudonym
+    description: >
+      Keyed pseudonym of the profile's `pay` (Gnosis Pay Safe address), or 0 if
+      unset. Equals pseudonymize_address(gp_safe) for the same Safe.
+    data_type: UInt64
+  - name: initial_utm_campaign
+    description: Mixpanel set-once first-touch utm_campaign on the profile, '' if absent.
+    data_type: String
+  - name: initial_utm_source
+    description: Mixpanel set-once first-touch utm_source on the profile, '' if absent.
+    data_type: String
+  - name: initial_utm_medium
+    description: Mixpanel set-once first-touch utm_medium on the profile, '' if absent.
+    data_type: String
+  - name: synced_at
+    description: Snapshot timestamp of the latest profile row.
+    data_type: DateTime

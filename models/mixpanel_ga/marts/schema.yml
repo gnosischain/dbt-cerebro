@@ -1496,3 +1496,98 @@ models:
       - name: retention_pct
         description: retained_accounts / cohort_size * 100. Ratio — do NOT sum.
         data_type: Float64
+
+  - name: fct_mixpanel_ga_campaign_composition
+    description: >
+      Campaign COMPOSITION (state-based, not weekly) — the current make-up of each
+      first-touch campaign's users from the Mixpanel profile snapshot: how many are
+      PWA installs, have an IBAN, hold TheG NFT, are Circles backers, joined via
+      referral, and how many went on to fund a Gnosis Pay card (via the profile
+      `pay` bridge). Complements fct_mixpanel_ga_campaign_funnel_weekly (timed
+      conversions) with cohort make-up. Profile flags are current-state, so these
+      are "is currently" rates, not timed. K-anonymity: campaigns with < 5 users
+      bucketed into '_small_campaigns'. Aggregate-only output.
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if < 5 users; 'unknown' if unattributed).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: users
+        description: Distinct Gnosis App accounts with this first-touch campaign.
+        data_type: UInt64
+      - name: funded_card_users
+        description: Of those users, how many control a Gnosis Pay Safe that was funded (via the profile pay bridge).
+        data_type: UInt64
+      - name: pwa_users
+        description: Users who installed the app as a PWA.
+        data_type: UInt64
+      - name: iban_users
+        description: Users with an IBAN configured.
+        data_type: UInt64
+      - name: gnft_users
+        description: Users holding TheG NFT.
+        data_type: UInt64
+      - name: backer_users
+        description: Circles backers.
+        data_type: UInt64
+      - name: referral_users
+        description: Users who joined via a referral link.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_campaign_composition
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_campaign_composition. Current-state make-up of each
+      first-touch campaign's users + how many funded a Gnosis Pay card. Clip
+      campaign views to the Mixpanel era (profiles 2025-10+).
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: users
+        description: Distinct users with this first-touch campaign.
+        data_type: UInt64
+      - name: funded_card_users
+        description: Users who funded a Gnosis Pay card (via the profile pay bridge).
+        data_type: UInt64
+      - name: pwa_users
+        description: PWA installs.
+        data_type: UInt64
+      - name: iban_users
+        description: Users with an IBAN.
+        data_type: UInt64
+      - name: gnft_users
+        description: TheG NFT holders.
+        data_type: UInt64
+      - name: backer_users
+        description: Circles backers.
+        data_type: UInt64
+      - name: referral_users
+        description: Joined via referral.
+        data_type: UInt64
