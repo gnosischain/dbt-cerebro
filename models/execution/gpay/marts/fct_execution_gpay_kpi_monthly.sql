@@ -3,11 +3,32 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(month)',
+    pre_hook=["SET join_use_nulls = 1"],
+    post_hook=["SET join_use_nulls = 0"],
     tags=['production','execution','gpay']
   )
 }}
 
-WITH mau_volumes AS (
+-- Canonicalize migrated Safes (June 2026 exploit migration): an OLD Safe and
+-- its NEW Safe both live in int_execution_gpay_wallets, so a migrated user
+-- active in the migration month is otherwise counted twice in the distinct-user
+-- MAU. Mapping old->new via the canonical seed collapses them to one user.
+-- Volumes/counts are unaffected (sums are sums); only the uniqExact user
+-- counts change. Mirrors int_execution_gpay_balances_user_daily.
+WITH canon_activity AS (
+    SELECT
+        d.date,
+        coalesce(c.canonical_address, d.wallet_address) AS wallet_address,
+        d.action,
+        d.amount,
+        d.amount_usd,
+        d.activity_count
+    FROM {{ ref('int_execution_gpay_activity_daily') }} d
+    LEFT JOIN {{ ref('int_execution_gpay_safe_canonical') }} c
+        ON c.address = d.wallet_address
+),
+
+mau_volumes AS (
     SELECT
         toStartOfMonth(date) AS month,
 
@@ -28,7 +49,7 @@ WITH mau_volumes AS (
         sumIf(amount_usd, action = 'Refund')                                               AS refund_total_usd,
         sumIf(amount_usd, action = 'Reversal')                                             AS reversal_total_usd
 
-    FROM {{ ref('int_execution_gpay_activity_daily') }}
+    FROM canon_activity
     WHERE toStartOfMonth(date) < toStartOfMonth(today())
     GROUP BY month
 ),
@@ -42,7 +63,7 @@ repeat_rate AS (
             toStartOfMonth(date) AS month,
             wallet_address,
             sum(activity_count)  AS payments
-        FROM {{ ref('int_execution_gpay_activity_daily') }}
+        FROM canon_activity
         WHERE action = 'Payment'
           AND toStartOfMonth(date) < toStartOfMonth(today())
         GROUP BY month, wallet_address

@@ -1,0 +1,1013 @@
+# Gnosis App — Ground-Truth (envio_ga) semantic layer.
+#
+# Scope: ONLY the privacy-safe exposed marts. The raw-address / identity-bridge
+# layer (stg_envio_ga__*, int_*_user_identity_bridge, int_*_user_dim,
+# int_*_user_activity, int_*_pay_wallets) is tagged internal_only /
+# privacy:tier_internal + meta.expose_to_mcp=false and is dropped from the
+# registry at the source by build_registry.py — it is intentionally NOT authored
+# here. The only user-grain model exposed is the pseudonym-only
+# fct_execution_gnosis_app_gt_user_identities_public (no raw address).
+#
+# Tier: approved. Columns are the full documented + warehouse-catalogued set.
+semantic_models:
+
+# ---------- Cashback NFT program (daily time-series) ----------
+- name: execution_gnosis_app_gt_cashback_nft
+  model: ref('fct_execution_gnosis_app_gt_cashback_nft')
+  defaults:
+    agg_time_dimension: mint_date
+  entities:
+  - name: cashback_day_status
+    type: primary
+    expr: concat(toString(mint_date), '|', toString(status))
+  dimensions:
+  - name: mint_date
+    type: time
+    expr: mint_date
+    type_params:
+      time_granularity: day
+  - name: status
+    type: categorical
+    expr: status
+  measures:
+  - name: execution_gnosis_app_gt_cashback_nft__mints_value
+    agg: sum
+    expr: n_mints
+  - name: execution_gnosis_app_gt_cashback_nft__owners_value
+    agg: sum
+    expr: n_owners
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - gnosis app gt cashback nft mints
+        - gnosis pay cashback mints
+        - cashback nft mints by status
+        - gnosis app ground truth cashback
+
+# ---------- Swaps by token pair ----------
+- name: execution_gnosis_app_gt_swaps_by_pair
+  model: ref('fct_execution_gnosis_app_gt_swaps_by_pair')
+  entities:
+  - name: swap_pair
+    type: primary
+    expr: concat(app_scope, '|', sell_token, '|', buy_token)
+  dimensions:
+  - name: app_scope
+    type: categorical
+    expr: app_scope
+  - name: sell_token
+    type: categorical
+    expr: sell_token
+  - name: buy_token
+    type: categorical
+    expr: buy_token
+  measures:
+  - name: execution_gnosis_app_gt_swaps_by_pair__filled_swaps_value
+    agg: sum
+    expr: n_filled_swaps
+  - name: execution_gnosis_app_gt_swaps_by_pair__sell_volume_atoms_value
+    agg: sum
+    expr: sell_volume_atoms
+  - name: execution_gnosis_app_gt_swaps_by_pair__swappers_value
+    agg: sum
+    expr: n_swappers
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: token_pair
+        question_synonyms:
+        - gnosis app gt swaps by pair
+        - gnosis app filled swaps by token pair
+        - gnosis app swap volume by pair
+
+# ---------- Swaps summary by scope x CoW status ----------
+- name: execution_gnosis_app_gt_swaps_summary
+  model: ref('fct_execution_gnosis_app_gt_swaps_summary')
+  entities:
+  - name: swap_scope_status
+    type: primary
+    expr: concat(app_scope, '|', status)
+  dimensions:
+  - name: app_scope
+    type: categorical
+    expr: app_scope
+  - name: status
+    type: categorical
+    expr: status
+  measures:
+  - name: execution_gnosis_app_gt_swaps_summary__swaps_value
+    agg: sum
+    expr: n_swaps
+  - name: execution_gnosis_app_gt_swaps_summary__swappers_value
+    agg: sum
+    expr: n_swappers
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: swap_status
+        question_synonyms:
+        - gnosis app gt swaps summary
+        - gnosis app swap counts by status
+        - gnosis app swap orders by scope
+
+# ---------- Referrals (earned ledger vs full invite graph) ----------
+- name: execution_gnosis_app_gt_referrals
+  model: ref('fct_execution_gnosis_app_gt_referrals')
+  entities:
+  - name: referral_scope
+    type: primary
+    expr: metric_scope
+  dimensions:
+  - name: metric_scope
+    type: categorical
+    expr: metric_scope
+  measures:
+  - name: execution_gnosis_app_gt_referrals__inviters_value
+    agg: sum
+    expr: n_inviters
+  - name: execution_gnosis_app_gt_referrals__invitees_value
+    agg: sum
+    expr: n_invitees
+  - name: execution_gnosis_app_gt_referrals__edges_value
+    agg: sum
+    expr: n_edges
+  - name: execution_gnosis_app_gt_referrals__reward_crc_value
+    agg: sum
+    expr: total_reward_crc
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: referral_scope
+        question_synonyms:
+        - gnosis app gt referrals
+        - gnosis app invite graph
+        - gnosis app referral rewards
+
+# ---------- Auto-invest accounts (Metri legacy) ----------
+- name: execution_gnosis_app_gt_investments
+  model: ref('fct_execution_gnosis_app_gt_investments')
+  entities:
+  - name: investment_active_flag
+    type: primary
+    expr: concat(toString(is_active), '|', product)
+  dimensions:
+  - name: is_active
+    type: categorical
+    expr: is_active
+  - name: product
+    type: categorical
+    expr: product
+  measures:
+  - name: execution_gnosis_app_gt_investments__accounts_value
+    agg: sum
+    expr: n_accounts
+  - name: execution_gnosis_app_gt_investments__owners_value
+    agg: sum
+    expr: n_owners
+  - name: execution_gnosis_app_gt_investments__tokens_value
+    agg: sum
+    expr: n_tokens
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: account_active_flag
+        question_synonyms:
+        - gnosis app gt investments
+        - gnosis app auto-invest accounts
+        - metri investment accounts
+
+# ---------- Public user identity registry (pseudonym-only user spine) ----------
+- name: execution_gnosis_app_gt_user_identities_public
+  model: ref('fct_execution_gnosis_app_gt_user_identities_public')
+  entities:
+  - name: user_pseudonym
+    type: primary
+    expr: toString(user_pseudonym)
+  dimensions:
+  - name: user_segment
+    type: categorical
+    expr: user_segment
+  - name: has_circles_avatar
+    type: categorical
+    expr: has_circles_avatar
+  - name: has_profile
+    type: categorical
+    expr: has_profile
+  - name: has_lifetime_cashback
+    type: categorical
+    expr: has_lifetime_cashback
+  - name: is_engaged
+    type: categorical
+    expr: is_engaged
+  - name: is_heuristic_active
+    type: categorical
+    expr: is_heuristic_active
+  - name: has_ga_signal
+    type: categorical
+    expr: has_ga_signal
+  - name: has_metri_signal
+    type: categorical
+    expr: has_metri_signal
+  measures:
+  - name: execution_gnosis_app_gt_users_distinct_count
+    agg: count
+    expr: user_pseudonym
+  - name: execution_gnosis_app_gt_user_identities_public__has_circles_avatar_value
+    agg: sum
+    expr: has_circles_avatar
+  - name: execution_gnosis_app_gt_user_identities_public__has_profile_value
+    agg: sum
+    expr: has_profile
+  - name: execution_gnosis_app_gt_user_identities_public__has_lifetime_cashback_value
+    agg: sum
+    expr: has_lifetime_cashback
+  - name: execution_gnosis_app_gt_user_identities_public__is_engaged_value
+    agg: sum
+    expr: is_engaged
+  - name: execution_gnosis_app_gt_user_identities_public__is_heuristic_active_value
+    agg: sum
+    expr: is_heuristic_active
+  - name: execution_gnosis_app_gt_user_identities_public__has_ga_signal_value
+    agg: sum
+    expr: has_ga_signal
+  - name: execution_gnosis_app_gt_user_identities_public__has_metri_signal_value
+    agg: sum
+    expr: has_metri_signal
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: user
+        question_synonyms:
+        - gnosis app gt users
+        - gnosis app ground truth users
+        - gnosis app registered identities
+        - gt distinct users
+
+# ---------- Registry-vs-active reconciliation scorecard (single snapshot row) ----------
+- name: execution_gnosis_app_gt_user_reconciliation
+  model: ref('int_execution_gnosis_app_gt_user_reconciliation')
+  measures:
+  - name: execution_gnosis_app_gt_reconciliation__heuristic_users_value
+    agg: sum
+    expr: heuristic_users
+  - name: execution_gnosis_app_gt_reconciliation__gt_registry_users_value
+    agg: sum
+    expr: gt_registry_users
+  - name: execution_gnosis_app_gt_reconciliation__gt_avatar_users_value
+    agg: sum
+    expr: gt_avatar_users
+  - name: execution_gnosis_app_gt_reconciliation__gt_registered_active_value
+    agg: sum
+    expr: gt_registered_active
+  - name: execution_gnosis_app_gt_reconciliation__gt_registered_active_incl_circles_value
+    agg: sum
+    expr: gt_registered_active_incl_circles
+  - name: execution_gnosis_app_gt_reconciliation__gt_active_in_heuristic_value
+    agg: sum
+    expr: gt_active_in_heuristic
+  - name: execution_gnosis_app_gt_reconciliation__gt_active_missed_by_heuristic_value
+    agg: sum
+    expr: gt_active_missed_by_heuristic
+  - name: execution_gnosis_app_gt_reconciliation__gt_active_legacy_only_value
+    agg: sum
+    expr: gt_active_legacy_only
+  - name: execution_gnosis_app_gt_reconciliation__heuristic_in_registry_value
+    agg: sum
+    expr: heuristic_in_registry
+  - name: execution_gnosis_app_gt_reconciliation__heuristic_in_avatar_value
+    agg: sum
+    expr: heuristic_in_avatar
+  - name: execution_gnosis_app_gt_reconciliation__heuristic_only_vs_registry_value
+    agg: sum
+    expr: heuristic_only_vs_registry
+  - name: execution_gnosis_app_gt_reconciliation__registry_containment_value
+    agg: sum
+    expr: registry_containment
+  - name: execution_gnosis_app_gt_reconciliation__avatar_containment_value
+    agg: sum
+    expr: avatar_containment
+  - name: execution_gnosis_app_gt_reconciliation__active_vs_heuristic_ratio_value
+    agg: sum
+    expr: active_vs_heuristic_ratio
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: snapshot
+        question_synonyms:
+        - gnosis app gt reconciliation
+        - registry vs active user containment
+        - gnosis app ground truth reconciliation
+
+metrics:
+
+# ---- Cashback NFT ----
+- name: gnosis_app_gt_cashback_nft_mints_daily
+  label: Gnosis App GT — Cashback NFT Mints (Daily)
+  description: 'Daily count of Gnosis Pay cashback-NFT mints, broken down by status (1=minted, 0=reverted). Composes to weekly/monthly via the daily time-spine bridge.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_cashback_nft__mints_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions:
+        - mint_date
+        - status
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - gnosis app gt cashback mints
+        - cashback nft mints daily
+        - gnosis pay cashback nft mints
+
+- name: gnosis_app_gt_cashback_nft_owners_daily
+  label: Gnosis App GT — Cashback NFT Owners (Daily)
+  description: 'Distinct cashback-NFT owners per mint_date x status. Read per row — do NOT sum across days/statuses (distinct-count grain).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_cashback_nft__owners_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: day
+        owner: analytics_team
+        allowed_dimensions:
+        - mint_date
+        - status
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - gnosis app gt cashback owners
+        - cashback nft owners
+
+# ---- Swaps ----
+- name: gnosis_app_gt_filled_swaps
+  label: Gnosis App GT — Filled Swaps (by pair)
+  description: 'Count of FILLED swaps by app_scope x token pair (gnosis_app = current app, metri = legacy).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_swaps_by_pair__filled_swaps_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: token_pair
+        owner: analytics_team
+        allowed_dimensions:
+        - app_scope
+        - sell_token
+        - buy_token
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt filled swaps
+        - gnosis app swaps by pair
+        - filled swaps by token pair
+
+- name: gnosis_app_gt_swap_sell_volume_atoms
+  label: Gnosis App GT — Swap Sell Volume (token atoms)
+  description: 'Sum of sell-side swap volume in token ATOMS (not USD; apply token decimals downstream) by app_scope x token pair.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_swaps_by_pair__sell_volume_atoms_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: token_pair
+        owner: analytics_team
+        allowed_dimensions:
+        - app_scope
+        - sell_token
+        - buy_token
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt swap volume
+        - gnosis app sell volume atoms
+
+- name: gnosis_app_gt_swaps
+  label: Gnosis App GT — Swap Orders (by status)
+  description: 'Count of swap orders by app_scope x CoW status enum.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_swaps_summary__swaps_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: swap_status
+        owner: analytics_team
+        allowed_dimensions:
+        - app_scope
+        - status
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt swaps
+        - gnosis app swap orders by status
+        - gnosis app swap counts
+
+# ---- Referrals ----
+- name: gnosis_app_gt_referral_edges
+  label: Gnosis App GT — Referral Edges
+  description: 'Referral (inviter -> invitee) edge count. metric_scope = earned (paid-reward ledger) vs full_invite_graph (all accepted invites, ~2.2x superset) — always filter/split by metric_scope; do not sum across scopes.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_referrals__edges_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: referral_scope
+        owner: analytics_team
+        allowed_dimensions:
+        - metric_scope
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt referral edges
+        - gnosis app invites count
+        - gnosis app referral graph edges
+
+- name: gnosis_app_gt_referral_inviters
+  label: Gnosis App GT — Referral Inviters
+  description: 'Distinct inviters. Split by metric_scope (earned vs full_invite_graph); do not sum across scopes.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_referrals__inviters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: referral_scope
+        owner: analytics_team
+        allowed_dimensions:
+        - metric_scope
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt referral inviters
+        - gnosis app inviters
+
+- name: gnosis_app_gt_referral_invitees
+  label: Gnosis App GT — Referral Invitees
+  description: 'Distinct invitees. Split by metric_scope; do not sum across scopes.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_referrals__invitees_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: referral_scope
+        owner: analytics_team
+        allowed_dimensions:
+        - metric_scope
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt referral invitees
+        - gnosis app invitees
+
+- name: gnosis_app_gt_referral_reward_crc
+  label: Gnosis App GT — Referral Reward (CRC)
+  description: 'Total referral reward paid in CRC. USD is unavailable (no CRC price feed). Split by metric_scope.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_referrals__reward_crc_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: referral_scope
+        owner: analytics_team
+        allowed_dimensions:
+        - metric_scope
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt referral rewards
+        - gnosis app referral crc
+
+# ---- Investments ----
+- name: gnosis_app_gt_investment_accounts
+  label: Gnosis App GT — Auto-Invest Accounts
+  description: 'Metri (legacy) auto-invest account count by active flag / product.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_investments__accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: account_active_flag
+        owner: analytics_team
+        allowed_dimensions:
+        - is_active
+        - product
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt investment accounts
+        - metri auto-invest accounts
+
+- name: gnosis_app_gt_investment_owners
+  label: Gnosis App GT — Auto-Invest Owners
+  description: 'Distinct owners of Metri auto-invest accounts by active flag. Do NOT sum across the active flag (distinct-count grain).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_investments__owners_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: account_active_flag
+        owner: analytics_team
+        allowed_dimensions:
+        - is_active
+        - product
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt investment owners
+        - metri auto-invest owners
+
+# ---- Users (registry rollups) ----
+- name: gnosis_app_gt_distinct_users
+  label: Gnosis App GT — Distinct Users (registry, pseudonymized)
+  description: 'Distinct user_pseudonym count in the ground-truth public identity registry. Joins to mixpanel / gpay / circles / on-chain gnosis_app on user_pseudonym (shared salt). Pseudonym-only — no raw address. NOTE the registry is the full Circles-identity universe (~301k), not an active-user count — use is_heuristic_active / is_engaged / has_ga_signal to scope.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_users_distinct_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users
+        - gnosis app ground truth distinct users
+        - gt registered users
+        - gnosis app registry users
+
+- name: gnosis_app_gt_users_with_circles_avatar
+  label: Gnosis App GT — Users with a Circles Avatar
+  description: 'Count of GT registry users that have a Circles avatar (flag rollup).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__has_circles_avatar_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users with circles avatar
+        - gt users circles avatar
+
+- name: gnosis_app_gt_users_with_profile
+  label: Gnosis App GT — Users with a Profile
+  description: 'Count of GT registry users that have a Circles profile (flag rollup).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__has_profile_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users with profile
+        - gt users profile
+
+- name: gnosis_app_gt_users_engaged
+  label: Gnosis App GT — Engaged Users
+  description: 'Count of GT registry users flagged is_engaged (registry ∩ any engagement signal).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__is_engaged_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt engaged users
+        - gt engaged users
+
+- name: gnosis_app_gt_users_heuristic_active
+  label: Gnosis App GT — Heuristic-Active Users
+  description: 'Count of GT registry users flagged is_heuristic_active (overlap with the heuristic gnosis_app active-user spine).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__is_heuristic_active_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt heuristic active users
+        - gt heuristic active users
+
+- name: gnosis_app_gt_users_ga_signal
+  label: Gnosis App GT — Users with a Gnosis App Signal
+  description: 'Count of GT registry users flagged has_ga_signal (current Gnosis App activity).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__has_ga_signal_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users with ga signal
+        - gt gnosis app signal users
+
+- name: gnosis_app_gt_users_metri_signal
+  label: Gnosis App GT — Users with a Metri (legacy) Signal
+  description: 'Count of GT registry users flagged has_metri_signal (legacy Metri app activity).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__has_metri_signal_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users with metri signal
+        - gt metri signal users
+
+- name: gnosis_app_gt_users_with_lifetime_cashback
+  label: Gnosis App GT — Users with Lifetime Cashback
+  description: 'Count of GT registry users flagged has_lifetime_cashback.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_user_identities_public__has_lifetime_cashback_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: user
+        owner: analytics_team
+        allowed_dimensions:
+        - user_segment
+        - has_circles_avatar
+        - has_profile
+        - has_lifetime_cashback
+        - is_engaged
+        - is_heuristic_active
+        - has_ga_signal
+        - has_metri_signal
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt users with lifetime cashback
+        - gt lifetime cashback users
+
+# ---- Reconciliation scorecard (single-row snapshot KPIs) ----
+- name: gnosis_app_gt_reconciliation_heuristic_users
+  label: Gnosis App GT — Heuristic Active Users
+  description: 'Heuristic-active user count (the authoritative active-user number the GT validates).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__heuristic_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt heuristic users
+        - gnosis app reconciliation active users
+
+- name: gnosis_app_gt_reconciliation_registry_users
+  label: Gnosis App GT — Registry Users (registered identities)
+  description: 'Total registered Circles identities in the GT registry (~301k) — a registry size, NOT an active-user count.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_registry_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt registry users
+        - gt registered identities count
+
+- name: gnosis_app_gt_reconciliation_avatar_users
+  label: Gnosis App GT — Avatar Users (active spine)
+  description: 'Registered identities with a Circles avatar (the active-user containment spine).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_avatar_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt avatar users
+        - gt avatar spine users
+
+- name: gnosis_app_gt_reconciliation_registered_active
+  label: Gnosis App GT — Registered Active Users
+  description: 'Registered identities that performed any app-tagged action (the canonical GT active-user metric).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_registered_active_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt registered active users
+        - gt canonical active users
+
+- name: gnosis_app_gt_reconciliation_registered_active_incl_circles
+  label: Gnosis App GT — Registered Active (incl. generic Circles)
+  description: 'Broader active count that also counts generic Circles + referral actions (no client tag) — an upper bound, not the headline.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_registered_active_incl_circles_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt registered active incl circles
+        - gt broad active users
+
+- name: gnosis_app_gt_reconciliation_active_in_heuristic
+  label: Gnosis App GT — Active Users also in Heuristic
+  description: 'GT registered-active users that the heuristic gnosis_app pipeline also sees (overlap).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_active_in_heuristic_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt active in heuristic
+        - gt heuristic overlap
+
+- name: gnosis_app_gt_reconciliation_active_missed_by_heuristic
+  label: Gnosis App GT — Active Users Missed by Heuristic
+  description: 'GT registered-active users the current-app heuristic structurally cannot see (legacy/Metri users).'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_active_missed_by_heuristic_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt active missed by heuristic
+        - gt users heuristic misses
+
+- name: gnosis_app_gt_reconciliation_active_legacy_only
+  label: Gnosis App GT — Active Users (legacy only)
+  description: 'GT active users seen only via legacy Metri app-tagged actions.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__gt_active_legacy_only_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt active legacy only
+        - gt metri-only active users
+
+- name: gnosis_app_gt_reconciliation_heuristic_in_registry
+  label: Gnosis App GT — Heuristic Users found in Registry
+  description: 'Heuristic-active users that are present in the GT registry.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__heuristic_in_registry_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt heuristic in registry
+        - heuristic users in gt registry
+
+- name: gnosis_app_gt_reconciliation_heuristic_in_avatar
+  label: Gnosis App GT — Heuristic Users found in Avatar Spine
+  description: 'Heuristic-active users that are present in the Circles avatar spine.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__heuristic_in_avatar_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt heuristic in avatar
+        - heuristic users in avatar spine
+
+- name: gnosis_app_gt_reconciliation_heuristic_only_vs_registry
+  label: Gnosis App GT — Heuristic-Only (not in Registry)
+  description: 'Heuristic-active users NOT found in the GT registry.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__heuristic_only_vs_registry_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt heuristic only vs registry
+        - heuristic users not in gt registry
+
+- name: gnosis_app_gt_registry_containment
+  label: Gnosis App GT — Registry Containment (ratio)
+  description: 'Share of heuristic-active users found in the GT registry. RATIO in [0,1] — read as a value, do not sum.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__registry_containment_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt registry containment
+        - registry containment ratio
+
+- name: gnosis_app_gt_avatar_containment
+  label: Gnosis App GT — Avatar Containment (ratio)
+  description: 'Share of heuristic-active users found in the Circles avatar spine. RATIO in [0,1] — read as a value, do not sum.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__avatar_containment_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt avatar containment
+        - avatar containment ratio
+
+- name: gnosis_app_gt_active_vs_heuristic_ratio
+  label: Gnosis App GT — Active vs Heuristic (ratio)
+  description: 'GT registered-active / heuristic-active. RATIO — read as a value, do not sum.'
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_gt_reconciliation__active_vs_heuristic_ratio_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        grain: snapshot
+        owner: analytics_team
+        allowed_dimensions: []
+        supported_time_grains: []
+        question_synonyms:
+        - gnosis app gt active vs heuristic ratio
+        - gt active to heuristic ratio

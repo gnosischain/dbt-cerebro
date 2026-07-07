@@ -525,10 +525,14 @@ models:
   description: |
     INTERNAL ONLY. Per-user (user_id_hash) marketing attribution. Collapses
     each identified production user's sparse UTM hits into one stable
-    first-touch and last-touch campaign/source/medium, derived by ordering on
-    event_time (no initial_utm_* super-properties exist in the raw data).
-    Missing values default to 'unknown'. Carries user_id_hash — never exposed
-    to cerebro-api (inherited exclusion) or MCP (expose_to_mcp: false).
+    first-touch and last-touch campaign/source/medium by ordering on event_time,
+    then PREFERS the Mixpanel profile's set-once initial_utm_*
+    (stg_mixpanel_ga__profiles) as the authoritative first-touch where present
+    (+~19% first-touch coverage; can predate the event window). last-touch stays
+    event-derived. When first-touch comes from the profile, first_touch_ts is set
+    to first_seen_at so the downstream causal gate still credits it. Missing
+    values default to 'unknown'. Carries user_id_hash — never exposed to
+    cerebro-api (inherited exclusion) or MCP (expose_to_mcp: false).
   meta:
     owner: analytics_team
     privacy_tier: internal
@@ -567,15 +571,17 @@ models:
     per first-event type. event_type is 'funded' (first gpay_funded inflow) or
     'first_payment' (first gpay_payment).
 
-    UTM is resolved via two paths, GA-controller wins: for app-onboarded Safes
-    the initial_owner that signed Safe setup is the Cometh relayer (never matches
-    Mixpanel), so we prefer the campaign of the Gnosis App user enabled on the
-    Safe's Delay module (int_execution_gnosis_app_gpay_wallets.first_ga_owner_address,
-    pseudonymized), falling back to the direct initial_owner pseudonym match,
-    then 'unknown'. Only the campaign assignment changes; the account count per
-    event_type is unchanged. Accounts with no signal get 'unknown' so totals
-    reconcile to the full GP funnel. Carries user_pseudonym — never exposed to
-    cerebro-api or MCP.
+    UTM is resolved via a precedence chain (first match wins): (1) the Mixpanel
+    profile `pay` bridge (int_mixpanel_ga_gpay_pay_bridge) — the app's own
+    Safe -> GA-account link — resolving that account's event-derived campaign,
+    then (2) that profile's own set-once initial_utm_*, then (3) the on-chain
+    Delay-module GA-controller campaign, then (4) the direct initial_owner
+    pseudonym match, then 'unknown'. The pay bridge exists because for
+    app-onboarded Safes the initial_owner that signed Safe setup is the Cometh
+    relayer (never matches Mixpanel). Only the campaign assignment changes; the
+    account count per event_type is unchanged. Accounts with no signal get
+    'unknown' so totals reconcile to the full GP funnel. Carries user_pseudonym
+    — never exposed to cerebro-api or MCP.
   meta:
     owner: analytics_team
     privacy_tier: internal
@@ -611,10 +617,10 @@ models:
     description: Account's last-touch utm_medium (GA controller preferred, else initial_owner), 'unknown' if no signal.
     data_type: String
   - name: first_touch_attribution_path
-    description: "INTERNAL audit: which identity supplied first_touch_campaign — 'ga_controller' (via App<>GP link), 'initial_owner' (direct match), or 'unknown'. Not propagated to the weekly mart or any api_ view."
+    description: "INTERNAL audit: which identity supplied first_touch_campaign — 'pay_ga_events' (Mixpanel pay bridge → GA events), 'pay_profile' (profile initial_utm_*), 'ga_controller' (on-chain Delay bridge), 'initial_owner' (direct match), or 'unknown'. Not propagated to the weekly mart or any api_ view."
     data_type: String
   - name: last_touch_attribution_path
-    description: "INTERNAL audit: which identity supplied last_touch_campaign — 'ga_controller', 'initial_owner', or 'unknown'. Resolves independently of first_touch. Not propagated to the weekly mart or any api_ view."
+    description: "INTERNAL audit: which identity supplied last_touch_campaign — 'pay_ga_events', 'ga_controller', 'initial_owner', or 'unknown'. Resolves independently of first_touch. Not propagated to the weekly mart or any api_ view."
     data_type: String
 
 - name: int_mixpanel_ga_gnosis_app_first_events
@@ -648,3 +654,105 @@ models:
   - name: last_touch_campaign
     description: Account's last-touch utm_campaign from Mixpanel, 'unknown' if unmatched.
     data_type: String
+
+- name: int_mixpanel_ga_gpay_pay_bridge
+  description: |
+    INTERNAL ONLY. Authoritative Safe -> Gnosis App account bridge, sourced from
+    the Mixpanel profile `pay` property (the app's own record of which GA account
+    controls a Gnosis Pay Safe). Recovers app users the on-chain Delay-module
+    bridge (int_execution_gnosis_app_gt_card_owner) misses. One GA account per
+    Safe (prefers a profile carrying a real first-touch campaign, then the
+    freshest snapshot). Keyed on pay_safe_pseudonym == pseudonymize_address(gp_safe).
+  meta:
+    owner: analytics_team
+    privacy_tier: internal
+    expose_to_mcp: false
+    api:
+      exclude_from_api: true
+  columns:
+  - name: pay_safe_pseudonym
+    description: Keyed pseudonym of the Gnosis Pay Safe address (== pseudonymize_address(gp_safe)).
+    data_type: UInt64
+  - name: ga_user_id_hash
+    description: Pseudonym of the Gnosis App account controlling the Safe (same hash space as Mixpanel user_id_hash).
+    data_type: UInt64
+  - name: profile_initial_utm_campaign
+    description: The chosen profile's Mixpanel set-once first-touch utm_campaign, '' if absent.
+    data_type: String
+  - name: profile_initial_utm_source
+    description: The chosen profile's Mixpanel set-once first-touch utm_source, '' if absent.
+    data_type: String
+  - name: profile_initial_utm_medium
+    description: The chosen profile's Mixpanel set-once first-touch utm_medium, '' if absent.
+    data_type: String
+
+- name: int_mixpanel_ga_user_profile
+  description: |
+    INTERNAL ONLY. Canonical per-Gnosis-App-account attribute dimension from the
+    Mixpanel profile snapshot (latest per distinct_id). One row per user_id_hash.
+    Enrichment dimension for segmenting acquisition/campaign metrics by product
+    adoption and geo. Profile properties are CURRENT-STATE (no history): the
+    boolean flags mean "is currently", not when. Carries user_id_hash and
+    pay_safe_pseudonym (hashes) — never exposed to cerebro-api or MCP. username
+    is intentionally not materialized.
+  meta:
+    owner: analytics_team
+    privacy_tier: internal
+    expose_to_mcp: false
+    api:
+      exclude_from_api: true
+  columns:
+  - name: user_id_hash
+    description: Pseudonym of the profile's distinct_id (Gnosis App account); same hash space as int_mixpanel_ga_user_acquisition.
+    data_type: UInt64
+  - name: pay_safe_pseudonym
+    description: Pseudonym of the profile's Gnosis Pay Safe (== pseudonymize_address(gp_safe)), 0 if unset.
+    data_type: UInt64
+  - name: first_touch_campaign
+    description: Mixpanel set-once first-touch utm_campaign (query-string-cleaned), NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_source
+    description: Mixpanel set-once first-touch utm_source, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_medium
+    description: Mixpanel set-once first-touch utm_medium, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_content
+    description: Mixpanel set-once first-touch utm_content, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_utm_id
+    description: Mixpanel set-once first-touch utm_id, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_source_platform
+    description: Mixpanel set-once first-touch utm_source_platform, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_creative_format
+    description: Mixpanel set-once first-touch utm_creative_format, NULL if absent.
+    data_type: Nullable(String)
+  - name: first_touch_marketing_tactic
+    description: Mixpanel set-once first-touch utm_marketing_tactic, NULL if absent.
+    data_type: Nullable(String)
+  - name: country_code
+    description: Profile geo country code ($country_code).
+    data_type: String
+  - name: region
+    description: Profile geo region ($region).
+    data_type: String
+  - name: is_pwa
+    description: 1 if the user installed the app as a PWA.
+    data_type: Bool
+  - name: has_iban
+    description: 1 if the user has an IBAN configured.
+    data_type: Bool
+  - name: has_gnft
+    description: 1 if the user holds TheG NFT.
+    data_type: Bool
+  - name: is_backer
+    description: 1 if the user is a Circles backer.
+    data_type: Bool
+  - name: joined_via_referral
+    description: 1 if the user joined via a referral link.
+    data_type: Bool
+  - name: synced_at
+    description: Snapshot timestamp of the latest profile row.
+    data_type: DateTime

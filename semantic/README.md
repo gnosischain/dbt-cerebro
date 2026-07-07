@@ -87,13 +87,29 @@ The MCP-side planner (the `query_metrics` / `discover_metrics` /
 is in the **`cerebro-mcp`** repo, not this one. Planner bugs and
 feature work happen there. Key files:
 
-- `src/cerebro_mcp/semantic_sql_compiler.py` (SQL emission, agg
+- `src/cerebro_mcp/semantic/sql_compiler.py` (SQL emission, agg
   translation: `count_distinct` → `uniqExact`)
-- `src/cerebro_mcp/semantic_planner.py` (dimension resolution,
+- `src/cerebro_mcp/semantic/planner.py` (dimension resolution,
   time-spine upcasts)
-- `src/cerebro_mcp/semantic_graph.py` (reachability graph + cost-based
+- `src/cerebro_mcp/semantic/graph.py` (reachability graph + cost-based
   path search)
-- `src/cerebro_mcp/tools/semantic.py` (MCP tool surface)
+- `src/cerebro_mcp/semantic/graph_extraction.py` (the single graph-block
+  extractor + validator; `GraphProfile` lives here)
+- `src/cerebro_mcp/semantic/graph_profiles.py` (snapshot-cached profile
+  discovery + edge/flow SQL builders)
+- `src/cerebro_mcp/tools/semantic/semantic.py` (metric MCP tool surface)
+- `src/cerebro_mcp/tools/semantic/graph_explorer.py` (Graph Explorer +
+  the graph-native tools: `search_graph_catalog`, `explore_neighborhood`,
+  `calculate_flow_efficiency`)
+
+## Knowledge graph
+
+To expose a model to the knowledge graph (node/edge types, the catalog, and the
+graph MCP tools), author a `config.meta.cerebro.graph` block and register any new
+node kinds in [`graph_kinds.yml`](graph_kinds.yml). The full recipe + field
+reference is in [`GRAPH_AUTHORING.md`](GRAPH_AUTHORING.md). The build emits the
+published contract `target/semantic_graph_catalog.json` (validated by
+`scripts/semantic/graph_gate.py`, a blocking CI check).
 
 ## Where to file issues
 

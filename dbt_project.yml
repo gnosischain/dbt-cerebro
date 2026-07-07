@@ -8,6 +8,15 @@ flags:
 profile: 'gnosis_dbt'
 
 vars:
+  # Elementary re-uploads the FULL artifact catalog (~1137 models + ~2023 tests)
+  # on EVERY dbt invocation via its on-run-end hook. The orchestrator runs dbt as
+  # hundreds of invocations (microbatch slices + plain flushes + the live job), and
+  # each catalog upload was measured at 35-68s on ClickHouse (no temp-table support),
+  # which dominated cron_preview wall time. Disable the per-invocation autoupload and
+  # refresh the catalog exactly once per run via the elementary-artifacts-refresh step
+  # in scripts/run_dbt_observability.sh. Run results, test results, source freshness and
+  # invocation records still upload every invocation (cheap, incremental) — no data lost.
+  disable_dbt_artifacts_autoupload: true
   symbol_exclude: "aGnoGNO,aGnoWXDAI,aGnosDAI,aGnoUSDC,aGnoEURe,aGnoUSDCe,spGNO,spUSDT,spUSDC,spUSDC.e,spWETH,spwstETH,spWXDAI,spsDAI,spEURe"
   circles_base_group_abi_source_address: "0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac"
   circles_cm_group_abi_source_address: "0x6fa6b486b2206ec91f9bf36ef139ebd8e4477fac"
@@ -56,6 +65,8 @@ models:
     contracts:
       +incremental_strategy: append
       +engine: "ReplacingMergeTree()"
+      +meta:
+        owner: analytics_team
       # The decode macros generate very deep expression DAGs; the new CH
       # analyzer spends ~8.5s planning each one (EXPLAIN alone), the legacy
       # analyzer plans them in ms (measured 21x: 8.6s -> 0.4s). Revisit when
@@ -75,10 +86,34 @@ models:
     mixpanel_ga:
       +tags: ["privacy:mixpanel_ga", "mixpanel_ga"]
       +meta:
+        owner: analytics_team
         privacy_tier: mixpanel
         api:
           exclude_from_api: true
+    # Model-owner defaults per module tree (semantic-registry owner check).
+    # Model-level schema.yml / config() owners merge over these and win
+    # (verified: gnosis_app_gt privacy meta + owner default coexist).
+    revenue:
+      +meta:
+        owner: analytics_team
+    quarterly_data:
+      +meta:
+        owner: analytics_team
+    # NOTE: 2 consensus models declare consensus_team at the model level —
+    # they keep it (model-level wins). Flip this default to consensus_team
+    # if that team should own the whole tree.
+    consensus:
+      +meta:
+        owner: analytics_team
+    bridges:
+      +meta:
+        owner: analytics_team
+    crawlers_data:
+      +meta:
+        owner: analytics_team
     execution:
+      +meta:
+        owner: analytics_team
       gnosis_app:
         intermediate:
           # Bridge model — maps user_pseudonym (sipHash64) to plaintext wallet
@@ -99,6 +134,14 @@ models:
               privacy_tier: internal
               api:
                 exclude_from_api: true
+      gnosis_app_gt:
+        # Ground-truth (envio_ga) rebuild. Set the model owner for the whole
+        # tree so the semantic-registry model-owner check is satisfied. The raw
+        # envio_ga / identity layer additionally opts out of MCP + API in its
+        # own SQL config() meta (expose_to_mcp=false); those keys merge with
+        # this owner default rather than being clobbered.
+        +meta:
+          owner: analytics_team
       gpay:
         intermediate:
           # Bridge model — maps user_pseudonym to plaintext Safe / EOA
@@ -127,7 +170,7 @@ models:
           +materialized: table
   elementary:
     +schema: "elementary"
-    +enabled: false
+    +enabled: true
 
 seeds:
   gnosis_dbt:

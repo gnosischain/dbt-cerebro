@@ -23,26 +23,36 @@ models:
   columns:
   - name: address
     description: Lowercased 0x… address. Primary index. Multiple rows per address are expected (one per contributing source); the api view collapses them.
+    data_type: String
     tests:
     - not_null
   - name: is_safe
     description: True if the address is a deployed Gnosis Safe contract.
+    data_type: UInt8
   - name: is_safe_owner
     description: True if the address is an owner of at least one Safe.
+    data_type: UInt8
   - name: is_circles_avatar
     description: True if the address has a Circles v2 avatar registration.
+    data_type: UInt8
   - name: is_gpay_wallet
     description: True if the address appears in Gnosis Pay user lifetime metrics.
+    data_type: UInt8
   - name: is_validator_withdrawal_address
     description: True if the address is a withdrawal_address for at least one validator.
+    data_type: UInt8
   - name: connected_safe_count
     description: Number of Safes this address currently owns (0 if not an owner).
+    data_type: UInt64
   - name: connected_validator_count
     description: Number of validators whose withdrawal_address is this address (0 if none).
+    data_type: UInt64
   - name: circles_name
     description: Circles avatar handle if any; NULL otherwise.
+    data_type: Nullable(String)
   - name: circles_avatar_type
     description: Circles avatar type (human / organization / group) if any.
+    data_type: Nullable(String)
   - name: display_name
     description: Composed label used by the Account Portfolio search dropdown.
 
@@ -54,6 +64,7 @@ models:
     address change. `require_any_of: [address]`.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests:
     - not_null
     - unique
@@ -69,9 +80,11 @@ models:
     client-side.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: display_name
+    data_type: String
 
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -80,26 +93,50 @@ models:
   description: Simple API view for Account Portfolio balance history.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: date
+    data_type: Date
     tests: [not_null]
 
 - name: fct_execution_account_token_balances_latest
   description: Latest non-zero token balances by address, optimized for account lookup.
   columns:
   - name: address
+    description: Holder wallet address (lowercase).
+    data_type: String
     tests: [not_null]
+  - name: date
+    description: Snapshot date — the latest complete date (< today) in int_execution_tokens_balances_daily.
+    data_type: Date
   - name: token_address
+    description: Contract address of the held token (lowercase).
+    data_type: String
     tests: [not_null]
+  - name: symbol
+    description: Token symbol.
+    data_type: String
+  - name: token_class
+    description: Token classification.
+    data_type: String
+  - name: balance_raw
+    description: Token balance in raw atomic units (not decimal-normalized).
+    data_type: Int256
   - name: balance
+    description: Token balance in native units.
+    data_type: Float64
   - name: balance_usd
+    description: Token balance in USD (0 when no price is available).
+    data_type: Float64
   tests: []
 - name: api_execution_account_token_balances_latest
   description: Simple API view for latest Account Portfolio token balances.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: token_address
+    data_type: String
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -137,8 +174,10 @@ models:
   description: Simple API view for Account Portfolio token movements.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: direction
+    data_type: String
 
 - name: fct_execution_account_counterparty_edges_daily
   description: Daily directed account-counterparty graph edges from production movement and GPay activity facts.
@@ -169,20 +208,37 @@ models:
   description: Latest bounded graph edge source for Account Portfolio interactions and relationships.
   columns:
   - name: source
+    description: Source node of the directed edge (lowercase address).
+    data_type: String
     tests: [not_null]
   - name: target
+    description: Target node of the directed edge (address, or withdrawal credential for validator edges).
+    data_type: String
     tests: [not_null]
   - name: edge_type
+    description: Kind of relationship the edge represents.
+    data_type: String
     tests:
     - accepted_values:
         values: ['token_transfer', 'gpay_activity', 'safe_relation', 'circles_trust', 'validator_relation']
+  - name: weight
+    description: Edge weight — aggregated interaction count (or 1 for structural relations).
+    data_type: UInt64
+  - name: raw_volume
+    description: Summed raw transfer volume for token-transfer edges (0 for non-transfer edge types).
+    data_type: UInt256
+  - name: last_seen_date
+    description: Most recent date the edge was observed.
+    data_type: Date
   tests: []
 - name: api_execution_account_counterparty_graph
   description: Simple API view for Account Portfolio counterparty graph rows.
   columns:
   - name: source
+    data_type: Nullable(String)
     tests: [not_null]
   - name: target
+    data_type: Nullable(String)
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -192,14 +248,47 @@ models:
   description: Latest address-grain activity summary derived from production token movement facts.
   columns:
   - name: address
+    description: Account address (lowercase); one row per address.
+    data_type: String
     tests:
     - not_null
     - unique
+  - name: first_activity_date
+    description: Earliest date with any token movement for this address.
+    data_type: Date
+  - name: last_activity_date
+    description: Most recent date with any token movement for this address.
+    data_type: Date
+  - name: active_days
+    description: Distinct dates on which this address had a token movement.
+    data_type: UInt64
+  - name: token_transfer_count
+    description: Total token transfer legs (inbound + outbound) for this address.
+    data_type: UInt64
+  - name: inbound_transfer_count
+    description: Total inbound (direction = 'in') token transfer legs.
+    data_type: UInt64
+  - name: outbound_transfer_count
+    description: Total outbound (direction = 'out') token transfer legs.
+    data_type: UInt64
+  - name: counterparty_count
+    description: Distinct counterparties this address transacted with.
+    data_type: UInt64
+  - name: token_count_moved
+    description: Distinct token contracts this address moved.
+    data_type: UInt64
+  - name: inbound_gross_amount_raw
+    description: Sum of inbound gross transfer amounts in raw atomic units.
+    data_type: Int256
+  - name: outbound_gross_amount_raw
+    description: Sum of outbound gross transfer amounts in raw atomic units.
+    data_type: Int256
 
 - name: api_execution_account_transaction_summary_latest
   description: Simple API view for Account Portfolio transaction/activity summary.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -209,28 +298,53 @@ models:
   description: Recent production-backed token movement rows for Account Portfolio transaction tables.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: date
+    data_type: Date
     tests: [not_null]
 
 - name: fct_execution_account_linked_entities_latest
   description: Direct entity links for selected and linked-group Account Portfolio navigation.
   columns:
   - name: root_address
+    description: The account address the link is anchored on (lowercase).
+    data_type: String
     tests: [not_null]
+  - name: entity_type
+    description: Type of linked entity ('safe', 'safe_owner', 'gpay_wallet', 'validator_credential').
+    data_type: String
+  - name: entity_id
+    description: Identifier of the linked entity (Safe/owner/GP-wallet address, or withdrawal credential).
+    data_type: String
+    tests: [not_null]
+  - name: entity_address
+    description: On-chain address of the linked entity (same as entity_id except for validator credentials, where it is the derived withdrawal address).
+    data_type: String
   - name: relation
+    description: Relationship of the entity to root_address.
+    data_type: String
     tests:
     - accepted_values:
         values: ['safe_owner_of', 'safe_owned_by', 'gnosis_app_controls_gpay_wallet', 'validator_withdrawal_credential']
-  - name: entity_id
-    tests: [not_null]
+  - name: display_label
+    description: Human-readable label for the linked entity (truncated address or validator count).
+    data_type: String
+  - name: value_count
+    description: Count associated with the link (1 for Safe links; current GA-owner count for GP wallets; validator count for withdrawal credentials).
+    data_type: UInt64
+  - name: last_seen_at
+    description: Most recent timestamp evidencing the link (became-owner / last module event / slot timestamp).
+    data_type: DateTime
   tests: []
 - name: api_execution_account_linked_entities_latest
   description: Simple API view for direct linked entities.
   columns:
   - name: root_address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: entity_id
+    data_type: Nullable(String)
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -240,30 +354,149 @@ models:
   description: Complete latest account profile for the Account Portfolio hero and routing layer.
   columns:
   - name: address
+    description: Account address (lowercase); one row per address.
+    data_type: String
     tests:
     - not_null
     - unique
   - name: display_name
+    description: Composed label for the account (Circles name, role tag, or the address).
+    data_type: String
+  - name: is_safe
+    description: True if the address is a deployed Gnosis Safe.
+    data_type: Bool
+  - name: is_safe_owner
+    description: True if the address owns at least one Safe.
+    data_type: Bool
+  - name: is_circles_avatar
+    description: True if the address has a Circles v2 avatar registration.
+    data_type: Bool
+  - name: is_gpay_wallet
+    description: True if the address is a Gnosis Pay wallet (from the resolver or GP lifetime metrics).
+    data_type: Bool
+  - name: is_validator_withdrawal_address
+    description: True if the address is a withdrawal address for at least one validator.
+    data_type: Bool
+  - name: is_gnosis_app_user
+    description: True if the address is a known Gnosis App user (present in int_execution_gnosis_app_users_current).
+    data_type: Bool
+  - name: is_lp_provider
+    description: True if the address has any active liquidity-provider position.
+    data_type: Bool
+  - name: is_lending_user
+    description: True if the address has any active lending position.
+    data_type: Bool
+  - name: has_yield_activity
+    description: True if the address has any active LP or lending position.
+    data_type: Bool
+  - name: connected_safe_count
+    description: Number of Safes this address currently owns.
+    data_type: UInt64
+  - name: connected_validator_count
+    description: Number of validators whose withdrawal address is this address.
+    data_type: UInt64
+  - name: circles_name
+    description: Circles avatar handle; NULL if none.
+    data_type: Nullable(String)
+  - name: circles_avatar_type
+    description: Circles avatar type (human / organization / group); NULL if none.
+    data_type: Nullable(String)
   - name: total_balance_usd
+    description: Sum of the address's latest token balances in USD.
+    data_type: Float64
   - name: tokens_held
+    description: Number of distinct tokens with a positive latest balance.
+    data_type: UInt64
+  - name: native_or_wrapped_xdai_balance
+    description: Latest native or wrapped xDAI (XDAI/WXDAI) balance in native units.
+    data_type: Float64
+  - name: balance_date
+    description: Snapshot date of the latest balances.
+    data_type: Date
   - name: first_seen_date
+    description: Earliest activity/creation date across movements, GP, yield, Gnosis App, and Safe creation (NULL if none).
+    data_type: Nullable(Date)
     tests:
     - dbt_utils.expression_is_true:
         expression: "first_seen_date IS NULL OR first_seen_date > toDate('1970-01-01')"
+  - name: last_active_date
+    description: Most recent activity date across movements, GP, and Gnosis App (NULL if none).
+    data_type: Nullable(Date)
   - name: safe_creation_date
+    description: Date the Safe was created (from int_execution_safes); NULL for non-Safes.
+    data_type: Nullable(Date)
   - name: address_type
+    description: "'safe' if the address is a Safe, else 'eoa_or_contract'."
+    data_type: String
     tests:
     - accepted_values:
         values: ['safe', 'eoa_or_contract']
   - name: wallet_age_date
+    description: Best available age anchor — Safe creation date, else earliest activity across movements/GP/yield/Gnosis App.
+    data_type: Nullable(Date)
     tests:
     - dbt_utils.expression_is_true:
         expression: "wallet_age_date IS NULL OR (wallet_age_date > toDate('1970-01-01') AND wallet_age_date <= today())"
+  - name: counterparty_count
+    description: Distinct counterparties from the transaction summary.
+    data_type: UInt64
+  - name: token_transfer_count
+    description: Total token transfer legs from the transaction summary.
+    data_type: UInt64
+  - name: linked_entity_count
+    description: Total linked entities from fct_execution_account_linked_entities_latest (0 if none).
+    data_type: UInt64
+  - name: linked_safe_count
+    description: Number of Safes linked to this address (falls back to connected_safe_count).
+    data_type: UInt64
+  - name: linked_safe_owner_count
+    description: Number of Safe-owner links for this address.
+    data_type: UInt64
+  - name: linked_validator_count
+    description: Number of validator withdrawal-credential links (falls back to connected_validator_count).
+    data_type: UInt64
+  - name: controlled_gpay_wallet
+    description: A Gnosis Pay wallet controlled by this address as first GA owner; NULL if none.
+    data_type: Nullable(String)
+  - name: controlled_gpay_wallet_count
+    description: Number of currently-GA-owned Gnosis Pay wallets controlled by this address.
+    data_type: UInt64
+  - name: gnosis_app_first_seen_at
+    description: Earliest Gnosis App heuristic hit for this address; NULL if not a GA user.
+    data_type: Nullable(DateTime64(0, 'UTC'))
+  - name: gnosis_app_last_seen_at
+    description: Most recent Gnosis App heuristic hit for this address; NULL if not a GA user.
+    data_type: Nullable(DateTime64(0, 'UTC'))
+  - name: gnosis_app_heuristic_hits
+    description: Total Gnosis App heuristic events triggered by this address.
+    data_type: Nullable(UInt64)
+  - name: gnosis_app_heuristic_count
+    description: Number of distinct Gnosis App heuristics that fired for this address.
+    data_type: Nullable(UInt8)
+  - name: gpay_total_payment_volume_usd
+    description: Lifetime Gnosis Pay payment volume in USD for this wallet.
+    data_type: Nullable(Float64)
+  - name: gpay_total_payment_count
+    description: Lifetime Gnosis Pay payment count for this wallet.
+    data_type: Nullable(UInt64)
+  - name: total_lp_fees_usd
+    description: Lifetime liquidity-provider fees earned in USD.
+    data_type: Nullable(Float64)
+  - name: total_lending_balance_usd
+    description: Current lending balance in USD.
+    data_type: Nullable(Float64)
+  - name: active_lp_positions
+    description: Number of active liquidity-provider positions.
+    data_type: Nullable(UInt64)
+  - name: active_lending_positions
+    description: Number of active lending positions.
+    data_type: Nullable(UInt64)
 
 - name: api_execution_account_profile_latest
   description: Simple API view over the latest Account Portfolio profile fact.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -273,19 +506,45 @@ models:
   description: Search index for address, Circles, Safe, GPay, Gnosis App, validator, and withdrawal credential lookup.
   columns:
   - name: search_key
+    description: Lowercased token to match a query against (address, Circles name, validator index, pubkey, or withdrawal credential).
+    data_type: String
     tests: [not_null]
   - name: result_type
+    description: Category of the matched entity.
+    data_type: String
     tests:
     - accepted_values:
         values: ['address', 'safe', 'gpay_wallet', 'gnosis_app_user', 'circles', 'validator', 'validator_credential']
   - name: address
+    description: Resolved account address for the search result (lowercase).
+    data_type: String
+  - name: display_label
+    description: Primary display label for the result (name or address).
+    data_type: String
+  - name: subtitle
+    description: Secondary descriptive line summarizing the entity's roles.
+    data_type: String
+  - name: badges
+    description: Comma-separated role badges (Circles, Safe, GPay, Gnosis App, Validators, Yield).
+    data_type: String
+  - name: validator_index
+    description: Validator index for validator/credential results; NULL otherwise.
+    data_type: Nullable(String)
+  - name: withdrawal_credentials
+    description: Withdrawal credentials for validator/credential results; NULL otherwise.
+    data_type: Nullable(String)
+  - name: score_base
+    description: Base ranking score by result type (higher = more specific match).
+    data_type: Int32
 
 - name: api_execution_account_search_index
   description: Simple API view over Account Portfolio search index.
   columns:
   - name: search_key
+    data_type: Nullable(String)
     tests: [not_null]
   - name: result_type
+    data_type: String
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -295,12 +554,45 @@ models:
   description: Account-facing Gnosis App profile fact from production current-user and GPay wallet ownership models.
   columns:
   - name: address
+    description: Gnosis App user address (lowercase); one row per user.
+    data_type: String
     tests: [not_null, unique]
+  - name: first_seen_at
+    description: Earliest Gnosis App heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+  - name: last_seen_at
+    description: Most recent Gnosis App heuristic hit for this user.
+    data_type: DateTime64(0, 'UTC')
+  - name: heuristic_hits
+    description: Total Gnosis App heuristic events triggered by this user.
+    data_type: UInt64
+  - name: heuristic_kinds
+    description: Distinct heuristic rule names triggered by this user.
+    data_type: Array(String)
+  - name: n_distinct_heuristics
+    description: Number of distinct heuristics that fired (>=2 = high-confidence GA user).
+    data_type: UInt8
+  - name: controlled_gpay_wallet
+    description: Gnosis Pay wallet where this user is the first GA owner; NULL if none.
+    data_type: Nullable(String)
+  - name: is_currently_ga_owned
+    description: True if the controlled GP wallet is currently GA-owned; NULL if no wallet.
+    data_type: Nullable(Bool)
+  - name: n_ga_owners_current
+    description: Distinct GA-user addresses currently controlling the GP wallet; NULL if no wallet.
+    data_type: Nullable(UInt64)
+  - name: n_total_owners_current
+    description: Distinct modules (GA or otherwise) currently enabled on the GP wallet's Delay; NULL if no wallet.
+    data_type: Nullable(UInt64)
+  - name: onboarding_class
+    description: "'onboarded_via_ga' or 'imported' for the controlled GP wallet; NULL if no wallet."
+    data_type: Nullable(String)
 
 - name: api_execution_gnosis_app_user_profile_latest
   description: Account-facing Gnosis App profile view from production current-user models.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -310,16 +602,20 @@ models:
   description: Account-facing Gnosis App activity view.
   columns:
   - name: address
+    data_type: Nullable(String)
     tests: [not_null]
   - name: date
+    data_type: Date
     tests: [not_null]
 
 - name: api_execution_account_validators_latest
   description: Account-facing validator member view filterable by withdrawal address or credential.
   columns:
   - name: validator_index
+    data_type: UInt32
     tests: [not_null]
   - name: withdrawal_address
+    data_type: Nullable(String)
 
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).

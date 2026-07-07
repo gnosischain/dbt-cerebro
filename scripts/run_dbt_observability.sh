@@ -348,6 +348,45 @@ PYEOF
   fi
 fi
 
+# ── 2c. Per-model run status metrics (Prometheus textfile) ───────────────
+# Parse the accumulated dbt log for terminal per-model status and diff it
+# against the production model set in the manifest. Emits a *.prom file that
+# the observability server exposes via /metrics, so Grafana can show completed
+# vs pending models and a real progress ratio instead of raw-log grep. Runs
+# after the smart-retry so recovered models report success. Never fatal.
+run_step "model-status-metrics" \
+  python "$PROJECT_DIR/scripts/observability/emit_model_status_metrics.py" \
+    --manifest "$PROJECT_DIR/target/manifest.json" \
+    --log "$DBT_LOG_PATH/dbt.log" \
+    --out "$SEMANTIC_METRICS_DIR/dbt_model_status.prom" \
+  || true
+
+# ── 2d. Elementary artifact catalog refresh (exactly once per run) ───────
+# Artifact autoupload is disabled globally (dbt_project.yml
+# disable_dbt_artifacts_autoupload=true) so the on-run-end hook stays cheap on the
+# hundreds of run/slice invocations. Re-enable it for THIS single fast-view
+# invocation so the Elementary catalog (dbt_models/dbt_tests/dbt_sources/...) is
+# refreshed once, before edr report. upload_dbt_artifacts() needs `results`, so it
+# must ride a real `dbt run` (a run-operation has none); a single view rebuild is
+# cheap, idempotent, and always produces results. Override the selector with
+# ARTIFACT_REFRESH_SELECTOR if this model is renamed.
+ARTIFACT_REFRESH_SELECTOR="${ARTIFACT_REFRESH_SELECTOR:-api_execution_live_trades_freshness}"
+_artifact_uploads_before="$(grep -c 'Uploading dbt artifacts' "$DBT_LOG_PATH/dbt.log" 2>/dev/null)"
+_artifact_uploads_before="${_artifact_uploads_before:-0}"
+run_step "elementary-artifacts-refresh" \
+  dbt run --select "$ARTIFACT_REFRESH_SELECTOR" \
+  --vars '{"disable_dbt_artifacts_autoupload": false}' \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+# Exactly-once guard: artifact upload is disabled on every other invocation, so it
+# MUST have happened here. Elementary logs "Uploading dbt artifacts" (debug) to
+# dbt.log; assert the count increased, else the catalog may be stale.
+_artifact_uploads_after="$(grep -c 'Uploading dbt artifacts' "$DBT_LOG_PATH/dbt.log" 2>/dev/null)"
+_artifact_uploads_after="${_artifact_uploads_after:-0}"
+if [ "$_artifact_uploads_after" -le "$_artifact_uploads_before" ]; then
+  echo "[$(date -u)] WARNING: elementary-artifacts-refresh uploaded no artifacts (before=$_artifact_uploads_before after=$_artifact_uploads_after, selector '$ARTIFACT_REFRESH_SELECTOR') — Elementary catalog may be stale"
+fi
+
 # ── 3. Tests (batched to stay under ClickHouse max_table_num_to_throw) ──
 # Elementary's on_run_end hook creates temp tables per test result.
 # Running all 900+ tests in one shot exceeds the 1000-table limit.

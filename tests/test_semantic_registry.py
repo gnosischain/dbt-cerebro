@@ -323,3 +323,505 @@ def test_validate_no_false_positive_when_unique_measure_resolves():
     # No ambiguous / missing errors for the metric itself.
     for err in report["errors"]:
         assert err.get("metric") != "good_metric", err
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Ratio / derived metric MVP (same-root post-aggregation)
+# ─────────────────────────────────────────────────────────────────────
+# build_metrics must pass the FULL type_params dict through to the
+# registry (so numerator/denominator/metrics/expr reach the MCP planner)
+# and derive the root_model of a ratio/derived metric from its inputs.
+# validate_registry must reject unknown inputs and cross-root inputs.
+
+
+def _authored_ratio_metric(
+    name: str, numerator: str, denominator: str, quality_tier: str = "approved"
+) -> dict:
+    return {
+        "name": name,
+        "label": name,
+        "type": "ratio",
+        "type_params": {"numerator": numerator, "denominator": denominator},
+        "config": {"meta": {"cerebro": {"quality_tier": quality_tier}}},
+    }
+
+
+def _authored_derived_metric(
+    name: str, expr: str, input_metrics: list, quality_tier: str = "approved"
+) -> dict:
+    return {
+        "name": name,
+        "label": name,
+        "type": "derived",
+        "type_params": {"expr": expr, "metrics": input_metrics},
+        "config": {"meta": {"cerebro": {"quality_tier": quality_tier}}},
+    }
+
+
+def test_build_metrics_passes_through_full_type_params():
+    registry_models = _registry_models_with_measures({"model_a": ["m_value"]})
+    authored = {"my_metric": _authored_metric("my_metric", "m_value")}
+
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    # Back-compat flat key kept AND the full dict passed through.
+    assert metrics["my_metric"]["measure"] == "m_value"
+    assert metrics["my_metric"]["type_params"] == {"measure": "m_value"}
+
+
+def test_build_metrics_ratio_inherits_root_model_from_same_root_inputs():
+    registry_models = _registry_models_with_measures(
+        {"model_a": ["success_value", "total_value"]}
+    )
+    authored = {
+        "tx_success": _authored_metric("tx_success", "success_value"),
+        "tx_total": _authored_metric("tx_total", "total_value"),
+        "tx_success_rate": _authored_ratio_metric(
+            "tx_success_rate", "tx_success", "tx_total"
+        ),
+    }
+
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    rate = metrics["tx_success_rate"]
+    assert rate["type"] == "ratio"
+    assert rate["root_model"] == "model_a"
+    assert rate["module"] == "test_module"
+    assert rate["type_params"] == {
+        "numerator": "tx_success",
+        "denominator": "tx_total",
+    }
+    assert "tx_success_rate" in registry_models["model_a"]["metric_names"]
+
+
+def test_build_metrics_derived_accepts_name_mapping_inputs():
+    # MetricFlow allows `metrics: [{name: x}, {name: y}]` — both forms must
+    # resolve to input names.
+    registry_models = _registry_models_with_measures({"model_a": ["a_value", "b_value"]})
+    authored = {
+        "metric_a": _authored_metric("metric_a", "a_value"),
+        "metric_b": _authored_metric("metric_b", "b_value"),
+        "net_metric": _authored_derived_metric(
+            "net_metric", "metric_a - metric_b", [{"name": "metric_a"}, "metric_b"]
+        ),
+    }
+
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    assert metrics["net_metric"]["root_model"] == "model_a"
+    assert metrics["net_metric"]["type_params"]["expr"] == "metric_a - metric_b"
+
+
+def test_build_metrics_cross_root_derived_gets_no_root_model():
+    registry_models = _registry_models_with_measures(
+        {"model_a": ["a_value"], "model_b": ["b_value"]}
+    )
+    authored = {
+        "metric_a": _authored_metric("metric_a", "a_value"),
+        "metric_b": _authored_metric("metric_b", "b_value"),
+        "bad_ratio": _authored_ratio_metric("bad_ratio", "metric_a", "metric_b"),
+    }
+
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    assert metrics["bad_ratio"]["root_model"] == ""
+
+
+def test_validate_flags_derived_metric_unknown_input():
+    registry_models = _registry_models_with_measures({"model_a": ["a_value"]})
+    authored = {
+        "metric_a": _authored_metric("metric_a", "a_value"),
+        "broken_ratio": _authored_ratio_metric("broken_ratio", "metric_a", "nope"),
+    }
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    report = build_registry.validate_registry(
+        _minimal_registry(metrics, registry_models)
+    )
+
+    unknown = [e for e in report["errors"] if e["code"] == "derived_metric_unknown_input"]
+    assert len(unknown) == 1
+    assert unknown[0]["metric"] == "broken_ratio"
+    assert unknown[0]["inputs"] == ["nope"]
+    # The precise derived error suppresses the noisy generic root-model error.
+    assert not [
+        e
+        for e in report["errors"]
+        if e["code"] == "metric_missing_root_model" and e.get("metric") == "broken_ratio"
+    ]
+
+
+def test_validate_flags_ratio_missing_denominator():
+    registry_models = _registry_models_with_measures({"model_a": ["a_value"]})
+    authored = {
+        "metric_a": _authored_metric("metric_a", "a_value"),
+        "half_ratio": {
+            "name": "half_ratio",
+            "label": "half_ratio",
+            "type": "ratio",
+            "type_params": {"numerator": "metric_a"},
+            "config": {"meta": {"cerebro": {"quality_tier": "approved"}}},
+        },
+    }
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    report = build_registry.validate_registry(
+        _minimal_registry(metrics, registry_models)
+    )
+
+    hits = [
+        e
+        for e in report["errors"]
+        if e["code"] == "derived_metric_unknown_input" and e["metric"] == "half_ratio"
+    ]
+    assert len(hits) == 1
+    assert "denominator" in hits[0]["message"]
+
+
+def test_validate_flags_derived_metric_cross_root():
+    registry_models = _registry_models_with_measures(
+        {"model_a": ["a_value"], "model_b": ["b_value"]}
+    )
+    authored = {
+        "metric_a": _authored_metric("metric_a", "a_value"),
+        "metric_b": _authored_metric("metric_b", "b_value"),
+        "cross_ratio": _authored_ratio_metric("cross_ratio", "metric_a", "metric_b"),
+    }
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    report = build_registry.validate_registry(
+        _minimal_registry(metrics, registry_models)
+    )
+
+    cross = [e for e in report["errors"] if e["code"] == "derived_metric_cross_root"]
+    assert len(cross) == 1
+    assert cross[0]["metric"] == "cross_ratio"
+    assert cross[0]["root_models"] == ["model_a", "model_b"]
+    assert "separately" in cross[0]["message"]
+
+
+def test_validate_same_root_ratio_and_derived_pass_clean():
+    registry_models = _registry_models_with_measures(
+        {"model_a": ["success_value", "total_value"]}
+    )
+    authored = {
+        "tx_success": _authored_metric("tx_success", "success_value"),
+        "tx_total": _authored_metric("tx_total", "total_value"),
+        "tx_success_rate": _authored_ratio_metric(
+            "tx_success_rate", "tx_success", "tx_total"
+        ),
+        "tx_failed": _authored_derived_metric(
+            "tx_failed", "tx_total - tx_success", ["tx_total", "tx_success"]
+        ),
+    }
+    metrics = build_registry.build_metrics(authored, registry_models)
+
+    report = build_registry.validate_registry(
+        _minimal_registry(metrics, registry_models)
+    )
+
+    for err in report["errors"]:
+        assert err.get("metric") not in ("tx_success_rate", "tx_failed"), err
+
+
+def test_validate_role_dimension_suppresses_missing_measures_warning():
+    # An approved, intentionally measure-less model (time spine / entity
+    # registry / edge provider) opts out of approved_model_missing_measures
+    # via meta.cerebro.role: dimension; without the role it still warns.
+    def _dim_model(name, role):
+        meta = {
+            "owner": "analytics_team",
+            "quality_tier": "approved",
+            "question_synonyms": [name],
+        }
+        if role:
+            meta["role"] = role
+        return {
+            "name": name,
+            "module": "test_module",
+            "resource_type": "model",
+            "semantic_status": "approved",
+            "measures": [],
+            "dimensions": [],
+            "description": f"{name} description",
+            "semantic": {"meta": meta},
+        }
+
+    models = {
+        "spine_with_role": _dim_model("spine_with_role", "dimension"),
+        "spine_without_role": _dim_model("spine_without_role", None),
+    }
+    report = build_registry.validate_registry(_minimal_registry({}, models))
+
+    flagged = {
+        w["model"]
+        for w in report["warnings"]
+        if w["code"] == "approved_model_missing_measures"
+    }
+    assert "spine_without_role" in flagged
+    assert "spine_with_role" not in flagged
+
+
+# ---------------------------------------------------------------------------
+# Graph metadata validation + taxonomy registry (WS2/WS3)
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+GRAPH_KINDS_PATH = (
+    Path(build_registry.__file__).resolve().parents[2] / "semantic" / "graph_kinds.yml"
+)
+
+# Node kinds that appear as source_kind/target_kind in authored graph blocks.
+# This guard fails if a kind is authored without being registered in
+# graph_kinds.yml (which would surface at build time as graph_meta_unknown_kind).
+_AUTHORED_GRAPH_KINDS = {
+    "address",
+    "bridge",
+    "circles_avatar",
+    "gpay_wallet",
+    "pool",
+    "project_label",
+    "safe",
+    "token",
+    "validator",
+}
+
+
+def _graph_model(graph: dict, *, columns=("a", "b"), entities=()) -> dict:
+    return {
+        "columns": {c: {} for c in columns},
+        "entities": [{"name": e} for e in entities],
+        "semantic": {"meta": {"graph": graph}},
+    }
+
+
+def _enabled_graph(**overrides) -> dict:
+    graph = {
+        "enabled": True,
+        "profile": "p1",
+        "source_column": "a",
+        "target_column": "b",
+        "source_kind": "address",
+        "target_kind": "token",
+    }
+    graph.update(overrides)
+    return graph
+
+
+def test_graph_ontology_doc_pages_render():
+    catalog = {
+        "metadata": {"schema_version": 1, "node_type_count": 1, "edge_type_count": 1, "join_edge_count": 0},
+        "node_types": [
+            {"name": "address", "fqn": "node:address", "description": "an account",
+             "synonyms": ["wallet"], "provider_profiles": ["token_transfers"], "is_relationship_axis": False}
+        ],
+        "edge_types": [
+            {"name": "token_transfers", "source_kind": "address", "target_kind": "address",
+             "directed": True, "temporal": True, "weighted": False}
+        ],
+        "profiles": {"token_transfers": {"profile": "token_transfers", "source_kind": "address"}},
+    }
+    node_html = build_semantic_docs.build_node_type_page(catalog["node_types"][0], catalog)
+    assert "Node type: address" in node_html and "token_transfers" in node_html
+    edge_html = build_semantic_docs.build_edge_type_page(catalog["edge_types"][0], catalog)
+    assert "Edge type: token_transfers" in edge_html
+    overview = build_semantic_docs.build_ontology_overview(catalog)
+    assert "Knowledge Graph Ontology" in overview and "address" in overview
+
+
+def test_load_graph_kinds_covers_authored_kinds():
+    kinds = build_registry.load_graph_kinds(GRAPH_KINDS_PATH)
+    assert isinstance(kinds, dict) and kinds
+    missing = _AUTHORED_GRAPH_KINDS - set(kinds)
+    assert not missing, f"graph_kinds.yml missing authored kinds: {sorted(missing)}"
+
+
+def test_load_graph_kinds_missing_file_returns_empty(tmp_path):
+    assert build_registry.load_graph_kinds(tmp_path / "nope.yml") == {}
+
+
+def test_validate_graph_meta_unknown_kind_is_error():
+    model = _graph_model(_enabled_graph(source_kind="not_a_kind"))
+    issues = build_registry.validate_graph_meta(
+        "m", model, {"m": model}, allowed_kinds={"address", "token"}
+    )
+    codes = {i["code"] for i in issues if i["severity"] == "error"}
+    assert "graph_meta_unknown_kind" in codes
+
+
+def test_validate_graph_meta_known_kinds_no_unknown_kind_error():
+    model = _graph_model(_enabled_graph())
+    issues = build_registry.validate_graph_meta(
+        "m", model, {"m": model}, allowed_kinds={"address", "token"}
+    )
+    assert "graph_meta_unknown_kind" not in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_unknown_column_is_error():
+    model = _graph_model(_enabled_graph(source_column="missing"))
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unknown_column" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_missing_required_is_error():
+    graph = _enabled_graph()
+    del graph["target_kind"]
+    model = _graph_model(graph)
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_missing_required" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_disabled_block_is_skipped():
+    model = _graph_model({"enabled": False, "profile": "p"})
+    assert build_registry.validate_graph_meta("m", model, {"m": model}) == []
+
+
+def _typed_graph_model(graph: dict, columns: dict) -> dict:
+    return {
+        "resource_type": "model",
+        "semantic_status": "candidate",
+        "quality_tier": "candidate",
+        "columns": columns,
+        "entities": [],
+        "dimensions": [],
+        "measures": [],
+        "semantic": {"meta": {"graph": graph}},
+    }
+
+
+def test_validate_graph_meta_weight_not_numeric_is_error():
+    model = _typed_graph_model(
+        _enabled_graph(weight_column="transfer_count"),
+        {"a": {}, "b": {}, "transfer_count": {"data_type": "String"}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_weight_not_numeric" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_weight_numeric_ok():
+    model = _typed_graph_model(
+        _enabled_graph(weight_column="amount_usd"),
+        {"a": {}, "b": {}, "amount_usd": {"data_type": "Float64"}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_weight_not_numeric" not in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_unsafe_identifier_is_error():
+    model = _typed_graph_model(
+        _enabled_graph(source_column="a; DROP TABLE x"),
+        {"a": {}, "b": {}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unsafe_identifier" in {i["code"] for i in issues}
+
+
+def test_validate_graph_meta_backtick_column_is_safe():
+    model = _typed_graph_model(
+        _enabled_graph(source_column="`from`"),
+        {"`from`": {}, "b": {}},
+    )
+    issues = build_registry.validate_graph_meta("m", model, {"m": model})
+    assert "graph_meta_unsafe_identifier" not in {i["code"] for i in issues}
+
+
+def test_validate_registry_duplicate_profile_id_is_error():
+    g = _enabled_graph()
+    models = {
+        "model_a": _typed_graph_model(dict(g), {"a": {}, "b": {}}),
+        "model_b": _typed_graph_model(dict(g), {"a": {}, "b": {}}),
+    }
+    report = build_registry.validate_registry({"models": models, "metrics": {}, "relationships": []})
+    dups = [e for e in report["errors"] if e["code"] == "graph_meta_duplicate_profile"]
+    assert len(dups) == 1
+    assert "model_a" in dups[0]["message"] and "model_b" in dups[0]["message"]
+
+
+def test_infer_graph_meta_from_from_to_columns():
+    cols = {"`from`": {}, "`to`": {}, "amount": {}}
+    g = scaffold_candidates.infer_graph_meta("int_x_transfers", cols)
+    assert g is not None
+    assert g["profile"] == "token_transfers"
+    assert g["enabled"] is False  # inert until reviewed
+    assert g["source_column"] == "`from`" and g["target_column"] == "`to`"
+    assert g["source_kind"] == "address" and g["target_kind"] == "address"
+
+
+def test_infer_graph_meta_owner_safe_pattern():
+    g = scaffold_candidates.infer_graph_meta("m", {"owner": {}, "safe_address": {}})
+    assert g["profile"] == "safe_ownership"
+    assert (g["source_kind"], g["target_kind"]) == ("address", "safe")
+
+
+def test_infer_graph_meta_no_match_returns_none():
+    assert scaffold_candidates.infer_graph_meta("m", {"x": {}, "y": {}}) is None
+
+
+def test_candidate_model_includes_inferred_graph_block_as_review_required():
+    node = {
+        "name": "int_pools_lp",
+        "columns": {"provider": {}, "pool_address": {}, "amount_usd": {"data_type": "Float64"}},
+        "fqn": ["gnosis_dbt", "execution"],
+    }
+    model = scaffold_candidates._candidate_model(node)
+    cerebro = model["config"]["meta"]["cerebro"]
+    assert cerebro["graph"]["profile"] == "lp_in_pool"
+    assert cerebro["graph"]["enabled"] is False
+    assert cerebro["graph_review_required"] is True
+    # The graph block must stay schema-clean (no unknown keys for the validator).
+    assert set(cerebro["graph"]) <= build_registry.GRAPH_ALLOWED
+
+
+def test_validate_flags_approved_relationship_with_unapproved_endpoint():
+    def _model(name, status):
+        return {
+            "name": name, "module": "m", "resource_type": "model",
+            "semantic_status": status, "measures": [], "dimensions": [],
+            "description": "d",
+            "semantic": {"meta": {"owner": "t", "quality_tier": status, "question_synonyms": [name], "role": "dimension"}},
+        }
+    models = {"a": _model("a", "approved"), "b": _model("b", "candidate")}
+    registry = {
+        "models": models, "metrics": {},
+        "relationships": [{
+            "name": "a_to_b", "left_model": "a", "right_model": "b",
+            "left_keys": ["k"], "right_keys": ["k"],
+            "cardinality": "many_to_one", "quality_tier": "approved",
+        }],
+    }
+    report = build_registry.validate_registry(registry)
+    hits = [e for e in report["errors"] if e["code"] == "relationship_endpoint_not_approved"]
+    assert len(hits) == 1
+    assert hits[0]["model"] == "b"
+
+
+def test_validate_flags_approved_time_root_without_spine_bridge():
+    def _root(name, time_expr, bridged):
+        return ({
+            name: {
+                "name": name, "module": "m", "resource_type": "model",
+                "semantic_status": "approved",
+                "measures": [{"name": f"{name}_v", "agg": "sum", "expr": "v"}],
+                "dimensions": [{"name": "date", "type": "time", "expr": time_expr,
+                                "type_params": {"time_granularity": "day"}}],
+                "description": "d",
+                "semantic": {"meta": {"owner": "t", "quality_tier": "approved",
+                                      "question_synonyms": [name], "grain": "day"}},
+            }
+        }, [{
+            "name": f"daily_spine_to_{name}", "left_model": "dim_time_spine_daily",
+            "right_model": name, "left_keys": ["day"], "right_keys": ["date"],
+            "cardinality": "one_to_one", "quality_tier": "approved",
+        }] if bridged else [])
+
+    m1, r1 = _root("bridged_root", "date", bridged=True)
+    m2, r2 = _root("unbridged_root", "date", bridged=False)
+    m3, r3 = _root("expr_root", "toDate(created_at)", bridged=False)  # exempt: expression
+    models = {**m1, **m2, **m3}
+    report = build_registry.validate_registry(
+        {"models": models, "metrics": {}, "relationships": r1 + r2 + r3}
+    )
+    flagged = {w["model"] for w in report["warnings"]
+               if w["code"] == "approved_root_missing_time_spine"}
+    assert flagged == {"unbridged_root"}

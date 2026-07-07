@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gnosischain.github.io/dbt-cerebro/schemas/semantic_graph_catalog.schema.json",
+  "title": "Semantic Graph Catalog",
+  "description": "Published, versioned knowledge-graph contract emitted by dbt-cerebro and consumed by cerebro-mcp + external tools. The `profiles` map is a strict 1:1 with the cerebro-mcp GraphProfile dataclass; this schema is the shared source of truth (contract-only sharing).",
+  "type": "object",
+  "required": ["metadata", "node_types", "edge_types", "profiles", "join_edges", "metric_bindings", "search_documents"],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": ["schema_version", "graph_catalog_hash", "registry_manifest_hash", "profile_count"],
+      "properties": {
+        "schema_version": {"type": "integer", "minimum": 1},
+        "graph_catalog_hash": {"type": "string", "minLength": 1},
+        "registry_manifest_hash": {"type": "string"},
+        "project_name": {"type": "string"},
+        "node_type_count": {"type": "integer"},
+        "edge_type_count": {"type": "integer"},
+        "profile_count": {"type": "integer"},
+        "join_edge_count": {"type": "integer"},
+        "metric_binding_count": {"type": "integer"},
+        "search_document_count": {"type": "integer"}
+      }
+    },
+    "node_types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "fqn"],
+        "properties": {
+          "name": {"type": "string"},
+          "fqn": {"type": "string"},
+          "label": {"type": "string"},
+          "description": {"type": "string"},
+          "synonyms": {"type": "array", "items": {"type": "string"}},
+          "parent_type": {"type": ["string", "null"]},
+          "is_relationship_axis": {"type": "boolean"},
+          "provider_profiles": {"type": "array", "items": {"type": "string"}},
+          "registered": {"type": "boolean"}
+        }
+      }
+    },
+    "edge_types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source_kind", "target_kind", "directed"],
+        "properties": {
+          "name": {"type": "string"},
+          "source_kind": {"type": "string"},
+          "target_kind": {"type": "string"},
+          "directed": {"type": "boolean"},
+          "temporal": {"type": "boolean"},
+          "weighted": {"type": "boolean"}
+        }
+      }
+    },
+    "profiles": {
+      "description": "1:1 with cerebro_mcp.semantic.graph_extraction.GraphProfile. Adding/removing a field here is a breaking contract change (bump schema_version).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "profile", "model_name", "relation_name", "source_column", "target_column",
+          "source_kind", "target_kind", "directed", "time_column", "weight_column",
+          "evidence_model", "evidence_source_column", "evidence_target_column",
+          "node_enrichment_model", "node_enrichment_key", "default_filters",
+          "module", "description", "semantic_status", "quality_tier",
+          "question_synonyms", "semantic_source_file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "profile": {"type": "string"},
+          "model_name": {"type": "string"},
+          "relation_name": {"type": "string"},
+          "source_column": {"type": "string"},
+          "target_column": {"type": "string"},
+          "source_kind": {"type": "string"},
+          "target_kind": {"type": "string"},
+          "directed": {"type": "boolean"},
+          "time_column": {"type": ["string", "null"]},
+          "weight_column": {"type": ["string", "null"]},
+          "evidence_model": {"type": ["string", "null"]},
+          "evidence_source_column": {"type": ["string", "null"]},
+          "evidence_target_column": {"type": ["string", "null"]},
+          "node_enrichment_model": {"type": ["string", "null"]},
+          "node_enrichment_key": {"type": ["string", "null"]},
+          "default_filters": {"type": "object"},
+          "module": {"type": "string"},
+          "description": {"type": "string"},
+          "semantic_status": {"type": "string"},
+          "quality_tier": {"type": "string"},
+          "question_synonyms": {"type": "array", "items": {"type": "string"}},
+          "semantic_source_file": {"type": "string"}
+        }
+      }
+    },
+    "join_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["relationship_id", "left_model", "right_model", "via_entity", "cardinality"],
+        "properties": {
+          "relationship_id": {"type": "string"},
+          "left_model": {"$ref": "#/$defs/entityReference"},
+          "right_model": {"$ref": "#/$defs/entityReference"},
+          "left_keys": {"type": "array", "items": {"type": "string"}},
+          "right_keys": {"type": "array", "items": {"type": "string"}},
+          "via_entity": {"type": ["string", "null"]},
+          "cardinality": {"type": ["string", "null"]},
+          "quality_tier": {"type": ["string", "null"]},
+          "preferred_bridge": {"type": "boolean"},
+          "traversal_cost": {"type": "number"}
+        }
+      }
+    },
+    "metric_bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["metric", "root_model", "edge_types", "node_types"],
+        "properties": {
+          "metric": {"type": "string"},
+          "root_model": {"type": ["string", "null"]},
+          "edge_types": {"type": "array", "items": {"type": "string"}},
+          "node_types": {"type": "array", "items": {"type": "string"}},
+          "allowed_dimensions": {"type": "array", "items": {"type": "string"}},
+          "quality_tier": {"type": "string"}
+        }
+      }
+    },
+    "search_documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "title", "body"],
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"type": "string", "enum": ["node_type", "edge_type", "join_edge", "metric_binding"]},
+          "title": {"type": "string"},
+          "module": {"type": "string"},
+          "quality_tier": {"type": "string"},
+          "body": {"type": "string"},
+          "payload_ref": {"type": "string"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "entityReference": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {"type": "string"},
+        "name": {"type": "string"},
+        "fqn": {"type": "string"}
+      }
+    }
+  }
+}

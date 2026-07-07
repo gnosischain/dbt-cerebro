@@ -39,3 +39,28 @@ sources:
               parameters on entry/landing hits: utm_campaign, utm_source,
               utm_medium, utm_content, utm_term, utm_id (no initial_utm_*
               first-touch super-properties are tracked).
+      - name: mixpanel_raw_profiles
+        loaded_at_field: synced_at
+        description: >
+          Daily full snapshot of Mixpanel People/profile properties for the
+          Gnosis App project, ingested via the Engage API by click-runner
+          (ingestors/mixpanel_profiles_ingestor.py). One row per profile per
+          snapshot; ReplacingMergeTree(synced_at) keyed by (project_id,
+          distinct_id) keeps the latest. Profiles are current-state (no
+          history): `pay` is the user's current Gnosis Pay Safe address and
+          initial_utm_* are Mixpanel's set-once first-touch campaign values.
+        columns:
+          - name: distinct_id
+            description: >
+              Mixpanel profile key (the Gnosis App wallet the user identified
+              with). SENSITIVE - must be hashed before exposure.
+          - name: project_id
+            description: Mixpanel project identifier.
+          - name: properties
+            description: >
+              JSON string of the profile's $properties. Carries `pay` (the
+              user's Gnosis Pay Safe address - SENSITIVE) and Mixpanel's
+              first-touch super-properties initial_utm_campaign / initial_utm_source /
+              initial_utm_medium (plus initial_utm_content / term / id).
+          - name: synced_at
+            description: Snapshot timestamp when the profile was ingested (ReplacingMergeTree version).

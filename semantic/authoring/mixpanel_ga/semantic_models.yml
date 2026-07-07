@@ -972,16 +972,66 @@ semantic_models:
   - name: mixpanel_ga_campaign_funnel_weekly__new_users_value
     agg: sum
     expr: new_users
+- name: mixpanel_ga_campaign_composition
+  model: ref('api_mixpanel_ga_campaign_composition')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+        grain: snapshot
+  dimensions:
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  - name: utm_source
+    type: categorical
+    expr: utm_source
+  - name: utm_medium
+    type: categorical
+    expr: utm_medium
+  measures:
+  - name: mixpanel_ga_campaign_composition__users_value
+    agg: sum
+    expr: users
+  - name: mixpanel_ga_campaign_composition__funded_card_users_value
+    agg: sum
+    expr: funded_card_users
+  - name: mixpanel_ga_campaign_composition__pwa_users_value
+    agg: sum
+    expr: pwa_users
+  - name: mixpanel_ga_campaign_composition__iban_users_value
+    agg: sum
+    expr: iban_users
+  - name: mixpanel_ga_campaign_composition__gnft_users_value
+    agg: sum
+    expr: gnft_users
+  - name: mixpanel_ga_campaign_composition__backer_users_value
+    agg: sum
+    expr: backer_users
+  - name: mixpanel_ga_campaign_composition__referral_users_value
+    agg: sum
+    expr: referral_users
 - name: mixpanel_ga_client_conversions_weekly
   model: ref('api_mixpanel_ga_client_conversions_weekly')
   config:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
         question_synonyms:
-        - client conversions by campaign
-        - mixpanel conversions weekly
+        - mixpanel client-side conversions by campaign
+        - web conversions by utm campaign
+        - weekly conversion counts by campaign
+        - gnosis app conversion events by campaign
+        - conversion funnel by marketing campaign
+        - card ordered and circles minted conversions weekly
         grain: week
   defaults:
     agg_time_dimension: week
@@ -1393,6 +1443,100 @@ semantic_models:
   - name: user_id_hash
     type: categorical
     expr: user_id_hash
+- name: mixpanel_ga_growth_campaign_weekly
+  model: ref('api_mixpanel_ga_growth_campaign_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: conversion_kind
+    type: categorical
+    expr: conversion_kind
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  - name: utm_source
+    type: categorical
+    expr: utm_source
+  - name: utm_medium
+    type: categorical
+    expr: utm_medium
+  measures:
+  - name: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+    agg: sum
+    expr: new_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - campaign attributable gnosis app conversions by week
+        - app topups by campaign
+        - starts referring by campaign
+        - which campaigns drove app conversions
+        grain: week
+- name: mixpanel_ga_gpay_funded_totals_weekly
+  model: ref('api_mixpanel_ga_gpay_funded_totals_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  - name: event_type
+    type: categorical
+    expr: event_type
+  measures:
+  - name: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+    agg: sum
+    expr: new_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - weekly funded accounts total
+        - gnosis pay funded and first payment totals
+        - new gnosis pay funded accounts per week
+        grain: week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly
+  model: ref('api_mixpanel_ga_gpay_card_spend_totals_weekly')
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+    agg: sum
+    expr: payment_volume_usd
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+    agg: sum
+    expr: payments
+  - name: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+    agg: sum
+    expr: active_accounts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - weekly gnosis pay card spend
+        - card payment volume per week
+        - gnosis pay payments total weekly
+        grain: week
 metrics:
 - name: gnosis_app_mixpanel_dau
   label: Gnosis App DAU (Mixpanel / Web)
@@ -1453,16 +1597,9 @@ metrics:
         - gnosis app daily events
         - mixpanel events
         - app gnosis io events
-        - gnosis app
         - gnosis app activity web
         - mixpanel daily overview
-        - website daily active users
-        - gnosis app DAU
         - mixpanel KPIs
-        - gnosis app daily active users
-        - how many users on gnosis app today
-        - gnosis app new users
-        - gnosis app cumulative users
 - name: gnosis_app_mixpanel_modal_opens
   label: Gnosis App Modal Opens (Mixpanel / Web)
   description: 'Daily count of modal / bottom-sheet opens per component. Groupable by `bottom_sheet` to see which onboarding
@@ -1593,14 +1730,10 @@ metrics:
         question_synonyms:
         - mixpanel ga overview daily unique devices
         - unique devices
+        - gnosis app unique devices
+        - distinct devices
         - mixpanel daily overview
-        - website daily active users
-        - gnosis app DAU
         - mixpanel KPIs
-        - gnosis app daily active users
-        - how many users on gnosis app today
-        - gnosis app new users
-        - gnosis app cumulative users
 - name: mixpanel_ga_overview_daily__new_users_value
   label: Mixpanel Ga Overview Daily - New Users
   description: mixpanel ga overview daily - new users (sum).
@@ -1624,14 +1757,11 @@ metrics:
         question_synonyms:
         - mixpanel ga overview daily new users
         - new users
-        - mixpanel daily overview
-        - website daily active users
-        - gnosis app DAU
-        - mixpanel KPIs
-        - gnosis app daily active users
-        - how many users on gnosis app today
         - gnosis app new users
-        - gnosis app cumulative users
+        - mixpanel new users
+        - first-time users
+        - mixpanel daily overview
+        - mixpanel KPIs
 - name: distinct_countries_value
   label: Mixpanel Ga Overview Daily - Distinct Countries
   description: mixpanel ga overview daily - distinct countries (average).
@@ -1655,14 +1785,11 @@ metrics:
         question_synonyms:
         - mixpanel ga overview daily distinct countries
         - distinct countries
+        - gnosis app user countries
+        - geographic reach
+        - country distribution
         - mixpanel daily overview
-        - website daily active users
-        - gnosis app DAU
         - mixpanel KPIs
-        - gnosis app daily active users
-        - how many users on gnosis app today
-        - gnosis app new users
-        - gnosis app cumulative users
 - name: avg_events_per_user_value
   label: Mixpanel Ga Overview Daily - Avg Events Per User
   description: mixpanel ga overview daily - avg events per user (avg). Read this as an average over the grain; do NOT sum
@@ -1687,14 +1814,10 @@ metrics:
         question_synonyms:
         - mixpanel ga overview daily avg events per user
         - avg events per user
+        - events per user
+        - engagement per user
         - mixpanel daily overview
-        - website daily active users
-        - gnosis app DAU
         - mixpanel KPIs
-        - gnosis app daily active users
-        - how many users on gnosis app today
-        - gnosis app new users
-        - gnosis app cumulative users
 - name: mixpanel_ga_events_daily__event_count_value
   label: Mixpanel Ga Events Daily - Event Count
   description: mixpanel ga events daily - event count (sum).
@@ -2452,6 +2575,128 @@ metrics:
         - card transactions by marketing campaign
         - gnosis pay acquisition by utm campaign
         - new gnosis pay accounts by campaign weekly
+- name: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+  label: Growth Campaign Weekly - Attributed Conversions
+  description: Campaign-attributable Gnosis App conversions per week (sum). Causally gated (campaign touch precedes the conversion)
+    and clipped to the Mixpanel era (>= 2025-10). Filter conversion_kind - topup is the funded proxy; also starts_referring,
+    swap_filled, token_offer_claim. Only ~4-7% of in-era app conversions carry a valid campaign.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_growth_campaign_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - conversion_kind
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - campaign attributable app conversions
+        - app topups by campaign
+        - starts referring by campaign
+        - which campaigns drove app conversions
+- name: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+  label: Gnosis Pay Funded Totals - Weekly New Accounts
+  description: Weekly new Gnosis Pay accounts reaching funded / first_payment (sum), totalled across all campaigns. GP-side
+    campaign attribution is structural ~0.2%, so this is exposed as totals (split by event_type), not by campaign.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_funded_totals_weekly__new_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        - event_type
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly funded accounts total
+        - gnosis pay funded and first payment totals
+        - new gnosis pay funded accounts per week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+  label: Gnosis Pay Card Spend - Weekly USD Volume
+  description: Weekly Gnosis Pay card payment USD volume (sum), totalled across all campaigns.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__payment_volume_usd_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly card spend usd
+        - gnosis pay payment volume per week
+        - card payment volume weekly
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+  label: Gnosis Pay Card Spend - Weekly Payments
+  description: Weekly Gnosis Pay card payment count (sum), totalled across all campaigns.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__payments_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly card payments count
+        - gnosis pay number of payments per week
+- name: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+  label: Gnosis Pay Card Spend - Weekly Active Accounts
+  description: Distinct Gnosis Pay accounts making at least one card payment in the week (sum over disjoint campaign partitions).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_gpay_card_spend_totals_weekly__active_accounts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - weekly active gnosis pay card accounts
+        - spending gnosis pay accounts per week
 - name: mixpanel_ga_gpay_acquisition_weekly__cumulative_accounts_value
   label: Mixpanel Ga Gpay Acquisition Weekly - Cumulative Accounts
   description: 'mixpanel ga gpay acquisition weekly - cumulative accounts (max). This is a cumulative/running-total measure:
@@ -2683,16 +2928,17 @@ metrics:
         - growth funnel by utm
         - funnel by campaign
 - name: mixpanel_ga_client_conversions_weekly__new_users_value
-  label: Mixpanel Ga Client Conversions Weekly - New Users
-  description: mixpanel ga client conversions weekly - new users (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Client Conversions - New Users (Weekly)
+  description: 'New Mixpanel client-side conversions per week, groupable by conversion metric and UTM campaign/source/medium.
+    Counts distinct users reaching each web-tracked conversion (e.g. card_ordered, crc_minted) for the first time. Source:
+    api_mixpanel_ga_client_conversions_weekly.new_users.'
   type: simple
   type_params:
     measure: mixpanel_ga_client_conversions_weekly__new_users_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: week
         allowed_dimensions:
@@ -2708,22 +2954,24 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - mixpanel ga client conversions weekly new users
-        - new users
-        - client conversions by campaign
-        - mixpanel conversions weekly
+        - new conversions by campaign
+        - weekly client conversions by utm
+        - web conversion counts by campaign
+        - mixpanel conversion events by campaign
+        - conversions
+        - campaign conversion funnel weekly
 - name: mixpanel_ga_client_conversions_weekly__cumulative_users_value
-  label: Mixpanel Ga Client Conversions Weekly - Cumulative Users
-  description: 'mixpanel ga client conversions weekly - cumulative users (max). This is a cumulative/running-total measure:
-    read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote before
-    relying on it.'
+  label: Client Conversions - Cumulative Users (Weekly)
+  description: 'Running-total of converted Mixpanel client-side users by campaign, as of each week. This is a cumulative measure:
+    read the latest value in a period; do NOT sum across rows or periods. Groupable by conversion metric and UTM campaign/source/medium.
+    Source: api_mixpanel_ga_client_conversions_weekly.cumulative_users.'
   type: simple
   type_params:
     measure: mixpanel_ga_client_conversions_weekly__cumulative_users_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: week
         allowed_dimensions:
@@ -2739,10 +2987,12 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - mixpanel ga client conversions weekly cumulative users
-        - cumulative users
-        - client conversions by campaign
-        - mixpanel conversions weekly
+        - cumulative conversions by campaign
+        - running total conversions by utm
+        - total conversions to date by campaign
+        - lifetime web conversions by campaign
+        - cumulative converted users
+        - campaign conversion running total weekly
 - name: mixpanel_ga_gnosis_app_daily__new_users_value
   label: Mixpanel Ga Gnosis App Daily - New Users
   description: mixpanel ga gnosis app daily - new users (sum). Auto-generated candidate metric; review and promote before
@@ -3370,3 +3620,199 @@ metrics:
         - hour of day usage
         - day of week activity
         - when are users active
+- name: mixpanel_ga_campaign_composition__users_value
+  label: Campaign Composition - Users
+  description: Distinct Gnosis App accounts by first-touch UTM campaign (current-state make-up from the Mixpanel profile snapshot; sum across source/medium). Campaign views are meaningful only for the Mixpanel era (week >= 2025-10).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition users
+        - mixpanel ga campaign composition users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__funded_card_users_value
+  label: Campaign Composition - Funded-Card Users
+  description: Of a campaign's users, how many control a Gnosis Pay Safe that was funded, via the profile pay bridge (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__funded_card_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition funded card users
+        - mixpanel ga campaign composition funded card users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__pwa_users_value
+  label: Campaign Composition - PWA Users
+  description: Campaign users who installed the Gnosis App as a PWA (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__pwa_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition pwa users
+        - mixpanel ga campaign composition pwa users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__iban_users_value
+  label: Campaign Composition - IBAN Users
+  description: Campaign users with an IBAN configured (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__iban_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition iban users
+        - mixpanel ga campaign composition iban users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__gnft_users_value
+  label: Campaign Composition - gNFT Users
+  description: Campaign users holding TheG NFT (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__gnft_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition gnft users
+        - mixpanel ga campaign composition gnft users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__backer_users_value
+  label: Campaign Composition - Backer Users
+  description: Campaign users who are Circles backers (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__backer_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition backer users
+        - mixpanel ga campaign composition backer users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign
+- name: mixpanel_ga_campaign_composition__referral_users_value
+  label: Campaign Composition - Referral Users
+  description: Campaign users who joined via a referral link (current state).
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_composition__referral_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign composition mixpanel ga campaign composition referral users
+        - mixpanel ga campaign composition referral users
+        - campaign composition
+        - who did each campaign bring in
+        - campaign user makeup
+        - funded cards by campaign
+        - product adoption by campaign

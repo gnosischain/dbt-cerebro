@@ -213,6 +213,52 @@ def _output_file(node: dict[str, Any]) -> Path:
     return REPO_ROOT / "semantic" / "authoring" / module / "semantic_models.yml"
 
 
+# High-confidence (source_col, target_col, source_kind, target_kind, profile)
+# patterns. A model whose columns contain BOTH endpoints of a pattern gets a
+# candidate, review_required graph block suggested — never auto-approved (E3).
+_GRAPH_PATTERNS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("from", "to", "address", "address", "token_transfers"),
+    ("owner", "safe_address", "address", "safe", "safe_ownership"),
+    ("provider", "pool_address", "address", "pool", "lp_in_pool"),
+    ("pool_address", "token_address", "pool", "token", "pool_contains_token"),
+    ("user_address", "bridge_contract", "address", "bridge", "bridge_user_flows"),
+    ("withdrawal_address", "validator_index", "address", "validator", "validator_controlled_by"),
+)
+
+
+def infer_graph_meta(model_name: str, columns: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Suggest a candidate graph block from column-name patterns (E3).
+
+    Returns a ``cerebro.graph`` dict (``enabled: False`` so it is inert until a
+    human opts in by flipping the flag) when the model's columns match a known
+    endpoint pair, else None. The block is kept to the validated field set; the
+    "needs review" signal is carried by a sibling ``cerebro.graph_review_required``
+    key (set by the caller) so the graph block itself stays schema-clean. Column
+    matching strips ClickHouse backticks (``from``/``to`` are reserved words).
+    """
+    present = {name.strip("`").lower() for name in columns}
+
+    def _col(name: str) -> Optional[str]:
+        # Return the authored column name (preserving backticks for reserved words).
+        for raw in columns:
+            if raw.strip("`").lower() == name:
+                return raw if raw.startswith("`") else (f"`{raw}`" if name in ("from", "to") else raw)
+        return None
+
+    for src, tgt, src_kind, tgt_kind, profile in _GRAPH_PATTERNS:
+        if src in present and tgt in present:
+            return {
+                "enabled": False,
+                "profile": profile,
+                "source_column": _col(src),
+                "target_column": _col(tgt),
+                "source_kind": src_kind,
+                "target_kind": tgt_kind,
+                "directed": True,
+            }
+    return None
+
+
 def _candidate_model(node: dict[str, Any], semantic_name: Optional[str] = None) -> dict[str, Any]:
     model_name = node["name"]
     columns = node.get("columns", {}) or {}
@@ -240,6 +286,14 @@ def _candidate_model(node: dict[str, Any], semantic_name: Optional[str] = None) 
         grain = _guess_time_granularity(model_name, agg_time_dimension)
         if grain:
             semantic_model["config"]["meta"]["cerebro"]["grain"] = grain
+    inferred_graph = infer_graph_meta(model_name, columns)
+    if inferred_graph is not None:
+        cerebro = semantic_model["config"]["meta"]["cerebro"]
+        cerebro["graph"] = inferred_graph
+        # Sibling marker (kept out of the graph block so it stays schema-clean):
+        # flags that the inferred block needs a human to verify columns/kinds and
+        # flip enabled:true before it becomes a real edge.
+        cerebro["graph_review_required"] = True
     if dimensions:
         semantic_model["dimensions"] = dimensions
     if measures:

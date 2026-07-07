@@ -7,6 +7,9 @@ semantic_models:
   - name: safe
     type: primary
     expr: safe_address
+  - name: address
+    type: foreign
+    expr: owner
   dimensions:
   - name: safe_address
     type: categorical
@@ -20,7 +23,7 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: current_threshold_value
+  - name: execution_safes_current_owners__current_threshold_value
     agg: average
     expr: current_threshold
   - name: owner_count_value
@@ -30,7 +33,7 @@ semantic_models:
     meta:
       cerebro:
         owner: analytics_team
-        quality_tier: candidate
+        quality_tier: approved
         grain: day
         question_synonyms:
         - safe owners
@@ -47,10 +50,19 @@ semantic_models:
           time_column: became_owner_at
 - name: execution_safe_owner_pseudonyms
   model: ref('fct_execution_safe_owner_pseudonyms')
-  description: "Chain-wide Safe \u2192 owner pseudonym bridge. The cross-sector route\nthat lets any Safe-keyed sector mart\
-    \ (gpay pay_wallets, validator\nSafes, gnosis_app AA wallets, Circles avatar Safes, ...) fan out\nto the underlying human\
-    \ owner(s) and re-enter the user_pseudonym\ngraph. See `models/execution/safe/marts/fct_execution_safe_owner_\npseudonyms.sql`\
-    \ for the long-form rationale.\n"
+  description: 'Chain-wide Safe → owner pseudonym bridge. The cross-sector route
+
+    that lets any Safe-keyed sector mart (gpay pay_wallets, validator
+
+    Safes, gnosis_app AA wallets, Circles avatar Safes, ...) fan out
+
+    to the underlying human owner(s) and re-enter the user_pseudonym
+
+    graph. See `models/execution/safe/marts/fct_execution_safe_owner_
+
+    pseudonyms.sql` for the long-form rationale.
+
+    '
   defaults:
     agg_time_dimension: became_owner_at
   entities:
@@ -100,9 +112,288 @@ semantic_models:
         - safe to owner cross-sector fanout
         - how many EOAs own this safe
         - how many safes does this user own
+- name: api_execution_safes_current_owners
+  model: ref('api_execution_safes_current_owners')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution safes current owners
+  defaults:
+    agg_time_dimension: became_owner_at
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: owner_address
+    type: categorical
+    expr: owner_address
+  - name: became_owner_at
+    type: time
+    expr: became_owner_at
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: api_execution_safes_current_owners__current_threshold_value
+    agg: sum
+    expr: current_threshold
+- name: execution_account_safes_latest
+  model: ref('api_execution_account_safes_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution account safes latest
+  defaults:
+    agg_time_dimension: became_owner_at
+  dimensions:
+  - name: owner_address
+    type: categorical
+    expr: owner_address
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: became_owner_at
+    type: time
+    expr: became_owner_at
+    type_params:
+      time_granularity: day
+  - name: creation_version
+    type: categorical
+    expr: creation_version
+  - name: deployment_date
+    type: time
+    expr: deployment_date
+    type_params:
+      time_granularity: day
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_account_safes_latest__current_threshold_value
+    agg: sum
+    expr: current_threshold
+  - name: execution_account_safes_latest__current_owner_count_value
+    agg: sum
+    expr: current_owner_count
+- name: execution_safe_details_latest
+  model: ref('api_execution_safe_details_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - gnosis safe details
+        - multisig deployment info
+        - safe metadata latest
+        grain: day
+  defaults:
+    agg_time_dimension: deployment_date
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: creation_version
+    type: categorical
+    expr: creation_version
+  - name: creation_singleton
+    type: categorical
+    expr: creation_singleton
+  - name: deployment_date
+    type: time
+    expr: deployment_date
+    type_params:
+      time_granularity: day
+  - name: deployment_timestamp
+    type: time
+    expr: deployment_timestamp
+    type_params:
+      time_granularity: day
+  - name: deployment_tx_hash
+    type: categorical
+    expr: deployment_tx_hash
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_safe_details_latest__is_l2_value
+    agg: sum
+    expr: is_l2
+  - name: execution_safe_details_latest__current_owner_count_value
+    agg: sum
+    expr: current_owner_count
+  - name: execution_safe_details_latest__current_threshold_value
+    agg: sum
+    expr: current_threshold
+- name: execution_safes
+  model: ref('int_execution_safes')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - gnosis safe deployments
+        - multisig creations
+        - safe wallets created
+        grain: day
+  defaults:
+    agg_time_dimension: block_date
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: creation_version
+    type: categorical
+    expr: creation_version
+  - name: creation_singleton
+    type: categorical
+    expr: creation_singleton
+  - name: block_date
+    type: time
+    expr: block_date
+    type_params:
+      time_granularity: day
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: tx_hash
+    type: categorical
+    expr: tx_hash
+  measures:
+  - name: execution_safes__is_l2_value
+    agg: sum
+    expr: is_l2
+  - name: execution_safes__gas_used_value
+    agg: sum
+    expr: gas_used
+- name: execution_safes_module_events
+  model: ref('int_execution_safes_module_events')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution safes module events
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: event_kind
+    type: categorical
+    expr: event_kind
+  - name: target_address
+    type: categorical
+    expr: target_address
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+- name: execution_safes_module_events_v2
+  model: ref('int_execution_safes_module_events_v2')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution safes module events v2
+- name: execution_safes_owner_events
+  model: ref('int_execution_safes_owner_events')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution safes owner events
+        graph:
+          enabled: false
+          profile: safe_ownership
+          source_column: owner
+          target_column: safe_address
+          source_kind: address
+          target_kind: safe
+          directed: true
+        graph_review_required: true
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: event_kind
+    type: categorical
+    expr: event_kind
+  - name: owner
+    type: categorical
+    expr: owner
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: block_number
+    type: categorical
+    expr: block_number
+  - name: transaction_hash
+    type: categorical
+    expr: transaction_hash
+  measures:
+  - name: execution_safes_owner_events__threshold_value
+    agg: sum
+    expr: threshold
+  - name: execution_safes_owner_events__log_index_value
+    agg: sum
+    expr: log_index
+- name: fct_execution_account_safes_latest
+  model: ref('fct_execution_account_safes_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution account safes latest
+  dimensions:
+  - name: owner_address
+    type: categorical
+    expr: owner_address
+  - name: safe_address
+    type: categorical
+    expr: safe_address
 metrics:
 - name: safe_owner_links_total
-  label: "Safe \u2194 Owner Links (Total)"
+  label: Safe ↔ Owner Links (Total)
   type: simple
   type_params:
     measure: safe_owner_links_value
@@ -139,43 +430,16 @@ metrics:
         - distinct safe owners
         - unique EOAs owning safes
         - safe ownership unique humans
-- name: current_threshold_value
-  label: Execution Safes Current Owners - Current Threshold
-  description: execution safes current owners - current threshold (average). Read this as an average over the grain; do NOT
-    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
-  type: simple
-  type_params:
-    measure: current_threshold_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - safe_address
-        - owner
-        - became_owner_at
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution safes current owners current threshold
-        - current threshold
 - name: owner_count_value
-  label: Execution Safes Current Owners - Owner Count
-  description: execution safes current owners - owner count (count). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Safe Owner Count
+  description: count of owner rows across Safes (count).
   type: simple
   type_params:
     measure: owner_count_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -189,5 +453,156 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution safes current owners owner count
-        - owner count
+        - safe owner count
+        - number of multisig owners
+        - gnosis safe owners count
+- name: execution_account_safes_latest__current_owner_count_value
+  label: Execution Account Safes Latest - Current Owner Count
+  description: execution account safes latest - current owner count (sum). Auto-generated candidate metric; review and promote
+    before relying on it.
+  type: simple
+  type_params:
+    measure: execution_account_safes_latest__current_owner_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - owner_address
+        - safe_address
+        - became_owner_at
+        - creation_version
+        - deployment_date
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - execution account safes latest current owner count
+        - current owner count
+        - execution account safes latest
+- name: execution_safe_details_latest__is_l2_value
+  label: L2 Safes (Details)
+  description: count of Safes deployed as L2 singletons (sum).
+  type: simple
+  type_params:
+    measure: execution_safe_details_latest__is_l2_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - creation_version
+        - creation_singleton
+        - deployment_date
+        - deployment_timestamp
+        - deployment_tx_hash
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - l2 gnosis safes
+        - multisig on l2
+        - safe l2 singleton count
+- name: execution_safe_details_latest__current_owner_count_value
+  label: Safe Current Owner Count (Details)
+  description: current number of owners per Safe from latest details (sum).
+  type: simple
+  type_params:
+    measure: execution_safe_details_latest__current_owner_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - creation_version
+        - creation_singleton
+        - deployment_date
+        - deployment_timestamp
+        - deployment_tx_hash
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - safe current owner count
+        - multisig owners now
+        - gnosis safe owner tally
+- name: execution_safes__is_l2_value
+  label: L2 Safes (Deployments)
+  description: count of Safe deployments flagged as L2 (sum).
+  type: simple
+  type_params:
+    measure: execution_safes__is_l2_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - creation_version
+        - creation_singleton
+        - block_date
+        - block_timestamp
+        - block_number
+        - tx_hash
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - l2 safe deployments
+        - multisig deployed on l2
+        - l2 safe creations
+- name: execution_safes__gas_used_value
+  label: Safe Deployment Gas Used
+  description: total gas used deploying Safes (sum).
+  type: simple
+  type_params:
+    measure: execution_safes__gas_used_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - safe_address
+        - creation_version
+        - creation_singleton
+        - block_date
+        - block_timestamp
+        - block_number
+        - tx_hash
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - safe deployment gas
+        - multisig creation gas cost
+        - gas used deploying safes

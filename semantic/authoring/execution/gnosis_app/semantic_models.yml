@@ -292,6 +292,40 @@ semantic_models:
   - name: execution_gnosis_app_circles_ecosystem_weekly_active_users__cnt_value
     agg: sum
     expr: cnt
+- name: execution_gnosis_app_weekly_active_users
+  model: ref('api_execution_gnosis_app_weekly_active_users')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - gnosis app weekly active users
+        - in-app WAU
+        - gnosis app WAU by week
+        - weekly active gnosis app users new returning reactivated
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: execution_gnosis_app_weekly_active_users__active_users_value
+    agg: sum
+    expr: active_users
+  - name: execution_gnosis_app_weekly_active_users__new_users_value
+    agg: sum
+    expr: new_users
+  - name: execution_gnosis_app_weekly_active_users__returning_users_value
+    agg: sum
+    expr: returning_users
+  - name: execution_gnosis_app_weekly_active_users__reactivated_users_value
+    agg: sum
+    expr: reactivated_users
 - name: execution_gnosis_app_conversions
   model: ref('int_execution_gnosis_app_conversions')
   config:
@@ -3097,6 +3131,43 @@ semantic_models:
   - name: activity_kind
     type: categorical
     expr: activity_kind
+- name: execution_gnosis_app_bundlers
+  model: ref('int_execution_gnosis_app_bundlers')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution gnosis app bundlers
+  dimensions:
+  - name: address
+    type: categorical
+    expr: address
+  - name: source
+    type: categorical
+    expr: source
+  measures:
+  - name: execution_gnosis_app_bundlers__is_active_value
+    agg: sum
+    expr: is_active
+- name: execution_gnosis_app_kpi_wau_latest
+  model: ref('api_execution_gnosis_app_kpi_wau_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution gnosis app kpi wau latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
 metrics:
 - name: gnosis_app_activity_events_daily
   label: Gnosis App On-Chain Activity Events (Daily)
@@ -3278,16 +3349,15 @@ metrics:
         - users identified via circles
         - circles app users
 - name: execution_gnosis_app_attribution_30d__conversions_with_touch_value
-  label: Execution Gnosis App Attribution 30D - Conversions With Touch
-  description: execution gnosis app attribution 30d - conversions with touch (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Attributed Conversions with Touch (30d window)
+  description: Conversions that had at least one attributable marketing touch within the 30d window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__conversions_with_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3302,20 +3372,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d conversions with touch
-        - conversions with touch
-        - execution gnosis app attribution 30d
+        - gnosis app conversions with touch 30d
+        - attributed conversions 30d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_30d__first_touch_value
-  label: Execution Gnosis App Attribution 30D - First Touch
-  description: execution gnosis app attribution 30d - first touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: First-Touch Attributed Conversions (30d window)
+  description: Conversions credited to the first marketing touch under the 30d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__first_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3330,20 +3401,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d first touch
-        - first touch
-        - execution gnosis app attribution 30d
+        - gnosis app first touch attribution 30d
+        - first touch conversions 30d window
+        - gnosis app attribution
+        - onboarding
+        - swaps
 - name: execution_gnosis_app_attribution_30d__last_touch_value
-  label: Execution Gnosis App Attribution 30D - Last Touch
-  description: execution gnosis app attribution 30d - last touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Last-Touch Attributed Conversions (30d window)
+  description: Conversions credited to the last marketing touch under the 30d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__last_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3358,20 +3430,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d last touch
-        - last touch
-        - execution gnosis app attribution 30d
+        - gnosis app last touch attribution 30d
+        - last touch conversions 30d window
+        - gnosis app attribution
+        - onboarding
+        - top-ups
 - name: execution_gnosis_app_attribution_30d__linear_value
-  label: Execution Gnosis App Attribution 30D - Linear
-  description: execution gnosis app attribution 30d - linear (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Linear Attributed Conversions (30d window)
+  description: Conversions credited evenly across all marketing touches under the 30d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__linear_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3386,20 +3459,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d linear
-        - linear
-        - execution gnosis app attribution 30d
+        - gnosis app linear attribution 30d
+        - linear attributed conversions 30d window
+        - gnosis app attribution
+        - onboarding
+        - activity
 - name: execution_gnosis_app_attribution_30d__time_decay_hl_7d_value
-  label: Execution Gnosis App Attribution 30D - Time Decay Hl 7D
-  description: execution gnosis app attribution 30d - time decay hl 7d (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: 'Time-Decay Attributed Conversions (30d window, 7d half-life)'
+  description: Conversions credited with a 7-day half-life time-decay model under the 30d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__time_decay_hl_7d_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3414,20 +3488,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d time decay hl 7d
-        - time decay hl 7d
-        - execution gnosis app attribution 30d
+        - gnosis app time decay attribution 30d
+        - time decay conversions 30d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_30d__total_conversions_value
-  label: Execution Gnosis App Attribution 30D - Total Conversions
-  description: execution gnosis app attribution 30d - total conversions (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Gnosis App Conversions (30d window)
+  description: Total gnosis app conversions counted within the 30d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_30d__total_conversions_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3442,20 +3517,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 30d total conversions
-        - total conversions
-        - execution gnosis app attribution 30d
+        - gnosis app total conversions 30d
+        - gnosis app conversions 30d window
+        - gnosis app conversions
+        - onboarding conversions
+        - activity
 - name: execution_gnosis_app_attribution_60d__conversions_with_touch_value
-  label: Execution Gnosis App Attribution 60D - Conversions With Touch
-  description: execution gnosis app attribution 60d - conversions with touch (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Attributed Conversions with Touch (60d window)
+  description: Conversions that had at least one attributable marketing touch within the 60d window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__conversions_with_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3470,20 +3546,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d conversions with touch
-        - conversions with touch
-        - execution gnosis app attribution 60d
+        - gnosis app conversions with touch 60d
+        - attributed conversions 60d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_60d__first_touch_value
-  label: Execution Gnosis App Attribution 60D - First Touch
-  description: execution gnosis app attribution 60d - first touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: First-Touch Attributed Conversions (60d window)
+  description: Conversions credited to the first marketing touch under the 60d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__first_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3498,20 +3575,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d first touch
-        - first touch
-        - execution gnosis app attribution 60d
+        - gnosis app first touch attribution 60d
+        - first touch conversions 60d window
+        - gnosis app attribution
+        - onboarding
+        - swaps
 - name: execution_gnosis_app_attribution_60d__last_touch_value
-  label: Execution Gnosis App Attribution 60D - Last Touch
-  description: execution gnosis app attribution 60d - last touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Last-Touch Attributed Conversions (60d window)
+  description: Conversions credited to the last marketing touch under the 60d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__last_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3526,20 +3604,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d last touch
-        - last touch
-        - execution gnosis app attribution 60d
+        - gnosis app last touch attribution 60d
+        - last touch conversions 60d window
+        - gnosis app attribution
+        - onboarding
+        - top-ups
 - name: execution_gnosis_app_attribution_60d__linear_value
-  label: Execution Gnosis App Attribution 60D - Linear
-  description: execution gnosis app attribution 60d - linear (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Linear Attributed Conversions (60d window)
+  description: Conversions credited evenly across all marketing touches under the 60d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__linear_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3554,20 +3633,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d linear
-        - linear
-        - execution gnosis app attribution 60d
+        - gnosis app linear attribution 60d
+        - linear attributed conversions 60d window
+        - gnosis app attribution
+        - onboarding
+        - activity
 - name: execution_gnosis_app_attribution_60d__time_decay_hl_7d_value
-  label: Execution Gnosis App Attribution 60D - Time Decay Hl 7D
-  description: execution gnosis app attribution 60d - time decay hl 7d (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: 'Time-Decay Attributed Conversions (60d window, 7d half-life)'
+  description: Conversions credited with a 7-day half-life time-decay model under the 60d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__time_decay_hl_7d_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3582,20 +3662,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d time decay hl 7d
-        - time decay hl 7d
-        - execution gnosis app attribution 60d
+        - gnosis app time decay attribution 60d
+        - time decay conversions 60d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_60d__total_conversions_value
-  label: Execution Gnosis App Attribution 60D - Total Conversions
-  description: execution gnosis app attribution 60d - total conversions (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Gnosis App Conversions (60d window)
+  description: Total gnosis app conversions counted within the 60d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_60d__total_conversions_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3610,20 +3691,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 60d total conversions
-        - total conversions
-        - execution gnosis app attribution 60d
+        - gnosis app total conversions 60d
+        - gnosis app conversions 60d window
+        - gnosis app conversions
+        - onboarding conversions
+        - activity
 - name: execution_gnosis_app_attribution_7d__conversions_with_touch_value
-  label: Execution Gnosis App Attribution 7D - Conversions With Touch
-  description: execution gnosis app attribution 7d - conversions with touch (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Attributed Conversions with Touch (7d window)
+  description: Conversions that had at least one attributable marketing touch within the 7d window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__conversions_with_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3638,20 +3720,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d conversions with touch
-        - conversions with touch
-        - execution gnosis app attribution 7d
+        - gnosis app conversions with touch 7d
+        - attributed conversions 7d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_7d__first_touch_value
-  label: Execution Gnosis App Attribution 7D - First Touch
-  description: execution gnosis app attribution 7d - first touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: First-Touch Attributed Conversions (7d window)
+  description: Conversions credited to the first marketing touch under the 7d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__first_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3666,20 +3749,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d first touch
-        - first touch
-        - execution gnosis app attribution 7d
+        - gnosis app first touch attribution 7d
+        - first touch conversions 7d window
+        - gnosis app attribution
+        - onboarding
+        - swaps
 - name: execution_gnosis_app_attribution_7d__last_touch_value
-  label: Execution Gnosis App Attribution 7D - Last Touch
-  description: execution gnosis app attribution 7d - last touch (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Last-Touch Attributed Conversions (7d window)
+  description: Conversions credited to the last marketing touch under the 7d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__last_touch_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3694,20 +3778,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d last touch
-        - last touch
-        - execution gnosis app attribution 7d
+        - gnosis app last touch attribution 7d
+        - last touch conversions 7d window
+        - gnosis app attribution
+        - onboarding
+        - top-ups
 - name: execution_gnosis_app_attribution_7d__linear_value
-  label: Execution Gnosis App Attribution 7D - Linear
-  description: execution gnosis app attribution 7d - linear (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Linear Attributed Conversions (7d window)
+  description: Conversions credited evenly across all marketing touches under the 7d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__linear_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3722,20 +3807,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d linear
-        - linear
-        - execution gnosis app attribution 7d
+        - gnosis app linear attribution 7d
+        - linear attributed conversions 7d window
+        - gnosis app attribution
+        - onboarding
+        - activity
 - name: execution_gnosis_app_attribution_7d__time_decay_hl_7d_value
-  label: Execution Gnosis App Attribution 7D - Time Decay Hl 7D
-  description: execution gnosis app attribution 7d - time decay hl 7d (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: 'Time-Decay Attributed Conversions (7d window, 7d half-life)'
+  description: Conversions credited with a 7-day half-life time-decay model under the 7d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__time_decay_hl_7d_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3750,20 +3836,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d time decay hl 7d
-        - time decay hl 7d
-        - execution gnosis app attribution 7d
+        - gnosis app time decay attribution 7d
+        - time decay conversions 7d window
+        - gnosis app attribution
+        - onboarding
+        - marketplace
 - name: execution_gnosis_app_attribution_7d__total_conversions_value
-  label: Execution Gnosis App Attribution 7D - Total Conversions
-  description: execution gnosis app attribution 7d - total conversions (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Gnosis App Conversions (7d window)
+  description: Total gnosis app conversions counted within the 7d attribution window.
   type: simple
   type_params:
     measure: execution_gnosis_app_attribution_7d__total_conversions_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3778,9 +3865,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution gnosis app attribution 7d total conversions
-        - total conversions
-        - execution gnosis app attribution 7d
+        - gnosis app total conversions 7d
+        - gnosis app conversions 7d window
+        - gnosis app conversions
+        - onboarding conversions
+        - activity
 - name: execution_gnosis_app_circles_ecosystem_weekly_active_users__cnt_value
   label: Execution Gnosis App Circles Ecosystem Weekly Active Users - Cnt
   description: execution gnosis app circles ecosystem weekly active users - cnt (sum).
@@ -3804,6 +3893,53 @@ metrics:
         - execution gnosis app circles ecosystem weekly active users cnt
         - cnt
         - execution gnosis app circles ecosystem weekly active users
+- name: execution_gnosis_app_weekly_active_users__active_users_value
+  label: Gnosis App Weekly Active Users
+  description: In-app Gnosis App weekly active users (sum). The in-app WAU that the economically-active WAU (WEAU)
+    is a strict subset of.
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_weekly_active_users__active_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - gnosis app weekly active users
+        - in-app WAU
+        - gnosis app WAU
+        - weekly active gnosis app users
+- name: execution_gnosis_app_weekly_active_users__new_users_value
+  label: Gnosis App Weekly New Users
+  description: In-app Gnosis App weekly NEW users (sum) - first-active-in-app in the week.
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_weekly_active_users__new_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - gnosis app weekly new users
+        - new gnosis app users per week
 - name: user_pseudonym_value
   label: Execution Gnosis App Funnel Daily - User Pseudonym
   description: execution gnosis app funnel daily - user pseudonym (sum).
@@ -7101,3 +7237,22 @@ metrics:
           retention pct
         - fct execution gnosis app token offer claims cohort monthly retention pct
         - execution gnosis app token offer claims cohort monthly
+- name: execution_gnosis_app_bundlers__is_active_value
+  label: Execution Gnosis App Bundlers - Is Active
+  description: execution gnosis app bundlers - is active (sum). Auto-generated candidate metric; review and promote before
+    relying on it.
+  type: simple
+  type_params:
+    measure: execution_gnosis_app_bundlers__is_active_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        allowed_dimensions:
+        - address
+        - source
+        question_synonyms:
+        - execution gnosis app bundlers is active
+        - is active
+        - execution gnosis app bundlers

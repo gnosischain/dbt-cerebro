@@ -1,0 +1,484 @@
+version: 2
+models:
+- name: int_execution_gnosis_app_gt_user_dim
+  description: 'Ground-truth registered-identity dimension (= dim_circles_identity, ~301k).
+
+    Registry LEFT JOIN avatar (active spine) LEFT JOIN profile. INTERNAL (raw
+
+    addresses). GUARD: never a source for active/DAU/WAU/MAU/retention
+
+    denominators — the active-user spine is the avatar table.
+
+    '
+  columns:
+  - name: address
+    description: Registered identity address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: user_segment
+    description: Circles avatar segment, or registry_only_no_avatar for the ~53% dormant registrations.
+    tests:
+    - accepted_values:
+        values:
+        - registry_only_no_avatar
+        - avatar_blank_type
+        - Signup
+        - RegisterHuman
+        - Unknown
+        - Unclaimed
+        - OrganizationSignup
+        - Invite
+        - Migrating
+        - RegisterOrganization
+        - RegisterGroup
+        config:
+          severity: warn
+  - name: circles_invited_by
+    description: Inviter address from the avatar (may be a non-registry address — relationship is warn).
+    tests:
+    - relationships:
+        to: ref('int_execution_gnosis_app_gt_user_dim')
+        field: address
+        config:
+          severity: warn
+  - name: has_circles_avatar
+    description: 1 iff the identity has a live avatar (the active spine).
+  - name: created_at_block
+    description: Block number at which the registry identity was first recorded (gnosis_app_user.created_at_block, latest
+      live value via argMax over _synced_block). Block height, not a timestamp; earliest-registration marker for the identity.
+  - name: lifetime_cashback_atoms
+    description: Registry-recorded lifetime cashback for the identity, toFloat64(gnosis_app_user.lifetime_cashback). RAW ATOMS
+      in the token's base units — unit/decimals are UNVERIFIED (CASH-D02), so it is NOT divided by 1e18 and must NOT be used
+      as a decimal KPI until decimals are confirmed. From the gnosis_app_user registry only (distinct from the cashback NFT-mint
+      table).
+  - name: has_lifetime_cashback
+    description: 'Boolean: true iff lifetime_cashback_atoms > 0, i.e. the registry recorded any cashback for this identity.
+      Derived purely from the atoms column above; independent of the has_cashback NFT-mint flag.'
+  - name: circles_avatar_type
+    description: 'Circles avatar type from the avatar spine (avatar.avatar_type, latest live value via argMax on the composite
+      (_synced_block, ingested_at) version for determinism). Enum of Circles registration/avatar states: Signup, RegisterHuman,
+      Unknown, Unclaimed, OrganizationSignup, Invite, Migrating, RegisterOrganization, RegisterGroup (may be blank). NULL
+      when the identity has no avatar.'
+  - name: is_circles_early_supporter
+    description: 'Boolean flag from the avatar spine (avatar.is_early_supporter): true iff the Circles avatar is tagged as
+      an early supporter. NULL when the identity has no avatar row (LEFT JOIN).'
+  - name: verification_badge
+    description: Verification-badge value from the avatar spine (avatar.verification_badge, latest live value). Indicates
+      the identity's Circles verification-badge state. NULL when the identity has no avatar row.
+  - name: accepted_invite_at
+    description: 'Timestamp the identity accepted its Circles invite, from avatar.accepted_invite_timestamp: if(ts=0, NULL,
+      toDateTime(ts)). DateTime; NULL when the invite was never accepted (sentinel 0) or the identity has no avatar.'
+  - name: circles_avatar_created_at
+    description: Avatar creation timestamp, toDateTime(avatar.timestamp) from the avatar spine (latest live value). DateTime
+      marking when the Circles avatar was created; NULL when the identity has no avatar.
+  - name: earned_from_invites_crc
+    description: Cumulative invite rewards earned by this identity, toFloat64(avatar.earned_from_invites)/1e18 — DECIMAL CRC
+      (whole tokens, 18-decimal scaled), unlike the atoms columns. From the avatar spine; NULL when the identity has no avatar.
+  - name: has_profile
+    description: 'Boolean: true iff the identity has a matching live Circles profile row (coalesce(p.address,'''') != ''''),
+      i.e. the registry address exists as a profile id in the deduped profile staging table. Profile presence flag.'
+  - name: profile_name
+    description: Circles profile display name for the identity, nullIf(profile.name,'') from stg_envio_ga__profiles (deduped
+      via envio_latest; 36 version-superseding duplicate ids collapsed). Empty string mapped to NULL; NULL when no profile.
+  - name: profile_location
+    description: Circles profile location string for the identity, nullIf(profile.location,'') from stg_envio_ga__profiles.
+      Empty string mapped to NULL; NULL when no profile.
+  - name: is_heuristic_active
+    description: 'Boolean: true iff the registry address is present in the legacy heuristic active-user set int_execution_gnosis_app_users_current
+      (address IN (SELECT DISTINCT lower(address) ... WHERE address IS NOT NULL AND != '''')). Cross-references the GT registry
+      against the pre-existing production DAU-lineage heuristic (which is derived from int_execution_gnosis_app_user_events).
+      Used for reconciliation/containment, not as the canonical active flag.'
+  - name: has_swapped_gnosis_app
+    description: 'Boolean: true iff the registry address appears as an OWNER of a swap with app_scope=''gnosis_app'' (address
+      IN (SELECT DISTINCT owner FROM stg_envio_ga__swaps WHERE app_scope=''gnosis_app'')). app_scope=''gnosis_app'' means
+      the CoW order''s app_data appCode = ''app.gnosis.io'' (the current Gnosis App). Direction: reads the swap OWNER (order
+      placer), not receiver.'
+  - name: has_swapped_metri
+    description: 'Boolean: true iff the registry address appears as an OWNER of a swap with app_scope=''metri'' (appCode =
+      ''app.metri.xyz'', the LEGACY Gnosis App). Same OWNER-side derivation as has_swapped_gnosis_app but for the legacy app
+      version.'
+  - name: has_cashback
+    description: 'Boolean: true iff the registry address appears as an OWNER in the Gnosis Pay cashback NFT-mint table (address
+      IN (SELECT DISTINCT owner FROM stg_envio_ga__cashbacks)). Reads the cashback OWNER (mint recipient/account side). This
+      is the NFT-mint cashback family, separate from the registry lifetime_cashback_atoms column.'
+  - name: has_investment
+    description: 'Boolean: true iff the registry address appears as an OWNER in the Metri auto-invest accounts table (address
+      IN (SELECT DISTINCT owner FROM stg_envio_ga__investment_accounts)). Reads the OWNER column (NOT account_address, which
+      is a different address space). Legacy-app (Metri) investment signal.'
+  - name: is_engaged
+    description: 'Boolean: coalesce(act.is_registered_active, false) from the LEFT JOIN to int_execution_gnosis_app_gt_user_activity.
+      True iff this registered identity did at least one APP-TAGGED action (gnosis_app or metri swap, MetriFee, MetriTransfer,
+      pay-topup, cashback, investment, or auto-topup). This is the CANONICAL GT active-user metric (~26.6k), replacing the
+      old ad-hoc 6-signal calc. false when no matching activity row (unmatched identities coalesce to false).'
+  - name: is_app_active
+    description: 'Boolean: coalesce(act.is_app_active, false) from the activity model. True iff the identity did any app-tagged
+      action (same action set as is_engaged) REGARDLESS of registration status; differs from is_engaged only in not requiring
+      is_registered. false when no activity row.'
+  - name: app_generation
+    description: 'Which Gnosis App generation the identity used, coalesce(act.app_generation, ''none'') from the activity
+      model. Enum: ''current'' (app.gnosis.io signals: gnosis_app swap / heuristic-active / cashback / pay-topup), ''legacy''
+      (Metri signals: metri swap / MetriFee / MetriTransfer / investment / auto-topup), ''both'' (satisfies current AND legacy
+      signal sets), or ''none'' (neither / no activity row). Metri is the legacy Gnosis App, so both current and legacy roll
+      up to Gnosis App.'
+  - name: last_action_at
+    description: Timestamp of the identity's most recent on-chain action, act.last_action_at passed through from the activity
+      model (originating from stg_envio_ga__transaction_actions, the per-avatar action feed). DateTime; NULL when the identity
+      has no matching activity row / no recorded action (NOT coalesced).
+- name: int_execution_gnosis_app_gt_user_activity
+  description: 'Canonical per-identity ACTIVITY model (grain = registry UNION avatar). Records
+
+    every action signal — app-feature (swaps/cashback/investment/auto-topup/
+
+    pay-topup/referrals) AND Circles-in-app (MetriFee/MetriTransfer/HubTransfer/
+
+    PersonalMint/PrimaryGroupFee/wrap/invitation) — so "Gnosis App user" is a
+
+    configurable combination. Metri = legacy Gnosis App (app_generation). INTERNAL.
+
+    GUARD: is_registered_active (registry that did ANY action, ~27-30k) is the
+
+    canonical GT active-user metric; generic Circles actions count ONLY for
+
+    registered identities (whole-ecosystem ~626k is never a user metric).
+
+    '
+  columns:
+  - name: address
+    description: Canonical identity address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: app_generation
+    description: current (app.gnosis.io) | legacy (Metri) | both | none.
+    tests:
+    - accepted_values:
+        values:
+        - current
+        - legacy
+        - both
+        - none
+        config:
+          severity: warn
+  - name: is_registered_active
+    description: 1 iff a registered identity did an APP-TAGGED action (swap/MetriFee/MetriTransfer/pay-topup/cashback/investment/auto-topup)
+      — the CANONICAL GT active-user metric (~26.6k, the plan anchor).
+  - name: is_registered_active_incl_circles
+    description: Broad variant — also counts generic Circles actions (mint/hub/group/wrap/invitation) + referrals by a registered
+      identity (~40k). These carry no app tag, so this over-reaches "used the app"; exposed for sizing only.
+  - name: is_app_active
+    description: 1 iff the identity did any app-tagged action (swap/MetriFee/MetriTransfer/pay-topup/cashback/investment/auto-topup).
+  - name: is_gp_card_user
+    description: 1 iff linked to a Gnosis Pay card (cashback owner or top-up funder).
+  - name: is_registered
+    description: Boolean. TRUE iff the address is present in the registered-user registry (stg_envio_ga__users, ~301k). Derived
+      as address IN (SELECT address FROM registry). Registered != active — ~53% of the registry is dormant. Gate for is_registered_active
+      / is_registered_active_incl_circles.
+  - name: has_swap_gnosis_io
+    description: Boolean. TRUE iff the address was the owner of at least one CoW swap tagged with app_scope='gnosis_app' (appCode
+      app.gnosis.io = CURRENT Gnosis App). Derived from stg_envio_ga__swaps DISTINCT owner WHERE app_scope='gnosis_app' AND
+      owner!='' . App-tagged (unambiguous) signal; feeds current_app_signal and is_app_active.
+  - name: has_swap_metri
+    description: Boolean. TRUE iff the address was the owner of at least one CoW swap tagged app_scope='metri' (appCode app.metri.xyz
+      = LEGACY Gnosis App). Derived from stg_envio_ga__swaps DISTINCT owner WHERE app_scope='metri' AND owner!='' . App-tagged;
+      feeds legacy_app_signal and is_app_active.
+  - name: has_cashback
+    description: Boolean. TRUE iff the address is the owner of at least one Gnosis Pay cashback NFT-mint record. Derived from
+      stg_envio_ga__cashbacks DISTINCT owner WHERE owner!='' (cashback = the GP cashback NFT program, status enum 1=minted/0=reverted
+      upstream; membership here is not filtered on status). App-tagged; also feeds current_app_signal and is_gp_card_user.
+  - name: has_investment
+    description: Boolean. TRUE iff the address is the owner of at least one Metri auto-invest account. Derived from stg_envio_ga__investment_accounts
+      DISTINCT owner WHERE owner!='' (join on owner, NOT account_address, which is a different address space). Treated as
+      a LEGACY (Metri) app-tagged signal; feeds legacy_app_signal and is_app_active.
+  - name: has_auto_topup
+    description: 'Boolean. TRUE iff the address is the owner of at least one Circles auto-topup CONFIG event (AutoTopupActivated/Deactivated/NewRecipient/ThresholdUpdated).
+      Derived from stg_envio_ga__auto_topups DISTINCT owner WHERE owner!='''' . NOTE: this is the auto-topup config-ledger
+      owner, a DIFFERENT source from the has_pay_topup transfer signal. Treated as a LEGACY app-tagged signal; feeds legacy_app_signal
+      and is_app_active.'
+  - name: has_referral_earned
+    description: 'Boolean. TRUE iff the address appears as an invitee in the GA-native invite-reward ledger (i.e. this identity
+      was invited and a reward was earned on their invite). Derived from stg_envio_ga__earned_from_invite DISTINCT invitee_address
+      WHERE invitee_address!='''' . Direction gotcha: reads the INVITEE side. Generic Circles/referral signal (no app tag)
+      — feeds is_circles_active and the incl_circles variant only.'
+  - name: has_referral_sent
+    description: 'Boolean. TRUE iff the address appears as an inviter in the GA-native invite-reward ledger (i.e. this identity
+      invited someone who triggered a reward). Derived from stg_envio_ga__earned_from_invite DISTINCT inviter_address WHERE
+      inviter_address!='''' . Direction gotcha: reads the INVITER side. Generic referral signal (no app tag) — feeds is_circles_active
+      and the incl_circles variant only.'
+  - name: has_metri_fee
+    description: Boolean. TRUE iff the address participated in a MetriFee transfer as the from-side payer. Derived from stg_envio_ga__transfer_actions
+      via maxIf(1, transfer_type='MetriFee')=1 (participant = `from` for MetriFee per the transfer_actions direction guard);
+      coalesced to FALSE when the identity has no transfer_actions row. App-tagged Circles-in-app signal; feeds legacy_app_signal
+      and is_app_active.
+  - name: has_metri_transfer
+    description: Boolean. TRUE iff the address participated in a MetriTransfer as the from-side sender. Derived from stg_envio_ga__transfer_actions
+      maxIf(1, transfer_type='MetriTransfer')=1 (participant = `from`; note raw MetriTransfer.from is mostly a Safe address,
+      only ~6% identity-mapped, but non-identity participants are dropped by the identity join). Coalesced FALSE if absent.
+      App-tagged; feeds legacy_app_signal and is_app_active.
+  - name: has_hub_transfer
+    description: Boolean. TRUE iff the address participated in a Circles HubTransfer on EITHER side (HubTransfer is counted
+      on both from and to in transfer_actions). Derived from maxIf(1, transfer_type='HubTransfer')=1; coalesced FALSE if absent.
+      GENERIC Circles action (no app tag, any Circles client) — feeds is_circles_active and incl_circles variant only, NOT
+      is_app_active.
+  - name: has_personal_mint
+    description: 'Boolean. TRUE iff the address is the minter of a Circles PersonalMint. Derived from maxIf(1, transfer_type=''PersonalMint'')=1;
+      coalesced FALSE if absent. DIRECTION GOTCHA: participant is the `to` side because PersonalMint.from is the zero address
+      on 100% of rows — the minter is only on `to`. GENERIC Circles action (no app tag) — feeds is_circles_active and incl_circles
+      variant only.'
+  - name: has_group_fee
+    description: Boolean. TRUE iff the address paid a Circles PrimaryGroupFee as the from-side payer. Derived from maxIf(1,
+      transfer_type='PrimaryGroupFee')=1 (participant = `from`); coalesced FALSE if absent. GENERIC Circles action (no app
+      tag) — feeds is_circles_active and incl_circles variant only.
+  - name: has_wrap
+    description: Boolean. TRUE iff the address participated in an Erc20WrapperTransfer (Circles ERC20 wrap) on EITHER side
+      (counted on both from and to). Derived from maxIf(1, transfer_type='Erc20WrapperTransfer')=1; coalesced FALSE if absent.
+      GENERIC Circles action (no app tag) — feeds is_circles_active and incl_circles variant only.
+  - name: has_invitation
+    description: 'Boolean. TRUE iff the address is the recipient of a Circles InvitationFee. Derived from maxIf(1, transfer_type=''InvitationFee'')=1.
+      DIRECTION GOTCHA: participant is the `to` side (invitee) per the transfer_actions guard. Coalesced FALSE if absent.
+      GENERIC Circles action (no app tag) — feeds is_circles_active and incl_circles variant only.'
+  - name: has_pay_topup
+    description: Boolean. TRUE iff the address participated in a PayTopUp OR AutoTopup transfer (top-up funder/recipient —
+      counted on both from and to for these types). Derived from maxIf(1, transfer_type IN ('PayTopUp','AutoTopup'))=1; coalesced
+      FALSE if absent. This is the actual on-chain top-up TRANSFER signal (distinct from has_auto_topup, which is the config-event
+      owner). App-tagged / Gnosis-Pay-linked; feeds current_app_signal, is_app_active, and is_gp_card_user.
+  - name: is_heuristic_active
+    description: 'Boolean. TRUE iff the address appears in the legacy heuristic active-user set int_execution_gnosis_app_users_current
+      (deduped: DISTINCT lower(address) WHERE address IS NOT NULL AND != ''''). Cross-reference to the pre-GT heuristic pipeline
+      (bundler/relayer-inferred GA usage). Treated as a CURRENT-app signal; feeds current_app_signal.'
+  - name: first_action_at
+    description: DateTime of this identity's FIRST on-chain transaction_action, or NULL if the identity has no row in the
+      transaction_actions stretch table. Derived by LEFT JOIN to stg_envio_ga__transaction_actions.first_action_at = toDateTime(min(timestamp))
+      per lower(avatar_id). Recency enrichment only (the envio_ga entity tables carry no timestamp); avatar_id spans ALL Circles
+      since 2020, so this is never a user count on its own.
+  - name: last_action_at
+    description: DateTime of this identity's MOST RECENT on-chain transaction_action, or NULL if no transaction_actions row.
+      Derived from stg_envio_ga__transaction_actions.last_action_at = toDateTime(max(timestamp)) per lower(avatar_id), left-joined.
+      Recency enrichment for DAU/recency slicing; not a standalone activity flag.
+  - name: n_actions
+    description: Integer count of this identity's total on-chain transaction_actions (all Circles action types, whole ecosystem).
+      Derived from stg_envio_ga__transaction_actions.n_actions = count() per lower(avatar_id), then coalesce(..., 0) so identities
+      absent from that stretch table get 0 rather than NULL. Volume/recency enrichment only — a high n_actions does NOT imply
+      app usage on its own.
+  - name: current_app_signal
+    description: 'Boolean. TRUE iff the identity shows any CURRENT (app.gnosis.io) usage: has_swap_gnosis_io OR is_heuristic_active
+      OR has_cashback OR has_pay_topup. Building block for app_generation (the ''current'' arm).'
+  - name: legacy_app_signal
+    description: 'Boolean. TRUE iff the identity shows any LEGACY (Metri, app.metri.xyz) usage: has_swap_metri OR has_metri_fee
+      OR has_metri_transfer OR has_investment OR has_auto_topup. Building block for app_generation (the ''legacy'' arm).'
+  - name: is_circles_active
+    description: 'Boolean. TRUE iff the identity did any GENERIC Circles/social action carrying NO app tag: has_hub_transfer
+      OR has_personal_mint OR has_group_fee OR has_wrap OR has_invitation OR has_referral_earned OR has_referral_sent. These
+      occur via ANY Circles client, so this alone does NOT mean ''used the Gnosis App'' — only meaningful as app usage when
+      combined with is_registered (see is_registered_active_incl_circles).'
+- name: int_execution_gnosis_app_gt_pay_wallets
+  description: Guardian-module MEMBERSHIP (netted Enabled-Disabled). GA-ownership is GT-unavailable and stays on the heuristic.
+    is_gp_pay_wallet flags the heuristic-confirmed GP subset. INTERNAL.
+  columns:
+  - name: pay_wallet
+    description: Safe address with >=1 net-enabled guardian module (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: n_active_modules
+    description: Count of net-enabled modules on this safe.
+    tests:
+    - dbt_utils.expression_is_true:
+        expression: '>= 1'
+  - name: is_gp_pay_wallet
+    description: 1 iff this safe is in the heuristic int_execution_gnosis_app_gpay_wallets set.
+  - name: module_addresses
+    description: Array of net-enabled module addresses on this Safe (groupArray of the active modules).
+  - name: last_module_event_at
+    description: DateTime of the most recent Enabled/Disabled event across this Safe's active modules.
+- name: int_execution_gnosis_app_gt_user_identity_bridge
+  description: Internal registry address -> pseudonym bridge (shared CEREBRO_PII_SALT). INTERNAL.
+  columns:
+  - name: address
+    description: Registered address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: user_pseudonym
+    description: sipHash64 pseudonym.
+    tests:
+    - not_null
+    - unique
+- name: int_execution_gnosis_app_gt_user_reconciliation
+  description: Aggregate-only reconciliation snapshot (public). registered (GT registry) vs active (heuristic) containment;
+    cutover gate registry_containment >= 0.90.
+  columns:
+  - name: heuristic_users
+    tests:
+    - not_null
+  - name: registry_containment
+    description: heuristic_in_registry / heuristic_users. Gate >= 0.90 (see tests/gnosis_app_gt_containment_gate.sql).
+    tests:
+    - not_null
+  - name: avatar_containment
+    description: heuristic_in_avatar / heuristic_users (expected ~1.0).
+    tests:
+    - not_null
+  - name: gt_registry_users
+    description: 'Total distinct Circles identities in the envio_ga registry (stg_envio_ga__users = deduped envio_ga.gnosis_app_user
+      via envio_latest). ~301k. This is the ecosystem-wide REGISTERED identity universe (one row per address, tombstoned ids
+      removed), NOT a users/active metric. Unit: identity count. Derived as (SELECT count() FROM stg_envio_ga__users).'
+  - name: gt_avatar_users
+    description: 'Total distinct Circles avatar identities in the envio_ga avatar table (stg_envio_ga__avatars = deduped envio_ga.avatar
+      via envio_latest with composite version). This is the active-user CONTAINMENT SPINE for the heuristic (broader membership
+      than the registry). Unit: identity count. Derived as (SELECT count() FROM stg_envio_ga__avatars).'
+  - name: gt_registered_active
+    description: 'CANONICAL GT active-user count (~26.6k): number of rows in int_execution_gnosis_app_gt_user_activity where
+      is_registered_active is TRUE = a registered identity that performed at least one APP-TAGGED action (gnosis.io or Metri
+      swap, MetriFee, MetriTransfer, pay-topup, cashback, investment, auto-topup config). This is the headline Gnosis App
+      active-user metric. Unit: user count. Derived as countIf(is_registered_active).'
+  - name: gt_registered_active_incl_circles
+    description: 'BROADER (sizing-only, NOT headline) active-user count (~40k): rows where is_registered_active_incl_circles
+      is TRUE = registered identity with any app-tagged action OR any GENERIC untagged Circles/social action (PersonalMint,
+      HubTransfer, PrimaryGroupFee, Erc20WrapperTransfer/wrap, InvitationFee, referral earned/sent). Because generic Circles
+      actions can originate from any Circles client (no app tag), this OVER-reaches ''used the Gnosis App''. Unit: user count.
+      Derived as countIf(is_registered_active_incl_circles).'
+  - name: gt_active_in_heuristic
+    description: 'Number of canonical GT active users that the legacy address heuristic ALSO sees: countIf(is_registered_active
+      AND is_heuristic_active). is_heuristic_active (upstream) = identity present in int_execution_gnosis_app_users_current.
+      Measures the overlap/recall of the heuristic against the GT active set. Unit: user count.'
+  - name: gt_active_missed_by_heuristic
+    description: 'Number of canonical GT active users the current-app heuristic CANNOT see (blind spot, ~17.5k): countIf(is_registered_active
+      AND NOT is_heuristic_active). These are largely legacy/non-current-app users invisible to the current-app-only heuristic.
+      Complement of gt_active_in_heuristic within gt_registered_active. Unit: user count.'
+  - name: gt_active_legacy_only
+    description: 'Number of canonical GT active users whose activity is purely LEGACY (Metri) with no current-app footprint:
+      countIf(is_registered_active AND legacy_app_signal AND NOT current_app_signal). Upstream legacy_app_signal = has_swap_metri
+      OR has_metri_fee OR has_metri_transfer OR has_investment OR has_auto_topup; current_app_signal = has_swap_gnosis_io
+      OR is_heuristic_active OR has_cashback OR has_pay_topup. Isolates users the current-app heuristic structurally misses
+      because they only ever used the legacy app. Unit: user count.'
+  - name: heuristic_in_registry
+    description: 'Number of heuristic addresses that are also present in the GT registry: countIf(addr IN (SELECT address
+      FROM stg_envio_ga__users)) over the heur set. Numerator of registry_containment. Registry addresses are already lowercased
+      upstream so the lower(address) heur side matches. Unit: user count.'
+  - name: heuristic_in_avatar
+    description: 'Number of heuristic addresses that are also present in the GT avatar spine: countIf(addr IN (SELECT avatar_address
+      FROM stg_envio_ga__avatars)) over the heur set. Numerator of avatar_containment; expected near-total (~99.98%) because
+      the avatar table is the active-user containment spine. Unit: user count.'
+  - name: heuristic_only_vs_registry
+    description: 'Heuristic addresses NOT found in the GT registry: heuristic_users - heuristic_in_registry. The residual/uncontained
+      tail of the heuristic relative to the registry (heuristic hits with no registered Circles identity). Unit: user count.
+      Non-negative by construction.'
+  - name: active_vs_heuristic_ratio
+    description: 'Ratio of the canonical GT active-user count to the heuristic user count: round(gt_registered_active / heuristic_users,
+      4). >1 means the GT active set is larger than what the heuristic captures (sizing the heuristic''s under-count vs ground
+      truth); can exceed 1. Gotcha: unguarded division -> NaN/Inf if heuristic_users = 0. Unit: ratio (dimensionless).'
+- name: int_execution_gnosis_app_gt_wallet_metrics
+  description: 'Per-wallet analytical rollup (one row per registry-or-avatar identity): lifecycle (tenure/recency/cohort),
+    engagement (per-action-type counts + breadth), trust/social, referrals, and derived segments. COUNT/LIFECYCLE only — money
+    limited to the validated CRC fields. Lifecycle from transaction_action.timestamp; raw registry never an active denominator.
+    INTERNAL (raw address).'
+  columns:
+  - name: address
+    description: Canonical identity address (lowercase).
+    tests:
+    - not_null
+    - unique
+  - name: app_generation
+    description: current (app.gnosis.io) | legacy (Metri) | both | none (from the activity model).
+  - name: is_registered_active
+    description: 1 iff a registered identity that did any app-tagged action (the canonical active flag).
+  - name: is_app_active
+    description: 1 iff the identity did any app-tagged action (regardless of registration).
+  - name: is_gp_card_user
+    description: 1 iff linked to a Gnosis Pay card (cashback owner or top-up funder).
+  - name: is_heuristic_active
+    description: 1 iff present in the heuristic active-user set.
+  - name: first_action_at
+    description: First on-chain action timestamp (transaction_action.timestamp); NULL if none.
+  - name: last_action_at
+    description: Most recent on-chain action timestamp; NULL if none.
+  - name: n_actions
+    description: Total transaction_action rows for this identity (activity volume).
+  - name: tenure_days
+    description: dateDiff('day', first_action_at, last_action_at); NULL when no action.
+  - name: days_since_last_action
+    description: dateDiff('day', last_action_at, now()); NULL when no action.
+  - name: is_active_30d
+    description: 1 iff last action within 30 days of build time (coalesced to false when no action).
+  - name: is_active_90d
+    description: 1 iff last action within 90 days.
+  - name: acquisition_cohort_month
+    description: toStartOfMonth(first_action_at) — the acquisition cohort; NULL when no action.
+  - name: n_swaps_gnosis_app
+    description: Count of filled/placed swaps under app.gnosis.io (owner-side).
+  - name: n_swaps_metri
+    description: Count of swaps under app.metri.xyz (legacy).
+  - name: n_metri_transfer
+    description: Count of MetriTransfer events by this wallet (from-side).
+  - name: n_metri_fee
+    description: Count of MetriFee payments (Metri-app fee events).
+  - name: n_hub_transfer
+    description: Count of Circles HubTransfer events.
+  - name: n_personal_mint
+    description: Count of PersonalMint (CRC UBI claim) events (recipient side).
+  - name: n_group_fee
+    description: Count of PrimaryGroupFee (group-join) events.
+  - name: n_pay_topup
+    description: Count of PayTopUp + AutoTopup transfer events (GP-card funding).
+  - name: n_cashback
+    description: Count of Gnosis Pay cashback NFT mints owned.
+  - name: n_investment
+    description: Count of Metri auto-invest accounts owned.
+  - name: n_invitees
+    description: Distinct invitees this wallet referred (earned_from_invite inviter side).
+  - name: referral_crc_earned
+    description: CRC earned as inviter (earned_from_invite ledger, validated toFloat64/1e18).
+  - name: trusts_given
+    description: Trust-graph out-degree (avatar.trusts_given_count).
+  - name: trusts_received
+    description: Trust-graph in-degree (avatar.trusts_received_count).
+  - name: trusts_mutual
+    description: Mutual (two-way) trust count (avatar.trusts_mutual_count).
+  - name: earned_from_invites_crc
+    description: Lifetime CRC earned from invites (avatar ledger, validated decode).
+  - name: circles_version
+    description: Circles protocol version of the avatar (1 v1 / 2 v2); NULL if no avatar.
+  - name: app_action_breadth
+    description: Number of distinct app-tagged action TYPES the wallet used (0-8) — the engagement-depth driver.
+  - name: engagement_tier
+    description: inactive | casual | core | power (from breadth x recency).
+    tests:
+    - accepted_values:
+        values:
+        - inactive
+        - casual
+        - core
+        - power
+        config:
+          severity: warn
+  - name: is_investor
+    description: 1 iff owns >=1 Metri auto-invest account.
+  - name: is_power_user
+    description: 1 iff app_action_breadth>=3 AND active in last 30 days.
+  - name: is_registered
+    description: 1 iff present in the gnosis_app_user registry.
+
+- name: int_execution_gnosis_app_gt_card_owner
+  description: Reusable GP card (Safe) -> Gnosis App account bridge — the UNION of three on-chain signals gated to the
+    envio_ga registry (stg_envio_ga__users) — Delay-module controller
+    (int_execution_gnosis_app_gpay_wallets.first_ga_owner_address), cashback owner (stg_envio_ga__cashbacks), and app
+    top-up funder (stg_envio_ga__pay_topups). Maps a card the GP Safe owner controls (relayer / exchange / GP-direct
+    cardholder, invisible to Mixpanel) to the human GA account(s) that control or fund it, so a GP conversion can reach
+    a Mixpanel user (and campaign). ~6.4% of recent funded cards link this way; cashback + top-ups add ~+108 beyond the
+    Delay path. INTERNAL (raw addresses + pseudonym); only aggregate downstream views are semantic-exposed.
+  columns:
+  - name: card
+    description: Gnosis Pay card Safe address (lowercase).
+  - name: ga_account
+    description: Registered Gnosis App account address linked to the card (lowercase).
+  - name: source
+    description: Which signal produced the link — delay_module, cashback, or topup_funder.
+  - name: ga_account_pseudonym
+    description: pseudonymize_address(ga_account) — the Mixpanel / user_pseudonym join key.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - card
+      - ga_account
+      - source

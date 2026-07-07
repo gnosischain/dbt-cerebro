@@ -1,0 +1,73 @@
+version: 2
+
+sources:
+  - name: envio_ga
+    description: >
+      Ground-truth Gnosis App entity state from the envio_ga indexer (the app's
+      own recorded users / avatars / profiles / swaps / cashbacks / pay modules).
+      Live source: tails the chain, updating ~every 15-20 min (validated
+      2026-06-30). ReplacingMergeTree-style snapshots keyed on `id`, versioned by
+      `_synced_block`; footer cols `_deleted, _seen_version, ingested_at,
+      _synced_block`. Dedup ONLY via the `envio_latest` macro (never FINAL,
+      never `insert_version` — that column does not exist here).
+    schema: "{{ env_var('DBT_ENVIO_GA_SCHEMA', 'envio_ga') }}"
+    # ingested_at is a numeric unix-SECONDS column, so it MUST be wrapped in
+    # toDateTime or dbt freshness compares an integer to now() and misfires.
+    loaded_at_field: "toDateTime(ingested_at)"
+    freshness:
+      warn_after: { count: 6, period: hour }
+      error_after: { count: 24, period: hour }
+    meta:
+      authoritative: false
+      owner: analytics_team
+    tables:
+      - name: gnosis_app_user
+        description: Registered Circles identity universe (~301k). NOT an active-user grain — see int_execution_gnosis_app_gt_user_dim guard.
+      - name: avatar
+        description: Circles avatar state per identity; the active-user containment spine. avatar_type ties on _synced_block — dedup with version=(_synced_block, ingested_at).
+      - name: profile
+        description: Circles profile (name/location) per identity.
+      - name: swap
+        description: CoW order records. No fill timestamp; status is a real enum (Filled/Expired/NONE/Open/PayTopUp).
+        meta:
+          note: "fee_amount = CoW orderbook QUOTED fee, NOT settled fee revenue — do not substitute for the heuristic swap-fee marts."
+      - name: cashback
+        description: Gnosis Pay cashback NFT-mint program (launched 2026-02).
+        meta:
+          note: "NFT-mint program — a SEPARATE family from the gCRC-transfer gpay_cashback_* models; never a drop-in, never a shared time axis."
+      - name: cashback_status_history
+        description: Status transition events for the cashback NFT program.
+      - name: earned_from_invite
+        description: GA-native invite-reward ledger (one row per invitee).
+        meta:
+          note: "GA-native invite ledger — must NEVER be reconciled against the circles_v2 inviter_fee stream (different mechanism)."
+      - name: investment_account
+        description: Metri auto-invest accounts (owner-keyed; account id is a different address space).
+      - name: auto_topup
+        description: Circles auto-topup coordinator CONFIG event ledger (NewRecipient/ThresholdUpdated/...).
+        meta:
+          note: "Circles auto-topup CONFIG — NOT a Gnosis Pay top-up source. Do not use as the GT topup primitive."
+      - name: coordinator_state
+        description: Circles auto-topup coordinator current state (owner-keyed).
+      - name: guardian_module
+        description: Append-only Enabled/Disabled module events per (safe_address, module_address) — the pay-wallet membership source. Current state = net sumIf(Enabled)-sumIf(Disabled) > 0, excluding Recovery*.
+      - name: transfer
+        description: >
+          STRETCH (108M rows). Every value-movement event, typed by `transfer_type`
+          (MetriTransfer, MetriFee, PayTopUp, AutoTopup, HubTransfer, PersonalMint,
+          PrimaryGroupFee, Erc20WrapperTransfer, InvitationFee, Demurrage, Burn, ...).
+          Id-sorted: NO pruning by transfer_type OR _synced_block (EXPLAIN ESTIMATE
+          reads all 108M), so it is full-scanned once into stg_envio_ga__transfer_actions
+          — never microbatched (each batch would re-scan the whole table).
+        meta:
+          note: "transfer_type is the app/Circles action taxonomy. `from`/`to` are the actors; for MetriTransfer `from` is mostly a Safe address (only ~6% identity-mapped), so downstream keeps only participants that resolve to a registry/avatar identity."
+      - name: transaction_action
+        description: >
+          STRETCH (208M rows). The universal per-`avatar_id` action feed: one row per
+          on-chain action linked to an avatar identity, carrying a unix-seconds
+          `timestamp` and FK links (transfer_id, swap_id, auto_topup_id,
+          guardian_module_id). Spans the WHOLE Circles ecosystem back to 2020
+          (~626k acting avatars) — id-sorted, NO time/block pruning, full-scanned once
+          into stg_envio_ga__transaction_actions for per-identity first/last-action ts.
+        meta:
+          note: "avatar_id spans all of Circles (626k, since 2020) — it is a recency/timestamp enrichment, NEVER a user count on its own. Only registered/avatar identities are kept downstream."

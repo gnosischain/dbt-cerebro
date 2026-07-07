@@ -55,13 +55,6 @@ semantic_models:
   - name: avatar_type
     type: categorical
     expr: avatar_type
-  measures:
-  - name: execution_circles_avatars__cnt_value
-    agg: sum
-    expr: cnt
-  - name: execution_circles_avatars__total_value
-    agg: sum
-    expr: total
   config:
     meta:
       cerebro:
@@ -97,9 +90,6 @@ semantic_models:
   - name: fct_execution_circles_avatars__cnt_value
     agg: sum
     expr: cnt
-  - name: fct_execution_circles_avatars__total_value
-    agg: sum
-    expr: total
   config:
     meta:
       cerebro:
@@ -327,6 +317,7 @@ semantic_models:
       cerebro:
         owner: circles_team
         quality_tier: approved
+        role: dimension
         grain: day
         question_synonyms:
         - circles avatar profile
@@ -356,6 +347,9 @@ semantic_models:
   - name: circles_avatar
     type: primary
     expr: avatar
+  - name: token
+    type: foreign
+    expr: token_address
   dimensions:
   - name: avatar
     type: categorical
@@ -1368,7 +1362,7 @@ semantic_models:
   - name: total_crc_sold_volume_value
     agg: sum
     expr: total_crc_sold_volume
-  - name: trade_count_value
+  - name: execution_circles_v2_crc20_prices_daily__trade_count_value
     agg: sum
     expr: trade_count
   - name: pool_count_value
@@ -1611,7 +1605,7 @@ semantic_models:
     type_params:
       time_granularity: day
   measures:
-  - name: bucket_order_value
+  - name: execution_circles_v2_group_size_distribution__bucket_order_value
     agg: sum
     expr: bucket_order
   - name: n_groups_value
@@ -2625,9 +2619,6 @@ semantic_models:
     type: categorical
     expr: token_address
   measures:
-  - name: supply_raw_value
-    agg: sum
-    expr: supply_raw
   - name: execution_circles_v2_tokens_supply_daily__supply_value
     agg: sum
     expr: supply
@@ -2921,7 +2912,7 @@ semantic_models:
   - name: unwrapped_supply_value
     agg: sum
     expr: unwrapped_supply
-  - name: total_supply_value
+  - name: execution_circles_v2_wrapper_share_daily__total_supply_value
     agg: sum
     expr: total_supply
   - name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
@@ -3711,12 +3702,116 @@ semantic_models:
     expr: date
     type_params:
       time_granularity: day
+- name: execution_circles_v2_inviter_canonical
+  model: ref('int_execution_circles_v2_inviter_canonical')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - execution circles v2 inviter canonical
+  dimensions:
+  - name: avatar
+    type: categorical
+    expr: avatar
+  - name: raw_inviter
+    type: categorical
+    expr: raw_inviter
+  - name: origin_inviter
+    type: categorical
+    expr: origin_inviter
+  - name: canonical_inviter
+    type: categorical
+    expr: canonical_inviter
+- name: execution_circles_v2_inviter_farm_quota
+  model: ref('api_execution_circles_v2_inviter_farm_quota')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - invitation farm quota per inviter
+        - invites claimed from the invitation farm
+        - circles inviter farm claims and quota
+        - how many farm invites has each inviter claimed
+        grain: latest
+  defaults:
+    agg_time_dimension: as_of_date
+  dimensions:
+  - name: inviter
+    type: categorical
+    expr: inviter
+  - name: as_of_date
+    type: time
+    expr: as_of_date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+    agg: sum
+    expr: invites_claimed
+  - name: execution_circles_v2_inviter_farm_quota__n_claim_events_value
+    agg: sum
+    expr: n_claim_events
+  - name: execution_circles_v2_inviter_farm_quota__current_quota_value
+    agg: sum
+    expr: current_quota
 metrics:
+- name: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+  label: Invitation Farm - Invites Claimed
+  description: Total invites claimed from the Circles v2 Invitation Farm (sum of per-inviter InvitesClaimed).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_inviter_farm_quota__invites_claimed_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: latest
+        allowed_dimensions:
+        - inviter
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - invites claimed from the invitation farm
+        - total farm invites claimed
+        - invitation farm claims
+- name: execution_circles_v2_inviter_farm_quota__current_quota_value
+  label: Invitation Farm - Current Quota
+  description: Total current farm quota across inviters (sum of the latest per-inviter InviterQuotaUpdated quota).
+  type: simple
+  type_params:
+    measure: execution_circles_v2_inviter_farm_quota__current_quota_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: latest
+        allowed_dimensions:
+        - inviter
+        - as_of_date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - invitation farm quota
+        - total inviter quota
+        - remaining farm invite quota
 - name: circles_distinct_human_users
   label: Circles Distinct Human Users
-  description: "Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same\
-    \ hash space as revenue / gpay / gnosis_app / Mixpanel \u2014 use semantic-layer joins on `user_pseudonym` for cross-sector\
-    \ overlap questions.\n"
+  description: 'Total distinct human avatar count (Groups / Orgs excluded). The `user_pseudonym` join key here is in the same
+    hash space as revenue / gpay / gnosis_app / Mixpanel — use semantic-layer joins on `user_pseudonym` for cross-sector overlap
+    questions.
+
+    '
   type: simple
   type_params:
     measure: execution_circles_human_avatars_distinct_count
@@ -3775,69 +3870,16 @@ metrics:
         - circles registered users
         - circles user identities
         - circles
-- name: execution_circles_avatars__cnt_value
-  label: Execution Circles Avatars - Cnt
-  description: execution circles avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying on
-    it.
-  type: simple
-  type_params:
-    measure: execution_circles_avatars__cnt_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - avatar_type
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles avatars cnt
-        - cnt
-        - execution circles avatars
-- name: execution_circles_avatars__total_value
-  label: Execution Circles Avatars - Total
-  description: execution circles avatars - total (sum). Auto-generated candidate metric; review and promote before relying
-    on it.
-  type: simple
-  type_params:
-    measure: execution_circles_avatars__total_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - avatar_type
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles avatars total
-        - total
-        - execution circles avatars
 - name: fct_execution_circles_avatars__cnt_value
-  label: Execution Circles Avatars - Cnt
-  description: execution circles avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying on
-    it.
+  label: Circles Avatars Registered
+  description: Count of Circles avatars registered, broken down by avatar type.
   type: simple
   type_params:
     measure: fct_execution_circles_avatars__cnt_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3852,48 +3894,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles avatars cnt
-        - cnt
-        - execution circles avatars
-- name: fct_execution_circles_avatars__total_value
-  label: Execution Circles Avatars - Total
-  description: execution circles avatars - total (sum). Auto-generated candidate metric; review and promote before relying
-    on it.
-  type: simple
-  type_params:
-    measure: fct_execution_circles_avatars__total_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - min_date
-        - max_date
-        - date
-        - avatar_type
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles avatars total
-        - total
-        - execution circles avatars
+        - circles avatars registered
+        - circles avatar count
+        - avatars
+        - circles
+        - trust graph
 - name: int_execution_circles_backing__cnt_value
-  label: Execution Circles Backing - Cnt
-  description: execution circles backing - cnt (sum). Auto-generated candidate metric; review and promote before relying on
-    it.
+  label: Circles Backing Events
+  description: Daily count of Circles group-backing events.
   type: simple
   type_params:
     measure: int_execution_circles_backing__cnt_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -3905,116 +3920,174 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles backing cnt
-        - cnt
-        - execution circles backing
+        - circles backing events
+        - circles backing count
+        - CRC
+        - circles
+        - groups
 - name: execution_circles_groups_cnt_latest__total_value
-  label: Execution Circles Groups Cnt Latest - Total
-  description: execution circles groups cnt latest - total (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Circles Groups (Latest Total)
+  description: Latest total number of Circles groups.
   type: simple
   type_params:
     measure: execution_circles_groups_cnt_latest__total_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles groups cnt latest total
-        - total
-        - execution circles groups cnt latest
+        - circles groups total
+        - how many circles groups
+        - groups
+        - circles
+        - trust graph
 - name: execution_circles_groups_cnt_latest__change_pct_value
-  label: Execution Circles Groups Cnt Latest - Change Pct
-  description: execution circles groups cnt latest - change pct (average). Read this as an average over the grain; do NOT
-    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  label: Circles Groups Change Percent (Latest)
+  description: Period-over-period percent change in the number of Circles groups. Read this as an average over the grain;
+    do NOT sum it across rows or periods.
   type: simple
   type_params:
     measure: execution_circles_groups_cnt_latest__change_pct_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles groups cnt latest change pct
-        - change pct
-        - execution circles groups cnt latest
+        - circles groups change percent
+        - circles groups growth rate
+        - groups
+        - circles
+        - trust graph
 - name: execution_circles_humans_cnt_latest__total_value
-  label: Execution Circles Humans Cnt Latest - Total
-  description: execution circles humans cnt latest - total (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Circles Human Avatars (Latest Total)
+  description: Latest total number of Circles human avatars.
   type: simple
   type_params:
     measure: execution_circles_humans_cnt_latest__total_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles humans cnt latest total
-        - total
-        - execution circles humans cnt latest
+        - circles humans total
+        - how many circles humans
+        - avatars
+        - circles
+        - mint
 - name: execution_circles_humans_cnt_latest__change_pct_value
-  label: Execution Circles Humans Cnt Latest - Change Pct
-  description: execution circles humans cnt latest - change pct (average). Read this as an average over the grain; do NOT
-    sum it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  label: Circles Human Avatars Change Percent (Latest)
+  description: Period-over-period percent change in the number of Circles human avatars. Read this as an average over the
+    grain; do NOT sum it across rows or periods.
   type: simple
   type_params:
     measure: execution_circles_humans_cnt_latest__change_pct_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles humans cnt latest change pct
-        - change pct
-        - execution circles humans cnt latest
+        - circles humans change percent
+        - circles humans growth rate
+        - avatars
+        - circles
+        - mint
 - name: execution_circles_orgs_cnt_latest__total_value
-  label: Execution Circles Orgs Cnt Latest - Total
-  description: execution circles orgs cnt latest - total (sum). Auto-generated candidate metric; review and promote before
-    relying on it.
+  label: Circles Organizations (Latest Total)
+  description: Latest total number of Circles organization avatars.
   type: simple
   type_params:
     measure: execution_circles_orgs_cnt_latest__total_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles orgs cnt latest total
-        - total
-        - execution circles orgs cnt latest
+        - circles orgs total
+        - how many circles organizations
+        - avatars
+        - circles
+        - trust graph
 - name: execution_circles_orgs_cnt_latest__change_pct_value
-  label: Execution Circles Orgs Cnt Latest - Change Pct
-  description: execution circles orgs cnt latest - change pct (average). Read this as an average over the grain; do NOT sum
-    it across rows or periods. Auto-generated candidate metric; review and promote before relying on it.
+  label: Circles Organizations Change Percent (Latest)
+  description: Period-over-period percent change in the number of Circles organizations. Read this as an average over the
+    grain; do NOT sum it across rows or periods.
   type: simple
   type_params:
     measure: execution_circles_orgs_cnt_latest__change_pct_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
+        grain: day
+        allowed_dimensions: []
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
         question_synonyms:
-        - execution circles orgs cnt latest change pct
-        - change pct
-        - execution circles orgs cnt latest
+        - circles orgs change percent
+        - circles organizations growth rate
+        - avatars
+        - circles
+        - trust graph
 - name: execution_circles_v2_avatars__cnt_value
-  label: Execution Circles V2 Avatars - Cnt
-  description: execution circles v2 avatars - cnt (sum). Auto-generated candidate metric; review and promote before relying
-    on it.
+  label: Circles v2 Avatar Registrations
+  description: Count of Circles v2 avatar registration events.
   type: simple
   type_params:
     measure: execution_circles_v2_avatars__cnt_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4022,11 +4095,8 @@ metrics:
         - avatar_type
         - block_timestamp
         - event_name
-        - transaction_hash
         - from_address
         - to_address
-        - registration_event_id
-        - source_table
         supported_time_grains:
         - day
         - week
@@ -4034,9 +4104,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 avatars cnt
-        - cnt
-        - execution circles v2 avatars
+        - circles v2 avatar registrations
+        - circles avatar signups
+        - avatars
+        - circles
+        - invitations
 - name: active_trusts_value
   label: Execution Circles V2 Trust Relations Current - Active Trusts
   description: execution circles v2 trust relations current - active trusts (count).
@@ -4217,16 +4289,15 @@ metrics:
         - trust connections
         - circles trust network size
 - name: new_backers_value
-  label: Execution Circles V2 Backers Cumulative Daily - New Backers
-  description: execution circles v2 backers cumulative daily - new backers (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: New Circles Backers (Daily)
+  description: Number of new Circles backers appearing each day.
   type: simple
   type_params:
     measure: new_backers_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4238,21 +4309,22 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 backers cumulative daily new backers
-        - new backers
-        - execution circles v2 backers cumulative daily
+        - new circles backers daily
+        - circles first-time backers
+        - CRC
+        - circles
+        - groups
 - name: cumulative_backers_value
-  label: Execution Circles V2 Backers Cumulative Daily - Cumulative Backers
-  description: 'execution circles v2 backers cumulative daily - cumulative backers (max). This is a cumulative/running-total
-    measure: read the latest value in a period; do NOT sum across periods. Auto-generated candidate metric; review and promote
-    before relying on it.'
+  label: Cumulative Circles Backers
+  description: 'Running total of distinct Circles backers to date. This is a cumulative/running-total measure: read the latest
+    value in a period; do NOT sum across periods.'
   type: simple
   type_params:
     measure: cumulative_backers_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4264,9 +4336,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 backers cumulative daily cumulative backers
-        - cumulative backers
-        - execution circles v2 backers cumulative daily
+        - cumulative circles backers
+        - total circles backers to date
+        - CRC
+        - circles
+        - groups
 - name: n_initiated_value
   label: Execution Circles V2 Backing Depositors Current - N Initiated
   description: execution circles v2 backing depositors current - n initiated (sum). Auto-generated candidate metric; review
@@ -4618,33 +4692,6 @@ metrics:
         - execution circles v2 crc20 prices daily total crc sold volume
         - total crc sold volume
         - execution circles v2 crc20 prices daily
-- name: trade_count_value
-  label: Execution Circles V2 Crc20 Prices Daily - Trade Count
-  description: execution circles v2 crc20 prices daily - trade count (sum).
-  type: simple
-  type_params:
-    measure: trade_count_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - crc20_token
-        - avatar
-        - symbol
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 crc20 prices daily trade count
-        - trade count
-        - execution circles v2 crc20 prices daily
 - name: pool_count_value
   label: Execution Circles V2 Crc20 Prices Daily - Pool Count
   description: execution circles v2 crc20 prices daily - pool count (sum).
@@ -4725,60 +4772,34 @@ metrics:
         - economically active circles avatars
         - circles weekly active earners
 - name: n_members_value
-  label: Execution Circles V2 Group Size Current - N Members
-  description: execution circles v2 group size current - n members (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Circles Group Members (Current)
+  description: Current number of members per Circles group.
   type: simple
   type_params:
     measure: n_members_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         question_synonyms:
-        - execution circles v2 group size current n members
-        - n members
-        - execution circles v2 group size current
-- name: bucket_order_value
-  label: Execution Circles V2 Group Size Distribution - Bucket Order
-  description: execution circles v2 group size distribution - bucket order (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
-  type: simple
-  type_params:
-    measure: bucket_order_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - bucket
-        - as_of_date
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 group size distribution bucket order
-        - bucket order
-        - execution circles v2 group size distribution
+        - circles group members
+        - members per circles group
+        - groups
+        - circles
+        - trust graph
 - name: n_groups_value
-  label: Execution Circles V2 Group Size Distribution - N Groups
-  description: execution circles v2 group size distribution - n groups (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Groups by Size Bucket
+  description: Number of Circles groups within each size bucket.
   type: simple
   type_params:
     measure: n_groups_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4791,69 +4812,71 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 group size distribution n groups
-        - n groups
-        - execution circles v2 group size distribution
+        - circles groups by size
+        - group size distribution
+        - groups
+        - circles
+        - trust graph
 - name: execution_circles_v2_group_token_supply_current__supply_value
-  label: Execution Circles V2 Group Token Supply Current - Supply
-  description: execution circles v2 group token supply current - supply (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Group Token Supply (Current)
+  description: Current outstanding token supply per Circles group.
   type: simple
   type_params:
     measure: execution_circles_v2_group_token_supply_current__supply_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         - display_name
-        - preview_image_url
         question_synonyms:
-        - execution circles v2 group token supply current supply
-        - supply
-        - execution circles v2 group token supply current
+        - circles group token supply
+        - group crc supply
+        - groups
+        - circles
+        - CRC
 - name: wrapped_value
-  label: Execution Circles V2 Group Token Supply Current - Wrapped
-  description: execution circles v2 group token supply current - wrapped (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Group Wrapped Token Supply (Current)
+  description: Current wrapped (ERC-20) token supply per Circles group.
   type: simple
   type_params:
     measure: wrapped_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         - display_name
-        - preview_image_url
         question_synonyms:
-        - execution circles v2 group token supply current wrapped
-        - wrapped
-        - execution circles v2 group token supply current
+        - circles group wrapped supply
+        - wrapped group crc
+        - groups
+        - circles
+        - CRC
 - name: unwrapped_value
-  label: Execution Circles V2 Group Token Supply Current - Unwrapped
-  description: execution circles v2 group token supply current - unwrapped (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Circles Group Unwrapped Token Supply (Current)
+  description: Current unwrapped (ERC-1155) token supply per Circles group.
   type: simple
   type_params:
     measure: unwrapped_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         - display_name
-        - preview_image_url
         question_synonyms:
-        - execution circles v2 group token supply current unwrapped
-        - unwrapped
-        - execution circles v2 group token supply current
+        - circles group unwrapped supply
+        - unwrapped group crc
+        - groups
+        - circles
+        - CRC
 - name: execution_circles_v2_group_token_supply_current__wrapped_pct_value
   label: Execution Circles V2 Group Token Supply Current - Wrapped Pct
   description: execution circles v2 group token supply current - wrapped pct (average). Read this as an average over the grain;
@@ -4875,56 +4898,55 @@ metrics:
         - wrapped pct
         - execution circles v2 group token supply current
 - name: supply_demurraged_value
-  label: Execution Circles V2 Group Token Supply Current - Supply Demurraged
-  description: execution circles v2 group token supply current - supply demurraged (sum). Auto-generated candidate metric;
-    review and promote before relying on it.
+  label: Circles Group Token Supply Demurraged (Current)
+  description: Current demurrage-adjusted token supply per Circles group.
   type: simple
   type_params:
     measure: supply_demurraged_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         - display_name
-        - preview_image_url
         question_synonyms:
-        - execution circles v2 group token supply current supply demurraged
-        - supply demurraged
-        - execution circles v2 group token supply current
+        - circles group demurraged supply
+        - demurraged group crc
+        - groups
+        - circles
+        - CRC
 - name: wrapped_demurraged_value
-  label: Execution Circles V2 Group Token Supply Current - Wrapped Demurraged
-  description: execution circles v2 group token supply current - wrapped demurraged (sum). Auto-generated candidate metric;
-    review and promote before relying on it.
+  label: Circles Group Wrapped Supply Demurraged (Current)
+  description: Current demurrage-adjusted wrapped token supply per Circles group.
   type: simple
   type_params:
     measure: wrapped_demurraged_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         allowed_dimensions:
         - group_avatar
         - display_name
-        - preview_image_url
         question_synonyms:
-        - execution circles v2 group token supply current wrapped demurraged
-        - wrapped demurraged
-        - execution circles v2 group token supply current
+        - circles group wrapped demurraged supply
+        - demurraged wrapped group crc
+        - groups
+        - circles
+        - CRC
 - name: execution_circles_v2_group_token_supply_daily__value_value
-  label: Execution Circles V2 Group Token Supply Daily - Value
-  description: execution circles v2 group token supply daily - value (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Circles Group Token Supply (Daily)
+  description: Daily Circles group token supply, broken down by label.
   type: simple
   type_params:
     measure: execution_circles_v2_group_token_supply_daily__value_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4937,20 +4959,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 group token supply daily value
-        - value
-        - execution circles v2 group token supply daily
+        - circles group token supply daily
+        - daily group crc supply
+        - groups
+        - circles
+        - CRC
 - name: execution_circles_v2_group_token_supply_daily__value_demurraged_value
-  label: Execution Circles V2 Group Token Supply Daily - Value Demurraged
-  description: execution circles v2 group token supply daily - value demurraged (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Circles Group Token Supply Demurraged (Daily)
+  description: Daily demurrage-adjusted Circles group token supply, broken down by label.
   type: simple
   type_params:
     measure: execution_circles_v2_group_token_supply_daily__value_demurraged_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -4963,9 +4986,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 group token supply daily value demurraged
-        - value demurraged
-        - execution circles v2 group token supply daily
+        - circles group demurraged supply daily
+        - daily demurraged group crc
+        - groups
+        - circles
+        - CRC
 - name: n_new_groups_value
   label: Execution Circles V2 Groups Overview Daily - N New Groups
   description: execution circles v2 groups overview daily - n new groups (sum).
@@ -6412,16 +6437,15 @@ metrics:
         - peer to peer crc transfers
         - circles velocity
 - name: execution_circles_v2_supply_by_holder_type_daily__value_value
-  label: Execution Circles V2 Supply By Holder Type Daily - Value
-  description: execution circles v2 supply by holder type daily - value (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Supply by Holder Type (Daily)
+  description: Daily Circles token supply broken down by holder type.
   type: simple
   type_params:
     measure: execution_circles_v2_supply_by_holder_type_daily__value_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6434,20 +6458,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 supply by holder type daily value
-        - value
-        - execution circles v2 supply by holder type daily
+        - circles supply by holder type
+        - supply per holder category
+        - CRC
+        - circles
+        - avatars
 - name: execution_circles_v2_supply_by_holder_type_daily__value_demurraged_value
-  label: Execution Circles V2 Supply By Holder Type Daily - Value Demurraged
-  description: execution circles v2 supply by holder type daily - value demurraged (sum). Auto-generated candidate metric;
-    review and promote before relying on it.
+  label: Circles Supply by Holder Type Demurraged (Daily)
+  description: Daily demurrage-adjusted Circles supply broken down by holder type.
   type: simple
   type_params:
     measure: execution_circles_v2_supply_by_holder_type_daily__value_demurraged_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6460,20 +6485,22 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 supply by holder type daily value demurraged
-        - value demurraged
-        - execution circles v2 supply by holder type daily
+        - circles demurraged supply by holder type
+        - demurraged supply per holder
+        - CRC
+        - circles
+        - avatars
 - name: holder_count_value
-  label: Execution Circles V2 Supply By Holder Type Daily - Holder Count
-  description: execution circles v2 supply by holder type daily - holder count (average). Auto-generated candidate metric;
-    review and promote before relying on it.
+  label: Circles Holders by Holder Type (Daily)
+  description: Daily count of distinct Circles holders per holder type. Read this as an average over the grain; do NOT sum
+    it across rows or periods.
   type: simple
   type_params:
     measure: holder_count_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6486,46 +6513,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 supply by holder type daily holder count
-        - holder count
-        - execution circles v2 supply by holder type daily
-- name: supply_raw_value
-  label: Execution Circles V2 Tokens Supply Daily - Supply Raw
-  description: execution circles v2 tokens supply daily - supply raw (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
-  type: simple
-  type_params:
-    measure: supply_raw_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: candidate
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        - token_address
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 tokens supply daily supply raw
-        - supply raw
-        - execution circles v2 tokens supply daily
+        - circles holders by type
+        - distinct crc holders
+        - CRC
+        - circles
+        - avatars
 - name: execution_circles_v2_tokens_supply_daily__supply_value
-  label: Execution Circles V2 Tokens Supply Daily - Supply
-  description: execution circles v2 tokens supply daily - supply (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Circles Token Supply (Daily)
+  description: Daily outstanding Circles token supply, by token.
   type: simple
   type_params:
     measure: execution_circles_v2_tokens_supply_daily__supply_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6538,20 +6540,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 tokens supply daily supply
-        - supply
-        - execution circles v2 tokens supply daily
+        - circles token supply daily
+        - per-token crc supply
+        - CRC
+        - circles
+        - mint
 - name: demurraged_supply_value
-  label: Execution Circles V2 Tokens Supply Daily - Demurraged Supply
-  description: execution circles v2 tokens supply daily - demurraged supply (sum). Auto-generated candidate metric; review
-    and promote before relying on it.
+  label: Circles Token Supply Demurraged (Daily)
+  description: Daily demurrage-adjusted Circles token supply, by token.
   type: simple
   type_params:
     measure: demurraged_supply_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6564,20 +6567,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 tokens supply daily demurraged supply
-        - demurraged supply
-        - execution circles v2 tokens supply daily
+        - circles demurraged token supply
+        - per-token demurraged crc
+        - CRC
+        - circles
+        - mint
 - name: execution_circles_v2_total_supply_daily__value_value
-  label: Execution Circles V2 Total Supply Daily - Value
-  description: execution circles v2 total supply daily - value (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Circles Total Supply (Daily)
+  description: Daily total outstanding Circles (CRC) supply across all tokens.
   type: simple
   type_params:
     measure: execution_circles_v2_total_supply_daily__value_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6589,24 +6593,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 total supply daily value
-        - value
-        - execution circles v2 total supply daily
-        - circles total supply
-        - total crc supply
-        - crc supply over time
-        - circles token supply
+        - circles total supply daily
+        - total crc supply over time
+        - CRC
+        - circles
+        - mint
 - name: execution_circles_v2_total_supply_daily__value_demurraged_value
-  label: Execution Circles V2 Total Supply Daily - Value Demurraged
-  description: execution circles v2 total supply daily - value demurraged (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Total Supply Demurraged (Daily)
+  description: Daily total demurrage-adjusted Circles (CRC) supply across all tokens.
   type: simple
   type_params:
     measure: execution_circles_v2_total_supply_daily__value_demurraged_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6618,24 +6619,21 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 total supply daily value demurraged
-        - value demurraged
-        - execution circles v2 total supply daily
-        - circles total supply
-        - total crc supply
-        - crc supply over time
-        - circles token supply
+        - circles total demurraged supply
+        - total demurraged crc supply
+        - CRC
+        - circles
+        - mint
 - name: token_count_value
-  label: Execution Circles V2 Total Supply Daily - Token Count
-  description: execution circles v2 total supply daily - token count (sum). Auto-generated candidate metric; review and promote
-    before relying on it.
+  label: Circles Distinct Tokens (Daily)
+  description: Daily count of distinct Circles token contracts contributing to supply.
   type: simple
   type_params:
     measure: token_count_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6647,13 +6645,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 total supply daily token count
-        - token count
-        - execution circles v2 total supply daily
-        - circles total supply
-        - total crc supply
-        - crc supply over time
-        - circles token supply
+        - circles distinct tokens
+        - number of crc tokens
+        - CRC
+        - circles
+        - mint
 - name: execution_circles_v2_transfers_daily__n_transfers_value
   label: Execution Circles V2 Transfers Daily - N Transfers
   description: execution circles v2 transfers daily - n transfers (sum).
@@ -6915,16 +6911,15 @@ metrics:
         - n distinct trustees
         - execution circles v2 trusts daily
 - name: avatar_count_value
-  label: Execution Circles V2 Trusts Distribution - Avatar Count
-  description: execution circles v2 trusts distribution - avatar count (sum). Auto-generated candidate metric; review and
-    promote before relying on it.
+  label: Circles Avatars by Trust Bucket
+  description: Number of Circles avatars in each trust-count bucket, by direction.
   type: simple
   type_params:
     measure: avatar_count_value
   config:
     meta:
       cerebro:
-        quality_tier: candidate
+        quality_tier: approved
         owner: analytics_team
         grain: day
         allowed_dimensions:
@@ -6938,9 +6933,11 @@ metrics:
         - quarter
         - year
         question_synonyms:
-        - execution circles v2 trusts distribution avatar count
-        - avatar count
-        - execution circles v2 trusts distribution
+        - circles avatars by trust bucket
+        - trust distribution by avatar
+        - trust graph
+        - circles
+        - avatars
 - name: wrapped_supply_value
   label: Execution Circles V2 Wrapper Share Daily - Wrapped Supply
   description: execution circles v2 wrapper share daily - wrapped supply (sum).
@@ -6988,30 +6985,6 @@ metrics:
         question_synonyms:
         - execution circles v2 wrapper share daily unwrapped supply
         - unwrapped supply
-        - execution circles v2 wrapper share daily
-- name: total_supply_value
-  label: Execution Circles V2 Wrapper Share Daily - Total Supply
-  description: execution circles v2 wrapper share daily - total supply (sum).
-  type: simple
-  type_params:
-    measure: total_supply_value
-  config:
-    meta:
-      cerebro:
-        quality_tier: approved
-        owner: analytics_team
-        grain: day
-        allowed_dimensions:
-        - date
-        supported_time_grains:
-        - day
-        - week
-        - month
-        - quarter
-        - year
-        question_synonyms:
-        - execution circles v2 wrapper share daily total supply
-        - total supply
         - execution circles v2 wrapper share daily
 - name: execution_circles_v2_wrapper_share_daily__wrapped_pct_value
   label: Execution Circles V2 Wrapper Share Daily - Wrapped Pct

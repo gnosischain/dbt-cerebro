@@ -49,12 +49,15 @@ SELECT
     f.conversion_kind                             AS conversion_kind,
     toDate(f.first_ts)                            AS first_date,
     f.user_pseudonym                              AS user_pseudonym,
-    coalesce(a.first_touch_campaign, 'unknown')   AS first_touch_campaign,
-    coalesce(a.last_touch_campaign,  'unknown')   AS last_touch_campaign,
-    coalesce(a.first_touch_source,   'unknown')   AS first_touch_source,
-    coalesce(a.last_touch_source,    'unknown')   AS last_touch_source,
-    coalesce(a.first_touch_medium,   'unknown')   AS first_touch_medium,
-    coalesce(a.last_touch_medium,    'unknown')   AS last_touch_medium
+    -- Causal-validity gate (D0): credit a campaign only when its touch PRECEDED the conversion
+    -- (touch_ts <= conversion first_ts). A touch after the conversion cannot have caused it -> 'unknown'.
+    -- Conservative for last-touch (uses the overall last touch); unmatched (join_use_nulls NULL) -> 'unknown'.
+    if(a.first_touch_ts <= f.first_ts, coalesce(a.first_touch_campaign, 'unknown'), 'unknown') AS first_touch_campaign,
+    if(a.last_touch_ts  <= f.first_ts, coalesce(a.last_touch_campaign,  'unknown'), 'unknown') AS last_touch_campaign,
+    if(a.first_touch_ts <= f.first_ts, coalesce(a.first_touch_source,   'unknown'), 'unknown') AS first_touch_source,
+    if(a.last_touch_ts  <= f.first_ts, coalesce(a.last_touch_source,    'unknown'), 'unknown') AS last_touch_source,
+    if(a.first_touch_ts <= f.first_ts, coalesce(a.first_touch_medium,   'unknown'), 'unknown') AS first_touch_medium,
+    if(a.last_touch_ts  <= f.first_ts, coalesce(a.last_touch_medium,    'unknown'), 'unknown') AS last_touch_medium
 FROM first_conv f
 LEFT JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
     ON a.user_id_hash = f.user_pseudonym

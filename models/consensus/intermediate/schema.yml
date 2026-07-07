@@ -46,6 +46,7 @@ models:
     authoritative: true
   columns:
   - name: validator_index
+    description: Beacon-chain validator index resolved from the validator's pubkey via fct_consensus_validators_status_latest.
     data_type: UInt32
   - name: has_source_consolidation_request
     description: 1 if this validator's pubkey appears as the source of any cross-consolidation request.
@@ -1246,12 +1247,16 @@ models:
     description: End-of-day effective balance in Gwei.
     data_type: UInt64
   - name: slashed
+    description: Whether the validator has been slashed (penalized for misconduct) as of end of day.
     data_type: UInt64
   - name: activation_epoch
+    description: Epoch when the validator was activated and began participating in consensus.
     data_type: UInt64
   - name: exit_epoch
+    description: Epoch when the validator exited the active set, ceasing participation.
     data_type: UInt64
   - name: withdrawable_epoch
+    description: Epoch when the validator's funds become available for withdrawal.
     data_type: UInt64
   - name: last_slot
     description: Highest slot whose snapshot was included in this row.
@@ -1272,12 +1277,14 @@ models:
       batch_months: 6
   columns:
   - name: date
+    description: Start-of-day UTC of the deposit slot timestamp.
     data_type: DateTime64
     tests:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: validator_index
+    description: Beacon-chain validator index resolved from the deposit pubkey via fct_consensus_validators_status_latest.
     data_type: UInt64
     tests:
     - not_null:
@@ -1287,6 +1294,7 @@ models:
     description: Sum of deposit amounts credited to the validator on the date, in GNO (source Gwei / 1e9).
     data_type: Float64
   - name: deposits_count
+    description: Number of deposit events (beacon and execution-request deposits) credited to the validator on the date.
     data_type: UInt64
   tests:
   - dbt_utils.unique_combination_of_columns:
@@ -1335,12 +1343,14 @@ models:
           validator_index_end: 600000
   columns:
   - name: date
+    description: Start-of-day UTC of the withdrawal slot timestamp.
     data_type: DateTime64
     tests:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: validator_index
+    description: Beacon-chain validator index the withdrawal was paid to.
     data_type: UInt64
     tests:
     - not_null:
@@ -1350,6 +1360,7 @@ models:
     description: Sum of withdrawal amounts on the date in GNO.
     data_type: Float64
   - name: withdrawals_count
+    description: Number of withdrawal events paid to the validator on the date.
     data_type: UInt64
   tests:
   - dbt_utils.unique_combination_of_columns:
@@ -1420,6 +1431,7 @@ models:
     description: Application date (request date for 'self'; inferred application day for 'source'/'target').
     data_type: DateTime64
   - name: validator_index
+    description: Beacon-chain validator index this consolidation row is attributed to (per role).
     data_type: UInt64
   - name: role
     description: One of 'self', 'source', 'target'.
@@ -1431,6 +1443,7 @@ models:
     description: 0 for self rows; positive for source/target rows.
     data_type: Float64
   - name: cnt
+    description: Number of counterparty consolidations aggregated into this (date, validator_index, role) row.
     data_type: UInt64
   tests: []
 - name: int_consensus_validators_proposer_rewards_daily
@@ -1474,6 +1487,7 @@ models:
           validator_index_end: 600000
   columns:
   - name: date
+    description: Start-of-day UTC of the proposed slot timestamp.
     data_type: DateTime64
     tests:
     - not_null:
@@ -1487,16 +1501,22 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: proposed_blocks_count
+    description: Number of blocks proposed by the validator on the date.
     data_type: UInt64
   - name: proposer_reward_total_gno
+    description: Total proposer reward earned on the date, in GNO (source Gwei / 1e9).
     data_type: Float64
   - name: proposer_reward_attestations_gno
+    description: Portion of the proposer reward attributable to including attestations, in GNO.
     data_type: Float64
   - name: proposer_reward_sync_aggregate_gno
+    description: Portion of the proposer reward attributable to including sync-committee aggregates, in GNO.
     data_type: Float64
   - name: proposer_reward_proposer_slashings_gno
+    description: Portion of the proposer reward attributable to including proposer slashings, in GNO.
     data_type: Float64
   - name: proposer_reward_attester_slashings_gno
+    description: Portion of the proposer reward attributable to including attester slashings, in GNO.
     data_type: Float64
   tests:
   - dbt_utils.unique_combination_of_columns:
@@ -1524,14 +1544,19 @@ models:
       batch_months: 1
   columns:
   - name: date
+    description: Start-of-day UTC for the network-wide APY distribution.
     data_type: DateTime
   - name: q05_apy
+    description: 5th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: q10_apy
+    description: 10th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: q25_apy
+    description: 25th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: q50_apy
+    description: Median (T-Digest) validator APY across active validators on the date.
     data_type: Float64
     tests:
     - elementary.column_anomalies:
@@ -1543,10 +1568,13 @@ models:
         severity: warn
         tags: [elementary]
   - name: q75_apy
+    description: 75th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: q90_apy
+    description: 90th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: q95_apy
+    description: 95th-percentile (T-Digest) validator APY across active validators on the date.
     data_type: Float64
   - name: avg_apy_weighted
     description: Balance-weighted mean APY on the date. Matches fct_consensus_validators_apy_mean_daily.apy.
@@ -1585,23 +1613,31 @@ models:
       batch_months: 1
   columns:
   - name: date
+    description: Start-of-day UTC for the credential's cross-sectional APY distribution.
     data_type: DateTime
   - name: withdrawal_credentials
+    description: Lowercased withdrawal credentials grouping the validators whose APYs are aggregated.
     data_type: String
   - name: q05_apy
+    description: 5th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: q10_apy
+    description: 10th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: q25_apy
+    description: 25th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: q50_apy
     description: Cross-sectional median APY across validators under this credential.
     data_type: Float64
   - name: q75_apy
+    description: 75th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: q90_apy
+    description: 90th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: q95_apy
+    description: 95th-percentile (T-Digest) cross-sectional APY across validators under this credential on the date.
     data_type: Float64
   - name: apy_weighted
     description: Balance-weighted mean APY for the credential on the date.
@@ -1729,12 +1765,14 @@ models:
         batch_days: 1
   columns:
   - name: date
+    description: Start-of-day UTC for the validator's daily income row.
     data_type: DateTime64
     tests:
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: validator_index
+    description: Beacon-chain validator index. Unique per date (see model-level unique_key).
     data_type: UInt64
     tests:
     - not_null:
@@ -1747,6 +1785,7 @@ models:
     description: Previous-day balance in GNO (lagInFrame by 1 within validator_index).
     data_type: Float64
   - name: effective_balance_gno
+    description: End-of-day effective balance in GNO (the 32-GNO-step stake used in the reward-cap formula).
     data_type: Float64
   - name: deposits_amount_gno
     description: |
@@ -1774,10 +1813,13 @@ models:
       debugging and for constructing validator-balance-weighted APY.
     data_type: Float64
   - name: deposits_count
+    description: Number of deposit events (reported requests) for the validator on the date.
     data_type: UInt64
   - name: withdrawals_amount_gno
+    description: Sum of withdrawal amounts paid to the validator on the date, in GNO.
     data_type: Float64
   - name: withdrawals_count
+    description: Number of withdrawal events paid to the validator on the date.
     data_type: UInt64
   - name: consolidation_inflow_gno
     description: Consolidation amount received (target role) on the date, in GNO.
@@ -1811,10 +1853,13 @@ models:
       Kept for audit / display; NOT used in total_income_estimated_gno.
     data_type: Float64
   - name: cumulative_withdrawals_gno
+    description: Running sum of withdrawals_amount_gno for this validator over time, in GNO.
     data_type: Float64
   - name: cumulative_consolidation_inflow_gno
+    description: Running sum of consolidation_inflow_gno for this validator over time, in GNO.
     data_type: Float64
   - name: cumulative_consolidation_outflow_gno
+    description: Running sum of consolidation_outflow_gno for this validator over time, in GNO.
     data_type: Float64
   - name: total_income_estimated_gno
     description: balance_gno + cumulative_withdrawals_gno − cumulative_deposits_gno (effective) − cumulative_consolidation_inflow_gno + cumulative_consolidation_outflow_gno. In GNO.

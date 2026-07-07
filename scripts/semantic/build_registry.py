@@ -54,6 +54,21 @@ GRAPH_OPTIONAL = (
 )
 GRAPH_ALLOWED = set(GRAPH_REQUIRED) | set(GRAPH_OPTIONAL)
 MODEL_NAME_RE = re.compile(r"ref\((?:'|\")(?P<name>[^'\"]+)(?:'|\")\)")
+# A bare or backtick-quoted SQL identifier. Graph column names are interpolated
+# verbatim into generated ClickHouse SQL, so non-expression columns MUST match
+# this (defense-in-depth against an injected identifier in authoring).
+_SAFE_COLUMN_RE = re.compile(r"^`?[A-Za-z_][A-Za-z0-9_]*`?$")
+_SAFE_PROFILE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_NUMERIC_TYPE_TOKENS = ("int", "float", "decimal")
+_TEMPORAL_TYPE_TOKENS = ("date", "time")
+# Tokens that must never appear in a graph column value — even an "expression"
+# column (substring(...)) has no legitimate use for a statement terminator or a
+# SQL comment. Catches injection attempts the expression bypass would miss.
+_DANGEROUS_SQL_TOKENS = (";", "--", "/*", "*/")
+
+
+def _is_sql_expression(col: str) -> bool:
+    return "(" in col or " " in col
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -296,6 +311,44 @@ def build_namespaces(registry_models: dict[str, dict[str, Any]]) -> dict[str, di
     return dict(sorted(namespaces.items()))
 
 
+# Metric types whose value is computed FROM other metrics (post-aggregation)
+# rather than from a measure. MVP scope: same-root only — every input metric
+# must resolve to the SAME root_model (validate_registry enforces this).
+DERIVED_METRIC_TYPES = ("ratio", "derived")
+
+
+def derived_metric_input_names(metric_type: str, type_params: dict[str, Any]) -> list[str]:
+    """Input metric names a ratio/derived metric depends on.
+
+    Accepts both the bare-string and the MetricFlow ``{name: ...}`` mapping
+    forms for ratio numerator/denominator and derived ``metrics`` entries.
+    Order is preserved (numerator before denominator). Entries with no
+    resolvable name are dropped — the validator flags structural gaps
+    (missing numerator/denominator, empty metrics list) separately.
+    """
+
+    def _input_name(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return str(value.get("name", "") or "")
+        return ""
+
+    type_params = type_params or {}
+    names: list[str] = []
+    if metric_type == "ratio":
+        for key in ("numerator", "denominator"):
+            name = _input_name(type_params.get(key))
+            if name:
+                names.append(name)
+    elif metric_type == "derived":
+        for item in type_params.get("metrics") or []:
+            name = _input_name(item)
+            if name:
+                names.append(name)
+    return names
+
+
 def build_metrics(
     authored_metrics: dict[str, Any],
     registry_models: dict[str, dict[str, Any]],
@@ -317,7 +370,8 @@ def build_metrics(
 
     for metric_name, authored_metric in authored_metrics.items():
         meta = get_cerebro_meta(authored_metric)
-        measure_name = authored_metric.get("type_params", {}).get("measure", "")
+        type_params = authored_metric.get("type_params", {}) or {}
+        measure_name = type_params.get("measure", "")
         candidate_models = sorted(measure_to_models.get(measure_name, []))
         root_model = candidate_models[0] if candidate_models else ""
         status = canonical_status(meta.get("quality_tier"), default="candidate")
@@ -326,7 +380,12 @@ def build_metrics(
             "label": authored_metric.get("label", metric_name),
             "description": authored_metric.get("description", ""),
             "type": authored_metric.get("type", ""),
+            # `measure` is kept as a flat back-compat key (consumers key off
+            # it); `type_params` is the full authored dict so ratio/derived
+            # inputs (`numerator`, `denominator`, `metrics`, `expr`) reach
+            # the registry and the MCP planner.
             "measure": measure_name,
+            "type_params": copy.deepcopy(type_params),
             "root_model": root_model,
             "module": registry_models.get(root_model, {}).get("module", ""),
             "quality_tier": status,
@@ -345,6 +404,31 @@ def build_metrics(
         metrics[metric_name] = metric_entry
         if root_model:
             registry_models[root_model].setdefault("metric_names", []).append(metric_name)
+
+    # Second pass: ratio/derived metrics have no measure of their own, so the
+    # first pass left root_model empty. Their root is inherited from their
+    # input metrics — which must all exist and share ONE root_model (the
+    # same-root MVP contract; validate_registry flags violations with
+    # derived_metric_unknown_input / derived_metric_cross_root). When the
+    # inputs are unknown or cross-root, root_model stays "" so the validator
+    # has something concrete to point at.
+    for metric_name, metric_entry in metrics.items():
+        if metric_entry.get("type") not in DERIVED_METRIC_TYPES:
+            continue
+        input_names = derived_metric_input_names(
+            metric_entry["type"], metric_entry.get("type_params", {})
+        )
+        if not input_names or any(name not in metrics for name in input_names):
+            continue
+        input_roots = {metrics[name].get("root_model", "") for name in input_names}
+        if len(input_roots) != 1:
+            continue
+        root_model = next(iter(input_roots))
+        if not root_model:
+            continue
+        metric_entry["root_model"] = root_model
+        metric_entry["module"] = registry_models.get(root_model, {}).get("module", "")
+        registry_models[root_model].setdefault("metric_names", []).append(metric_name)
     return metrics
 
 
@@ -397,6 +481,16 @@ def build_registry(
     for unique_id in sorted(project_model_ids):
         node = manifest_nodes[unique_id]
         model_name = node["name"]
+        # Privacy boundary at the source: never publish internal-only /
+        # identity-bridge models into the registry. Mirrors the cerebro-mcp
+        # manifest deny list (INTERNAL_ONLY_TAGS + meta.expose_to_mcp=false);
+        # the MCP loader also filters defensively, so an old artifact is safe.
+        _tags = node.get("tags", []) or []
+        _meta = node.get("config", {}).get("meta") or node.get("meta") or {}
+        if any(t in ("internal_only", "privacy:tier_internal") for t in _tags) or (
+            isinstance(_meta, dict) and _meta.get("expose_to_mcp") is False
+        ):
+            continue
         authored_semantic = semantic_models.get(model_name, {})
         semantic_meta = get_cerebro_meta(authored_semantic)
         quality_tier = canonical_status(semantic_meta.get("quality_tier"))
@@ -506,10 +600,452 @@ def build_registry(
     }
 
 
+def load_graph_kinds(path: Path) -> dict[str, dict[str, Any]]:
+    """Load the node-kind taxonomy registry (semantic/graph_kinds.yml).
+
+    Returns a mapping of kind name -> metadata. Missing file -> empty mapping
+    (the kind check then degrades to a no-op rather than failing the build).
+    """
+    if not path.exists():
+        return {}
+    data = load_yaml_file(path)
+    kinds = data.get("node_kinds") or {}
+    if not isinstance(kinds, dict):
+        raise ValueError(f"{path}: 'node_kinds' must be a mapping")
+    return kinds
+
+
+def validate_graph_meta(
+    model_name: str,
+    model: dict[str, Any],
+    models: dict[str, Any],
+    *,
+    allowed_kinds: Optional[set[str]] = None,
+) -> list[dict[str, Any]]:
+    """Validate one model's graph block; return a list of error/warning dicts.
+
+    This is the single dbt-side graph validator (the cerebro-mcp side mirrors it
+    in ``cerebro_mcp.semantic.graph_extraction``; the committed catalog JSON
+    Schema is the shared contract). Each issue carries a ``code`` and
+    ``severity`` (``error``/``warning``).
+    """
+    issues: list[dict[str, Any]] = []
+
+    def _add(code: str, message: str, severity: str = "error") -> None:
+        issues.append({"code": code, "severity": severity, "model": model_name, "message": message})
+
+    graph = (model.get("semantic", {}).get("meta", {}) or {}).get("graph")
+    if not graph:
+        return issues
+    if not isinstance(graph, dict):
+        _add("graph_meta_not_mapping", f"{model_name}: config.meta.cerebro.graph must be a mapping")
+        return issues
+    unknown = set(graph) - GRAPH_ALLOWED
+    if unknown:
+        _add("graph_meta_unknown_keys", f"{model_name}: unknown cerebro.graph keys: {sorted(unknown)}")
+    if not graph.get("enabled"):
+        return issues
+    missing = [key for key in GRAPH_REQUIRED if key not in graph]
+    if missing:
+        _add("graph_meta_missing_required", f"{model_name}: cerebro.graph missing required keys {missing}")
+    profile_id = graph.get("profile")
+    if profile_id and not _SAFE_PROFILE_RE.match(str(profile_id)):
+        _add(
+            "graph_meta_unsafe_identifier",
+            f"{model_name}: cerebro.graph.profile='{profile_id}' must match [a-z][a-z0-9_]*",
+        )
+    model_columns = model.get("columns", {}) or {}
+    columns = set(model_columns.keys())
+    for key in ("source_column", "target_column", "time_column", "weight_column"):
+        col = graph.get(key)
+        if not col:
+            continue
+        # Forbidden tokens are rejected for ANY column value (even expressions).
+        if any(tok in col for tok in _DANGEROUS_SQL_TOKENS):
+            _add(
+                "graph_meta_unsafe_identifier",
+                f"{model_name}: cerebro.graph.{key}='{col}' contains a forbidden SQL token",
+            )
+            continue
+        # Expression form (e.g. substring(...)) — author-trusted SQL; skip the
+        # identifier/existence checks (the column-type checks below also skip it).
+        if _is_sql_expression(col):
+            continue
+        # Defense-in-depth: a non-expression column is interpolated verbatim into
+        # SQL, so it must be a plain (optionally backtick-quoted) identifier.
+        if not _SAFE_COLUMN_RE.match(col):
+            _add(
+                "graph_meta_unsafe_identifier",
+                f"{model_name}: cerebro.graph.{key}='{col}' is not a safe SQL identifier",
+            )
+            continue
+        # Graph meta keeps ClickHouse identifier quoting (e.g. `from`, `to`)
+        # because the column name is interpolated verbatim into generated SQL and
+        # those are reserved words. The catalog stores the bare name, so strip
+        # backticks before checking membership.
+        bare = col.strip("`")
+        if bare not in columns:
+            _add(
+                "graph_meta_unknown_column",
+                f"{model_name}: cerebro.graph.{key}='{col}' not in model columns",
+            )
+            continue
+        # Q3 — type checks. weight_column drives sum(), so a non-numeric type is
+        # an ERROR (it fails at query time); time_column non-temporal is advisory
+        # (some sources legitimately store dates as String).
+        data_type = str((model_columns.get(bare, {}) or {}).get("data_type", "")).lower()
+        if not data_type:
+            continue
+        if key == "weight_column" and not any(t in data_type for t in _NUMERIC_TYPE_TOKENS):
+            _add(
+                "graph_meta_weight_not_numeric",
+                f"{model_name}: cerebro.graph.weight_column='{col}' has non-numeric type "
+                f"'{data_type}'; sum() will fail at query time",
+            )
+        elif key == "time_column" and not any(t in data_type for t in _TEMPORAL_TYPE_TOKENS):
+            _add(
+                "graph_meta_time_not_temporal",
+                f"{model_name}: cerebro.graph.time_column='{col}' has non-temporal type '{data_type}'",
+                severity="warning",
+            )
+    for key in ("node_enrichment_model", "evidence_model"):
+        ref = graph.get(key)
+        if ref and ref not in models:
+            _add(
+                "graph_meta_unknown_model_ref",
+                f"{model_name}: cerebro.graph.{key}='{ref}' not found in registry",
+            )
+    # Q2 — node kinds must be members of the taxonomy registry (graph_kinds.yml).
+    if allowed_kinds is not None:
+        for side in ("source_kind", "target_kind"):
+            kind = graph.get(side)
+            if kind and kind not in allowed_kinds:
+                _add(
+                    "graph_meta_unknown_kind",
+                    f"{model_name}: cerebro.graph.{side}='{kind}' is not a registered node kind "
+                    f"(add it to semantic/graph_kinds.yml)",
+                )
+    # Advisory: a kind with no matching entity won't auto-resolve enrichment joins.
+    entity_names = {entity.get("name") for entity in model.get("entities", [])}
+    for side in ("source_kind", "target_kind"):
+        kind = graph.get(side)
+        if kind and entity_names and kind not in entity_names:
+            _add(
+                "graph_meta_kind_without_entity",
+                f"{model_name}: cerebro.graph.{side}='{kind}' has no matching entity; "
+                "cross-model enrichment joins will not resolve automatically",
+                severity="warning",
+            )
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Graph catalog (semantic_graph_catalog.json) — WS4
+#
+# The published, versioned graph contract. `profiles` is a strict 1:1 with the
+# cerebro-mcp `GraphProfile` dataclass (contract-only sharing: the committed JSON
+# Schema is the shared source of truth; mcp reconstructs GraphProfile from these
+# rows). Deterministic output (no timestamps; sorted) so the artifact is
+# byte-stable across rebuilds of the same registry.
+# ---------------------------------------------------------------------------
+
+GRAPH_CATALOG_SCHEMA_VERSION = 1
+
+# Control / pagination keys that are NOT column filters (kept in sync with
+# cerebro_mcp.semantic.graph_extraction._CONTROL_KEYS). Stripped from
+# default_filters so the catalog only carries real column predicates.
+_CONTROL_KEYS = frozenset(
+    {
+        "limit",
+        "max_neighbors",
+        "hops",
+        "window_days",
+        "transfer_window_days",
+        "direction",
+        "relation_types",
+        "offset",
+        "seed_ids",
+    }
+)
+
+# Canonical GraphProfile field order — must match cerebro_mcp GraphProfile.
+GRAPH_PROFILE_FIELDS = (
+    "profile",
+    "model_name",
+    "relation_name",
+    "source_column",
+    "target_column",
+    "source_kind",
+    "target_kind",
+    "directed",
+    "time_column",
+    "weight_column",
+    "evidence_model",
+    "evidence_source_column",
+    "evidence_target_column",
+    "node_enrichment_model",
+    "node_enrichment_key",
+    "default_filters",
+    "module",
+    "description",
+    "semantic_status",
+    "quality_tier",
+    "question_synonyms",
+    "semantic_source_file",
+)
+
+
+def _opt_str(value: Any) -> Optional[str]:
+    return value if isinstance(value, str) and value else None
+
+
+def extract_graph_profile_dict(name: str, model: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Extract a GraphProfile-shaped dict for the catalog (1:1 with mcp).
+
+    Returns None when there is no enabled+complete graph block. Mirrors
+    cerebro_mcp.semantic.graph_extraction.extract_graph_profile exactly (empty
+    optional strings coerced to None, control keys stripped, evidence columns
+    defaulting to source/target).
+    """
+    graph = (model.get("semantic", {}).get("meta", {}) or {}).get("graph")
+    if not isinstance(graph, dict) or not graph.get("enabled"):
+        return None
+    if any(k not in graph for k in ("profile", "source_column", "target_column", "source_kind", "target_kind")):
+        return None
+    meta = (model.get("semantic", {}) or {}).get("meta") or {}
+    src = graph["source_column"]
+    tgt = graph["target_column"]
+    return {
+        "profile": graph["profile"],
+        "model_name": name,
+        "relation_name": model.get("relation_name", "") or name,
+        "source_column": src,
+        "target_column": tgt,
+        "source_kind": graph["source_kind"],
+        "target_kind": graph["target_kind"],
+        "directed": bool(graph.get("directed", True)),
+        "time_column": _opt_str(graph.get("time_column")),
+        "weight_column": _opt_str(graph.get("weight_column")),
+        "evidence_model": _opt_str(graph.get("evidence_model")),
+        "evidence_source_column": _opt_str(graph.get("evidence_source_column")) or src,
+        "evidence_target_column": _opt_str(graph.get("evidence_target_column")) or tgt,
+        "node_enrichment_model": _opt_str(graph.get("node_enrichment_model")),
+        "node_enrichment_key": _opt_str(graph.get("node_enrichment_key")),
+        "default_filters": {
+            k: v for k, v in (graph.get("default_filters") or {}).items() if k not in _CONTROL_KEYS
+        },
+        "module": model.get("module", "") or "",
+        "description": model.get("description", "") or "",
+        "semantic_status": model.get("semantic_status", "docs_only") or "docs_only",
+        "quality_tier": model.get("quality_tier", "") or "",
+        "question_synonyms": list(meta.get("question_synonyms") or ()),
+        "semantic_source_file": model.get("semantic_source_file", "") or "",
+    }
+
+
+def _relationship_traversal_cost(rel: dict[str, Any], models: dict[str, Any]) -> float:
+    """Cost of traversing a relationship (mirrors cerebro-mcp graph._edge_cost).
+
+    Cheaper = preferred. many_to_one is the baseline; one_to_many fans out and is
+    expensive; preferred bridges halve; cross-module hops add a small penalty.
+    """
+    base = {
+        "many_to_one": 1.0,
+        "one_to_one": 1.2,
+        "many_to_many": 3.0,
+        "one_to_many": 5.0,
+    }.get(rel.get("cardinality", ""), 2.0)
+    if rel.get("preferred_bridge"):
+        base *= 0.5
+    left = models.get(rel.get("left_model", ""), {}) or {}
+    right = models.get(rel.get("right_model", ""), {}) or {}
+    if left.get("module") and right.get("module") and left.get("module") != right.get("module"):
+        base += 0.5
+    return round(base, 4)
+
+
+def _catalog_hash(catalog: dict[str, Any]) -> str:
+    """Deterministic content hash, excluding the hash field itself."""
+    payload = {k: v for k, v in catalog.items() if k != "metadata"}
+    payload["_meta"] = {
+        k: v for k, v in catalog.get("metadata", {}).items() if k != "graph_catalog_hash"
+    }
+    return sha256_bytes(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8"))
+
+
+def build_graph_catalog(
+    registry: dict[str, Any], *, graph_kinds: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """Compile the published graph catalog from the registry. Deterministic."""
+    models = registry.get("models", {})
+    relationships = registry.get("relationships", [])
+    metrics = registry.get("metrics", {})
+    graph_kinds = graph_kinds or {}
+
+    # profiles (1:1 with GraphProfile). First-wins on duplicate ids — the
+    # validator/CI gate is the authoritative uniqueness check.
+    profiles: dict[str, dict[str, Any]] = {}
+    for name in sorted(models):
+        row = extract_graph_profile_dict(name, models[name])
+        if row and row["profile"] not in profiles:
+            profiles[row["profile"]] = row
+
+    kind_providers: dict[str, set[str]] = defaultdict(set)
+    for prof in profiles.values():
+        kind_providers[prof["source_kind"]].add(prof["profile"])
+        kind_providers[prof["target_kind"]].add(prof["profile"])
+    via_kinds = {r.get("via_entity") for r in relationships if r.get("via_entity")}
+
+    node_types = []
+    for kind in sorted(set(graph_kinds) | set(kind_providers) | via_kinds):
+        meta = graph_kinds.get(kind, {}) or {}
+        node_types.append(
+            {
+                "name": kind,
+                "fqn": f"node:{kind}",
+                "label": kind.replace("_", " ").title(),
+                "description": meta.get("description", ""),
+                "synonyms": list(meta.get("synonyms") or []),
+                "parent_type": meta.get("parent_type"),
+                "is_relationship_axis": bool(meta.get("is_relationship_axis", False)),
+                "provider_profiles": sorted(kind_providers.get(kind, set())),
+                "registered": kind in graph_kinds,
+            }
+        )
+
+    edge_types = [
+        {
+            "name": prof["profile"],
+            "source_kind": prof["source_kind"],
+            "target_kind": prof["target_kind"],
+            "directed": prof["directed"],
+            "temporal": prof["time_column"] is not None,
+            "weighted": prof["weight_column"] is not None,
+        }
+        for prof in sorted(profiles.values(), key=lambda p: p["profile"])
+    ]
+
+    def _ref(model_name: str) -> dict[str, Any]:
+        mod = (models.get(model_name, {}) or {}).get("module", "")
+        return {
+            "type": "SemanticModel",
+            "name": model_name,
+            "fqn": f"{mod}.{model_name}" if mod else model_name,
+        }
+
+    join_edges = [
+        {
+            "relationship_id": r.get("name"),
+            "left_model": _ref(r.get("left_model", "")),
+            "right_model": _ref(r.get("right_model", "")),
+            "left_keys": r.get("left_keys", []),
+            "right_keys": r.get("right_keys", []),
+            "via_entity": r.get("via_entity"),
+            "cardinality": r.get("cardinality"),
+            "quality_tier": r.get("quality_tier"),
+            "preferred_bridge": bool(r.get("preferred_bridge", False)),
+            "traversal_cost": _relationship_traversal_cost(r, models),
+        }
+        for r in sorted(relationships, key=lambda x: x.get("name", ""))
+    ]
+
+    profiles_by_model: dict[str, list[str]] = defaultdict(list)
+    for prof in profiles.values():
+        profiles_by_model[prof["model_name"]].append(prof["profile"])
+    metric_bindings = {}
+    for mname in sorted(metrics):
+        metric = metrics[mname]
+        related = sorted(profiles_by_model.get(metric.get("root_model", ""), []))
+        if not related:
+            continue
+        metric_bindings[mname] = {
+            "metric": mname,
+            "root_model": metric.get("root_model"),
+            "edge_types": related,
+            "node_types": sorted(
+                {
+                    kind
+                    for pid in related
+                    for kind in (profiles[pid]["source_kind"], profiles[pid]["target_kind"])
+                }
+            ),
+            "allowed_dimensions": metric.get("allowed_dimensions", []),
+            "quality_tier": metric.get("quality_tier", ""),
+        }
+
+    search_documents = []
+    for prof in profiles.values():
+        body = " ".join(
+            part
+            for part in [
+                prof["profile"],
+                prof["profile"].replace("_", " "),
+                prof["description"],
+                " ".join(prof["question_synonyms"]),
+                prof["model_name"],
+                prof["source_kind"],
+                prof["target_kind"],
+            ]
+            if part
+        )
+        search_documents.append(
+            {
+                "id": f"profile:{prof['profile']}",
+                "type": "edge_type",
+                "title": prof["profile"],
+                "module": prof["module"],
+                "quality_tier": prof["quality_tier"],
+                "body": body,
+                "payload_ref": prof["profile"],
+            }
+        )
+    for nt in node_types:
+        body = " ".join(
+            part
+            for part in [nt["name"], nt["name"].replace("_", " "), nt["description"], " ".join(nt["synonyms"])]
+            if part
+        )
+        search_documents.append(
+            {
+                "id": f"node:{nt['name']}",
+                "type": "node_type",
+                "title": nt["name"],
+                "module": "",
+                "quality_tier": "",
+                "body": body,
+                "payload_ref": nt["name"],
+            }
+        )
+    search_documents.sort(key=lambda d: d["id"])
+
+    catalog = {
+        "metadata": {
+            "schema_version": GRAPH_CATALOG_SCHEMA_VERSION,
+            "project_name": registry.get("metadata", {}).get("project_name", ""),
+            "registry_manifest_hash": registry.get("metadata", {}).get("manifest_hash", ""),
+            "node_type_count": len(node_types),
+            "edge_type_count": len(edge_types),
+            "profile_count": len(profiles),
+            "join_edge_count": len(join_edges),
+            "metric_binding_count": len(metric_bindings),
+            "search_document_count": len(search_documents),
+        },
+        "node_types": node_types,
+        "edge_types": edge_types,
+        "profiles": profiles,
+        "join_edges": join_edges,
+        "metric_bindings": metric_bindings,
+        "search_documents": search_documents,
+    }
+    catalog["metadata"]["graph_catalog_hash"] = _catalog_hash(catalog)
+    return catalog
+
+
 def validate_registry(
     registry: dict[str, Any],
     *,
     override_warnings: Optional[list[dict[str, Any]]] = None,
+    allowed_kinds: Optional[set[str]] = None,
 ) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = list(override_warnings or [])
@@ -543,7 +1079,10 @@ def validate_registry(
                             "message": f"Approved semantic model {model_name} is missing config.meta.cerebro.{field}",
                         }
                     )
-            if not model.get("measures"):
+            # Dimension/bridge tables (time spines, entity registries, edge
+            # providers) are intentionally measure-less; `role: dimension` is
+            # the author's explicit opt-out from the missing-measures check.
+            if not model.get("measures") and semantic_meta.get("role") != "dimension":
                 warnings.append(
                     {
                         "code": "approved_model_missing_measures",
@@ -573,88 +1112,30 @@ def validate_registry(
             )
 
     for model_name, model in models.items():
+        for issue in validate_graph_meta(model_name, model, models, allowed_kinds=allowed_kinds):
+            (errors if issue["severity"] == "error" else warnings).append(issue)
+
+    # Q4 — graph profile ids must be globally unique. build_graph_catalog is
+    # first-wins on a collision, so an unchecked duplicate would silently drop an
+    # edge from the catalog; surface it as a build error instead.
+    profile_models: dict[str, list[str]] = defaultdict(list)
+    for model_name, model in models.items():
         graph = (model.get("semantic", {}).get("meta", {}) or {}).get("graph")
-        if not graph:
-            continue
-        if not isinstance(graph, dict):
+        if isinstance(graph, dict) and graph.get("enabled") and graph.get("profile"):
+            profile_models[graph["profile"]].append(model_name)
+    for profile_id, owners in sorted(profile_models.items()):
+        if len(owners) > 1:
             errors.append(
                 {
-                    "code": "graph_meta_not_mapping",
+                    "code": "graph_meta_duplicate_profile",
                     "severity": "error",
-                    "model": model_name,
-                    "message": f"{model_name}: config.meta.cerebro.graph must be a mapping",
+                    "model": sorted(owners)[0],
+                    "message": (
+                        f"graph profile id '{profile_id}' is declared by multiple models: "
+                        f"{sorted(owners)}"
+                    ),
                 }
             )
-            continue
-        unknown = set(graph) - GRAPH_ALLOWED
-        if unknown:
-            errors.append(
-                {
-                    "code": "graph_meta_unknown_keys",
-                    "severity": "error",
-                    "model": model_name,
-                    "message": f"{model_name}: unknown cerebro.graph keys: {sorted(unknown)}",
-                }
-            )
-        if not graph.get("enabled"):
-            continue
-        missing = [key for key in GRAPH_REQUIRED if key not in graph]
-        if missing:
-            errors.append(
-                {
-                    "code": "graph_meta_missing_required",
-                    "severity": "error",
-                    "model": model_name,
-                    "message": f"{model_name}: cerebro.graph missing required keys {missing}",
-                }
-            )
-        columns = set(model.get("columns", {}).keys())
-        for key in ("source_column", "target_column", "time_column", "weight_column"):
-            col = graph.get(key)
-            if not col:
-                continue
-            # Expression form (e.g. substring(...)) — skip column existence check.
-            if "(" in col or " " in col:
-                continue
-            # Graph meta keeps ClickHouse identifier quoting (e.g. `from`, `to`)
-            # because the column name is interpolated verbatim into generated
-            # SQL and those are reserved words. The catalog stores the bare
-            # name, so strip backticks before checking membership.
-            if col.strip("`") not in columns:
-                errors.append(
-                    {
-                        "code": "graph_meta_unknown_column",
-                        "severity": "error",
-                        "model": model_name,
-                        "message": f"{model_name}: cerebro.graph.{key}='{col}' not in model columns",
-                    }
-                )
-        for key in ("node_enrichment_model", "evidence_model"):
-            ref = graph.get(key)
-            if ref and ref not in models:
-                errors.append(
-                    {
-                        "code": "graph_meta_unknown_model_ref",
-                        "severity": "error",
-                        "model": model_name,
-                        "message": f"{model_name}: cerebro.graph.{key}='{ref}' not found in registry",
-                    }
-                )
-        entity_names = {entity.get("name") for entity in model.get("entities", [])}
-        for side in ("source_kind", "target_kind"):
-            kind = graph.get(side)
-            if kind and entity_names and kind not in entity_names:
-                warnings.append(
-                    {
-                        "code": "graph_meta_kind_without_entity",
-                        "severity": "warning",
-                        "model": model_name,
-                        "message": (
-                            f"{model_name}: cerebro.graph.{side}='{kind}' has no matching entity; "
-                            "cross-model enrichment joins will not resolve automatically"
-                        ),
-                    }
-                )
 
     dimension_providers: dict[str, set[str]] = defaultdict(set)
     for model_name, model in models.items():
@@ -703,8 +1184,105 @@ def validate_registry(
                     ),
                 }
             )
+        # Dead-edge guard: an approved relationship whose endpoint model is not
+        # approved is silently pruned from the runtime join graph (cerebro-mcp
+        # graph.py drops the edge). That regression class took 29 of 55 edges
+        # offline before the join-graph activation wave — fail the build.
+        if relationship.get("quality_tier") in APPROVED_STATUSES:
+            for side, endpoint in (("left", left_model), ("right", right_model)):
+                endpoint_model = models.get(endpoint)
+                if (
+                    endpoint_model is not None
+                    and endpoint_model.get("semantic_status") != "approved"
+                ):
+                    errors.append(
+                        {
+                            "code": "relationship_endpoint_not_approved",
+                            "severity": "error",
+                            "relationship": relationship.get("name", ""),
+                            "model": endpoint,
+                            "message": (
+                                f"Approved relationship {relationship.get('name', '')} has a "
+                                f"non-approved {side} endpoint {endpoint} "
+                                f"({endpoint_model.get('semantic_status')}) — the runtime "
+                                "silently drops this edge; approve the model or demote the "
+                                "relationship"
+                            ),
+                        }
+                    )
 
     for metric_name, metric in metrics.items():
+        # Ratio/derived metrics: computed FROM other metrics post-aggregation.
+        # MVP contract: every input metric must exist in the registry AND all
+        # inputs must share ONE root_model (cross-root derived metrics are not
+        # supported — the MCP compiler can only render a same-branch computed
+        # column). When an input is broken we `continue` past the generic
+        # root-model checks: root_model is legitimately empty for a broken
+        # derived metric and a second `metric_missing_root_model` error would
+        # just be noise on top of the precise derived_metric_* error.
+        metric_type = metric.get("type", "")
+        if metric_type in DERIVED_METRIC_TYPES:
+            type_params = metric.get("type_params", {}) or {}
+            input_names = derived_metric_input_names(metric_type, type_params)
+            derived_issue = False
+            required_inputs = 2 if metric_type == "ratio" else 1
+            if len(input_names) < required_inputs:
+                requirement = (
+                    "both type_params.numerator and type_params.denominator"
+                    if metric_type == "ratio"
+                    else "at least one input metric in type_params.metrics"
+                )
+                errors.append(
+                    {
+                        "code": "derived_metric_unknown_input",
+                        "severity": "error",
+                        "metric": metric_name,
+                        "message": (
+                            f"{metric_type.capitalize()} metric '{metric_name}' "
+                            f"must declare {requirement}"
+                        ),
+                    }
+                )
+                derived_issue = True
+            unknown_inputs = [name for name in input_names if name not in metrics]
+            if unknown_inputs:
+                errors.append(
+                    {
+                        "code": "derived_metric_unknown_input",
+                        "severity": "error",
+                        "metric": metric_name,
+                        "inputs": unknown_inputs,
+                        "message": (
+                            f"{metric_type.capitalize()} metric '{metric_name}' "
+                            f"references unknown input metric(s): {unknown_inputs}. "
+                            "Every input must be a metric defined in the registry."
+                        ),
+                    }
+                )
+                derived_issue = True
+            elif input_names:
+                input_roots = sorted(
+                    {metrics[name].get("root_model", "") for name in input_names}
+                )
+                if len(input_roots) > 1:
+                    errors.append(
+                        {
+                            "code": "derived_metric_cross_root",
+                            "severity": "error",
+                            "metric": metric_name,
+                            "root_models": input_roots,
+                            "message": (
+                                f"{metric_type.capitalize()} metric '{metric_name}' "
+                                f"mixes inputs from multiple root models: {input_roots}. "
+                                "Only same-root post-aggregation derived metrics are "
+                                "supported — query the input metrics separately instead."
+                            ),
+                        }
+                    )
+                    derived_issue = True
+            if derived_issue:
+                continue
+
         # Ambiguous measure binding: the measure name this metric points at
         # is declared in 2+ semantic_models. `build_metrics` picks the first
         # one alphabetically so the registry stays deterministic, but the
@@ -780,6 +1358,52 @@ def validate_registry(
                     }
                 )
 
+    # Spine-coverage ratchet: every approved metric root with a plain-column
+    # time dimension should be reachable from the shared time spines (the
+    # spine-blitz invariant). Mirrors the blitz filter exactly: measures
+    # present, approved, bare-column time dim (expressions like
+    # toDate(first_seen_at) can't be join keys and are exempt).
+    spine_bridged = {
+        relationship.get("right_model")
+        for relationship in relationships
+        if str(relationship.get("left_model", "")).startswith("dim_time_spine")
+    } | {
+        relationship.get("left_model")
+        for relationship in relationships
+        if str(relationship.get("right_model", "")).startswith("dim_time_spine")
+    }
+    for model_name, model in models.items():
+        if model.get("resource_type") != "model" or model_name in spine_bridged:
+            continue
+        if model.get("semantic_status") != "approved" or not model.get("measures"):
+            continue
+        time_dims = [
+            dimension
+            for dimension in model.get("dimensions", []) or []
+            if dimension.get("type") == "time"
+        ]
+        if not time_dims:
+            continue
+        grain = (time_dims[0].get("type_params") or {}).get("time_granularity", "day")
+        if grain not in ("day", "week", "month"):
+            continue
+        time_col = str(time_dims[0].get("expr") or time_dims[0].get("name") or "")
+        if not time_col.replace("_", "").isalnum():
+            continue
+        warnings.append(
+            {
+                "code": "approved_root_missing_time_spine",
+                "severity": "warning",
+                "model": model_name,
+                "message": (
+                    f"Approved metric root {model_name} has a {grain}-grain time "
+                    f"dimension ({time_col}) but no dim_time_spine bridge in "
+                    "semantic/relationships/ — cross-sector time-axis composition "
+                    "will not reach it"
+                ),
+            }
+        )
+
     return {
         "generated_at": utc_now(),
         "error_count": len(errors),
@@ -808,6 +1432,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", default="target")
     parser.add_argument("--validate", action="store_true")
+    parser.add_argument(
+        "--max-warnings",
+        type=int,
+        default=None,
+        help=(
+            "With --validate: fail (exit 1) when validation warnings exceed N. "
+            "The warning backlog was zeroed 2026-07 — CI pins 0 so it only "
+            "ratchets down."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -849,6 +1483,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             *semantic_authoring_roots(repo_root)
         )
         relationships = load_relationships(repo_root / "semantic" / "relationships")
+        graph_kinds = load_graph_kinds(repo_root / "semantic" / "graph_kinds.yml")
         overrides, override_warnings = load_overrides(repo_root / "semantic" / "overrides")
         registry = build_registry(
             manifest=manifest,
@@ -861,9 +1496,18 @@ def main(argv: Optional[list[str]] = None) -> int:
             relationships=relationships,
             overrides=overrides,
         )
-        validation = validate_registry(registry, override_warnings=override_warnings)
+        validation = validate_registry(
+            registry,
+            override_warnings=override_warnings,
+            allowed_kinds=set(graph_kinds) or None,
+        )
+        graph_catalog = build_graph_catalog(registry, graph_kinds=graph_kinds)
+        # Stamp the catalog hash into the registry so consumers can detect a
+        # catalog that is out of sync with the registry it was built from (M3).
+        registry["metadata"]["graph_catalog_hash"] = graph_catalog["metadata"]["graph_catalog_hash"]
         dump_json(target_dir / "semantic_registry.json", registry)
         dump_json(target_dir / "semantic_validation_report.json", validation)
+        dump_json(target_dir / "semantic_graph_catalog.json", graph_catalog)
     except Exception as exc:  # pragma: no cover - fatal path
         summary = update_summary_section(
             target_dir,
@@ -886,6 +1530,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     status = "success"
     if args.validate and validation["error_count"] > 0:
+        status = "validation_failed"
+    if (
+        args.validate
+        and args.max_warnings is not None
+        and validation["warning_count"] > args.max_warnings
+    ):
+        print(
+            f"validation warnings {validation['warning_count']} exceed "
+            f"--max-warnings {args.max_warnings}"
+        )
         status = "validation_failed"
     metric_quality_counts: dict[str, int] = defaultdict(int)
     for metric in registry["metrics"].values():
@@ -914,6 +1568,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             "source_count": registry["metadata"]["source_count"],
             "metric_count": registry["coverage_summary"]["metric_count"],
             "relationship_count": registry["coverage_summary"]["relationship_count"],
+            "graph": {
+                "node_type_count": graph_catalog["metadata"]["node_type_count"],
+                "edge_type_count": graph_catalog["metadata"]["edge_type_count"],
+                "profile_count": graph_catalog["metadata"]["profile_count"],
+                "join_edge_count": graph_catalog["metadata"]["join_edge_count"],
+                "search_document_count": graph_catalog["metadata"]["search_document_count"],
+            },
         },
     )
     write_metrics(target_dir, summary)

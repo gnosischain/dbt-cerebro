@@ -26,34 +26,49 @@ models:
       batch_months: 3
   columns:
   - name: block_number
+    description: Block height containing the GPv2 Trade event.
     data_type: UInt64
   - name: block_timestamp
+    description: UTC timestamp of the block containing the trade fill.
     data_type: DateTime
   - name: transaction_hash
+    description: Settlement transaction hash, 0x-prefixed lowercase.
     data_type: String
   - name: log_index
+    description: Log index of the GPv2 Trade event within the block.
     data_type: UInt64
   - name: protocol
+    description: Constant 'CoW Protocol'.
     data_type: String
   - name: pool_address
+    description: GPv2Settlement contract address (same for all rows; CoW has no per-pool contracts).
     data_type: String
   - name: token_bought_address
+    description: Address of the token the trader received (buyToken), lowercase 0x-prefixed.
     data_type: String
   - name: token_bought_symbol
+    description: Symbol of the bought token from tokens metadata. NULL when unknown.
     data_type: Nullable(String)
   - name: amount_bought_raw
+    description: Raw buyAmount in token atoms (before decimal scaling).
     data_type: Nullable(UInt256)
   - name: amount_bought
+    description: Bought amount scaled to human units (token decimals, default 18).
     data_type: Nullable(Float64)
   - name: token_sold_address
+    description: Address of the token the trader sold (sellToken), lowercase 0x-prefixed.
     data_type: String
   - name: token_sold_symbol
+    description: Symbol of the sold token from tokens metadata. NULL when unknown.
     data_type: Nullable(String)
   - name: amount_sold_raw
+    description: Raw sellAmount in token atoms (before decimal scaling).
     data_type: Nullable(UInt256)
   - name: amount_sold
+    description: Sold amount scaled to human units (token decimals, default 18).
     data_type: Nullable(Float64)
   - name: amount_usd
+    description: Trade value in USD (prefers buy-side price, falls back to sell-side).
     data_type: Nullable(Float64)
   - name: fee_amount_raw
     description: >
@@ -103,10 +118,13 @@ models:
       NULL for pre-Sep-2024 trades and volume-only fee policies.
     data_type: Nullable(Float64)
   - name: taker
+    description: Order owner address (the trader), lowercase.
     data_type: String
   - name: order_uid
+    description: CoW order identifier. Not unique per row — partially-fillable orders settle across multiple fills sharing an order_uid.
     data_type: String
   - name: solver
+    description: Solver that settled this trade's batch.
     data_type: Nullable(String)
 
   tests:
@@ -128,19 +146,25 @@ models:
       batch_months: 12
   columns:
   - name: date
+    description: Calendar day of the aggregated CoW Protocol metrics.
     data_type: Date
   - name: num_trades
+    description: Number of trade fills settled on this day.
     data_type: UInt64
   - name: unique_traders
+    description: Distinct taker (order owner) addresses trading on this day.
     data_type: UInt64
   - name: volume_usd
+    description: Total USD trade volume on this day.
     data_type: Nullable(Float64)
   - name: fees_usd
+    description: Total surplus-based protocol fees in USD on this day (fee_source = 'api', Sep 2024+).
     data_type: Nullable(Float64)
   - name: solver_value_usd
     description: Daily gross value found by solvers (priceImprovement + surplus policies, Sep 2024+).
     data_type: Nullable(Float64)
   - name: num_batches
+    description: Number of settlement batches on this day.
     data_type: Nullable(UInt64)
   - name: num_cow_batches
     description: Batches settled via pure Coincidence of Wants (no AMM interactions).
@@ -149,6 +173,7 @@ models:
     description: Share of batches that were pure CoW (peer-to-peer).
     data_type: Float64
   - name: total_interactions
+    description: Total number of external contract calls (AMM swaps) across all batches on this day.
     data_type: Nullable(UInt64)
   - name: total_tx_cost_native
     description: Total gas cost in xDAI across all batches.
@@ -171,10 +196,13 @@ models:
     owner: analytics_team
   columns:
   - name: solver
+    description: Solver address.
     data_type: String
   - name: is_active
+    description: True if the latest registry event for this solver was SolverAdded (currently allow-listed); false if SolverRemoved.
     data_type: Bool
   - name: last_changed_at
+    description: Timestamp of the most recent SolverAdded/SolverRemoved event for this solver.
     data_type: DateTime
 
 - name: fct_execution_cow_solvers_daily
@@ -188,25 +216,34 @@ models:
       batch_months: 12
   columns:
   - name: date
+    description: Calendar day of the per-solver aggregated metrics.
     data_type: Date
   - name: solver
+    description: Solver address.
     data_type: String
   - name: solver_is_active
     description: Whether this solver is currently active in the AllowList.
     data_type: Nullable(Bool)
   - name: num_trades
+    description: Number of trade fills this solver settled on this day.
     data_type: UInt64
   - name: unique_traders
+    description: Distinct taker addresses this solver traded for on this day.
     data_type: UInt64
   - name: volume_usd
+    description: Total USD trade volume this solver settled on this day.
     data_type: Nullable(Float64)
   - name: fees_usd
+    description: Total surplus-based protocol fees in USD from this solver's trades on this day (fee_source = 'api').
     data_type: Nullable(Float64)
   - name: num_batches
+    description: Number of settlement batches this solver executed on this day.
     data_type: Nullable(UInt64)
   - name: num_cow_batches
+    description: Pure Coincidence-of-Wants batches (no AMM interactions) this solver executed on this day.
     data_type: Nullable(UInt64)
   - name: total_tx_cost_native
+    description: Total gas cost in xDAI across this solver's batches on this day.
     data_type: Nullable(Float64)
 
   tests:
@@ -224,6 +261,7 @@ models:
     (solver_value_usd = fee_usd / surplus_factor). Sep 2024+ only.
   columns:
   - name: date
+    description: Calendar day of the solver-value time series.
     data_type: Date
   - name: value
     description: Daily USD solver-generated value.
@@ -333,6 +371,7 @@ models:
     magnitude relative to what the protocol actually kept.
   columns:
   - name: date
+    description: Calendar day of the fees time series.
     data_type: Date
   - name: value
     description: Daily USD fees collected via the surplus-based fee model.
@@ -344,6 +383,7 @@ models:
     filtering applies via the dashboard's global selector.
   columns:
   - name: date
+    description: Calendar day of the volume time series.
     data_type: Date
   - name: value
     description: Daily USD volume.
@@ -354,6 +394,7 @@ models:
     Daily CoW Protocol trade count.
   columns:
   - name: date
+    description: Calendar day of the trade-count time series.
     data_type: Date
   - name: value
     description: Number of trades on this day.
@@ -368,6 +409,7 @@ models:
     than historically dominant but now-inactive ones.
   columns:
   - name: date
+    description: Calendar day of the per-solver volume time series.
     data_type: Date
   - name: label
     description: Solver name (from seed) or truncated address, or "Other".
@@ -387,6 +429,7 @@ models:
     zero on Gnosis Chain since mid-2022.
   columns:
   - name: date
+    description: Calendar day of the batch-routing time series.
     data_type: Date
   - name: label
     description: "'Pure CoW' | 'Partial CoW' | 'Pure DEX'."
@@ -405,6 +448,7 @@ models:
     api_execution_cow_batch_routing_ts for routing-type breakdown.
   columns:
   - name: date
+    description: Calendar day of the batch-metrics time series.
     data_type: Date
   - name: value
     description: Average trades per batch on this day.

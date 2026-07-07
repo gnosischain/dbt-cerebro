@@ -5,6 +5,7 @@ models:
   description: Per-token total LP fees over the last 7 days (snapshot) with 7-day-prior change. Sourced from fct_execution_pools_snapshots filtered to metric='Fees_7D'.
   columns:
   - name: token
+    description: Token symbol the snapshot is aggregated for.
     data_type: String
   - name: value
     description: 7-day total fees in USD for the token.
@@ -20,11 +21,13 @@ models:
   description: Latest TVL snapshot per token across all tracked DEX pools with 7-day change. Sourced from fct_execution_pools_snapshots filtered to metric='TVL_Latest'.
   columns:
   - name: token
+    description: Token symbol the snapshot is aggregated for.
     data_type: String
   - name: value
     description: Latest TVL in USD.
     data_type: Float64
   - name: change_pct
+    description: Percent change in TVL vs 7 days ago.
     data_type: Nullable(Float64)
 
   - name: as_of_date
@@ -57,6 +60,7 @@ models:
     Drives the per-token TVL stacked-area chart.
   columns:
   - name: date
+    description: Calendar day (UTC) of the TVL time series.
     data_type: Date
   - name: token
     description: Reference token symbol (renamed from ref_token).
@@ -68,6 +72,7 @@ models:
     description: Series identifier for stacking (typically the side of the pool the TVL is denominated in).
     data_type: String
   - name: tvl_usd
+    description: Component TVL in USD for this row.
     data_type: Float64
   - name: tvl_in_token0
     description: Pool TVL portion attributable to token0 (native units).
@@ -76,8 +81,10 @@ models:
     description: Pool TVL portion attributable to token1 (native units).
     data_type: Nullable(Float64)
   - name: token0_symbol
+    description: Symbol of the pool's token0.
     data_type: String
   - name: token1_symbol
+    description: Symbol of the pool's token1.
     data_type: String
   - name: token_amount
     description: Token-side balance for the reference token on this date.
@@ -98,20 +105,28 @@ models:
     crossed with the registry token list.
   columns:
   - name: date
+    description: Calendar day (UTC) of the pool metrics.
     data_type: Date
   - name: protocol
+    description: "DEX protocol: Uniswap V3, Swapr V3, or Balancer V3."
     data_type: String
   - name: pool_address
+    description: Pool contract address (lowercase, 0x-prefixed).
     data_type: String
   - name: pool
+    description: Human-readable pool label — token symbols + protocol + last 6 chars of the pool address; Balancer pools show the first three sorted symbols with a (+N) overflow marker.
     data_type: String
   - name: token_address
+    description: Address of the registry token this row surfaces the pool under (a pool appears once per qualifying token).
     data_type: String
   - name: token
+    description: Symbol of the token this row surfaces the pool under — the key of the top-5-pools-per-token filter.
     data_type: String
   - name: tvl_usd
+    description: Total value locked in the pool in USD (whole-pool TVL, not the single token's share).
     data_type: Float64
   - name: fees_usd_daily
+    description: Daily accrued fees in USD.
     data_type: Float64
   - name: volume_usd_daily
     description: Daily trading volume in USD (gross incoming amounts from Swap events).
@@ -120,6 +135,7 @@ models:
     description: Number of Swap events on this pool on this day.
     data_type: UInt64
   - name: fee_apr_7d
+    description: 7-day trailing fee APR (annualized, %) from int_execution_pools_metrics_daily, smoothed as a further 7-day rolling average per pool.
     data_type: Float64
   - name: lvr_apr_7d
     description: Annualised 7-day Loss Versus Rebalancing (LVR) — the cost LPs pay to arbitrageurs from swap flows, as a percentage of TVL. Usually negative (a loss), but the signed swap-flow proxy can yield small positive values, so it is NOT strictly bounded <= 0. NULL for pools with under $500 7-day-average TVL.
@@ -154,10 +170,13 @@ models:
     Fees are subtracted because swap event amounts include fees on the input side.
   columns:
   - name: date
+    description: Calendar day (UTC) of the LVR metric.
     data_type: Date
   - name: protocol
+    description: DEX protocol of the pool (Uniswap V3 or Swapr V3).
     data_type: String
   - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
     data_type: String
   - name: lvr_apr_7d
     description: Annualised 7-day trailing LVR (%). Usually negative (a loss), but the signed swap-flow proxy can yield small positive values, so it is NOT strictly bounded <= 0. NULL for pools with under $500 7-day-average TVL. Represents the cost of adverse selection from arbitrage swaps, with fee revenue stripped from raw swap flows.
@@ -167,16 +186,22 @@ models:
   description: API view for net APR (fee APR plus LVR) time series by token and pool label, with fee APR and LVR components.
   columns:
   - name: date
+    description: Calendar day (UTC) of the APR time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: fee_apr_7d
+    description: 7-day trailing fee APR (annualized, %).
     data_type: Float64
   - name: lvr_apr_7d
+    description: Annualised 7-day Loss Versus Rebalancing (%). Always <= 0 (negative = loss).
     data_type: Float64
   - name: net_apr_7d
+    description: Net APR (fee_apr_7d + lvr_apr_7d), the estimated real return after LVR cost.
     data_type: Float64
 
     tests:
@@ -231,14 +256,19 @@ models:
   description: API view for pool TVL (USD) time series by token and pool label.
   columns:
   - name: date
+    description: Calendar day (UTC) of the TVL time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: tvl_type
+    description: Constant metric label ("TVL (USD)") used as the chart series name.
     data_type: String
   - name: value
+    description: Pool TVL in USD on this date.
     data_type: Float64
   tests:
   - elementary.freshness_anomalies:
@@ -258,20 +288,26 @@ models:
   description: API view for fee APR (7D trailing) time series by token and pool label (Uniswap V3/Swapr V3 only). Uses accrued fees from Swap + Flash (gross; independent of Collect/claims).
   columns:
   - name: date
+    description: Calendar day (UTC) of the fee APR time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: apy_type
+    description: Constant metric label ("Fee APR (7D trailing)") used as the chart series name.
     data_type: String
   - name: value
+    description: 7-day trailing fee APR (annualized, %) for the pool on this date.
     data_type: Float64
 
 - name: api_execution_pools_volume_7d
   description: API view for 7-day total trading volume per token (snapshot from fct_execution_pools_snapshots).
   columns:
   - name: token
+    description: Token symbol the snapshot is aggregated for.
     data_type: String
   - name: value
     description: Total trading volume (USD) over the last 7 days.
@@ -287,12 +323,16 @@ models:
   description: API view for daily trading volume (USD) by token and pool, sourced from fct_execution_pools_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the volume time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: volume_type
+    description: Constant metric label ("Volume (USD)") used as the chart series name.
     data_type: String
   - name: value
     description: Daily gross trading volume in USD.
@@ -302,10 +342,13 @@ models:
   description: API view for daily fee revenue (USD) by token and pool, sourced from fct_execution_pools_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the fee revenue time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: value
     description: Daily gross fee revenue in USD.
@@ -315,10 +358,13 @@ models:
   description: API view for daily swap event count by token and pool, sourced from fct_execution_pools_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the swap-count time series.
     data_type: Date
   - name: token
+    description: Token symbol the pool is grouped under.
     data_type: String
   - name: label
+    description: Pool display name.
     data_type: String
   - name: value
     description: Number of Swap events on this pool on this day.
@@ -335,6 +381,7 @@ models:
     description: "Time window label: 7D."
     data_type: String
   - name: token
+    description: Token symbol the LP count is aggregated for.
     data_type: String
   - name: value
     description: Unique LP addresses within the window across all pools containing this token.
@@ -347,10 +394,13 @@ models:
   description: API view for unique LP provider count over the last 7 days per token.
   columns:
   - name: token
+    description: Token symbol the LP count is aggregated for.
     data_type: String
   - name: value
+    description: Unique LP addresses over the last 7 days across all pools containing this token.
     data_type: Float64
   - name: change_pct
+    description: Percentage change vs the prior 7-day window.
     data_type: Float64
 
   - name: as_of_date
@@ -363,8 +413,10 @@ models:
     labels and top-pool filtering from fct_execution_pools_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the LP activity.
     data_type: Date
   - name: token
+    description: Token symbol the pools are grouped under.
     data_type: String
   - name: label
     description: Pool label (token pair, protocol, address suffix) from fct_execution_pools_daily.
@@ -384,12 +436,16 @@ models:
     pool's token1 via cross-rate).
   columns:
   - name: date
+    description: Calendar day (UTC) of the TVL composition.
     data_type: Date
   - name: protocol
+    description: DEX protocol of the pool (Uniswap V3, Swapr V3, Balancer V2, or Balancer V3).
     data_type: String
   - name: pool_address
+    description: Pool contract address (lowercase, with 0x prefix).
     data_type: String
   - name: token_address
+    description: Token contract address for this component row (lowercase, with 0x prefix).
     data_type: String
   - name: series
     description: Token symbol for this row (used as chart series key).
@@ -407,8 +463,10 @@ models:
     description: Component TVL denominated in pool's token1 (cross-rate).
     data_type: Nullable(Float64)
   - name: token0_symbol
+    description: Symbol of the pool's token0.
     data_type: Nullable(String)
   - name: token1_symbol
+    description: Symbol of the pool's token1.
     data_type: Nullable(String)
   - name: ref_token
     description: Reference token from fct_execution_pools_daily (the token this pool is grouped under).
@@ -421,11 +479,13 @@ models:
   description: Snapshot KPI table for pool yields. Each row is a (token, metric) pair with the latest value and 7-day percentage change. Metrics include TVL_Latest, Fees_7D, and Volume_7D.
   columns:
   - name: token
+    description: Token symbol the KPI is aggregated for.
     data_type: String
   - name: metric
     description: "Metric name: TVL_Latest, Fees_7D, or Volume_7D."
     data_type: String
   - name: value
+    description: Metric value for the (token, metric) pair (USD for all three metrics).
     data_type: Float64
   - name: change_pct
     description: Percentage change vs prior 7-day window (or vs 7 days ago for TVL).
@@ -438,6 +498,7 @@ models:
     trades contribute to every protocol they touch.
   columns:
   - name: date
+    description: Calendar day (UTC) of the protocol activity.
     data_type: Date
   - name: protocol
     description: Uniswap V3, Balancer V2/V3, Swapr V3.
@@ -457,8 +518,10 @@ models:
     token was involved in a trade.
   columns:
   - name: date
+    description: Calendar day (UTC) of the token activity.
     data_type: Date
   - name: token
+    description: Token symbol involved in the trades.
     data_type: String
   - name: bought_usd
     description: USD value bought INTO this token on this day (summed across hops).
@@ -483,6 +546,7 @@ models:
     SELECT. Each date sums to 100.0% across all rows for that date.
   columns:
   - name: date
+    description: Calendar day (UTC) of the aggregator share.
     data_type: Date
   - name: aggregator_label
     description: >
@@ -523,6 +587,7 @@ models:
     fct_execution_trades_by_protocol_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the volume time series.
     data_type: Date
   - name: label
     description: Protocol name.
@@ -537,6 +602,7 @@ models:
     fct_execution_trades_by_aggregator_daily. Each date's values sum to 100.
   columns:
   - name: date
+    description: Calendar day (UTC) of the aggregator share time series.
     data_type: Date
   - name: label
     description: Aggregator name, "Other Router" or "Direct".
@@ -559,8 +625,10 @@ models:
     description: Token symbol (top 8) or "Other".
     data_type: String
   - name: value_volume
+    description: Weekly trading volume in USD for this token (summed token participation across both sides).
     data_type: Float64
   - name: value_trades
+    description: Weekly count of swap events involving this token (bought + sold trades).
     data_type: UInt64
 
 - name: api_execution_trades_stats_hop_distribution
@@ -618,8 +686,10 @@ models:
     description: Net USD flow (signed).
     data_type: Float64
   - name: bought_usd
+    description: Total USD value bought INTO this token within the window.
     data_type: Float64
   - name: sold_usd
+    description: Total USD value sold OUT of this token within the window.
     data_type: Float64
 
 - name: api_execution_trades_stats_lifetime
@@ -628,10 +698,13 @@ models:
     fct_execution_trades_lifetime.
   columns:
   - name: lifetime_volume_usd
+    description: All-time sum of per-tx trade volume in USD.
     data_type: Float64
   - name: lifetime_trade_count
+    description: All-time distinct transaction count.
     data_type: UInt64
   - name: lifetime_unique_traders
+    description: All-time distinct trader (tx_from) count.
     data_type: UInt64
 
 - name: api_execution_trades_stats_trades_ts
@@ -640,6 +713,7 @@ models:
     fct_execution_trades_by_protocol_daily.
   columns:
   - name: date
+    description: Calendar day (UTC) of the swap-count time series.
     data_type: Date
   - name: label
     description: Protocol name.

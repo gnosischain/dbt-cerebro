@@ -45,6 +45,7 @@ def main():
     man = json.load(open(MANIFEST))
     allow = load_allow()
     violations = []
+    used_allow = set()
 
     for uid, node in man["nodes"].items():
         if node.get("resource_type") != "model":
@@ -58,8 +59,11 @@ def main():
         name = node["name"]
 
         def fail(rule, msg):
-            if f"{uid}::{rule}" not in allow and f"{name}::{rule}" not in allow:
-                violations.append(f"{name}  [{rule}]  {msg}")
+            for key in (f"{uid}::{rule}", f"{name}::{rule}"):
+                if key in allow:
+                    used_allow.add(key)
+                    return
+            violations.append(f"{name}  [{rule}]  {msg}")
 
         # 1. api: resource must be grain/window-free
         for t in api:
@@ -103,6 +107,18 @@ def main():
             print("  " + v)
         print(f"\nFix per the convention, or allowlist in {os.path.relpath(ALLOW, REPO)} (unique_id::rule).")
         sys.exit(1)
+
+    # Shrink-only ratchet: an allow entry that suppressed nothing this run is
+    # FIXED — force its removal so the backlog can only go down.
+    stale = allow - used_allow
+    if stale:
+        print(f"API tag/schema convention: {len(stale)} STALE allowlist entr(ies) — the "
+              "violation is fixed; delete these lines from "
+              f"{os.path.relpath(ALLOW, REPO)}:\n")
+        for entry in sorted(stale):
+            print("  " + entry)
+        sys.exit(1)
+
     print("API tag/schema convention OK: all production api: endpoints are grain/window-free, "
           "have granularity + tier, and complete typed column schemas.")
 

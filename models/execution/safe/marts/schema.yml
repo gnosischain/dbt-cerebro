@@ -76,16 +76,30 @@ models:
   tests: []
   columns:
   - name: owner_address
+    description: A current owner of the Safe (lowercase, 0x-prefixed).
+    data_type: String
     tests:
     - not_null
   - name: safe_address
+    description: The Safe address (lowercase, 0x-prefixed).
+    data_type: String
     tests:
     - not_null
   - name: became_owner_at
+    description: Timestamp of the event that added (or set up) this owner. For an owner who was removed and re-added, this is the re-add time, not the original setup time.
+    data_type: DateTime64(0, 'UTC')
   - name: current_threshold
+    description: Confirmations currently required by this Safe.
+    data_type: Nullable(UInt32)
   - name: current_owner_count
+    description: Number of current owners of the Safe.
+    data_type: UInt64
   - name: creation_version
+    description: Safe contract version this proxy was set up against (e.g. 1.3.0, 1.4.1, 1.3.0L2). NULL when the deployment record is not found.
+    data_type: Nullable(String)
   - name: deployment_date
+    description: Calendar date of the Safe's creation transaction. NULL when the deployment record is not found.
+    data_type: Nullable(Date)
 
 - name: api_execution_safes_current_owners
   description: |
@@ -97,13 +111,21 @@ models:
     the same view. Denormalises `current_threshold` to save a per-owner join.
   columns:
   - name: safe_address
+    description: The Safe address (lowercase, 0x-prefixed).
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: owner_address
+    description: A current owner of the Safe (lowercase, 0x-prefixed).
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: became_owner_at
+    description: Timestamp of the event that added (or set up) this owner. For an owner who was removed and re-added, this is the re-add time, not the original setup time.
+    data_type: DateTime64(0, 'UTC')
   - name: current_threshold
+    description: Confirmations currently required by this Safe (denormalised per owner row).
+    data_type: Nullable(UInt32)
 
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -116,16 +138,37 @@ models:
     `require_any_of: [safe_address]`.
   columns:
   - name: safe_address
+    description: The Safe proxy address (lowercase, 0x-prefixed).
+    data_type: String
     tests:
     - not_null
   - name: creation_version
+    description: >
+      Safe contract version this proxy was set up against. One of
+      0.1.0, 1.0.0, 1.1.0, 1.1.1, 1.1.1Circles, 1.2.0, 1.3.0, 1.3.0L2,
+      1.4.1, 1.4.1L2.
+    data_type: String
   - name: is_l2
+    description: 1 if the Safe was deployed against a SafeL2 singleton (emits L2-specific transaction events).
+    data_type: UInt8
   - name: creation_singleton
+    description: The singleton/mastercopy address the proxy delegatecalls into (lowercase, 0x-prefixed).
+    data_type: String
   - name: deployment_date
+    description: Calendar date of the Safe's creation transaction (block_date of the setup() delegatecall).
+    data_type: Date
   - name: deployment_timestamp
+    description: UTC timestamp of the block containing the setup() delegatecall.
+    data_type: DateTime64(0, 'UTC')
   - name: deployment_tx_hash
+    description: Transaction hash that contained the setup() delegatecall.
+    data_type: String
   - name: current_owner_count
+    description: Number of current owners of the Safe (0 when no current-owner rows exist).
+    data_type: UInt64
   - name: current_threshold
+    description: Confirmations currently required by this Safe. NULL when no current-owner rows exist.
+    data_type: Nullable(UInt32)
 
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
@@ -138,16 +181,30 @@ models:
     full table in a single round-trip. `require_any_of: [owner_address]`.
   columns:
   - name: owner_address
+    description: The queried owner address (lowercase, 0x-prefixed); the required API filter.
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: safe_address
+    description: A Safe currently owned by owner_address (lowercase, 0x-prefixed).
+    data_type: Nullable(String)
     tests:
     - not_null
   - name: became_owner_at
+    description: Timestamp of the event that added (or set up) this owner. For an owner who was removed and re-added, this is the re-add time, not the original setup time.
+    data_type: DateTime64(0, 'UTC')
   - name: current_threshold
+    description: Confirmations currently required by this Safe.
+    data_type: Nullable(UInt32)
   - name: current_owner_count
+    description: Number of current owners of the Safe.
+    data_type: UInt64
   - name: creation_version
+    description: Safe contract version this proxy was set up against (e.g. 1.3.0, 1.4.1, 1.3.0L2).
+    data_type: String
   - name: deployment_date
+    description: Calendar date of the Safe's creation transaction.
+    data_type: Date
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date

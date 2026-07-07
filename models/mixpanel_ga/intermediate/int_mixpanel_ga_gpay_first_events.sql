@@ -69,17 +69,22 @@ events AS (
     SELECT * FROM first_payment
 ),
 
--- App<>GP link: GP Safe → the Gnosis App controller's pseudonym. One row per
--- Safe (grain guaranteed by int_execution_gnosis_app_gpay_wallets).
-ga_link AS (
+-- App<>GP link: GP card → GA-account, via the reusable card-owner bridge
+-- (int_execution_gnosis_app_gt_card_owner = Delay-module controller ∪ cashback owner ∪ top-up
+-- funder, gated to registered GA accounts). Pick ONE account per card, preferring one that carries
+-- a real first-touch campaign, so the touch tuple stays consistent and the account grain never
+-- fans out the events. Replaces the Delay-only link (recovers ~+108 funded cards).
+card_acct AS (
     SELECT
-        lower(w.pay_wallet)                                    AS gp_safe,
-        {{ pseudonymize_address('w.first_ga_owner_address') }} AS ga_user_pseudonym
-    FROM {{ ref('int_execution_gnosis_app_gpay_wallets') }} w
-    WHERE w.first_ga_owner_address IS NOT NULL
+        b.card                                                             AS gp_safe,
+        argMax(b.ga_account_pseudonym, a.first_touch_campaign != 'unknown') AS ga_user_pseudonym
+    FROM {{ ref('int_execution_gnosis_app_gt_card_owner') }} b
+    INNER JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
+        ON a.user_id_hash = b.ga_account_pseudonym
+    GROUP BY b.card
 ),
 
--- UTM for the GA controller (pseudonym → Mixpanel user_id_hash space).
+-- UTM for the chosen GA account (pseudonym → Mixpanel user_id_hash space).
 ga_acq AS (
     SELECT
         l.gp_safe,
@@ -89,9 +94,46 @@ ga_acq AS (
         a.last_touch_source    AS ga_last_touch_source,
         a.first_touch_medium   AS ga_first_touch_medium,
         a.last_touch_medium    AS ga_last_touch_medium
-    FROM ga_link l
+    FROM card_acct l
     INNER JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
         ON a.user_id_hash = l.ga_user_pseudonym
+),
+
+-- App-truth Safe -> GA-account via the Mixpanel profile `pay` property
+-- (int_mixpanel_ga_gpay_pay_bridge). Highest-precedence link: it is the app's
+-- own record of which Gnosis App account controls the Safe, so it recovers app
+-- users the on-chain Delay-module bridge misses. Join on pseudonym: the same
+-- pseudonymize_address macro lowercases + salts both gp_safe and profile.pay.
+pay_acct AS (
+    SELECT DISTINCT
+        e.gp_safe                        AS gp_safe,
+        b.ga_user_id_hash                AS ga_user_id_hash,
+        b.profile_initial_utm_campaign   AS profile_initial_utm_campaign,
+        b.profile_initial_utm_source     AS profile_initial_utm_source,
+        b.profile_initial_utm_medium     AS profile_initial_utm_medium
+    FROM (SELECT DISTINCT gp_safe FROM events) e
+    INNER JOIN {{ ref('int_mixpanel_ga_gpay_pay_bridge') }} b
+        ON b.pay_safe_pseudonym = {{ pseudonymize_address('e.gp_safe') }}
+),
+
+-- UTM for the pay-linked GA account: event-derived first/last touch (keeps the
+-- first/last symmetry of the other paths); the profile's own initial_utm_* is
+-- carried alongside as a fallback when the account has no UTM-bearing events.
+pay_acq AS (
+    SELECT
+        p.gp_safe,
+        p.profile_initial_utm_campaign,
+        p.profile_initial_utm_source,
+        p.profile_initial_utm_medium,
+        a.first_touch_campaign AS pay_first_touch_campaign,
+        a.last_touch_campaign  AS pay_last_touch_campaign,
+        a.first_touch_source   AS pay_first_touch_source,
+        a.last_touch_source    AS pay_last_touch_source,
+        a.first_touch_medium   AS pay_first_touch_medium,
+        a.last_touch_medium    AS pay_last_touch_medium
+    FROM pay_acct p
+    LEFT JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} a
+        ON a.user_id_hash = p.ga_user_id_hash
 )
 
 SELECT
@@ -99,46 +141,60 @@ SELECT
     toDate(e.first_ts)                            AS first_date,
     e.user_pseudonym                              AS user_pseudonym,
     coalesce(
-        nullIf(g.ga_first_touch_campaign, 'unknown'),
-        nullIf(d.first_touch_campaign,    'unknown'),
+        nullIf(pa.pay_first_touch_campaign,     'unknown'),
+        nullIf(pa.profile_initial_utm_campaign, ''),
+        nullIf(g.ga_first_touch_campaign,       'unknown'),
+        nullIf(d.first_touch_campaign,          'unknown'),
         'unknown'
     )                                             AS first_touch_campaign,
     coalesce(
-        nullIf(g.ga_last_touch_campaign, 'unknown'),
-        nullIf(d.last_touch_campaign,    'unknown'),
+        nullIf(pa.pay_last_touch_campaign, 'unknown'),
+        nullIf(g.ga_last_touch_campaign,   'unknown'),
+        nullIf(d.last_touch_campaign,      'unknown'),
         'unknown'
     )                                             AS last_touch_campaign,
     coalesce(
-        nullIf(g.ga_first_touch_source, 'unknown'),
-        nullIf(d.first_touch_source,    'unknown'),
+        nullIf(pa.pay_first_touch_source,     'unknown'),
+        nullIf(pa.profile_initial_utm_source, ''),
+        nullIf(g.ga_first_touch_source,       'unknown'),
+        nullIf(d.first_touch_source,          'unknown'),
         'unknown'
     )                                             AS first_touch_source,
     coalesce(
-        nullIf(g.ga_last_touch_source, 'unknown'),
-        nullIf(d.last_touch_source,    'unknown'),
+        nullIf(pa.pay_last_touch_source, 'unknown'),
+        nullIf(g.ga_last_touch_source,   'unknown'),
+        nullIf(d.last_touch_source,      'unknown'),
         'unknown'
     )                                             AS last_touch_source,
     coalesce(
-        nullIf(g.ga_first_touch_medium, 'unknown'),
-        nullIf(d.first_touch_medium,    'unknown'),
+        nullIf(pa.pay_first_touch_medium,     'unknown'),
+        nullIf(pa.profile_initial_utm_medium, ''),
+        nullIf(g.ga_first_touch_medium,       'unknown'),
+        nullIf(d.first_touch_medium,          'unknown'),
         'unknown'
     )                                             AS first_touch_medium,
     coalesce(
-        nullIf(g.ga_last_touch_medium, 'unknown'),
-        nullIf(d.last_touch_medium,    'unknown'),
+        nullIf(pa.pay_last_touch_medium, 'unknown'),
+        nullIf(g.ga_last_touch_medium,   'unknown'),
+        nullIf(d.last_touch_medium,      'unknown'),
         'unknown'
     )                                             AS last_touch_medium,
     multiIf(
-        nullIf(g.ga_first_touch_campaign, 'unknown') IS NOT NULL, 'ga_controller',
-        nullIf(d.first_touch_campaign,    'unknown') IS NOT NULL, 'initial_owner',
+        nullIf(pa.pay_first_touch_campaign,     'unknown') IS NOT NULL, 'pay_ga_events',
+        nullIf(pa.profile_initial_utm_campaign, '')        IS NOT NULL, 'pay_profile',
+        nullIf(g.ga_first_touch_campaign,       'unknown') IS NOT NULL, 'ga_controller',
+        nullIf(d.first_touch_campaign,          'unknown') IS NOT NULL, 'initial_owner',
         'unknown'
     )                                             AS first_touch_attribution_path,
     multiIf(
-        nullIf(g.ga_last_touch_campaign, 'unknown') IS NOT NULL, 'ga_controller',
-        nullIf(d.last_touch_campaign,    'unknown') IS NOT NULL, 'initial_owner',
+        nullIf(pa.pay_last_touch_campaign, 'unknown') IS NOT NULL, 'pay_ga_events',
+        nullIf(g.ga_last_touch_campaign,   'unknown') IS NOT NULL, 'ga_controller',
+        nullIf(d.last_touch_campaign,      'unknown') IS NOT NULL, 'initial_owner',
         'unknown'
     )                                             AS last_touch_attribution_path
 FROM events e
+LEFT JOIN pay_acq pa
+    ON pa.gp_safe = e.gp_safe
 LEFT JOIN ga_acq g
     ON g.gp_safe = e.gp_safe
 LEFT JOIN {{ ref('int_mixpanel_ga_user_acquisition') }} d
