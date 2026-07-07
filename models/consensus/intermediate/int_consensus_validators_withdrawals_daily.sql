@@ -21,6 +21,11 @@
   {% endif %}
 {% endset %}
 
+-- NOTE: withdrawals_amount_gno is actually mGNO-denominated (32 mGNO = 1 real GNO;
+-- see the unit warning in int_consensus_validators_income_daily.sql). Only
+-- consumer today (income_daily) passes it through to columns that already get
+-- the extra /32 downstream — if you add a NEW consumer that displays this
+-- column directly, you need to divide by 32 yourself.
 SELECT
     toStartOfDay(slot_timestamp) AS date
     ,validator_index

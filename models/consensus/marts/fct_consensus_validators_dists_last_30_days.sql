@@ -5,6 +5,11 @@
     )
 }}
 
+-- NOTE: q_balance is actually mGNO-denominated (32 mGNO = 1 real GNO; see the
+-- unit warning in int_consensus_validators_income_daily.sql).
+-- api_consensus_validators_balance_dist_last_30_days now divides by 32 at its
+-- own point of display — any other consumer reading this column directly
+-- needs to do the same. q_apy is unaffected (a ratio).
 SELECT
     date,
     q_balance[1] AS q05_balance,
