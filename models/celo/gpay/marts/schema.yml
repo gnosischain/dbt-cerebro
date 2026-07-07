@@ -1,0 +1,584 @@
+version: 2
+
+# ────────────────────────────────────────────────────────────────────────────
+# Celo Gnosis Pay marts.
+#
+# SCOPE (applies to every model below): Celo Gnosis Pay is the "GP 2.0" product
+# that launched with MiniPay on Celo. All volume, balance and flow figures cover
+# ONLY the two settlement stablecoins currently tracked — USDC and USDT. This is
+# a deliberate, documented limitation, not an approximation gap: on-chain
+# verification (2026-07) confirmed these are the only tokens the AggregateBridge
+# settles and the only tokens GP Safes hold in meaningful value. When a third
+# settlement token is introduced on Celo it must be (1) added to the click-runner
+# ingestion whitelist and (2) surfaced through these models; until then anything
+# outside {USDC, USDT} is intentionally excluded.
+#
+# Balances are net-flow (cumulative inflows − outflows since a Safe's first
+# activity), which equals the true on-chain balance here because Safes start
+# empty pre-launch, there are no Safe-to-Safe transfers, and only the two
+# whitelisted tokens carry value. There is no GNO cashback program on Celo, so
+# no cashback/revenue models exist (unlike the Gnosis Chain GP dashboard).
+# ────────────────────────────────────────────────────────────────────────────
+
+models:
+
+# ── Fact models ─────────────────────────────────────────────────────────────
+
+- name: fct_celo_gpay_activity_daily
+  description: |
+    Daily card-payment activity (active Safes, payment count, USD volume) plus
+    newly-funded and cumulative-funded card counts. "Funded" == a Safe that has
+    settled at least one Payment to the bridge (== int_celo_gpay_wallets.is_activated).
+    User grain is safe_address (on Celo a card = a Safe = the user). Current
+    partial day is excluded. USDC/USDT only.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: active_users
+    description: Distinct Safes that made a payment on this date.
+    data_type: UInt64
+  - name: total_payments
+    description: Number of payments settled on this date.
+    data_type: UInt64
+  - name: total_volume_usd
+    description: USD payment volume on this date (USDC + USDT).
+    data_type: Float64
+  - name: newly_funded
+    description: Safes whose first-ever payment fell on this date.
+    data_type: UInt64
+  - name: cumulative_funded
+    description: Running total of funded (ever-paid) Safes through this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_activity_weekly
+  description: Weekly rollup of fct_celo_gpay_activity_daily. Partial current week excluded. USDC/USDT only.
+  columns:
+  - name: week
+    description: ISO week start (Monday).
+    data_type: Date
+  - name: active_users
+    description: Distinct Safes that paid during the week.
+    data_type: UInt64
+  - name: total_payments
+    description: Payments settled during the week.
+    data_type: UInt64
+  - name: total_volume_usd
+    description: USD payment volume for the week.
+    data_type: Float64
+  - name: newly_funded
+    description: Safes first funded during the week.
+    data_type: UInt64
+  - name: cumulative_funded
+    description: Running total of funded Safes through the week.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_activity_monthly
+  description: Monthly rollup of fct_celo_gpay_activity_daily. Partial current month excluded. USDC/USDT only.
+  columns:
+  - name: month
+    description: Calendar month start.
+    data_type: Date
+  - name: active_users
+    description: Distinct Safes that paid during the month.
+    data_type: UInt64
+  - name: total_payments
+    description: Payments settled during the month.
+    data_type: UInt64
+  - name: total_volume_usd
+    description: USD payment volume for the month.
+    data_type: Float64
+  - name: newly_funded
+    description: Safes first funded during the month.
+    data_type: UInt64
+  - name: cumulative_funded
+    description: Running total of funded Safes through the month.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_actions_by_token_daily
+  description: Daily volume (native + USD) and count per action x token, with running cumulatives. Actions - Payment, Top-up, Withdrawal, Reversal. USDC/USDT only.
+  columns:
+  - name: action
+    description: "Payment | Top-up | Withdrawal | Reversal."
+    data_type: String
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: token
+    description: USDC or USDT.
+    data_type: String
+  - name: volume
+    description: Native-token volume for the action/token/day.
+    data_type: Float64
+  - name: volume_usd
+    description: USD volume for the action/token/day.
+    data_type: Float64
+  - name: activity_count
+    description: Transfer count for the action/token/day.
+    data_type: UInt64
+  - name: volume_cumulative
+    description: Cumulative native volume through this date.
+    data_type: Float64
+  - name: volume_usd_cumulative
+    description: Cumulative USD volume through this date.
+    data_type: Float64
+  - name: activity_count_cumulative
+    description: Cumulative transfer count through this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_actions_by_token_weekly
+  description: Weekly rollup of fct_celo_gpay_actions_by_token_daily. USDC/USDT only.
+  columns:
+  - name: action
+    description: "Payment | Top-up | Withdrawal | Reversal."
+    data_type: String
+  - name: week
+    description: ISO week start (Monday).
+    data_type: Date
+  - name: token
+    description: USDC or USDT.
+    data_type: String
+  - name: volume
+    description: Native-token volume for the week.
+    data_type: Float64
+  - name: volume_usd
+    description: USD volume for the week.
+    data_type: Float64
+  - name: activity_count
+    description: Transfer count for the week.
+    data_type: UInt64
+  - name: volume_cumulative
+    description: Cumulative native volume through this week.
+    data_type: Float64
+  - name: volume_usd_cumulative
+    description: Cumulative USD volume through this week.
+    data_type: Float64
+  - name: activity_count_cumulative
+    description: Cumulative transfer count through this week.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_actions_by_token_monthly
+  description: Monthly rollup of fct_celo_gpay_actions_by_token_daily. USDC/USDT only.
+  columns:
+  - name: action
+    description: "Payment | Top-up | Withdrawal | Reversal."
+    data_type: String
+  - name: month
+    description: Calendar month start.
+    data_type: Date
+  - name: token
+    description: USDC or USDT.
+    data_type: String
+  - name: volume
+    description: Native-token volume for the month.
+    data_type: Float64
+  - name: volume_usd
+    description: USD volume for the month.
+    data_type: Float64
+  - name: activity_count
+    description: Transfer count for the month.
+    data_type: UInt64
+  - name: volume_cumulative
+    description: Cumulative native volume through this month.
+    data_type: Float64
+  - name: volume_usd_cumulative
+    description: Cumulative USD volume through this month.
+    data_type: Float64
+  - name: activity_count_cumulative
+    description: Cumulative transfer count through this month.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_snapshots
+  description: |
+    All-time and trailing-7D headline snapshots per action (Volume/Count/Users),
+    plus TotalBalance. Feeds the counter tiles. No Cashback branch (Gnosis Chain
+    only). TotalBalance is the net-flow USDC+USDT float on the latest day.
+  columns:
+  - name: label
+    description: "Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance."
+    data_type: String
+  - name: window
+    description: "'All' (all-time) or '7D' (trailing 7 days)."
+    data_type: String
+  - name: value
+    description: Snapshot value.
+    data_type: Float64
+  - name: change_pct
+    description: Percent change vs the prior 7-day window (7D rows only; NULL for All).
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_kpi_monthly
+  description: |
+    Monthly KPIs - MAU (and per-action MAU), payment/deposit/withdrawal USD
+    volumes, net flow (deposits minus withdrawals), ARPU, avg tx/user, repeat
+    purchase rate. Deposit == Top-up, Withdrawal == Withdrawal. No cashback
+    columns. Partial current month excluded. USDC/USDT only.
+  columns:
+  - name: month
+    description: Calendar month start.
+    data_type: Date
+  - name: mau
+    description: Distinct Safes with any GP activity in the month.
+    data_type: UInt64
+  - name: payment_mau
+    description: Distinct Safes that paid in the month.
+    data_type: UInt64
+  - name: deposit_mau
+    description: Distinct Safes with a Top-up in the month.
+    data_type: UInt64
+  - name: withdrawal_mau
+    description: Distinct Safes with a Withdrawal in the month.
+    data_type: UInt64
+  - name: total_payment_volume_usd
+    description: Card-spend USD volume for the month.
+    data_type: Float64
+  - name: total_payment_count
+    description: Number of payments in the month.
+    data_type: UInt64
+  - name: total_deposit_volume_usd
+    description: Top-up USD volume for the month.
+    data_type: Float64
+  - name: total_withdrawal_volume_usd
+    description: Withdrawal USD volume for the month.
+    data_type: Float64
+  - name: net_flow_usd
+    description: Deposits minus withdrawals (USD). Excludes card spend.
+    data_type: Float64
+  - name: reversal_total_usd
+    description: Processor-refund (Reversal) USD volume for the month.
+    data_type: Float64
+  - name: arpu
+    description: Average revenue (payment volume) per paying Safe.
+    data_type: Float64
+  - name: avg_tx_per_user
+    description: Average payment count per paying Safe.
+    data_type: Float64
+  - name: repeat_purchase_rate
+    description: Percent of paying Safes with 2+ payments in the month.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_retention_monthly
+  description: Monthly payment-cohort retention (users + USD). Cohort = month of a Safe's first Payment. USDC/USDT only.
+  columns:
+  - name: cohort_month
+    description: Month of the cohort's first payment.
+    data_type: Date
+  - name: activity_month
+    description: Month of subsequent activity.
+    data_type: Date
+  - name: months_since
+    description: Months elapsed between cohort and activity month.
+    data_type: Int64
+  - name: users
+    description: Cohort Safes active (paying) in the activity month.
+    data_type: UInt64
+  - name: initial_users
+    description: Cohort size at month 0.
+    data_type: UInt64
+  - name: retention_pct
+    description: users / initial_users * 100.
+    data_type: Float64
+  - name: amount_retention_pct
+    description: activity USD / initial-month USD * 100.
+    data_type: Float64
+  - name: amount_usd
+    description: Cohort payment USD in the activity month.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_retention_by_action_monthly
+  description: Per-action monthly cohort retention. Cohort = month a Safe first performed the action. Actions - Payment, Top-up, Withdrawal, Reversal. USDC/USDT only.
+  columns:
+  - name: action
+    description: "Payment | Top-up | Withdrawal | Reversal."
+    data_type: String
+  - name: cohort_month
+    description: Month of the cohort's first occurrence of the action.
+    data_type: Date
+  - name: activity_month
+    description: Month of subsequent activity.
+    data_type: Date
+  - name: months_since
+    description: Months elapsed between cohort and activity month.
+    data_type: Int64
+  - name: users
+    description: Cohort Safes active for the action in the activity month.
+    data_type: UInt64
+  - name: initial_users
+    description: Cohort size at month 0.
+    data_type: UInt64
+  - name: retention_pct
+    description: users / initial_users * 100.
+    data_type: Float64
+  - name: amount_retention_pct
+    description: activity USD / initial-month USD * 100.
+    data_type: Float64
+  - name: amount_usd
+    description: Cohort USD for the action in the activity month.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_churn_monthly
+  description: |
+    Monthly new/retained/returning/churned Safe segmentation and churn/retention
+    rates, for two scopes - Payment (card spenders) and Any (any GP activity).
+    Partial current month excluded. USDC/USDT only.
+  columns:
+  - name: scope
+    description: "'Payment' or 'Any'."
+    data_type: String
+  - name: month
+    description: Calendar month start.
+    data_type: Date
+  - name: new_users
+    description: Safes active for the first time this month.
+    data_type: UInt64
+  - name: retained_users
+    description: Safes active this month and the prior month.
+    data_type: UInt64
+  - name: returning_users
+    description: Safes active this month, inactive the prior month, active before.
+    data_type: UInt64
+  - name: churned_users
+    description: Safes active this month but not the following month.
+    data_type: UInt64
+  - name: total_active
+    description: Total active Safes this month.
+    data_type: UInt64
+  - name: churn_rate
+    description: churned_users / total_active * 100.
+    data_type: Float64
+  - name: retention_rate
+    description: retained_users / prior-month total_active * 100.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_payments_hourly
+  description: Hourly payment counts by token over the trailing 14 days. Serves the time-of-day distribution panel. USDC/USDT only.
+  columns:
+  - name: hour
+    description: Hour bucket (start of hour).
+    data_type: DateTime
+  - name: symbol
+    description: USDC or USDT.
+    data_type: String
+  - name: payment_count
+    description: Payments settled in the hour for the token.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_balances_safe_daily
+  description: |
+    DENSE per-Safe/token/day net-flow balance (Celo analog of Gnosis Chain's
+    int_execution_gpay_balances_user_daily). Densified over a date spine so
+    downstream daily totals and latest-day snapshots are correct on every day.
+    Net flow = (Top-up + Reversal) - (Payment + Withdrawal). Equals the true
+    on-chain balance ONLY for USDC/USDT under the documented scope assumptions
+    (see file header). Not a chain-wide balance snapshot.
+  columns:
+  - name: date
+    description: Calendar date (dense).
+    data_type: Date
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+  - name: token_symbol
+    description: USDC or USDT.
+    data_type: String
+  - name: balance
+    description: Cumulative net native-token balance as of this date.
+    data_type: Float64
+  - name: balance_usd
+    description: Cumulative net USD balance as of this date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_balances_by_token_daily
+  description: Total net-flow balance across all Safes, per day per token. Built from the dense per-Safe base. USDC/USDT only.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: symbol
+    description: USDC or USDT.
+    data_type: String
+  - name: balance
+    description: Total net native-token balance across all Safes.
+    data_type: Float64
+  - name: balance_usd
+    description: Total net USD balance across all Safes.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_balance_cohorts_daily
+  description: Per-day holder distribution across balance buckets, by token, in USD and native units. Zero/negative balances excluded. USDC/USDT only.
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: symbol
+    description: USDC or USDT.
+    data_type: String
+  - name: cohort_unit
+    description: "'usd' or 'native' - which unit the bucket boundaries apply to."
+    data_type: String
+  - name: balance_bucket
+    description: "Bucket label, e.g. 0-10, 10-100, 100-1K, ..."
+    data_type: String
+  - name: holders
+    description: Number of Safes in the bucket on this date.
+    data_type: UInt64
+  - name: value_native
+    description: Summed native balance of Safes in the bucket.
+    data_type: Float64
+  - name: value_usd
+    description: Summed USD balance of Safes in the bucket.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+# ── API views ─────────────────────────────────────────────────────────────
+# Thin, dashboard-facing views. Column contracts (date/label/value etc.) mirror
+# the Gnosis Chain api_execution_gpay_* views so the frontend query files are
+# near-identical. Same USDC/USDT scope as the facts above.
+
+- name: api_celo_gpay_total_volume
+  description: All-time card payment volume in USD (USDC + USDT). Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_volume_7d
+  description: Trailing-7D payment volume (USD) with WoW change_pct. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_total_payments
+  description: All-time payment count. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_payments_7d
+  description: Trailing-7D payment count with WoW change_pct. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_total_funded
+  description: All-time distinct funded (ever-paid) Safes. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_active_users_7d
+  description: Trailing-7D distinct paying Safes with WoW change_pct. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_total_balance
+  description: Latest-day net-flow USDC+USDT float held across all GP Safes. Counter tile.
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: api_celo_gpay_volume_payments_by_token_daily
+  description: Daily payment volume (USD) split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_volume_payments_by_token_weekly
+  description: Weekly payment volume (USD) split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_volume_payments_by_token_monthly
+  description: Monthly payment volume (USD) split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_payments_by_token_daily
+  description: Daily payment count split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_payments_by_token_weekly
+  description: Weekly payment count split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_payments_by_token_monthly
+  description: Monthly payment count split by token (USDC/USDT).
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: api_celo_gpay_funded_addresses_daily
+  description: Cumulative funded (ever-paid) Safes by day.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_funded_addresses_weekly
+  description: Cumulative funded Safes by week.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_funded_addresses_monthly
+  description: Cumulative funded Safes by month.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_activity_by_action_daily
+  description: Daily count/USD/native volume per action (Payment, Top-up, Withdrawal, Reversal).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_activity_by_action_weekly
+  description: Weekly count/USD/native volume per action.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_activity_by_action_monthly
+  description: Monthly count/USD/native volume per action.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_payments_hourly
+  description: Hourly payment counts by token over the trailing 14 days.
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: api_celo_gpay_kpi_monthly
+  description: Monthly KPI table (MAU, volumes, net flow, ARPU, repeat rate). Backs the KPI tiles and monthly KPI charts. USDC/USDT only.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_retention_monthly
+  description: Monthly payment-cohort retention (absolute users) in date/label/value shape.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_retention_pct_monthly
+  description: Monthly payment-cohort retention heatmap (x/y/retention_pct/value_abs/value_usd).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_retention_volume_monthly
+  description: Monthly payment-cohort retention by USD volume.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_retention_by_action_monthly
+  description: Per-action monthly cohort retention heatmap.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_retention_by_action_users_monthly
+  description: Per-action monthly cohort retention (absolute users).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_churn_monthly
+  description: Monthly new/retained/returning/churned segmentation by scope (Payment, Any).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_churn_rates_monthly
+  description: Monthly churn and retention rates by scope (Payment, Any).
+  meta: {owner: analytics_team, authoritative: false}
+
+- name: api_celo_gpay_wallet_balance_composition
+  description: Latest-day USD balance composition across tokens (USDC/USDT); sub-1% folded into Other.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_balances_usd_daily
+  description: Daily total net-flow balance (USD) by token. USDC/USDT only.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_balances_native_daily
+  description: Daily total net-flow balance (native units) by token. USDC/USDT only.
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_balance_cohorts_holders_daily
+  description: Daily holder counts per balance bucket, by token and unit (usd/native).
+  meta: {owner: analytics_team, authoritative: false}
+- name: api_celo_gpay_balance_cohorts_value_daily
+  description: Daily summed balance (native + USD) per balance bucket, by token and unit.
+  meta: {owner: analytics_team, authoritative: false}
