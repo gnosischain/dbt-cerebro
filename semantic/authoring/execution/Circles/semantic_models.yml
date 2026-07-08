@@ -1122,6 +1122,29 @@ semantic_models:
   - name: cumulative_backers_value
     agg: max
     expr: cumulative_backers
+- name: execution_circles_v2_backers_current_daily
+  model: ref('api_execution_circles_v2_backers_current_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - currently trusted circles backers daily
+        - revocation aware backers daily
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  measures:
+  - name: currently_trusted_backers_value
+    agg: max
+    expr: currently_trusted_backers
 - name: execution_circles_v2_backers_current
   model: ref('int_execution_circles_v2_backers_current')
   config:
@@ -4341,6 +4364,30 @@ metrics:
         - CRC
         - circles
         - groups
+- name: currently_trusted_backers_value
+  label: Currently-Trusted Circles Backers (Daily)
+  description: 'Distinct Circles backers whose backers-group trust interval is open as of end of day (revocation-aware). This is a point-in-time level: read the latest value in a period; do NOT sum across periods. Distinct from the ever-backed cumulative series.'
+  type: simple
+  type_params:
+    measure: currently_trusted_backers_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - currently trusted circles backers
+        - revocation aware backers
+        - active circles backers
 - name: n_initiated_value
   label: Execution Circles V2 Backing Depositors Current - N Initiated
   description: execution circles v2 backing depositors current - n initiated (sum). Auto-generated candidate metric; review
