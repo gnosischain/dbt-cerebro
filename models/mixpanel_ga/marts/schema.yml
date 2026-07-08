@@ -1169,12 +1169,15 @@ models:
     description: >
       Weekly growth funnel by UTM, first-touch attribution. Every funnel step in
       one tidy long model so "which campaign attracts users" reads end-to-end:
-      signup -> card_ordered -> circles_created -> crc_minted -> funded ->
-      first_payment -> starts_referring. step_order makes funnel-monotonicity
-      checks easy; not every user passes every step, so cross-step comparisons
-      are per-campaign trends, not a strict sequential funnel. K-anonymity:
-      campaigns with < 5 all-time signups are bucketed into '_small_campaigns'.
-      Aggregate-only output (no user_id_hash).
+      signup -> card_order_started -> card_ordered -> circles_created ->
+      crc_minted -> funded -> first_payment -> starts_referring.
+      card_order_started is the 'Order the card' CTA click; card_ordered is the
+      /gnosis-pay/kyc page-reach proxy (the order flow emits no completion
+      event) per seeds/mixpanel_conversion_pages.csv. step_order makes
+      funnel-monotonicity checks easy; not every user passes every step, so
+      cross-step comparisons are per-campaign trends, not a strict sequential
+      funnel. K-anonymity: campaigns with < 5 all-time signups are bucketed
+      into '_small_campaigns'. Aggregate-only output (no user_id_hash).
     meta:
       owner: analytics_team
       privacy_tier: mixpanel
@@ -1186,12 +1189,12 @@ models:
         data_type: Date
       - name: step
         description: >
-          Funnel step name: signup, card_ordered, circles_created, crc_minted,
-          funded, first_payment, starts_referring.
+          Funnel step name: signup, card_order_started, card_ordered,
+          circles_created, crc_minted, funded, first_payment, starts_referring.
         data_type: String
       - name: step_order
         description: >
-          Stable ordinal (0=signup .. 6=starts_referring; 9=unmapped) for
+          Stable ordinal (0=signup .. 7=starts_referring; 9=unmapped) for
           funnel-monotonicity checks and ordered display. A dimension, not a measure.
         data_type: UInt8
       - name: utm_campaign
@@ -1247,12 +1250,15 @@ models:
 
   - name: fct_mixpanel_ga_client_conversions_weekly
     description: >
-      Weekly progression of client-side (Mixpanel-event) conversions by UTM —
-      card_ordered / crc_minted / circles_created etc. per
-      seeds/mixpanel_conversion_events.csv. Complements the on-chain steps so
-      Growth's full funnel by UTM lives in one place. Tidy/long shape:
-      attribution_model = first_touch | last_touch (stacked long — filter to one
-      value before summing new_users, or counts double). Aggregate-only.
+      Weekly progression of client-side (Mixpanel) conversions by UTM —
+      card_order_started / card_ordered / crc_minted / circles_created etc.,
+      seed-driven via seeds/mixpanel_conversion_events.csv (event-name steps)
+      and seeds/mixpanel_conversion_pages.csv (page-reach proxies:
+      card_ordered = /gnosis-pay/kyc; the order flow emits no completion
+      event). Complements the on-chain steps so Growth's full funnel by UTM
+      lives in one place. Tidy/long shape: attribution_model = first_touch |
+      last_touch (stacked long — filter to one value before summing new_users,
+      or counts double). Aggregate-only.
     meta:
       owner: analytics_team
       privacy_tier: mixpanel
@@ -1263,7 +1269,10 @@ models:
         description: ISO week start (Monday, UTC).
         data_type: Date
       - name: metric
-        description: Client-side conversion event (card_ordered, crc_minted, circles_created, ...).
+        description: >
+          Client-side conversion (card_order_started, card_ordered, crc_minted,
+          circles_created, ...). card_ordered is a page-reach proxy
+          (/gnosis-pay/kyc), the others are Mixpanel events.
         data_type: String
       - name: attribution_model
         description: >
@@ -1591,3 +1600,276 @@ models:
       - name: referral_users
         description: Joined via referral.
         data_type: UInt64
+
+  - name: fct_mixpanel_ga_users_weekly
+    description: >
+      Week-scoped unique-user rollup for Gnosis App Mixpanel traffic. Weekly
+      uniques cannot be derived from the daily marts (summing daily uniqExact
+      counts a user once per active day), so distincts are recomputed at week
+      grain from the event stream. Complete ISO weeks only (current week
+      excluded). Anonymous devices and identified users carry different
+      pseudonyms (Mixpanel swaps distinct_id on login), so weekly_visitors
+      slightly overcounts people. Aggregate-only output (no user_id_hash).
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: weekly_visitors
+        description: >
+          Distinct pseudonyms active in the week, INCLUDING anonymous $device:
+          ids. Weekly distinct — do NOT sum across weeks.
+        data_type: UInt64
+      - name: wau
+        description: >
+          Weekly active users — distinct identified (wallet-linked) users with
+          any event in the week. Weekly distinct — do NOT sum across weeks.
+        data_type: UInt64
+      - name: welcome_visitors
+        description: Distinct users on /welcome (same definition as fct_mixpanel_ga_funnel_daily).
+        data_type: UInt64
+      - name: new_users
+        description: Pseudonyms whose first-ever event fell in this week (flow; safe to sum).
+        data_type: UInt64
+      - name: new_identified_users
+        description: Users whose first identified event fell in this week (flow; safe to sum).
+        data_type: UInt64
+      - name: total_events
+        description: Total production events in the week.
+        data_type: UInt64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_users_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over fct_mixpanel_ga_users_weekly
+      (weekly unique counts, no pseudonyms) — unlike the per-user
+      api_mixpanel_ga_users_daily, this IS safe for MCP exposure. WAU and
+      visitor counts are weekly distincts — do NOT sum across weeks.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC).
+        data_type: Date
+      - name: weekly_visitors
+        description: Distinct pseudonyms active in the week incl. anonymous devices. Do NOT sum across weeks.
+        data_type: UInt64
+      - name: wau
+        description: Weekly active (identified) users. Do NOT sum across weeks.
+        data_type: UInt64
+      - name: welcome_visitors
+        description: Distinct users on /welcome in the week.
+        data_type: UInt64
+      - name: new_users
+        description: First-ever-seen pseudonyms that week (flow).
+        data_type: UInt64
+      - name: new_identified_users
+        description: First-identified users that week (flow).
+        data_type: UInt64
+      - name: total_events
+        description: Total production events in the week.
+        data_type: UInt64
+
+  - name: fct_mixpanel_ga_card_funnel_weekly
+    description: >
+      Weekly card-order funnel over the signup cohort (first 'Create my
+      profile' event that ISO week — the Growth dashboard's "Signups").
+      card_eligible = cohort users whose Mixpanel profile country is in
+      seeds/card_eligible_countries.csv (EU-27 + NO/CH/GB); users with no
+      profile or blank country count as NOT eligible. Numerators are
+      eligible-scoped conversions landing in the SAME week: card_order_started
+      ('Order the card' CTA) and card_ordered (/gnosis-pay/kyc page proxy).
+      Rates use the eligible denominator, matching the Growth dashboard.
+      Clipped to weeks >= 2026-03-02; current week excluded. Aggregate-only.
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC) of the signup cohort.
+        data_type: Date
+      - name: signups
+        description: Users whose first 'Create my profile' event fell in this week (flow).
+        data_type: UInt64
+      - name: card_eligible
+        description: Cohort users with profile country in the card-eligible set (EU-27 + NO/CH/GB).
+        data_type: UInt64
+      - name: eligible_order_started
+        description: Eligible cohort users whose first 'Order the card' click landed the same week.
+        data_type: UInt64
+      - name: eligible_card_ordered
+        description: Eligible cohort users whose first /gnosis-pay/kyc reach landed the same week.
+        data_type: UInt64
+      - name: order_started_rate
+        description: eligible_order_started / card_eligible. Ratio — do NOT sum.
+        data_type: Float64
+      - name: card_ordered_rate
+        description: eligible_card_ordered / card_eligible. Ratio — do NOT sum.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_card_funnel_weekly
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_card_funnel_weekly. Weekly signup cohort ->
+      card-eligibility -> order-started -> ordered funnel with eligible-based
+      rates.
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: week
+        description: ISO week start (Monday, UTC) of the signup cohort.
+        data_type: Date
+      - name: signups
+        description: New signups ('Create my profile') that week.
+        data_type: UInt64
+      - name: card_eligible
+        description: Cohort users in card-eligible countries (EU-27 + NO/CH/GB).
+        data_type: UInt64
+      - name: eligible_order_started
+        description: Eligible users starting a card order the same week.
+        data_type: UInt64
+      - name: eligible_card_ordered
+        description: Eligible users reaching /gnosis-pay/kyc the same week.
+        data_type: UInt64
+      - name: order_started_rate
+        description: Ratio over card_eligible — do NOT sum.
+        data_type: Float64
+      - name: card_ordered_rate
+        description: Ratio over card_eligible — do NOT sum.
+        data_type: Float64
+
+  - name: fct_mixpanel_ga_campaign_referrals
+    description: >
+      Campaign REFERRAL composition (state-based snapshot) — of each
+      first-touch campaign's identified users, how many became Circles inviters
+      and how many people they brought in. Two scopes mirroring
+      fct_execution_gnosis_app_gt_referrals (REF-D01): earned (GA-native
+      paid-reward ledger) and full_graph (every accepted invite,
+      avatar.invited_by — a ~2.2x superset). invites_* count DISTINCT invitees,
+      not ledger edges. Inviter addresses join user_id_hash via the shared
+      salted pseudonym (identified Mixpanel distinct_id == on-chain address) —
+      no raw address materializes. Outcome-based: an inviter only counts once
+      an invite is ACCEPTED on-chain, so counts run LOWER than Mixpanel-side
+      "inviters" tiles that count invite-link sharing (Growth dashboard
+      'referral': 152 sharers vs 114 full-graph accepted inviters, 2026-07).
+      K-anonymity: campaigns with < 5 all-time signups bucketed into
+      '_small_campaigns'. Aggregate-only output.
+    meta:
+      owner: analytics_team
+      privacy_tier: mixpanel
+      api:
+        exclude_from_api: true
+    columns:
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if < 5 signups; 'unknown' if unattributed).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: signups
+        description: Distinct identified users with this first-touch campaign.
+        data_type: UInt64
+      - name: inviters_earned
+        description: Signups appearing as inviter in the earned-reward ledger.
+        data_type: UInt64
+      - name: inviter_pct_earned
+        description: inviters_earned / signups * 100. Ratio — do NOT sum.
+        data_type: Float64
+      - name: invites_earned
+        description: Distinct invitees credited to this campaign's inviters (earned scope).
+        data_type: UInt64
+      - name: invites_per_inviter_earned
+        description: invites_earned / inviters_earned. Ratio — do NOT sum.
+        data_type: Float64
+      - name: inviters_full_graph
+        description: Signups appearing as inviter in the full invite graph (avatar.invited_by).
+        data_type: UInt64
+      - name: inviter_pct_full_graph
+        description: inviters_full_graph / signups * 100. Ratio — do NOT sum.
+        data_type: Float64
+      - name: invites_full_graph
+        description: Distinct invitees in the full invite graph for this campaign's inviters.
+        data_type: UInt64
+      - name: invites_per_inviter_full_graph
+        description: invites_full_graph / inviters_full_graph. Ratio — do NOT sum.
+        data_type: Float64
+    tests:
+      - elementary.schema_changes:
+          severity: warn
+          tags: [elementary]
+
+  - name: api_mixpanel_ga_campaign_referrals
+    description: >
+      Not exposed via cerebro-api; accessible to the internal MCP / semantic
+      layer. Aggregate-only pass-through view over
+      fct_mixpanel_ga_campaign_referrals. Per first-touch campaign: signups,
+      Circles inviters (earned and full-invite-graph scopes), inviter rates
+      and invites per inviter. Outcome-based (on-chain ACCEPTED invites) —
+      counts run lower than Mixpanel-side invite-link-sharing tiles. Snapshot —
+      clip campaign views to the Mixpanel era (2025-10+).
+    meta:
+      owner: analytics_team
+      privacy_tier: internal
+      api:
+        exclude_from_api: true
+    columns:
+      - name: utm_campaign
+        description: First-touch marketing campaign ('_small_campaigns' if k-anonymized).
+        data_type: String
+      - name: utm_source
+        description: First-touch UTM source.
+        data_type: String
+      - name: utm_medium
+        description: First-touch UTM medium.
+        data_type: String
+      - name: signups
+        description: Distinct identified users with this first-touch campaign.
+        data_type: UInt64
+      - name: inviters_earned
+        description: Inviters in the earned-reward ledger.
+        data_type: UInt64
+      - name: inviter_pct_earned
+        description: Percent of signups who are earned inviters. Ratio — do NOT sum.
+        data_type: Float64
+      - name: invites_earned
+        description: Distinct invitees (earned scope).
+        data_type: UInt64
+      - name: invites_per_inviter_earned
+        description: Ratio — do NOT sum.
+        data_type: Float64
+      - name: inviters_full_graph
+        description: Inviters in the full invite graph.
+        data_type: UInt64
+      - name: inviter_pct_full_graph
+        description: Percent of signups who are full-graph inviters. Ratio — do NOT sum.
+        data_type: Float64
+      - name: invites_full_graph
+        description: Distinct invitees (full graph).
+        data_type: UInt64
+      - name: invites_per_inviter_full_graph
+        description: Ratio — do NOT sum.
+        data_type: Float64

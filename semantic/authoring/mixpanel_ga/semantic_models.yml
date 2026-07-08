@@ -1537,6 +1537,119 @@ semantic_models:
         - card payment volume per week
         - gnosis pay payments total weekly
         grain: week
+- name: mixpanel_ga_users_weekly
+  model: ref('api_mixpanel_ga_users_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: mixpanel_ga_users_weekly__wau_value
+    agg: sum
+    expr: wau
+    description: "Weekly distinct identified users \u2014 do NOT sum across weeks."
+  - name: mixpanel_ga_users_weekly__weekly_visitors_value
+    agg: sum
+    expr: weekly_visitors
+    description: "Weekly distinct pseudonyms incl. anonymous devices \u2014 do NOT sum across weeks."
+  - name: mixpanel_ga_users_weekly__welcome_visitors_value
+    agg: sum
+    expr: welcome_visitors
+    description: "Weekly distinct /welcome visitors \u2014 do NOT sum across weeks."
+  - name: mixpanel_ga_users_weekly__new_users_value
+    agg: sum
+    expr: new_users
+  - name: mixpanel_ga_users_weekly__new_identified_users_value
+    agg: sum
+    expr: new_identified_users
+- name: mixpanel_ga_card_funnel_weekly
+  model: ref('api_mixpanel_ga_card_funnel_weekly')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - card eligible users weekly
+        - card order funnel
+        - card order started vs ordered
+        - signup to card order conversion
+        grain: week
+  defaults:
+    agg_time_dimension: week
+  dimensions:
+  - name: week
+    type: time
+    expr: week
+    type_params:
+      time_granularity: week
+  measures:
+  - name: mixpanel_ga_card_funnel_weekly__signups_value
+    agg: sum
+    expr: signups
+  - name: mixpanel_ga_card_funnel_weekly__card_eligible_value
+    agg: sum
+    expr: card_eligible
+  - name: mixpanel_ga_card_funnel_weekly__eligible_order_started_value
+    agg: sum
+    expr: eligible_order_started
+  - name: mixpanel_ga_card_funnel_weekly__eligible_card_ordered_value
+    agg: sum
+    expr: eligible_card_ordered
+- name: mixpanel_ga_campaign_referrals
+  model: ref('api_mixpanel_ga_campaign_referrals')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
+        grain: snapshot
+  dimensions:
+  - name: utm_campaign
+    type: categorical
+    expr: utm_campaign
+  - name: utm_source
+    type: categorical
+    expr: utm_source
+  - name: utm_medium
+    type: categorical
+    expr: utm_medium
+  measures:
+  - name: mixpanel_ga_campaign_referrals__signups_value
+    agg: sum
+    expr: signups
+  - name: mixpanel_ga_campaign_referrals__inviters_earned_value
+    agg: sum
+    expr: inviters_earned
+  - name: mixpanel_ga_campaign_referrals__invites_earned_value
+    agg: sum
+    expr: invites_earned
+  - name: mixpanel_ga_campaign_referrals__inviters_full_graph_value
+    agg: sum
+    expr: inviters_full_graph
+  - name: mixpanel_ga_campaign_referrals__invites_full_graph_value
+    agg: sum
+    expr: invites_full_graph
 metrics:
 - name: gnosis_app_mixpanel_dau
   label: Gnosis App DAU (Mixpanel / Web)
@@ -2929,9 +3042,10 @@ metrics:
         - funnel by campaign
 - name: mixpanel_ga_client_conversions_weekly__new_users_value
   label: Client Conversions - New Users (Weekly)
-  description: 'New Mixpanel client-side conversions per week, groupable by conversion metric and UTM campaign/source/medium.
-    Counts distinct users reaching each web-tracked conversion (e.g. card_ordered, crc_minted) for the first time. Source:
-    api_mixpanel_ga_client_conversions_weekly.new_users.'
+  description: "New Mixpanel client-side conversions per week, groupable by conversion metric and UTM campaign/source/medium.\
+    \ Counts distinct users reaching each web-tracked conversion for the first time. Metrics include card_order_started (the\
+    \ Order-the-card CTA click), card_ordered (/gnosis-pay/kyc page-reach proxy \u2014 the order flow emits no completion\
+    \ event), crc_minted and circles_created. Source: api_mixpanel_ga_client_conversions_weekly.new_users."
   type: simple
   type_params:
     measure: mixpanel_ga_client_conversions_weekly__new_users_value
@@ -3622,7 +3736,8 @@ metrics:
         - when are users active
 - name: mixpanel_ga_campaign_composition__users_value
   label: Campaign Composition - Users
-  description: Distinct Gnosis App accounts by first-touch UTM campaign (current-state make-up from the Mixpanel profile snapshot; sum across source/medium). Campaign views are meaningful only for the Mixpanel era (week >= 2025-10).
+  description: Distinct Gnosis App accounts by first-touch UTM campaign (current-state make-up from the Mixpanel profile snapshot;
+    sum across source/medium). Campaign views are meaningful only for the Mixpanel era (week >= 2025-10).
   type: simple
   type_params:
     measure: mixpanel_ga_campaign_composition__users_value
@@ -3650,7 +3765,8 @@ metrics:
         - product adoption by campaign
 - name: mixpanel_ga_campaign_composition__funded_card_users_value
   label: Campaign Composition - Funded-Card Users
-  description: Of a campaign's users, how many control a Gnosis Pay Safe that was funded, via the profile pay bridge (current state).
+  description: Of a campaign's users, how many control a Gnosis Pay Safe that was funded, via the profile pay bridge (current
+    state).
   type: simple
   type_params:
     measure: mixpanel_ga_campaign_composition__funded_card_users_value
@@ -3816,3 +3932,386 @@ metrics:
         - campaign user makeup
         - funded cards by campaign
         - product adoption by campaign
+- name: mixpanel_ga_users_weekly__wau_value
+  label: Mixpanel Ga Users Weekly - Mixpanel Ga Users Weekly Wau
+  description: mixpanel ga users weekly - mixpanel ga users weekly wau (sum). Auto-generated candidate metric; review and
+    promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_users_weekly__wau_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga users weekly mixpanel ga users weekly wau
+        - mixpanel ga users weekly wau
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+- name: mixpanel_ga_users_weekly__weekly_visitors_value
+  label: Mixpanel Ga Users Weekly - Mixpanel Ga Users Weekly Weekly Visitors
+  description: mixpanel ga users weekly - mixpanel ga users weekly weekly visitors (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_users_weekly__weekly_visitors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga users weekly mixpanel ga users weekly weekly visitors
+        - mixpanel ga users weekly weekly visitors
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+- name: mixpanel_ga_users_weekly__welcome_visitors_value
+  label: Mixpanel Ga Users Weekly - Mixpanel Ga Users Weekly Welcome Visitors
+  description: mixpanel ga users weekly - mixpanel ga users weekly welcome visitors (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_users_weekly__welcome_visitors_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga users weekly mixpanel ga users weekly welcome visitors
+        - mixpanel ga users weekly welcome visitors
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+- name: mixpanel_ga_users_weekly__new_users_value
+  label: Mixpanel Ga Users Weekly - Mixpanel Ga Users Weekly New Users
+  description: mixpanel ga users weekly - mixpanel ga users weekly new users (sum). Auto-generated candidate metric; review
+    and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_users_weekly__new_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga users weekly mixpanel ga users weekly new users
+        - mixpanel ga users weekly new users
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+- name: mixpanel_ga_users_weekly__new_identified_users_value
+  label: Mixpanel Ga Users Weekly - Mixpanel Ga Users Weekly New Identified Users
+  description: mixpanel ga users weekly - mixpanel ga users weekly new identified users (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_users_weekly__new_identified_users_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga users weekly mixpanel ga users weekly new identified users
+        - mixpanel ga users weekly new identified users
+        - gnosis app WAU
+        - weekly active users mixpanel
+        - weekly visitors gnosis app
+        - weekly unique users gnosis app web
+- name: mixpanel_ga_card_funnel_weekly__signups_value
+  label: Mixpanel Ga Card Funnel Weekly - Mixpanel Ga Card Funnel Weekly Signups
+  description: mixpanel ga card funnel weekly - mixpanel ga card funnel weekly signups (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_card_funnel_weekly__signups_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga card funnel weekly mixpanel ga card funnel weekly signups
+        - mixpanel ga card funnel weekly signups
+        - card eligible users weekly
+        - card order funnel
+        - card order started vs ordered
+        - signup to card order conversion
+- name: mixpanel_ga_card_funnel_weekly__card_eligible_value
+  label: Mixpanel Ga Card Funnel Weekly - Mixpanel Ga Card Funnel Weekly Card Eligible
+  description: mixpanel ga card funnel weekly - mixpanel ga card funnel weekly card eligible (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_card_funnel_weekly__card_eligible_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga card funnel weekly mixpanel ga card funnel weekly card eligible
+        - mixpanel ga card funnel weekly card eligible
+        - card eligible users weekly
+        - card order funnel
+        - card order started vs ordered
+        - signup to card order conversion
+- name: mixpanel_ga_card_funnel_weekly__eligible_order_started_value
+  label: Mixpanel Ga Card Funnel Weekly - Mixpanel Ga Card Funnel Weekly Eligible Order Started
+  description: mixpanel ga card funnel weekly - mixpanel ga card funnel weekly eligible order started (sum). Auto-generated
+    candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_card_funnel_weekly__eligible_order_started_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga card funnel weekly mixpanel ga card funnel weekly eligible order started
+        - mixpanel ga card funnel weekly eligible order started
+        - card eligible users weekly
+        - card order funnel
+        - card order started vs ordered
+        - signup to card order conversion
+- name: mixpanel_ga_card_funnel_weekly__eligible_card_ordered_value
+  label: Mixpanel Ga Card Funnel Weekly - Mixpanel Ga Card Funnel Weekly Eligible Card Ordered
+  description: mixpanel ga card funnel weekly - mixpanel ga card funnel weekly eligible card ordered (sum). Auto-generated
+    candidate metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_card_funnel_weekly__eligible_card_ordered_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - week
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - mixpanel ga card funnel weekly mixpanel ga card funnel weekly eligible card ordered
+        - mixpanel ga card funnel weekly eligible card ordered
+        - card eligible users weekly
+        - card order funnel
+        - card order started vs ordered
+        - signup to card order conversion
+- name: mixpanel_ga_campaign_referrals__signups_value
+  label: Mixpanel Ga Campaign Referrals - Mixpanel Ga Campaign Referrals Signups
+  description: mixpanel ga campaign referrals - mixpanel ga campaign referrals signups (sum). Auto-generated candidate metric;
+    review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_referrals__signups_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign referrals mixpanel ga campaign referrals signups
+        - mixpanel ga campaign referrals signups
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
+- name: mixpanel_ga_campaign_referrals__inviters_earned_value
+  label: Mixpanel Ga Campaign Referrals - Mixpanel Ga Campaign Referrals Inviters Earned
+  description: mixpanel ga campaign referrals - mixpanel ga campaign referrals inviters earned (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_referrals__inviters_earned_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign referrals mixpanel ga campaign referrals inviters earned
+        - mixpanel ga campaign referrals inviters earned
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
+- name: mixpanel_ga_campaign_referrals__invites_earned_value
+  label: Mixpanel Ga Campaign Referrals - Mixpanel Ga Campaign Referrals Invites Earned
+  description: mixpanel ga campaign referrals - mixpanel ga campaign referrals invites earned (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_referrals__invites_earned_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign referrals mixpanel ga campaign referrals invites earned
+        - mixpanel ga campaign referrals invites earned
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
+- name: mixpanel_ga_campaign_referrals__inviters_full_graph_value
+  label: Mixpanel Ga Campaign Referrals - Mixpanel Ga Campaign Referrals Inviters Full Graph
+  description: mixpanel ga campaign referrals - mixpanel ga campaign referrals inviters full graph (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_referrals__inviters_full_graph_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign referrals mixpanel ga campaign referrals inviters full graph
+        - mixpanel ga campaign referrals inviters full graph
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
+- name: mixpanel_ga_campaign_referrals__invites_full_graph_value
+  label: Mixpanel Ga Campaign Referrals - Mixpanel Ga Campaign Referrals Invites Full Graph
+  description: mixpanel ga campaign referrals - mixpanel ga campaign referrals invites full graph (sum). Auto-generated candidate
+    metric; review and promote before relying on it.
+  type: simple
+  type_params:
+    measure: mixpanel_ga_campaign_referrals__invites_full_graph_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: snapshot
+        allowed_dimensions:
+        - utm_campaign
+        - utm_source
+        - utm_medium
+        supported_time_grains:
+        - day
+        - week
+        - month
+        question_synonyms:
+        - mixpanel ga campaign referrals mixpanel ga campaign referrals invites full graph
+        - mixpanel ga campaign referrals invites full graph
+        - inviters by campaign
+        - referral inviters per campaign
+        - invites per inviter by campaign
+        - campaign virality
