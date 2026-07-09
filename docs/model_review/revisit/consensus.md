@@ -252,3 +252,21 @@ FROM int_consensus_validators_snapshots_daily WHERE date>=2026-05-30 GROUP BY da
 | P3 KEEP | Fix `deposists` CTE typos; correct `stg_consensus__validators_all` description (drop "positive balance"); reword `*_dist_last_30_days` descriptions (as-of snapshot, not time series); replace `api_consensus_forks` `today()` with a static date; make `fct_consensus_forks` fail loudly on missing forks | `int_consensus_deposits_withdrawals_daily.sql`, `staging/schema.yml` (l712), `marts/schema.yml` (l1419, l1466), `api_consensus_forks.sql` (l8), `fct_consensus_forks.sql` (l15-23) |
 
 No DROP recommendations — nothing from the baseline was resolved.
+
+## 2026-07-08 addendum — mGNO→GNO conversion centralized at the intermediate layer
+
+The mart-level `/32` design documented above was superseded: the mGNO→GNO
+conversion now happens ONCE at the originating intermediate models
+(`int_consensus_validators_{balances,income,proposer_rewards,deposits,withdrawals,consolidations,dists}_daily`
+plus `fct_consensus_validators_dists_last_30_days`, which reads gwei directly),
+co-located with the existing `/1e9` gwei conversion — matching what
+`int_consensus_deposits_withdrawals_daily` already did. All ~71 mart-level `/32`
+sites were removed; every `_gno` column now means real GNO at every layer.
+`api_quarterly_data_staked_gno` dropped its own `/32` (would double-convert).
+Kept in gwei by design: `int_consensus_validators_snapshots_daily`,
+`int_consensus_validators_per_index_apy_daily`, and income's internal `*_gwei`
+columns (beacon-spec reward-cap math operates in gwei; the cap formula
+re-inflates the GNO network balance by ×32×1e9 under the √).
+Side-effect fixes: `int_execution_mmm_media_weekly` proposer rewards were 32×
+overstated (no /32 anywhere on its path); `fct_consensus_validators_income_total_daily`
+served mGNO under a GNO label — its anomaly floor was re-expressed 500 mGNO → 16 GNO.

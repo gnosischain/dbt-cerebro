@@ -9,11 +9,9 @@
     ) 
 }}
 
--- NOTE: q_balance/avg_balance are actually mGNO-denominated (32 mGNO = 1 real
--- GNO; see the unit warning in int_consensus_validators_income_daily.sql).
--- api_consensus_validators_balances_dist_daily already divides by 32 at its own
--- point of display — any other consumer reading these columns directly needs
--- to do the same. q_apy/avg_apy are unaffected (ratios).
+-- q_balance/avg_balance are REAL GNO: source balance is gwei-of-mGNO
+-- (32 mGNO = 1 GNO), converted here at the origin via /1e9/32.
+-- Consumers must NOT divide by 32 again. q_apy/avg_apy are ratios (unit-invariant).
 SELECT
     date,
     q_balance[1] AS q05_balance,
@@ -37,8 +35,8 @@ FROM (
         date
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
-        )(balance/POWER(10,9)) AS q_balance
-        ,avg(balance/POWER(10,9)) AS avg_balance
+        )(balance/POWER(10,9)/32) AS q_balance
+        ,avg(balance/POWER(10,9)/32) AS avg_balance
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
         )(apy) AS q_apy

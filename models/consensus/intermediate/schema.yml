@@ -636,7 +636,7 @@ models:
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_consensus_validators_balances_daily
-  description: The `int_consensus_validators_balances_daily` model aggregates daily total and effective balances of validators from the consensus layer, supporting historical balance analysis and reporting.
+  description: The `int_consensus_validators_balances_daily` model aggregates daily total and effective balances of validators from the consensus layer, supporting historical balance analysis and reporting. Values in real GNO (source gwei-of-mGNO / 1e9 / 32).
   columns:
 
   - name: date
@@ -647,7 +647,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: balance
-    description: The total sum of validator balances in ETH, expressed as a decimal, representing the combined balance at the start of each day.
+    description: The total sum of validator balances in real GNO (source gwei-of-mGNO / 1e9 / 32), representing the combined balance at the start of each day.
     data_type: UInt64
 
     tests:
@@ -664,11 +664,14 @@ models:
         tags:
         - elementary
   - name: effective_balance
-    description: The sum of validator effective balances in ETH, expressed as a decimal, indicating the active stake at the start of each day.
+    description: The sum of validator effective balances in real GNO (source gwei-of-mGNO / 1e9 / 32), indicating the active stake at the start of each day.
     data_type: UInt64
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: "2021-12-01"
+      batch_months: 6
   tests:
   - elementary.volume_anomalies:
       timestamp_column: date
@@ -825,35 +828,35 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: q05_balance
-    description: The 5th percentile of validator balances (in billions) on the given date.
+    description: The 5th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q10_balance
-    description: The 10th percentile of validator balances (in billions) on the given date.
+    description: The 10th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q25_balance
-    description: The 25th percentile of validator balances (in billions) on the given date.
+    description: The 25th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q50_balance
-    description: The median (50th percentile) of validator balances (in billions) on the given date.
+    description: The median (50th percentile) of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q75_balance
-    description: The 75th percentile of validator balances (in billions) on the given date.
+    description: The 75th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q90_balance
-    description: The 90th percentile of validator balances (in billions) on the given date.
+    description: The 90th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: q95_balance
-    description: The 95th percentile of validator balances (in billions) on the given date.
+    description: The 95th percentile of validator balances in real GNO on the given date.
     data_type: Float64
 
   - name: avg_balance
-    description: The average validator balance (in billions) on the given date.
+    description: The average validator balance in real GNO on the given date.
     data_type: Float64
 
   - name: q05_apy
@@ -1291,7 +1294,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: deposits_amount_gno
-    description: Sum of deposit amounts credited to the validator on the date, in GNO (source Gwei / 1e9).
+    description: Sum of deposit amounts credited to the validator on the date, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: deposits_count
     description: Number of deposit events (beacon and execution-request deposits) credited to the validator on the date.
@@ -1357,7 +1360,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: withdrawals_amount_gno
-    description: Sum of withdrawal amounts on the date in GNO.
+    description: Sum of withdrawal amounts on the date in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: withdrawals_count
     description: Number of withdrawal events paid to the validator on the date.
@@ -1412,7 +1415,7 @@ models:
     per date is enforced by tests/consensus_consolidations_mass_balance.sql.
 
     v5 (2026-04): transferred_amount_gno is the source's last-observed REAL balance
-    (balance_gwei / 1e9), not its effective balance. Effective balance is a 32-GNO-step
+    (balance_gwei / 1e9 / 32, in real GNO), not its effective balance. Effective balance is a stepped
     function that over-reports the actual mass moved when a source has accrued inactivity
     penalties; using real balance makes the target's consolidation_inflow_gno match the
     target's actual balance delta, eliminating the ~10-120 GNO per-target "loss" days
@@ -1447,7 +1450,7 @@ models:
     data_type: UInt64
   tests: []
 - name: int_consensus_validators_proposer_rewards_daily
-  description: Daily per-validator proposer rewards aggregated from slot-level stg_consensus__rewards. Amounts in GNO (source Gwei / 1e9).
+  description: Daily per-validator proposer rewards aggregated from slot-level stg_consensus__rewards. Amounts in real GNO (source gwei-of-mGNO / 1e9 / 32).
   meta:
     owner: analytics_team
     authoritative: false
@@ -1504,7 +1507,7 @@ models:
     description: Number of blocks proposed by the validator on the date.
     data_type: UInt64
   - name: proposer_reward_total_gno
-    description: Total proposer reward earned on the date, in GNO (source Gwei / 1e9).
+    description: Total proposer reward earned on the date, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: proposer_reward_attestations_gno
     description: Portion of the proposer reward attributable to including attestations, in GNO.
@@ -1785,7 +1788,7 @@ models:
     description: Previous-day balance in GNO (lagInFrame by 1 within validator_index).
     data_type: Float64
   - name: effective_balance_gno
-    description: End-of-day effective balance in GNO (the 32-GNO-step stake used in the reward-cap formula).
+    description: End-of-day effective balance in real GNO (the 1-GNO-step stake used in the reward-cap formula; the spec's 32-mGNO step equals 1 GNO).
     data_type: Float64
   - name: deposits_amount_gno
     description: |
@@ -1806,9 +1809,9 @@ models:
     data_type: Float64
   - name: expected_reward_cap_gno
     description: |
-      Consensus-spec upper bound on this validator's possible daily reward, in GNO.
+      Consensus-spec upper bound on this validator's possible daily reward, in real GNO.
       3 × effective_balance_gwei × BASE_REWARD_FACTOR (25) × EPOCHS_PER_DAY (1080)
-      ÷ √(network_effective_balance_gwei) ÷ 1e9. Anything above this in daily balance
+      ÷ √(network_effective_balance_gwei) ÷ 1e9 ÷ 32. Anything above this in daily balance
       growth is attributed to effective_deposits_credited_gno, not income. Useful for
       debugging and for constructing validator-balance-weighted APY.
     data_type: Float64

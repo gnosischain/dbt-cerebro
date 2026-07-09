@@ -5,11 +5,10 @@
     )
 }}
 
--- NOTE: q_balance is actually mGNO-denominated (32 mGNO = 1 real GNO; see the
--- unit warning in int_consensus_validators_income_daily.sql).
--- api_consensus_validators_balance_dist_last_30_days now divides by 32 at its
--- own point of display — any other consumer reading this column directly
--- needs to do the same. q_apy is unaffected (a ratio).
+-- q_balance is REAL GNO: source balance is gwei-of-mGNO (32 mGNO = 1 GNO),
+-- converted here at the origin via /1e9/32 (this mart reads the gwei-native
+-- per-index table directly). Consumers must NOT divide by 32 again.
+-- q_apy is a ratio (unit-invariant).
 SELECT
     date,
     q_balance[1] AS q05_balance,
@@ -31,7 +30,7 @@ FROM (
         (SELECT max(date) FROM  {{ ref('int_consensus_validators_per_index_apy_daily') }} ) AS date
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
-        )(balance/POWER(10,9)) AS q_balance
+        )(balance/POWER(10,9)/32) AS q_balance
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
         )(apy) AS q_apy

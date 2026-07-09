@@ -76,15 +76,13 @@ request_deposits AS (
     GROUP BY 1, 2
 )
 
--- NOTE: deposits_amount_gno is actually mGNO-denominated (32 mGNO = 1 real GNO;
--- see the unit warning in int_consensus_validators_income_daily.sql). Only
--- consumer today (income_daily) passes it through to columns that already get
--- the extra /32 downstream — if you add a NEW consumer that displays this
--- column directly, you need to divide by 32 yourself.
+-- deposits_amount_gno is REAL GNO: source amounts are gwei-of-mGNO
+-- (32 mGNO = 1 GNO), converted here at the origin via /1e9/32.
+-- Consumers must NOT divide by 32 again.
 SELECT
     date
     ,validator_index
-    ,SUM(amount_gwei) / POWER(10, 9) AS deposits_amount_gno
+    ,SUM(amount_gwei) / POWER(10, 9) / 32 AS deposits_amount_gno
     ,SUM(cnt) AS deposits_count
 FROM (
     SELECT * FROM beacon_deposits

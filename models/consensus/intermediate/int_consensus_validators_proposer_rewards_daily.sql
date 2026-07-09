@@ -6,20 +6,31 @@
 {{
     config(
         materialized='incremental',
-        incremental_strategy='insert_overwrite',
+        incremental_strategy=('append' if start_month else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(date, validator_index)',
         partition_by='toStartOfMonth(date)',
+        pre_hook=[
+            "SET max_bytes_before_external_group_by = 2000000000",
+            "SET max_bytes_before_external_sort = 2000000000"
+        ],
+        post_hook=[
+            "SET max_bytes_before_external_group_by = 0",
+            "SET max_bytes_before_external_sort = 0"
+        ],
         tags=["production", "consensus", "proposer_rewards"]
     )
 }}
 
--- *** UNIT WARNING: every "_gno" column below is actually mGNO, not real GNO. ***
--- Same convention as int_consensus_validators_income_daily (see that model for
--- the full explanation): 32 mGNO = 1 real GNO. Confirmed empirically here too —
--- proposer_reward_total_gno lands in the same order of magnitude as the
--- confirmed-mGNO consensus_income_amount_gno for the same validator/day.
--- Divide by 32 at the point of any absolute-value display.
+-- Every "_gno" column below is REAL GNO: source reward amounts are gwei-of-mGNO
+-- (32 mGNO = 1 GNO), converted here at the origin via /1e9/32.
+-- Consumers must NOT divide by 32 again.
+--
+-- incremental_strategy resolves to `append` when start_month is set: refresh.py
+-- runs validator-index STAGES within each month, and insert_overwrite would make
+-- every stage's REPLACE PARTITION wipe the previous stages' rows (verified
+-- 2026-07-09: a staged insert_overwrite rebuild left only the 500k-600k stage).
+-- Same design as int_consensus_validators_income_daily.
 
 {% set range_sql %}
   {% if validator_index_start is not none and validator_index_end is not none %}
@@ -32,11 +43,11 @@ SELECT
     toStartOfDay(slot_timestamp) AS date
     ,proposer_index AS validator_index
     ,COUNT(*) AS proposed_blocks_count
-    ,SUM(total) / POWER(10, 9) AS proposer_reward_total_gno
-    ,SUM(attestations) / POWER(10, 9) AS proposer_reward_attestations_gno
-    ,SUM(sync_aggregate) / POWER(10, 9) AS proposer_reward_sync_aggregate_gno
-    ,SUM(proposer_slashings) / POWER(10, 9) AS proposer_reward_proposer_slashings_gno
-    ,SUM(attester_slashings) / POWER(10, 9) AS proposer_reward_attester_slashings_gno
+    ,SUM(total) / POWER(10, 9) / 32 AS proposer_reward_total_gno
+    ,SUM(attestations) / POWER(10, 9) / 32 AS proposer_reward_attestations_gno
+    ,SUM(sync_aggregate) / POWER(10, 9) / 32 AS proposer_reward_sync_aggregate_gno
+    ,SUM(proposer_slashings) / POWER(10, 9) / 32 AS proposer_reward_proposer_slashings_gno
+    ,SUM(attester_slashings) / POWER(10, 9) / 32 AS proposer_reward_attester_slashings_gno
 FROM {{ ref('stg_consensus__rewards') }}
 WHERE
     slot_timestamp < today()
