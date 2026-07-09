@@ -125,6 +125,10 @@ models:
   - name: slot
     description: The slot number indicating the position of the block in the chain, typically a sequential integer.
     data_type: UInt64
+    tests:
+    - unique:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 
   - name: proposer_index
     description: Identifier for the validator who proposed the block.
@@ -169,9 +173,6 @@ models:
     description: Hash of the Eth1 block related to the deposit data.
     data_type: String
     tests:
-    - unique:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
@@ -650,9 +651,6 @@ models:
     description: Unique identifier assigned to each validator within the network.
     data_type: UInt64
     tests:
-    - unique:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
@@ -706,6 +704,13 @@ models:
   - name: insert_version
     description: Monotonic version number for data ingestion.
     data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - slot
+      - validator_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   meta:
     owner: analytics_team
     authoritative: false
@@ -727,9 +732,6 @@ models:
     description: Unique identifier assigned to each validator within the network.
     data_type: UInt64
     tests:
-    - unique:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
@@ -783,6 +785,13 @@ models:
   - name: insert_version
     description: Monotonic version number for data ingestion.
     data_type: UInt64
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - slot
+      - validator_index
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   meta:
     owner: analytics_team
     authoritative: false
@@ -802,16 +811,16 @@ models:
     description: The cryptographic hash of the block, serving as a unique block identifier.
     data_type: String
     tests:
-    - unique:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: withdrawal_index
-    description: The sequential index of the withdrawal within the block, starting from zero.
+    description: Globally monotonic sequential index assigned to each withdrawal across the whole chain (not per-block; verified unique, so it is the natural primary key).
     data_type: UInt64
     tests:
+    - unique:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
@@ -819,9 +828,6 @@ models:
     description: The index identifying the validator associated with the withdrawal.
     data_type: UInt64
     tests:
-    - unique:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
     - not_null:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(slot_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
