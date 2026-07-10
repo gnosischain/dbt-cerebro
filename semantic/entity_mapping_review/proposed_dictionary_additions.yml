@@ -1,0 +1,65 @@
+# PROPOSED entity_dictionary.yml additions — REVIEW BEFORE APPLYING
+# From the live per-model profiling pass (536 mapped models, 390 live-profiled).
+# NOTHING here is applied. This is a proposal for sign-off.
+# Merge decisions flagged inline. See README.md in this folder.
+
+# ═══ 1. NEW ENTITY CANDIDATES ═══
+- entity: safe_module  # sensitivity? modules are contract addresses — arguably 'open', not 'subject'
+  hub_model: null   # no one-row-per-key model found
+  sensitivity: subject
+  columns: [delay_module_address, module_address, module_proxy_address, roles_module_address, spender_module_address]   # 5 model(s)
+- entity: token_offer
+  hub_model: int_execution_gnosis_app_token_offers
+  sensitivity: open
+  columns: [offer_address]   # 3 model(s)
+- entity: cycle
+  hub_model: null   # no one-row-per-key model found
+  sensitivity: open
+  columns: [cycle_address]   # 2 model(s)
+- entity: gateway
+  hub_model: null   # no one-row-per-key model found
+  sensitivity: open
+  columns: [gateway_address]   # 2 model(s)
+- entity: bls_withdrawal_pubkey  # single model, marginal — keep or drop
+  hub_model: null   # no one-row-per-key model found
+  sensitivity: subject
+  columns: [from_bls_pubkey]   # 1 model(s)
+- entity: offer  # MERGE into token_offer (same offer_address key)
+  hub_model: null   # no one-row-per-key model found
+  sensitivity: open
+  columns: [offer_address]   # 1 model(s)
+- entity: circles_wrapper
+  hub_model: int_execution_circles_v2_wrappers
+  sensitivity: subject
+  columns: [wrapper_address]   # 1 model(s)
+
+# ═══ 2. NEW COLUMN ALIASES for EXISTING entities ═══
+# The data mapped these columns to an existing entity; they are not yet dictionary columns.
+# DECISION for `address`: it absorbs ~30 role columns (from/to/sender/owner/...). A transfer
+# model carries several at once, so a role policy is needed before folding (see README).
+# address: owner(10), ubo_address(9), withdrawal_address(8), from_address(8), to_address(8), owner_address(5), operator(5), account(4), recipient(3), container_address(3), relayer_address(3), root_address(2), cycle_address(2), to_execution_address(2), receiver(2), payee(2), payer(2), from(2), to(2), position_address(1), offer_address(1), entity_address(1), sender(1), fee_collection_address(1), invited_by(1), gateway_address(1), treasury_address(1), first_ga_owner_address(1), initial_owner_address(1), member_address(1), delegate_address(1), target_address(1)
+# token: token_bought_address(16), token_sold_address(15), reserve_address(8), contract_address(6), wrapper_address(3), offer_token_address(2), token0_address(1), token1_address(1), wrapped_token_address(1), underlying_address(1)
+# contract: address(9), container_address(7), abi_source_address(5), modifier_address(2), submodule_address(2), gateway_address(1), offer_address(1), result_address(1), mint_handler_address(1), module_address(1), pool_address(1), cycle_address(1), proxy_address(1)
+# safe: gp_safe(7), address(2), SAFE_address(1), gnosis_pay_address(1), safe_user_pseudonym(1), canonical_address(1), avatar_address(1)
+# circles_avatar: invited_by(3), from(1), to(1), inviter(1), address(1), personal_circles_address(1), to_address(1)
+# pool: contract_address(4), address(2), position_address(1)
+# client: peer_client(2), neighbor_client(2)
+# circles_group: group_avatar(3)
+# validator_pubkey: source_pubkey(1), target_pubkey(1), from_bls_pubkey(1)
+# user_pseudonym: owner_user_pseudonym(1), mp_user_id_hash(1), pay_safe_pseudonym(1)
+# project: label(1)
+
+# ═══ 3. ENTITYLESS MISSES — broaden the column scanner ═══
+# Real keys under names the name-based scanner missed. Add the column names to the
+# scanner EXCEPT `label`, which is overloaded (different entity per model) and needs
+# per-model handling, not a blanket rule.
+#   withdrawal_credentials -> address   (e.g. api_consensus_validators_explorer_apy_dist_daily)
+#   execution_payload_fee_recipient -> address   (e.g. consensus.blocks)
+#   proposer_index -> validator   (e.g. consensus.blocks)
+#   token -> token   (e.g. fct_execution_gpay_actions_by_token_monthly)
+#   cl_label -> client   (e.g. int_consensus_graffiti_daily)
+#   el_label -> client   (e.g. int_consensus_graffiti_daily)
+#   label -> token  <-- OVERLOADED, per-model only   (e.g. api_execution_cow_top_pairs_weekly)
+#   label -> pool  <-- OVERLOADED, per-model only   (e.g. api_execution_pools_volume_daily)
+#   label -> token_symbol  <-- OVERLOADED, per-model only   (e.g. api_execution_trades_stats_top_tokens_weekly)
+#   label -> project  <-- OVERLOADED, per-model only   (e.g. api_execution_transactions_by_project_total)

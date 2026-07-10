@@ -341,9 +341,17 @@ def build_namespaces(registry_models: dict[str, dict[str, Any]]) -> dict[str, di
                     "status": model["semantic_status"],
                 }
             )
+        seen_entity_providers: set[tuple[str, str]] = set()
         for entity in model.get("entities", []):
             namespace = namespaces[entity["name"]]
             namespace["type"] = entity.get("type", "")
+            # Multi-binding: a model can declare the same entity on several
+            # columns (different `expr`). The namespace is a provider list for
+            # the docs renderer, so collapse to one provider per (entity, model).
+            provider_key = (entity["name"], model_name)
+            if provider_key in seen_entity_providers:
+                continue
+            seen_entity_providers.add(provider_key)
             namespace["providers"].append(
                 {
                     "model": model_name,
@@ -1233,6 +1241,26 @@ def validate_registry(
         for relationship in relationships
         if relationship.get("quality_tier") in APPROVED_STATUSES
     }
+
+    # Relationship names must be globally unique — the runtime and the
+    # generated overlay both assume it, and a duplicate would let one edge
+    # silently mask another. Mirrors graph_meta_duplicate_profile.
+    relationship_name_owners: dict[str, int] = defaultdict(int)
+    for relationship in relationships:
+        relationship_name_owners[relationship.get("name", "")] += 1
+    for rel_name, occurrences in sorted(relationship_name_owners.items()):
+        if occurrences > 1:
+            errors.append(
+                {
+                    "code": "relationship_duplicate_name",
+                    "severity": "error",
+                    "relationship": rel_name,
+                    "message": (
+                        f"relationship name '{rel_name}' is declared "
+                        f"{occurrences} times; names must be unique"
+                    ),
+                }
+            )
 
     for relationship in relationships:
         left_model = relationship.get("left_model", "")
