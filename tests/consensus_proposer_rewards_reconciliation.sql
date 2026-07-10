@@ -9,7 +9,7 @@ source_totals AS (
     SELECT
         toStartOfDay(slot_timestamp) AS date
         ,proposer_index AS validator_index
-        ,SUM(total) / POWER(10, 9) AS proposer_reward_total_from_source_gno
+        ,SUM(total) / POWER(10, 9) / 32 AS proposer_reward_total_from_source_gno
         ,COUNT(*) AS blocks_from_source
     FROM {{ ref('stg_consensus__rewards') }}
     WHERE slot_timestamp < today()

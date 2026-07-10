@@ -1,0 +1,261 @@
+# ═════════════════════════════════════════════════════════════════════
+# ENTITY DICTIONARY — the human-curated seed for the entity overlay.
+# ═════════════════════════════════════════════════════════════════════
+#
+# Each entry names ONE join-key space:
+#   entity:       canonical entity name (used as the semantic entity name
+#                 on every annotated model — graph connectivity depends on
+#                 exact-name equality).
+#   hub_model:    the canonical "one row per entity" provider, or null when
+#                 no dim/registry mart exists yet. Only the hub receives
+#                 `type: primary` (and only on its hub-key column); every
+#                 other match is `type: foreign`. Null hub => annotations
+#                 only, no generated relationships for that entity.
+#   sensitivity:  subject | open. `subject` marks identity-grade entities
+#                 (addresses, avatars, pseudonyms, safes): public catalog
+#                 payloads list entity NAMES only (never key exprs) and the
+#                 generator refuses edges touching privacy:*-tagged models.
+#   columns:      exact physical column names that carry this key. MULTI-
+#                 BINDING: a model gets ONE binding per matching column
+#                 (e.g. from_address + to_address both bind `address`), so
+#                 the graph can join on either side. The first column is the
+#                 hub-key (used for `right_keys` on generated edges).
+#
+# A column lives under EXACTLY ONE entity globally. When a minority of
+# models use a column for a different entity (e.g. `address` = a contract
+# in a registry table), redirect or suppress them per-model in the
+# `overrides:` section at the bottom — never by duplicating the column
+# across entities' `columns` lists.
+#
+# Reviewed by a human before every regeneration lands — the generator
+# (scripts/semantic/generate_entities.py) treats this file as ground truth.
+
+version: 1
+
+entities:
+  # ── identity-grade (sensitivity: subject) ──────────────────────────
+  - entity: circles_avatar
+    hub_model: api_execution_circles_v2_avatars_current
+    sensitivity: subject
+    # `avatar` is the hub key (stays first). truster/trustee are trust-edge
+    # roles and invited_by/inviter are invitation roles — all Circles avatar
+    # addresses in the same key space; multi-binding binds each one.
+    columns: [avatar, truster, trustee, invited_by, inviter, personal_circles_address]
+
+  - entity: circles_group
+    hub_model: null # no groups dim mart yet (follow-up: group_size_current is 662/662)
+    sensitivity: subject
+    columns: [group_address, group_avatar]
+
+  - entity: address
+    hub_model: api_execution_account_profile_latest
+    sensitivity: subject
+    # `address` is the hub key (stays first). All the flow/role variants below
+    # are the SAME on-chain account-address key space; multi-binding binds each
+    # so a transfers model exposes both from- and to-side joins. Contract /
+    # pool / safe / avatar registries that reuse `address` for a different
+    # entity are redirected per-model in overrides.
+    columns: [address, wallet_address, user_address, from_address, to_address,
+      from, to, sender, recipient, owner, owner_address, account, operator,
+      ubo_address, withdrawal_address, to_execution_address, payee, payer,
+      relayer_address, root_address, entity_address, treasury_address,
+      first_ga_owner_address, initial_owner_address, member_address,
+      delegate_address, target_address]
+
+  - entity: user_pseudonym
+    hub_model: fct_execution_gnosis_app_users_distinct
+    sensitivity: subject
+    # Canonical cross-domain user id: sipHash64(salt + lower(address)).
+    # user_id_hash is the Mixpanel-side name for the SAME hash space (see
+    # semantic/relationships/user_pseudonym.yml). gpay's users_distinct is
+    # also a primary via hand-authoring; the hub here only breaks ties.
+    columns: [user_pseudonym, user_id_hash]
+
+  - entity: safe
+    hub_model: api_execution_safe_details_latest
+    sensitivity: subject
+    # safe_address is the hub key. gp_safe (Gnosis Pay safe) and
+    # canonical_address are the same Safe-address space; avatar_address on
+    # the zodiac-submodules model is redirected here via overrides.
+    columns: [safe_address, gp_safe, canonical_address]
+
+  # ── infrastructure / market entities (sensitivity: open) ───────────
+  - entity: token
+    hub_model: null # no token dim mart exists yet — worth building one
+    sensitivity: open
+    # token_address is the canonical key. The DEX-swap variants
+    # (token_bought/sold_address, token0/1_address) and wrapped/underlying
+    # variants are the same token-contract-address space.
+    columns: [token_address, token_bought_address, token_sold_address,
+      reserve_address, offer_token_address, token0_address, token1_address,
+      wrapped_token_address, underlying_address]
+
+  - entity: token_symbol
+    hub_model: null
+    sensitivity: open
+    # Symbol-keyed token join for sources lacking token_address (dune,
+    # treasury, celo). Bare `token` here is a SYMBOL (`symbol AS token` in
+    # gpay/pools/bridges), NOT an address — verified against model SQL.
+    columns: [symbol, token_symbol, token]
+
+  - entity: pool
+    hub_model: stg_pools__v3_pool_registry # only registry-shaped pool model
+    sensitivity: open
+    columns: [pool_address] # per-pool contract_address / address redirected via overrides
+
+  - entity: validator
+    hub_model: api_consensus_validators_status_latest
+    sensitivity: open
+    # validator_index is the hub key; proposer_index (consensus.blocks) is the
+    # same validator-index space.
+    columns: [validator_index, proposer_index]
+
+  - entity: validator_pubkey
+    hub_model: api_consensus_validators_status_latest
+    sensitivity: open
+    # BLS pubkey space (String), distinct from validator_index. source_pubkey/
+    # target_pubkey are the same. NOTE: from_bls_pubkey is a DIFFERENT key
+    # space (BLS-change credential) — deliberately NOT included.
+    columns: [pubkey, source_pubkey, target_pubkey]
+
+  - entity: bridge
+    hub_model: null
+    sensitivity: open
+    columns: [bridge, bridge_name]
+
+  - entity: protocol
+    hub_model: null
+    sensitivity: open
+    columns: [protocol]
+
+  - entity: sector
+    hub_model: null
+    sensitivity: open
+    # `label` is NOT a global column (overloaded across models); sector-labelled
+    # models are routed via per-model overrides below.
+    columns: [sector]
+
+  - entity: project
+    hub_model: null # distinct_projects_sectors is (project, sector) grain — not unique
+    sensitivity: open
+    columns: [project]
+
+  - entity: contract
+    hub_model: null # execution.contracts is a raw source; sources out of scope
+    sensitivity: open
+    # contract_address is the canonical key. Token/pool event tables that use
+    # contract_address for THEIR token/pool are redirected via overrides.
+    columns: [contract_address, container_address, abi_source_address,
+      modifier_address, submodule_address, proxy_address]
+
+  - entity: client
+    hub_model: null
+    sensitivity: open
+    # EL/CL client-name space. cl_label/el_label (graffiti) and peer_client/
+    # neighbor_client (p2p) are the same client-name key.
+    columns: [client, cl_label, el_label, peer_client, neighbor_client]
+
+  - entity: transaction
+    hub_model: null
+    sensitivity: open
+    # Event-grain drill key. Never a row-level enrichment join — m:n fan-out
+    # rules force aggregation.
+    columns: [transaction_hash, tx_hash]
+
+  # ── NEW entities from the per-model profiling review (all open) ─────
+  - entity: token_offer
+    hub_model: int_execution_gnosis_app_token_offers
+    sensitivity: open
+    columns: [offer_address]
+
+  - entity: cycle
+    hub_model: null
+    sensitivity: open
+    columns: [cycle_address]
+
+  - entity: gateway
+    hub_model: null
+    sensitivity: open
+    columns: [gateway_address]
+
+  - entity: circles_wrapper
+    hub_model: int_execution_circles_v2_wrappers
+    sensitivity: open
+    # Circles ERC20 wrapper contract. Hub has 1 known dup row (13,308 vs
+    # 13,307 distinct) — effectively one-row-per-wrapper.
+    columns: [wrapper_address]
+
+  - entity: safe_module
+    hub_model: null
+    sensitivity: open
+    # Safe module contract addresses (delay / roles / spender modules). These
+    # are contract addresses, not identity — hence `open`, not `subject`.
+    columns: [module_address, delay_module_address, module_proxy_address,
+      roles_module_address, spender_module_address]
+
+# ═════════════════════════════════════════════════════════════════════
+# OVERRIDES — per-(model, column) redirects and suppressions.
+# ═════════════════════════════════════════════════════════════════════
+# `entity: <name>`  redirects that column to a different entity on that model.
+# `entity: null`    suppresses the column (no binding) on that model.
+# Every entry MUST carry an `entity:` key (a name or null). A column not in
+# any global list is ADDITIVE (binds only where an override names it).
+overrides:
+  # ── address -> contract (contract registries: address = a contract) ──
+  - {model: contracts_circles_registry,                column: address, entity: contract}
+  - {model: contracts_gpay_modules_registry,           column: address, entity: contract}
+  - {model: contracts_zodiac_modules_registry,         column: address, entity: contract}
+  - {model: int_execution_accounts_label_contracts,    column: address, entity: contract}
+  - {model: int_execution_accounts_non_user_contracts, column: address, entity: contract}
+  # ── address -> pool ──
+  - {model: contracts_BalancerV2_pool_registry,        column: address, entity: pool}
+  - {model: fct_execution_yields_opportunities_latest, column: address, entity: pool}
+  - {model: api_execution_yields_opportunities_latest, column: address, entity: pool}
+  # ── address -> safe ──
+  - {model: contracts_safe_registry,                   column: address, entity: safe}
+  - {model: int_execution_gpay_safe_canonical,         column: address, entity: safe}
+  # ── address -> circles_avatar ──
+  - {model: int_execution_circles_v2_active_avatars_weekly, column: address, entity: circles_avatar}
+  # ── contract_address -> token (token contracts' own event tables) ──
+  - {model: contracts_aaveV3_AToken_events,  column: contract_address, entity: token}
+  - {model: contracts_ocsdai_events,         column: contract_address, entity: token}
+  - {model: contracts_sdai_events,           column: contract_address, entity: token}
+  - {model: contracts_spark_AToken_events,   column: contract_address, entity: token}
+  - {model: contracts_wxdai_calls,           column: contract_address, entity: token}
+  - {model: contracts_wxdai_events,          column: contract_address, entity: token}
+  # ── contract_address -> pool (per-pool event tables) ──
+  - {model: contracts_Swapr_v3_AlgebraPool_calls,   column: contract_address, entity: pool}
+  - {model: contracts_Swapr_v3_AlgebraPool_events,  column: contract_address, entity: pool}
+  - {model: contracts_UniswapV3_Pool_events,        column: contract_address, entity: pool}
+  - {model: contracts_UniswapV3_Pool_events_live,   column: contract_address, entity: pool}
+  # ── other re-routes ──
+  - {model: int_execution_circles_v2_mint_events, column: to_address, entity: circles_avatar}
+  - {model: stg_pools__balancer_v3_token_map, column: wrapper_address, entity: token} # Balancer wrapper, not Circles
+  - {model: fct_execution_cow_trades, column: pool_address, entity: null} # constant GPv2Settlement (dc=1) — suppress
+  # ── additive (column in no global list) ──
+  - {model: int_execution_zodiac_modifier_submodules_latest, column: avatar_address, entity: safe}
+  # ── label -> {project, sector, token_symbol} (override-only; AS-label verified) ──
+  - {model: fct_execution_transactions_by_project_monthly_top5, column: label, entity: project}
+  - {model: api_execution_transactions_by_project_ranges_top20, column: label, entity: project}
+  - {model: api_execution_transactions_by_project_total, column: label, entity: project}
+  - {model: api_execution_transactions_active_accounts_by_project_ranges_top20, column: label, entity: project}
+  - {model: api_execution_transactions_active_accounts_by_project_total, column: label, entity: project}
+  - {model: api_execution_transactions_fees_native_by_project_ranges_top20, column: label, entity: project}
+  - {model: api_execution_transactions_fees_native_by_project_total, column: label, entity: project}
+  - {model: api_execution_transactions_gas_share_by_project_daily, column: label, entity: project}
+  - {model: api_execution_trades_stats_top_tokens_weekly, column: label, entity: token_symbol}
+  - {model: api_execution_transactions_by_sector_daily, column: label, entity: sector}
+  - {model: api_execution_transactions_by_sector_hourly, column: label, entity: sector}
+  - {model: api_execution_transactions_by_sector_weekly, column: label, entity: sector}
+  - {model: api_execution_transactions_active_accounts_by_sector_daily, column: label, entity: sector}
+  - {model: api_execution_transactions_active_accounts_by_sector_hourly, column: label, entity: sector}
+  - {model: api_execution_transactions_active_accounts_by_sector_weekly, column: label, entity: sector}
+  - {model: api_execution_transactions_fees_native_by_sector_daily, column: label, entity: sector}
+  - {model: api_execution_transactions_fees_native_by_sector_hourly, column: label, entity: sector}
+  - {model: api_execution_transactions_fees_native_by_sector_weekly, column: label, entity: sector}
+  # ── deliberate skips (NOT overridden; here for the record) ──
+  #   api_execution_pools_volume_daily.label       — `pool AS label` display pair-string, not the pool key
+  #   api_execution_cow_top_pairs_weekly.label     — pair display string (model hand-authored)
+  #   fct_execution_transactions_by_project_snapshots.label — metric names, not an entity
+  #   int_execution_yields_user_activity.position_address   — mixed pool/reserve space (future model fix)
+  #   fct_* container_address                       — stays `contract` globally (same key space)

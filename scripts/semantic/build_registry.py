@@ -223,6 +223,56 @@ def load_semantic_authoring(*roots: Path) -> tuple[dict[str, Any], dict[str, Any
     return semantic_models, metrics
 
 
+def load_generated_entities(repo_root: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load the generated entity overlay (entity annotations per model).
+
+    Produced by ``scripts/semantic/generate_entities.py`` from the entity
+    dictionary. Deliberately NOT a semantic_models.yml authoring file: the
+    authoring loader is last-file-wins per model, which cannot express the
+    precedence contract. The merge is entities-only and happens in
+    ``build_registry`` — a hand-authored semantic_model that declares its own
+    entities wins WHOLESALE; everything else about the model is untouched.
+    A missing file yields an empty overlay (build works without generation).
+    """
+    path = repo_root / "semantic" / "authoring" / "generated" / "entities_generated.yml"
+    if not path.exists():
+        return {}
+    payload = load_yaml_file(path)
+    overlay: dict[str, list[dict[str, Any]]] = {}
+    for row in payload.get("generated_entities", []) or []:
+        if not isinstance(row, dict):
+            continue
+        model = row.get("model")
+        entities = row.get("entities") or []
+        if model and entities:
+            overlay[str(model)] = copy.deepcopy(entities)
+    return overlay
+
+
+def load_entity_dictionary(repo_root: Path) -> dict[str, dict[str, Any]]:
+    """Load the human-curated entity dictionary for registry publication.
+
+    Published as ``registry["entity_dictionary"]`` so the runtime
+    (cerebro-mcp entity_index) can resolve hubs and sensitivity without
+    reaching back into this repo. Missing file => empty dict.
+    """
+    path = repo_root / "semantic" / "entity_dictionary.yml"
+    if not path.exists():
+        return {}
+    payload = load_yaml_file(path)
+    dictionary: dict[str, dict[str, Any]] = {}
+    for entry in payload.get("entities", []) or []:
+        name = entry.get("entity")
+        if not name:
+            continue
+        dictionary[str(name)] = {
+            "hub_model": entry.get("hub_model"),
+            "sensitivity": entry.get("sensitivity", "open"),
+            "columns": list(entry.get("columns", []) or []),
+        }
+    return dictionary
+
+
 def load_relationships(relationships_root: Path) -> list[dict[str, Any]]:
     relationships: list[dict[str, Any]] = []
     if not relationships_root.exists():
@@ -291,9 +341,17 @@ def build_namespaces(registry_models: dict[str, dict[str, Any]]) -> dict[str, di
                     "status": model["semantic_status"],
                 }
             )
+        seen_entity_providers: set[tuple[str, str]] = set()
         for entity in model.get("entities", []):
             namespace = namespaces[entity["name"]]
             namespace["type"] = entity.get("type", "")
+            # Multi-binding: a model can declare the same entity on several
+            # columns (different `expr`). The namespace is a provider list for
+            # the docs renderer, so collapse to one provider per (entity, model).
+            provider_key = (entity["name"], model_name)
+            if provider_key in seen_entity_providers:
+                continue
+            seen_entity_providers.add(provider_key)
             namespace["providers"].append(
                 {
                     "model": model_name,
@@ -458,7 +516,11 @@ def build_registry(
     authored_metrics: dict[str, Any],
     relationships: list[dict[str, Any]],
     overrides: list[dict[str, Any]],
+    generated_entities: Optional[dict[str, list[dict[str, Any]]]] = None,
+    entity_dictionary: Optional[dict[str, dict[str, Any]]] = None,
 ) -> dict[str, Any]:
+    generated_entities = generated_entities or {}
+    entity_dictionary = entity_dictionary or {}
     manifest_nodes = manifest.get("nodes", {})
     manifest_sources = manifest.get("sources", {})
     catalog_nodes = catalog.get("nodes", {})
@@ -526,7 +588,13 @@ def build_registry(
                 "defaults": authored_semantic.get("defaults", {}),
                 "meta": semantic_meta,
             },
-            "entities": authored_semantic.get("entities", []),
+            # Hand-authored entities win WHOLESALE; the generated overlay only
+            # fills models that declare none (contract 0.4 — entities-only
+            # merge, everything else about the model is untouched).
+            "entities": (
+                authored_semantic.get("entities")
+                or generated_entities.get(model_name, [])
+            ),
             "dimensions": authored_semantic.get("dimensions", []),
             "measures": authored_semantic.get("measures", []),
             "metric_names": [],
@@ -585,6 +653,10 @@ def build_registry(
         "models": dict(sorted(registry_models.items())),
         "metrics": dict(sorted(metrics.items())),
         "relationships": relationships,
+        # Human-curated entity dictionary (hub + sensitivity per entity) —
+        # the runtime entity_index resolves hubs/privacy from here. Empty
+        # when semantic/entity_dictionary.yml is absent.
+        "entity_dictionary": entity_dictionary,
         "overrides": overrides,
         "namespaces": namespaces,
         "modules": modules,
@@ -1115,6 +1187,28 @@ def validate_registry(
         for issue in validate_graph_meta(model_name, model, models, allowed_kinds=allowed_kinds):
             (errors if issue["severity"] == "error" else warnings).append(issue)
 
+    # Entity overlay gate: every non-expression entity expr must be a real
+    # column on its model (hand-authored AND generated — both are merged into
+    # `entities` by now). A broken expr silently kills entity joins at runtime.
+    for model_name, model in models.items():
+        columns = set(model.get("columns", {}) or {})
+        for entity in model.get("entities", []) or []:
+            expr = str(entity.get("expr", "") or "")
+            if not expr or _is_sql_expression(expr):
+                continue
+            if expr.strip("`") not in columns:
+                errors.append(
+                    {
+                        "code": "entity_expr_unknown_column",
+                        "severity": "error",
+                        "model": model_name,
+                        "message": (
+                            f"Entity '{entity.get('name', '')}' on {model_name} points at "
+                            f"expr='{expr}' which is not a column of the model"
+                        ),
+                    }
+                )
+
     # Q4 — graph profile ids must be globally unique. build_graph_catalog is
     # first-wins on a collision, so an unchecked duplicate would silently drop an
     # edge from the catalog; surface it as a build error instead.
@@ -1148,6 +1242,26 @@ def validate_registry(
         if relationship.get("quality_tier") in APPROVED_STATUSES
     }
 
+    # Relationship names must be globally unique — the runtime and the
+    # generated overlay both assume it, and a duplicate would let one edge
+    # silently mask another. Mirrors graph_meta_duplicate_profile.
+    relationship_name_owners: dict[str, int] = defaultdict(int)
+    for relationship in relationships:
+        relationship_name_owners[relationship.get("name", "")] += 1
+    for rel_name, occurrences in sorted(relationship_name_owners.items()):
+        if occurrences > 1:
+            errors.append(
+                {
+                    "code": "relationship_duplicate_name",
+                    "severity": "error",
+                    "relationship": rel_name,
+                    "message": (
+                        f"relationship name '{rel_name}' is declared "
+                        f"{occurrences} times; names must be unique"
+                    ),
+                }
+            )
+
     for relationship in relationships:
         left_model = relationship.get("left_model", "")
         right_model = relationship.get("right_model", "")
@@ -1169,6 +1283,36 @@ def validate_registry(
                     "message": f"Relationship references unknown right model {right_model}",
                 }
             )
+        # Join-key gate: every non-expression join key must exist on its
+        # endpoint (backticks stripped). Skipped when the endpoint model is
+        # unknown (already its own error above) or has NO column inventory —
+        # several models have empty manifest+catalog columns and a missing
+        # inventory is a docs gap, not evidence the key is wrong.
+        for side, keys_field in (("left", "left_keys"), ("right", "right_keys")):
+            endpoint_model = models.get(relationship.get(f"{side}_model", ""))
+            if endpoint_model is None:
+                continue
+            endpoint_columns = set(endpoint_model.get("columns", {}) or {})
+            if not endpoint_columns:
+                continue
+            for key in relationship.get(keys_field, []) or []:
+                key_str = str(key)
+                if _is_sql_expression(key_str):
+                    continue
+                if key_str.strip("`") not in endpoint_columns:
+                    errors.append(
+                        {
+                            "code": "relationship_key_unknown_column",
+                            "severity": "error",
+                            "relationship": relationship.get("name", ""),
+                            "model": relationship.get(f"{side}_model", ""),
+                            "message": (
+                                f"Relationship {relationship.get('name', '')} {keys_field} "
+                                f"references '{key_str}' which is not a column of "
+                                f"{relationship.get(f'{side}_model', '')}"
+                            ),
+                        }
+                    )
         if (
             relationship.get("allow_any_join")
             and relationship.get("name") not in approved_relationship_names
@@ -1485,6 +1629,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         relationships = load_relationships(repo_root / "semantic" / "relationships")
         graph_kinds = load_graph_kinds(repo_root / "semantic" / "graph_kinds.yml")
         overrides, override_warnings = load_overrides(repo_root / "semantic" / "overrides")
+        generated_entities = load_generated_entities(repo_root)
+        entity_dictionary = load_entity_dictionary(repo_root)
         registry = build_registry(
             manifest=manifest,
             manifest_hash=manifest_hash,
@@ -1495,6 +1641,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             authored_metrics=authored_metrics,
             relationships=relationships,
             overrides=overrides,
+            generated_entities=generated_entities,
+            entity_dictionary=entity_dictionary,
         )
         validation = validate_registry(
             registry,

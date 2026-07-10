@@ -14,13 +14,25 @@
 -- DEX-derived + sDAI vault) only exists from ~2021 (Chainlink's Gnosis deployment),
 -- whereas Dune's off-chain feed covers 2017+. So for any (date, symbol) native lacks
 -- -- mainly pre-2021, plus tokens with no native source (e.g. SAFE) -- Dune fills in.
--- Priority: native (1) > backedfi RWA / aToken wrappers (2) > Dune fallback (3) > $1 pegs (4).
+-- Priority: FRESH native (1) > backedfi RWA / aToken wrappers (2) > Dune fallback (3) >
+-- $1 pegs (4) > STALE native (5, last resort).
+--
+-- Staleness demotion: native forward-fills every symbol across a daily calendar, so a
+-- DEX-only token that loses liquidity would otherwise serve its last trade price forever
+-- at priority 1 (e.g. SAFE froze for >250d at ~4.3x its live value; COW at +14%). We
+-- therefore demote a native price BELOW Dune once it has been forward-filled for more
+-- than {{ var('native_price_max_staleness_days', 7) }} days past its last real
+-- observation, so the dense live Dune feed wins. Stale native is kept as priority 5 so a
+-- symbol with no Dune coverage still gets a (clearly-flagged-stale) value rather than a gap.
+
+{% set max_staleness_days = var('native_price_max_staleness_days', 7) %}
 
 WITH native AS (
     SELECT
-        toDate(date)        AS date,
-        upper(symbol)       AS symbol,
-        toFloat64(price)    AS price
+        toDate(date)             AS date,
+        upper(symbol)            AS symbol,
+        toFloat64(price)         AS price,
+        toDate(last_obs_date)    AS last_obs_date
     FROM {{ ref('int_execution_prices_native_daily') }}
     WHERE date < today()
 ),
@@ -76,7 +88,14 @@ usd_pegs AS (
 ),
 
 all_prices AS (
-    SELECT date, symbol, price, 1 AS priority FROM native
+    -- Fresh native = priority 1; native forward-filled beyond the staleness budget is
+    -- demoted to priority 5 (below Dune) so a stale frozen DEX price stops winning.
+    SELECT
+        date,
+        symbol,
+        price,
+        if(dateDiff('day', last_obs_date, date) > {{ max_staleness_days }}, 5, 1) AS priority
+    FROM native
     UNION ALL
     SELECT date, symbol, price, 2 AS priority FROM backedfi
     UNION ALL

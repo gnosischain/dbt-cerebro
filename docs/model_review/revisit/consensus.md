@@ -1,5 +1,40 @@
 # Model review (revisit 2026-06-21): consensus
 
+## Session update 2026-07 — fixes implemented, verified in playground_max
+
+**Fixed and verified:**
+- **C01/C22** (`apy_30d` inflation): root cause was a missing divide-by-window-size, worse at the per-credential grain (missing divide-by-row-count, not just by-date). Fixed in `fct_consensus_validators_explorer_latest.sql` (balance-weighted average of the already-correct per-day `apy` column) and `fct_consensus_validators_explorer_members_table.sql` (simple average of the same). Verified: a 3-validator/26-day test credential went from a served `523.56%` to `7.31-7.89%`, matching the network daily median (~8%).
+- **C08/C25** (Pectra 0x02 excluded from withdrawal-address / cross-sector pseudonym graph): confirmed via the primary Ethereum consensus-specs repo that 0x01 and 0x02 credentials share the identical address-extraction byte offset (`withdrawal_credentials[12:]`). Extended `int_consensus_validators_withdrawal_addresses.sql`'s CASE to also match `0x02`. Verified: `fct_consensus_validators_withdrawal_addresses_distinct` went from 873 to 980 addresses (+107 net-new), 60 of which have confirmed real cross-sector activity (mostly Safe ownership) via `int_execution_address_roles_current`.
+- **Schema/documentation fixes** (zero behavioral risk, verified against live `describe_table` + SQL before editing): `int_consensus_validators_status_daily` (removed 4 ghost columns, C03), `int_consensus_entry_queue_daily` (removed 4 ghost columns including a `unique`/`not_null` test on a nonexistent `validator_index` column that was likely erroring every run, C10), `int_consensus_deposits_withdrawals_daily` (added missing `label` column, renamed ghost `amount` to real `total_amount`, C11), `int_consensus_blocks_daily` (removed 2 ghost columns, added 2 real undocumented columns, C12), `fct_consensus_info_latest` (removed 2 ghost columns, C15), `stg_consensus__validators_all` (fixed a false "positive balance" claim — verified the SQL has no WHERE clause at all, C16).
+- **Systemic mGNO/32 unit bug — 9 files fixed.** Root cause: Gnosis Beacon Chain internally mirrors Ethereum's 32-unit-per-validator convention (32 mGNO = 1 real GNO), confirmed via Gnosis's own docs, a raw on-chain GBCDeposit decode, and the official beacon explorer (labels values "mGNO" directly). Every "_gno"-suffixed absolute column in `int_consensus_validators_income_daily` and siblings was actually mGNO-denominated, not real GNO — a platform convention that ~half of downstream consumers correctly divided by 32 and half didn't. Fixed: `fct_consensus_validators_explorer_latest.sql`, `fct_consensus_validators_explorer_members_table.sql`, `fct_consensus_validators_explorer_daily.sql`, `api_consensus_validators_performance_daily.sql`, `api_consensus_validators_performance_latest.sql`, `api_consensus_validators_balances_daily.sql`, `int_consensus_deposits_withdrawals_daily.sql`, `fct_consensus_consolidations_daily.sql`, `api_consensus_validators_balance_dist_last_30_days.sql`. Documentation warnings added to the 5 source-layer models (`income_daily`, `proposer_rewards_daily`, `deposits_daily`, `withdrawals_daily`, `consolidations_daily`, `dists_daily`, `dists_last_30_days`) so future consumers don't repeat the mistake. Checked for double-division risk across every touched lineage chain — confirmed none (the source models' actual computed values were never modified, only consumers; the one exception, `deposits_withdrawals_daily`, was fixed at the source only after confirming its sole consumer does a plain passthrough with no scaling of its own).
+- Ran a full 89-file inventory of every consensus model to check for this same mGNO issue beyond the original "_gno"-suffix search — this was a genuine blind spot in the first pass (the 7th fixed file, `deposits_withdrawals_daily`'s `total_amount`, has no `_gno` suffix and was found by accident, not by the systematic sweep). The 89-file sweep is more thorough but still not a formal guarantee of 100% coverage.
+
+**New finding, not yet acted on — flagged here for whoever owns the CI/cron orchestrator (Hugo):**
+`scripts/run_dbt_observability.sh`'s `build_test_batches()` function (used by both `cron.sh` and `cron_preview.sh`) only selects tests via `tag:production,path:models/...`-style selectors. **Every standalone singular test in the top-level `tests/` directory is invisible to this selector and never runs automatically, in prod or preview.** Confirmed this is not compensated for elsewhere — the repo's only CI workflow (`.github/workflows/build-and-release.yaml`) is a build/release pipeline with zero references to `dbt test`/`dbt build`. This affects all 10 files currently in `tests/`, including several referenced in model docstrings as if they were active safety nets (e.g. `int_consensus_validators_consolidations_daily.sql`'s own comment cites `tests/consensus_income_within_spec_cap.sql` as "retaining the consolidation-inflow carve-out" — that test has never actually run). The fix is a one-line addition to `build_test_batches()`'s selector arrays (e.g. `tag:live,resource_type:test` or a broader catch-all for `resource_type:test` generally) — not implemented this session, left for a deliberate decision by whoever owns that script given the shared blast radius.
+
+**Explicitly decided not to pursue this session** (user choice, not oversight): C02 (dev-tag on `int_consensus_validators_labels`), C04-C07, C09, C13, C14, C17, C18 (needs a design decision, not a verifiable fix), C19-C21, C24 (unweighted vs weighted APY KPI — a methodology choice, not a bug), C26 (source frozen 25+ days — not fixable from dbt-cerebro, needs the indexer/crawler team), C27-C30.
+
+---
+
+## WHAT'S LEFT (marker for PR handoff, 2026-07)
+
+**In this sector (consensus) — all deliberate, none are silent gaps:**
+- C02, C04-C07, C09, C13, C14, C17, C19-C21, C27-C30 — skipped by explicit choice this session, still exactly as documented in the 06-21 revisit above
+- C18 (missing `meta.api` block) — deferred, needs a design decision (what parameters/sort fields), not a verifiable "match reality" fix
+- C24 (unweighted vs balance-weighted APY KPI) — deferred, a methodology choice, not a bug
+- C26 (source frozen 25+ days, still growing) — not fixable from dbt-cerebro at all; needs the beacon-chain indexer/crawler owner
+- **Test orchestrator gap** — `build_test_batches()` never selects anything in `tests/`, so all 10 singular tests there (9 pre-existing + this session's new freshness test) never run automatically in prod or preview. One-line fix identified, not applied — flagged above for whoever owns `run_dbt_observability.sh`.
+- One honest caveat: the mGNO sweep (89 files, every Gwei-scale division checked) is thorough but not formally proven exhaustive — the 7th fixed file was found by accident, not by the systematic search.
+
+**Other sectors touched earlier in this working session, still open (see their own revisit docs for detail):**
+- `docs/model_review/revisit/contracts-lending-tokens.md` — C03 (bC3M oracle staleness): root cause confirmed (oracle genuinely stopped publishing on-chain), the downstream staleness guard was never implemented.
+- `docs/model_review/revisit/contracts-amm-dex.md` — C01/N01 (7 missing UniswapV3 pools, backfill owned by Hugo at prod-promotion time), C03 (its own freshness test built + validated but not wired into the cron — same root cause as the consensus test-orchestrator gap above), C04 (fix verified in dev, prod full-refresh never run), C05/C11/C12 (stale config dates, identified, deferred as a batch cleanup), C09 (BalancerV2 TVL pricing gap — investigated in depth, nothing implemented, parked for a later conversation), C13 (whitelist criteria doc location — no decision made).
+
+**Not touched at all this session**: the remaining ~34 sectors from the original platform-wide review (ESG, P2P, bridges, gnosis_app, Circles, gpay, safe, transactions, tokens, transfers, rwa, blocks, dao_treasury, zodiac, live, shared, crawlers_data, probelab, quarterly_data, mixpanel_ga, prices), plus the 7 sectors flagged as "already done" at the very start of this engagement (prices, tokens, lending, pools, cow, yields, revenue) — confirmed early on to have real commits since their original review, meaning those docs are stale and need the same re-verify pass applied here, not just a re-read.
+
+---
+
+
 Baseline `docs/model_review/consensus.md` (2026-06-11); 30 cases re-verified over 3 rounds. Headline: **0 resolved, 4 changed (all severity downgrades / mechanism corrections), 26 still confirmed** — the live `apy_30d` ~day-count inflation, the `/32` Staked GNO understatement, the unweighted APY KPI path, and the Pectra `0x02` cross-sector gap all remain in the served data.
 
 ## Status summary
@@ -217,3 +252,21 @@ FROM int_consensus_validators_snapshots_daily WHERE date>=2026-05-30 GROUP BY da
 | P3 KEEP | Fix `deposists` CTE typos; correct `stg_consensus__validators_all` description (drop "positive balance"); reword `*_dist_last_30_days` descriptions (as-of snapshot, not time series); replace `api_consensus_forks` `today()` with a static date; make `fct_consensus_forks` fail loudly on missing forks | `int_consensus_deposits_withdrawals_daily.sql`, `staging/schema.yml` (l712), `marts/schema.yml` (l1419, l1466), `api_consensus_forks.sql` (l8), `fct_consensus_forks.sql` (l15-23) |
 
 No DROP recommendations — nothing from the baseline was resolved.
+
+## 2026-07-08 addendum — mGNO→GNO conversion centralized at the intermediate layer
+
+The mart-level `/32` design documented above was superseded: the mGNO→GNO
+conversion now happens ONCE at the originating intermediate models
+(`int_consensus_validators_{balances,income,proposer_rewards,deposits,withdrawals,consolidations,dists}_daily`
+plus `fct_consensus_validators_dists_last_30_days`, which reads gwei directly),
+co-located with the existing `/1e9` gwei conversion — matching what
+`int_consensus_deposits_withdrawals_daily` already did. All ~71 mart-level `/32`
+sites were removed; every `_gno` column now means real GNO at every layer.
+`api_quarterly_data_staked_gno` dropped its own `/32` (would double-convert).
+Kept in gwei by design: `int_consensus_validators_snapshots_daily`,
+`int_consensus_validators_per_index_apy_daily`, and income's internal `*_gwei`
+columns (beacon-spec reward-cap math operates in gwei; the cap formula
+re-inflates the GNO network balance by ×32×1e9 under the √).
+Side-effect fixes: `int_execution_mmm_media_weekly` proposer rewards were 32×
+overstated (no /32 anywhere on its path); `fct_consensus_validators_income_total_daily`
+served mGNO under a GNO label — its anomaly floor was re-expressed 500 mGNO → 16 GNO.

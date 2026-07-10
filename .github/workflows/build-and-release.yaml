@@ -128,8 +128,14 @@ jobs:
           python -m pytest tests/test_semantic_registry.py -v
 
       - name: Generate dbt docs
+        # Exclude dev-tagged models: prod builds only `tag:production`, so
+        # dev/WIP models (e.g. *_v2 staging variants) are never materialised
+        # and their tables don't exist — a bare `docs generate` aborts on the
+        # first missing dev table. Excluding them keeps the catalog to the
+        # published (prod) surface. (generate_entities.py also skips tag:dev,
+        # so the entity overlay matches this catalog.)
         run: |
-          dbt docs generate
+          dbt docs generate --exclude tag:dev
 
       - name: Assert docs artifacts
         run: |
@@ -158,6 +164,17 @@ jobs:
         # semantic/validation/baseline.json.
         run: |
           python scripts/semantic/graph_gate.py --target-dir target
+
+      - name: Entity overlay freshness gate (blocking)
+        # The generated entity files (semantic/authoring/generated/
+        # entities_generated.yml + semantic/relationships/
+        # entities_generated.yml) must match a fresh run of the generator
+        # against the current manifest/catalog and carry the do-not-edit
+        # header. Catches hand-edits to generated files and stale overlays
+        # after model/dictionary changes. Regenerate with
+        # `python scripts/semantic/generate_entities.py`.
+        run: |
+          python scripts/semantic/generate_entities.py --target-dir target --check
 
       - name: Surface validation report in build summary
         # Print the validation summary into the GitHub Actions step log so

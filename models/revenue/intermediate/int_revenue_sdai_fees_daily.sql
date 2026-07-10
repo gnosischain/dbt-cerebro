@@ -77,6 +77,25 @@ base AS (
       {% else %}
         {{ apply_monthly_incremental_filter('date', 'date', true, lookback_days=2) }}
       {% endif %}
+
+    UNION ALL
+
+    -- sDAI held via the OpenCover OC-sDAI ERC-4626 vault (look-through). The
+    -- look-through already values each holder's underlying sDAI in USD; the
+    -- vault's own pooled sDAI is excluded by the non_users anti-join below
+    -- (the vault address is in tokens_whitelist -> non_user_contracts), so
+    -- attributing the underlying to OC-sDAI shareholders does not double count.
+    SELECT date, user, balance_usd
+    FROM {{ ref('int_revenue_ocsdai_user_balances_daily') }}
+    WHERE date < today()
+      AND balance_usd > 0
+      AND user IS NOT NULL
+      {% if start_month and end_month %}
+        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('date', 'date', true, lookback_days=2) }}
+      {% endif %}
 ),
 
 base_users AS (
@@ -97,15 +116,21 @@ rates AS (
     WHERE rate IS NOT NULL
 ),
 
+-- LEFT JOIN (not INNER) on the daily rate. A date with no rate -- the 7-day
+-- launch warmup of int_yields_sdai_rate_daily, or any future freshness lag --
+-- must NOT silently drop that day's sDAI user-balances (which would understate
+-- active users). The balance row is preserved and fees default to 0 until a
+-- rate exists for that date, mirroring the LEFT-JOIN-on-prices pattern the gpay
+-- stream uses. COALESCE also keeps fees non-NULL so no NULL propagates downstream.
 joined AS (
     SELECT
         b.date,
         b.user,
         b.balance_usd_sum,
         r.rate,
-        b.balance_usd_sum * r.rate * toFloat64({{ dao_share_pct }}) AS fees_raw
+        b.balance_usd_sum * COALESCE(r.rate, 0) * toFloat64({{ dao_share_pct }}) AS fees_raw
     FROM balances b
-    INNER JOIN rates r USING (date)
+    LEFT JOIN rates r USING (date)
 )
 
 SELECT

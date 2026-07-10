@@ -16,6 +16,10 @@ SELECT
     CASE
         WHEN t.days_in_window < 3 THEN NULL
         WHEN t.tvl_usd_7d_avg IS NULL OR t.tvl_usd_7d_avg <= 0 THEN NULL
+        -- $500 TVL floor: parity with int_execution_pools_metrics_daily.fee_apr_7d
+        -- (line 94). Without it, dust pools (tvl_7d_avg just above 0) divide to
+        -- absurd LVR values (e.g. 5e19) that pollute il_daily.
+        WHEN t.tvl_usd_7d_avg < 500 THEN NULL
         ELSE (t.swap_flow_usd_7d - t.fees_usd_7d)
              / t.tvl_usd_7d_avg * (365.0 / 7.0) * 100.0
     END AS lvr_apr_7d

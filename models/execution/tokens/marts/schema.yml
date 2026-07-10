@@ -25,9 +25,21 @@ models:
   - name: supply
     description: Circulating supply in native units on this date.
     data_type: Nullable(Float64)
+    tests:
+    # Negative supply reaches the API; detector for under-ingested tokens.
+    # severity=warn until affected tokens (e.g. wstETH) are backfilled, then error.
+    - dbt_utils.accepted_range:
+        min_value: 0
+        config:
+          severity: warn
   - name: supply_usd
     description: Circulating supply in USD (supply × daily price).
     data_type: Nullable(Float64)
+    tests:
+    - dbt_utils.accepted_range:
+        min_value: 0
+        config:
+          severity: warn
   - name: holders
     description: Distinct holders with positive balance on this date.
     data_type: Nullable(UInt64)

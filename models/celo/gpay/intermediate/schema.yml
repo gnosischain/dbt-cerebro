@@ -1,0 +1,248 @@
+version: 2
+
+models:
+- name: int_celo_gpay_wallet_events
+  description: |
+    Thin pass-through of the unified, append-only wallet-lifecycle event
+    log (issued_at + add_owner + remove_owner) — see sources.yml for the
+    full history of why this replaced two separate, mutable-row tables.
+    Full table rebuild (bounded by card count, not transaction volume —
+    same reasoning as int_celo_gpay_wallets, no incremental treatment
+    needed). Consumed by int_celo_gpay_wallets.sql (issued_at only) and
+    int_celo_gpay_safe_current_owners.sql (the full fold).
+  columns:
+  - name: safe_address
+    description: The GP card Safe this event is about.
+    data_type: String
+  - name: action
+    description: "issued_at | add_owner | remove_owner."
+    data_type: String
+  - name: action_value
+    description: >
+      The owner address involved. Nullable for issued_at when SafeSetup
+      hasn't been decoded yet.
+    data_type: Nullable(String)
+  - name: event_time
+    description: On-chain timestamp of the event.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_safe_current_owners
+  description: |
+    Current owner set per Safe, folded directly from
+    int_celo_gpay_wallet_events. Mirrors Gnosis Chain's
+    int_execution_safes_current_owners fold pattern exactly. No synthetic
+    seed row needed (unlike an earlier version of this model) — issued_at
+    is a real ingested event here, not derived separately, so a Safe with
+    no add/remove events still naturally has its initial owner represented.
+    This is a SEPARATE, additive signal from int_celo_gpay_wallets — that
+    model's owner_address intentionally stays the initial SafeSetup owner
+    forever, for identity purposes, unaffected by anything tracked here.
+    This model answers a different question ("who can currently sign for
+    this Safe") and can legitimately show the dead sentinel address
+    0x0000000000000000000000000000000000000002 as the current owner for
+    Safes where GP's provisioning flow disabled owner-based signing — that
+    is not a bug, it correctly reflects the on-chain state.
+  columns:
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+  - name: owner_address
+    description: A currently-valid owner of this Safe (may be the dead sentinel address, see model description).
+    data_type: String
+  - name: became_owner_at
+    description: When this owner was added (or the Safe's issuance time, if never touched since creation).
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_wallets
+  description: |
+    Canonical Celo GP card Safe list, reconstructed from
+    int_celo_gpay_wallet_events (action='issued_at') rather than read from
+    a per-safe snapshot table — see sources.yml for why the earlier
+    mutable-row wallets table was replaced with an append-only event log.
+    first_spend_at/is_activated are derived here directly from
+    crawlers_data.celo_gpay_transfers (not from an ingested event) — see
+    this model's own header comment for why that read goes straight to the
+    source rather than through int_celo_gpay_activity (would create a
+    circular dbt ref) and why a full scan of the transfers table on every
+    rebuild is acceptable (Gnosis Chain's own int_execution_gpay_wallets
+    already does an equivalent full scan of the much larger execution.logs,
+    successfully, as a materialized='table' full rebuild).
+    Deliberately materialized='table' (full rebuild), not incremental, and
+    expected to stay that way indefinitely: this table's size is bounded by
+    total card count, not transaction volume, so it stays small even at full
+    scale. A full rebuild also correctly re-checks is_activated/first_spend_at
+    for every Safe on every run regardless of how long ago it was issued —
+    e.g. a Safe issued today whose first spend happens two months from now is
+    picked up correctly with no special handling, because nothing here is
+    windowed by the Safe's age.
+  columns:
+  - name: safe_address
+    description: GP card Safe address on Celo (0x-prefixed, lowercase). The fund holder.
+    data_type: String
+  - name: owner_address
+    description: >
+      SafeSetup owner / signer key (first owner encountered). For MiniPay
+      cards, the MiniPay EOA — holds no funds. Nullable: a Safe can be
+      recognized via the bridge-module or activation signal alone, before
+      its SafeSetup event has been decoded, in which case this is
+      genuinely unknown rather than defaulted to an empty string.
+    data_type: Nullable(String)
+  - name: owners
+    description: >
+      Full owner/signer list for the Safe (usually a single element).
+      Empty array — not null — when SafeSetup hasn't been decoded yet, since
+      "zero owners" is an unambiguous representation of "no data" for an
+      array (unlike an empty string, which could be misread as a real
+      address).
+    data_type: Array(String)
+  - name: issued_at
+    description: Date of card issuance (SafeSetup event, or module-enable time as fallback).
+    data_type: Date
+  - name: first_spend_at
+    description: Date of first spend (transfer to settlement). Null if never activated.
+    data_type: Nullable(Date)
+  - name: is_activated
+    description: >
+      1 if the Safe has ever spent, else 0. Computed as
+      first_spend_at IS NOT NULL — not stored anywhere, since it's a pure
+      derivation with no interpretive logic, unlike transfer classification.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_activity
+  description: |
+    Per-transfer classified Celo GP activity. Classification happens HERE,
+    not upstream in Dune — Dune only supplies raw whitelisted-token transfers
+    touching a GP Safe (crawlers_data.celo_gpay_transfers: sender, receiver,
+    token, amount). This mirrors int_execution_gpay_activity on Gnosis Chain,
+    which also classifies from raw log data rather than a pre-classified
+    source, so fixing/extending classification is a dbt edit + re-run here,
+    not a Dune query edit + re-backfill.
+    Actions: Payment (Safe -> AggregateBridge settlement), Withdrawal (Safe
+    -> anything else, including hypothetically another GP Safe), Reversal
+    (AggregateBridge -> Safe; a processor-side refund of a failed/disputed
+    charge), Top-up (anything else -> Safe, e.g. a MiniPay funding wallet).
+    No Cashback action exists; the GNO cashback program is Gnosis Chain only.
+    CASE ordering in the model checks sender-based branches (Payment/
+    Withdrawal) before receiver-based branches (Reversal/Top-up) — required
+    so a hypothetical Safe-to-Safe transfer classifies as a Withdrawal from
+    the sending Safe, not a Top-up to the receiving Safe (safe_address always
+    resolves to sender when sender is a Safe, so action must agree).
+    Rows where neither sender nor receiver matches int_celo_gpay_wallets are
+    dropped, not guessed at — observed in practice (2026-07-02 test backfill,
+    3 rows) as a real race between crawlers_data.celo_gpay_transfers and
+    int_celo_gpay_wallets, which are each independently derived from the same
+    live, continuously-indexing Dune spine rather than one consistent
+    snapshot: a brand-new Safe's transfer can be extracted moments before
+    that same Safe lands in the wallets snapshot.
+    materialized='incremental' with incremental_strategy='insert_overwrite'
+    and apply_monthly_incremental_filter (same macro/pattern already used by
+    Gnosis Chain's int_execution_gpay_activity_daily and
+    int_execution_gpay_wallet_owners) — recomputes the whole current
+    calendar-month partition every run, not just literally-new rows. This is
+    what preserves the self-healing behavior above under incremental
+    materialization: a Safe recognized a few seconds/minutes late (the only
+    lag actually observed) gets correctly reclassified on the next run as
+    long as it's within the same month. int_celo_gpay_wallets itself stays a
+    full rebuild regardless (see that model's own doc) — only this
+    per-transfer model needs incrementality, since it's the one whose row
+    count scales with transaction volume, not signup volume.
+  columns:
+  - name: tx_hash
+    description: Transaction hash.
+    data_type: String
+  - name: block_time
+    description: Transfer timestamp.
+    data_type: DateTime
+  - name: date
+    description: Transfer date.
+    data_type: Date
+  - name: safe_address
+    description: The GP card Safe side of this transfer.
+    data_type: String
+  - name: action
+    description: "Payment | Withdrawal | Reversal | Top-up."
+    data_type: String
+  - name: direction
+    description: "'out' if the Safe is the sender, 'in' otherwise."
+    data_type: String
+  - name: token_symbol
+    description: USDT or USDC.
+    data_type: String
+  - name: counterparty
+    description: The non-Safe side of the transfer (settlement contract, funding wallet, another Safe, etc).
+    data_type: String
+  - name: amount
+    description: Token-native transfer amount.
+    data_type: Float64
+  - name: amount_usd
+    description: USD value. Nullable — a brief Dune price-feed gap should not fail ingestion.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_activity_daily
+  description: |
+    Daily aggregation of int_celo_gpay_activity by Safe/action/token.
+    Incremental (insert_overwrite + apply_monthly_incremental_filter),
+    mirroring int_execution_gpay_activity_daily exactly.
+  columns:
+  - name: date
+    description: Activity date.
+    data_type: Date
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+  - name: action
+    description: "Payment | Withdrawal | Reversal | Top-up."
+    data_type: String
+  - name: token_symbol
+    description: USDT or USDC.
+    data_type: String
+  - name: amount
+    description: Sum of token-native amount for the day.
+    data_type: Float64
+  - name: amount_usd
+    description: Sum of USD value for the day (NULLs skipped by SUM, not treated as zero).
+    data_type: Float64
+  - name: activity_count
+    description: Number of transfers aggregated into this row.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_balances_daily
+  description: |
+    Cumulative net-flow balance per Safe/token ((Top-up + Reversal) minus
+    (Payment + Withdrawal), running total since the Safe's first activity).
+    Not a real balance snapshot — see model header comment for why net-flow-
+    since-inception is sufficient here (no pre-launch opening-balance problem).
+  columns:
+  - name: date
+    description: Balance-as-of date. Rows exist only on days with flow activity.
+    data_type: Date
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+  - name: token_symbol
+    description: USDT or USDC.
+    data_type: String
+  - name: balance
+    description: Cumulative net token-native balance as of this date.
+    data_type: Float64
+  - name: balance_usd
+    description: Cumulative net USD balance as of this date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false

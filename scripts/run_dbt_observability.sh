@@ -422,8 +422,11 @@ else
 fi
 
 # ── 4. Semantic docs and registry artifacts ──────────────────────────────
+# Exclude dev-tagged models: prod builds only tag:production, so dev/WIP
+# models are never materialised and a bare docs generate aborts on their
+# missing tables. Keeps the catalog to the published (prod) surface.
 run_step "dbt-docs" \
-  dbt docs generate \
+  dbt docs generate --exclude tag:dev \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 

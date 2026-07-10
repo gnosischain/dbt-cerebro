@@ -791,7 +791,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: value
-    description: The effective staked GNO value divided by 32, representing the normalized daily staked amount.
+    description: The network's total effective balance in real GNO (mGNO->GNO conversion happens upstream in int_consensus_validators_balances_daily).
     data_type: Float64
     tests:
     - elementary.column_anomalies:
@@ -1310,14 +1310,6 @@ models:
     tests:
     - not_null
     - unique
-
-  - name: cnt
-    description: The count of deposit or withdrawal transactions, representing the number of events.
-    data_type: UInt64
-
-  - name: total_amount
-    description: The total monetary value of deposits or withdrawals, rounded to two decimal places, measured in the relevant currency units.
-    data_type: Float64
 
   - name: value
     description: Numeric value of the metric; units vary (counts, amounts, percentages).
@@ -1942,16 +1934,16 @@ models:
     description: Total proposer reward earned on the date, in GNO (0 if none).
     data_type: Float64
   - name: proposer_reward_attestations_gno
-    description: Proposer-reward component from included attestations, in GNO (source Gwei / 1e9).
+    description: Proposer-reward component from included attestations, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: proposer_reward_sync_aggregate_gno
-    description: Proposer-reward component from sync-aggregate inclusion, in GNO (source Gwei / 1e9).
+    description: Proposer-reward component from sync-aggregate inclusion, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: proposer_reward_proposer_slashings_gno
-    description: Proposer-reward component from included proposer slashings, in GNO (source Gwei / 1e9).
+    description: Proposer-reward component from included proposer slashings, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
   - name: proposer_reward_attester_slashings_gno
-    description: Proposer-reward component from included attester slashings, in GNO (source Gwei / 1e9).
+    description: Proposer-reward component from included attester slashings, in real GNO (source gwei-of-mGNO / 1e9 / 32).
     data_type: Float64
 
 - name: api_consensus_validators_performance_latest
@@ -2053,7 +2045,7 @@ models:
     data_type: UInt64
   - name: anomaly_flag
     description: |
-      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 500 GNO.
+      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 16 GNO (the old 500-mGNO floor in real-GNO terms).
       Advisory only — raw income_gno remains visible. Surfaced in the dashboard tooltip.
     data_type: UInt8
   tests:
@@ -2546,7 +2538,7 @@ models:
     data_type: UInt64
   - name: anomaly_flag
     description: |
-      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 500 GNO.
+      1 when abs(income_gno) > 5 * trailing-30d median(abs(income_gno)) AND abs(income_gno) > 16 GNO (the old 500-mGNO floor in real-GNO terms).
       Advisory only — raw income_gno remains visible. Surfaced in the dashboard tooltip.
     data_type: UInt8
 

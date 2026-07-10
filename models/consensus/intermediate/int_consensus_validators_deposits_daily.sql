@@ -76,10 +76,13 @@ request_deposits AS (
     GROUP BY 1, 2
 )
 
+-- deposits_amount_gno is REAL GNO: source amounts are gwei-of-mGNO
+-- (32 mGNO = 1 GNO), converted here at the origin via /1e9/32.
+-- Consumers must NOT divide by 32 again.
 SELECT
     date
     ,validator_index
-    ,SUM(amount_gwei) / POWER(10, 9) AS deposits_amount_gno
+    ,SUM(amount_gwei) / POWER(10, 9) / 32 AS deposits_amount_gno
     ,SUM(cnt) AS deposits_count
 FROM (
     SELECT * FROM beacon_deposits

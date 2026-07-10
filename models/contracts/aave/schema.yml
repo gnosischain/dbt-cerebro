@@ -2,44 +2,32 @@ version: 2
 models:
 
 - name: contracts_aaveV3_PoolInstance_events
-  description: The `contracts_aaveV3_PoolInstance_events` model captures and processes event logs related to Aave V3 pool instances, enabling analysis of protocol interactions and state changes over time.
+  description: Decoded event logs from the Aave V3 Pool (PoolInstance) contract on Gnosis. Thin wrapper around the decode_logs macro; one row per emitted log.
   columns:
-
-  - name: block_timestamp
-    description: Timestamp of the block when the event was emitted, in UTC.
-    data_type: DateTime
-
-  - name: transaction_hash
-    description: Unique hash identifying the transaction that emitted the event.
-    data_type: String
-
-  - name: log_index
-    description: Index of the log within the block, used to order events.
-    data_type: UInt64
-
-  - name: event_type
-    description: Type of the event emitted, e.g., 'Deposit', 'Withdraw'.
-    data_type: String
-
-  - name: pool_address
-    description: Address of the Aave V3 Pool contract instance.
-    data_type: String
-
-  - name: reserve_asset
-    description: Address of the reserve asset involved in the event.
-    data_type: String
-
-  - name: amount
-    description: Amount involved in the event, denominated in wei.
-    data_type: String
-
-  - name: user_address
-    description: Address of the user involved in the event.
-    data_type: String
-
   - name: block_number
     description: Number of the block containing the event.
-    data_type: UInt64
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: Timestamp of the block when the event was emitted, in UTC.
+    data_type: DateTime64(0, 'UTC')
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: Nullable(String)
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: Nullable(UInt32)
+  - name: log_index
+    description: Index of the log within the block, used to order events.
+    data_type: Nullable(UInt32)
+  - name: contract_address
+    description: Address of the contract that emitted the event.
+    data_type: Nullable(String)
+  - name: event_name
+    description: Decoded event name; empty string when the event signature is not registered in event_signatures.
+    data_type: String
+  - name: decoded_params
+    description: Map of decoded event parameters (parameter name to string value); keys vary by event type.
+    data_type: Map(String, Nullable(String))
   meta:
     owner: analytics_team
     authoritative: false
@@ -50,13 +38,6 @@ models:
         enabled: true
         date_column: block_timestamp
         batch_days: 1
-    generated_by: dbt-schema-gen
-    _generated_at: '2025-12-12T23:06:58.508146'
-    _generated_fields:
-    - description
-    - config.tags
-    - config.materialized
-
   tests:
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns:
@@ -67,41 +48,36 @@ models:
 - name: contracts_aaveV3_AToken_events
   description: Decoded event logs from Aave V3 aToken contracts on Gnosis (aGnoGNO, aGnoWXDAI, aGnosDAI, aGnoUSDC, aGnoEURe, aGnoUSDCe). Key events include BalanceTransfer (scaled balance movements between users), Transfer (ERC20), Mint, Burn, and Initialized.
   columns:
-
-  - name: block_timestamp
-    description: Timestamp of the block when the event was emitted, in UTC.
-    data_type: DateTime
-
-  - name: transaction_hash
-    description: Unique hash identifying the transaction that emitted the event.
-    data_type: String
-
-  - name: log_index
-    description: Index of the log within the block, used to order events.
-    data_type: UInt64
-
   - name: block_number
     description: Number of the block containing the event.
-    data_type: UInt64
-
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: Timestamp of the block when the event was emitted, in UTC.
+    data_type: DateTime64(0, 'UTC')
+  - name: transaction_hash
+    description: Hash of the transaction that emitted the event.
+    data_type: Nullable(String)
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: Nullable(UInt32)
+  - name: log_index
+    description: Index of the log within the block, used to order events.
+    data_type: Nullable(UInt32)
   - name: contract_address
     description: Address of the aToken contract that emitted the event.
-    data_type: String
-
+    data_type: Nullable(String)
   - name: event_name
     description: Name of the event emitted, e.g. BalanceTransfer, Transfer, Mint, Burn.
     data_type: String
-
   - name: decoded_params
     description: Map of decoded event parameters (keys and values vary by event type).
-    data_type: Map(String, String)
+    data_type: Map(String, Nullable(String))
   meta:
     owner: analytics_team
     authoritative: false
     full_refresh:
       start_date: "2023-10-04"
       batch_months: 6
-
       incremental:
         enabled: true
         date_column: block_timestamp
@@ -114,44 +90,32 @@ models:
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_aaveV3_PoolConfigurator_events
-  description: The `contracts_aaveV3_PoolConfigurator_events` model captures and processes event logs related to the Aave V3 Pool Configurator, enabling analysis of configuration changes and events within the protocol.
+  description: Decoded event logs from the Aave V3 PoolConfigurator contract on Gnosis (reserve and risk-parameter governance events). Thin wrapper around the decode_logs macro.
   columns:
-
   - name: block_number
-    description: The block number at which the event was emitted.
-    data_type: UInt64
-
-  - name: log_index
-    description: The index of the log within the block.
-    data_type: UInt64
-
+    description: Number of the block containing the event.
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: Timestamp of the block when the event was emitted, in UTC.
+    data_type: DateTime64(0, 'UTC')
   - name: transaction_hash
     description: Hash of the transaction that emitted the event.
-    data_type: String
-
-  - name: block_timestamp
-    description: Timestamp of the block when the event was emitted.
-    data_type: DateTime
-
+    data_type: Nullable(String)
+  - name: transaction_index
+    description: Index of the transaction within the block.
+    data_type: Nullable(UInt32)
+  - name: log_index
+    description: Index of the log within the block, used to order events.
+    data_type: Nullable(UInt32)
+  - name: contract_address
+    description: Address of the contract that emitted the event.
+    data_type: Nullable(String)
   - name: event_name
-    description: Name of the event emitted, e.g., 'PoolConfigChanged'.
+    description: Decoded event name; empty string when the event signature is not registered in event_signatures.
     data_type: String
-
-  - name: sender
-    description: Address of the sender who triggered the event.
-    data_type: String
-
-  - name: new_config_value
-    description: The new configuration value set by the event, in wei or relevant units.
-    data_type: String
-
-  - name: old_config_value
-    description: The previous configuration value before the event, in wei or relevant units.
-    data_type: String
-
-  - name: event_data
-    description: Raw JSON data of the event for additional context.
-    data_type: JSON
+  - name: decoded_params
+    description: Map of decoded event parameters (parameter name to string value); keys vary by event type.
+    data_type: Map(String, Nullable(String))
   meta:
     owner: analytics_team
     authoritative: false

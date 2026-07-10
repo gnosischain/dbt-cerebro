@@ -38,8 +38,11 @@ interactions AS (
     {% if start_month and end_month %}
     WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
       AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% elif is_incremental() %}
-    WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM {{ this }})
+    {% else %}
+      {# Match the trades CTE's whole-month window: under insert_overwrite the
+         month is rebuilt in full, so the interactions join must cover the same
+         months or pre-(max-3) batches get num_interactions=0 and spurious is_cow. #}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp') }}
     {% endif %}
     GROUP BY transaction_hash
 ),
@@ -66,11 +69,10 @@ tx_context AS (
     {% if start_month and end_month %}
       AND block_timestamp >= toDate('{{ start_month }}') - INTERVAL 1 DAY
       AND block_timestamp <= toDate('{{ end_month }}') + INTERVAL 32 DAY
-    {% elif is_incremental() %}
-      AND block_timestamp >= (
-          SELECT addDays(max(toDate(block_timestamp)), -3)
-          FROM {{ this }}
-      )
+    {% else %}
+      {# Match the trades CTE's whole-month window so gas/tx_cost is present for
+         the full rebuilt month, not just the last 3 days. #}
+      {{ apply_monthly_incremental_filter('block_timestamp', 'block_timestamp', add_and=True) }}
     {% endif %}
 )
 

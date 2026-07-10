@@ -1,6 +1,60 @@
 # Model review (revisit 2026-06-21): execution/pools
 
-Baseline: [`docs/model_review/execution-pools.md`](../execution-pools.md) (dated `2026-06-11`); `25` cases re-verified over `3` rounds on `2026-06-21`. Headline: `2` resolved (dev-tag CI bypass, balances full-rebuild cap), `6` changed (mostly fixed or severity right-sized), `17` still confirmed; no new issues. The two highest-impact open defects remain: the **Balancer V2 omission** silently drops the chain's oldest AMM from every ecosystem volume/fee total (`C02`/`C17`, high), and the **LVR `$500` floor gap** still violates the `net <= fee` contract (`C03`/`C04`/`C18`).
+Baseline: [`docs/model_review/execution-pools.md`](../execution-pools.md) (dated `2026-06-11`); `25` cases re-verified over `3` rounds on `2026-06-21`. Headline: `2` resolved (dev-tag CI bypass, balances full-rebuild cap), `6` changed (mostly fixed or severity right-sized), `17` still confirmed; no new issues. The two highest-impact defects flagged at that time — the **Balancer V2 omission** (`C02`/`C17`) and the **LVR `$500` floor gap** (`C03`/`C04`/`C18`) — have since been resolved: see **[Remediation & decisions (2026-06-30)](#remediation--decisions-2026-06-30-backlog-worked-down)** below, where the LVR floor was fixed and the V2 omission was closed as a verified, intentional exclusion. As of `2026-06-30` no high/medium correctness defect remains open in the pools cluster (the only pending item is an operational prod rebuild).
+
+## Remediation applied (2026-06-26): insert_overwrite lookback data-loss (NEW, fixed)
+
+Found during the CoW review (same bug class as cow `C04`/`C05`). After the `delete+insert -> insert_overwrite` migration (commit `0d261e1`, 2026-06-02), three `pools` intermediates rebuild the **whole current-month partition** but joined transaction context through a hardcoded **day-level `addDays(max,-3)`** subquery. Under `insert_overwrite` the month partition is replaced in full, so every trade/event older than `max-3` in the rebuilt month lost its `tx_from`/`tx_to`, which also broke `coalesce(taker, tx_from)`.
+
+Confirmed **live in prod** (`dbt` db): `int_execution_pools_dex_trades` and `int_execution_pools_dex_liquidity_events` showed `100%` NULL `tx_from` for Jun 14-20 (the rebuilt-month days outside the 3-day window), clean only for the last ~3 days.
+
+Fix: replace the day-level join filters with the strategy-aware `apply_monthly_incremental_filter(...)` macro so the join window matches the whole-month recompute. Also aligned the `-30`-day price ASOF windows (here and in cow trades) onto the same macro (`lookback_days=31`), which additionally makes them honor the `price_lookback_days` refill var.
+
+| model | join fixed | before | after |
+|---|---|---|---|
+| `int_execution_pools_dex_trades_tx_context.sql` | outer `t.block_timestamp` filter (root cause) | `AND ... >= addDays(max,-3)` | `apply_monthly_incremental_filter('t.block_timestamp','block_timestamp', add_and=True)` |
+| `int_execution_pools_dex_trades.sql` | `tx` LEFT JOIN + 2 price ASOF joins | `-3` (tx), `-30` (price) | macro (tx), macro `lookback_days=31` (price) |
+| `int_execution_pools_dex_liquidity_events.sql` | `tx_context` CTE | `AND ... >= addDays(max,-3)` | `apply_monthly_incremental_filter(..., add_and=True)` |
+| `int_execution_cow_trades.sql` (cow, consistency) | 2 price ASOF joins | `-30` | macro `lookback_days=31` |
+
+**Prod repair required** — the code fix only prevents recurrence; the already-corrupted current-month rows must be rebuilt once. Recompute the current month for the three pools intermediates and their downstream marts, e.g. `dbt run -s int_execution_pools_dex_trades_tx_context+ int_execution_pools_dex_liquidity_events+` for the live month (the next scheduled incremental run also self-heals since the macro now re-pulls the whole month).
+
+## Remediation & decisions (2026-06-30): backlog worked down
+
+Second remediation pass over the open backlog. Net: `5` cases fixed in code (`C03`, `C04`, `C06`, `C19`, `C22`), `4` cases closed as deliberate **WONT-FIX** with evidence (`C02`, `C17`, `C21`, `C09`), and a cross-protocol Balancer-V3 audit confirming no further registry blind spots beyond the one fixed. The headline now reads: the LVR floor is fixed and the Balancer V2 omission is a verified, intentional exclusion (not a latent bug).
+
+### Fixed in code (5)
+
+| case | file(s) | change | verification |
+|---|---|---|---|
+| `C03` LVR `$500` floor | `marts/fct_execution_pools_il_daily.sql` | Added `WHEN t.tvl_usd_7d_avg < 500 THEN NULL` to `lvr_apr_7d` (parity with `metrics_daily` `fee_apr` line 94). | SQL recompute on prod: `5e19` outliers removed, max LVR `5.02e19 -> 628`, `12,208` dust pools nulled. **Reaches the dashboard**: `fct_execution_pools_daily` does NOT recompute LVR — `lvr_apr_7d_raw` is pulled straight from `il_daily` (LEFT JOIN line 222) and 7d-averaged, so the floor propagates to `api_execution_pools_net_apr_daily` once rebuilt. |
+| `C04` LVR sign contract | `marts/schema.yml` | Dropped the false "Always <= 0" claim on `lvr_apr_7d` (2 places); now states it is usually negative but the signed swap-flow proxy can yield small positives, and is NULL under the `$500` TVL floor. | Doc now matches observed data (positive LVR values exist by design of the proxy). |
+| `C06` schema/output drift | `marts/schema.yml` | `api_execution_pools_lp_activity_daily` doc corrected from phantom `(date, token, mints, burns)` to actual output `(date, token, label, type, value)`. | Matches model SELECT (Add/Remove unpivot). |
+| `C22` trades_lifetime grain doc | `marts/schema.yml` | `lifetime_volume_usd` doc corrected to describe hop/leg grain (matching the volume timeseries `api_execution_trades_stats_volume_ts` <- `fct_execution_trades_by_protocol_daily`), and flagged as a deliberately different grain from per-tx `lifetime_trade_count`. | **Number left unchanged** — the hop grain is intentional and consistent with every volume chart; re-graining to tx would make the tile contradict the charts. Doc-only fix. |
+| `C19` BV3 dropped from LP counts | `marts/fct_execution_pools_lps_latest.sql` | Added a Balancer V3 branch to `pool_token_map` sourcing `(pool, token)` from `int_execution_pools_balances_daily` (BV3 is multi-token and absent from the pair-shaped registry), mirroring `fct_execution_pools_daily`'s `registry_pool_tokens`. Intentionally NOT gated on complete/priced pools (LP counts need no prices). | Join verified to recover `114` BV3 pools / `19` tokens / `2,697` rows historically. Dev rebuild: BV3 now contributes `8` unique LPs / `7` tokens to the current 7d window (was `0`). |
+
+### Closed as WONT-FIX (4) — verified, intentional
+
+- **`C02` / `C17` (Balancer V2 omission, was high).** Decision: **do not surface V2 in the pools TVL/fee marts.** Evidence: V2 collapsed ~99% from its mid-2025 peak ($117.9M in Jul-2025, ~60% share) to ~$0.9M/mo (Jun-2026, `4.6%` of 90d volume; Uniswap V3 is now `77.4%`). Its 1.8M swaps/90d are tiny dust/arb (more swaps than Uniswap V3 but 4.6% of value). V2 trading activity is **already on the dashboard** via the Trades section (`fct_execution_trades_by_protocol_daily`). Surfacing V2 *TVL* honestly would require BPT-NAV pricing (see C21). Recorded as a deliberate, documented exclusion rather than a silent drop.
+- **`C21` (V2 46.8% null price, was medium).** Decision: **WONT-FIX (backlog BPT-NAV).** Verified the null-price rows are `99.76%` BPT/LP tokens with no whitelist symbol (`420,116` rows / `983` tokens) — Balancer Pool Tokens of nested/boosted pools that have no market price and cannot be fetched (Dune does not price BPTs either). The only correct fix is NAV pricing (`BPT_price = pool_TVL / BPT_supply`, recursively), which has no foundation today: no BPT-supply data exists in any dbt model or in rpc-caller (only a test-WXDAI `totalSupply`). The remaining `0.24%` (`1,003` rows / 7 named tokens: bCSPX/bTSLA/bCOIN/bNVDA/bMSTR/GBPe/sDAI) are historical-only and already priced today via the `backedfi` source. A BPT-NAV model is a genuine project that would also fix V3's wrapper gap; backlog it, justified only if Balancer TVL accuracy becomes a priority.
+- **`C09` (GHO whitelist miss, was medium).** Decision: **SKIP.** GHO is V3-only (`2` pools); Dune has no Gnosis GHO price (only ethereum/arbitrum, ~$0.999), so the fix would be a whitelist row + `$1` peg / eth-proxy. But the named GHO pool (`0xc2c6a234...`) has drained to `$532` at the latest date (rank 7, ~1% of a tiny V3 total); the earlier "$247k/day" was a cumulative-sum artefact. More decisively, a GHO-only patch does **not** address the real pattern: the `balancer_v3_complete_pools` filter silently drops **every** V3 pool with any unpriced leg — incl. the current #1 V3 pool (`0xe2a72f9e...`, $43k, 2 unpriced legs). Of the 6 largest current V3 pools, only the one with zero unpriced legs (`0x6e6bb18...`) is in `fct`. The systemic angle (a guard/visibility so unpriced V3 legs do not silently drop whole pools) is the only durable value, and it is the same wrapper/BPT pricing gap as C21 — backlog with C21, low priority given V3's immateriality (~$50-90k total TVL). Also note `0x58d9ac...` resolves as `waGnoGHO` (ERC4626, yield-bearing) -> the model values wrapper legs 1:1 with underlying, a pre-existing simplification shared by all `waGno*` wrappers, not GHO-specific.
+
+### Cross-protocol Balancer-V3 audit (triggered by C19)
+
+The pair-shaped `stg_pools__v3_pool_registry` (`2,280` Swapr V3 + `137` Uniswap V3, `0` Balancer V3 — BV3 is multi-token Vault pools that do not fit `token0`/`token1`) is used in ~18 models. Audited every consumer for the same blind spot:
+
+- **Already handle BV3 via a dedicated branch (no action):** `fct_execution_pools_daily` (balances branch), `int_execution_pools_fees_daily` (`balancer_v3_swap_fees` CTE), `fct_execution_yields_opportunities_latest` (BV3 fee-tier via Vault `SwapFeePercentageChanged` + LP fees from `fct_execution_pools_daily`), and `fct_execution_pools_lps_latest` (now fixed).
+- **Protocol-specific models (registry use correct):** `int_execution_pools_uniswap_v3_daily`/`swapr_v3_daily`, Uniswap/Swapr staging, UBO claims (uni/swapr), live trades (uni/swapr) — BV3 has its own pipeline.
+- **Excludes BV3 by design (NOT a bug):** `int_execution_pools_il_swap_flows_daily` (LVR base) filters `protocol IN ('Uniswap V3','Swapr V3')` at line 34 — the signed `amount0`/`amount1` swap-flow LVR proxy only applies to two-token pools. So **BV3 has no LVR**; extending it needs a different multi-token proxy (separate project, not a registry tweak).
+- **Out of scope (other clusters), flag only:** `int_execution_accounts_non_user_contracts` and `int_execution_circles_v2_crc20_pools` use the registry for pool *detection* and could miss BV3 pool addresses — belongs to the accounts/Circles reviews, niche impact.
+
+### Operational follow-up (pending)
+
+- **Prod current-month rebuild** to materialize (a) the `insert_overwrite` lookback fix on the 3 pools intermediates and (b) the LVR `$500` floor through `il_daily -> fct_execution_pools_daily`. Code is fixed; prod rows are not repaired until rebuilt. `fct_execution_pools_lps_latest` (C19) also needs a prod rebuild (table). Dev (`playground_max`) builds verified clean.
+
+### Net remaining (all low priority / backlog)
+
+`C01` residual V3 negative TVL (wrapper accounting), `C07` `prev_balances` no `FINAL`, `C20` semantic metrics, `C24` "Direct" label, and the P4 convention nits (`C10`, `C12`, `C14`, `C15`, `C16`, `C23`). No high/medium correctness defects remain open in the pools cluster.
 
 ## Status summary
 

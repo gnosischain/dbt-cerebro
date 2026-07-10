@@ -15,6 +15,10 @@
     )
 }}
 
+-- transferred_amount_gno is REAL GNO: source amounts are gwei-of-mGNO
+-- (32 mGNO = 1 GNO), converted here at the origin via /1e9/32.
+-- Consumers must NOT divide by 32 again.
+--
 -- Consolidations (EIP-7251 / MaxEB). See https://notes.ethereum.org/@fradamt/maxeb-consolidation
 -- Self-consolidation (source_pubkey == target_pubkey): credential switch 0x01 -> 0x02, no balance transfer.
 -- Cross-consolidation (source != target): processed at source's withdrawable epoch; source's full effective
@@ -151,7 +155,7 @@ cross_rows AS (
         ,source_validator_index AS validator_index
         ,'source' AS role
         ,toNullable(target_validator_index) AS counterparty_validator_index
-        ,transferred_amount_gwei / POWER(10, 9) AS transferred_amount_gno
+        ,transferred_amount_gwei / POWER(10, 9) / 32 AS transferred_amount_gno
         ,1 AS cnt
     FROM applications
     WHERE application_date IS NOT NULL
@@ -163,7 +167,7 @@ cross_rows AS (
         ,target_validator_index AS validator_index
         ,'target' AS role
         ,toNullable(source_validator_index) AS counterparty_validator_index
-        ,transferred_amount_gwei / POWER(10, 9) AS transferred_amount_gno
+        ,transferred_amount_gwei / POWER(10, 9) / 32 AS transferred_amount_gno
         ,1 AS cnt
     FROM applications
     WHERE application_date IS NOT NULL

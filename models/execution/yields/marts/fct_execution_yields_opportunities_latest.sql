@@ -148,6 +148,9 @@ FROM (
         LEFT JOIN lp_pool_volume_7d pv ON pv.pool = f.pool
         LEFT JOIN pool_fee_tiers ft ON ft.pool_address = f.pool_address
         WHERE f.date = d.max_date
+          -- Quiet-pool exclusion (by design): pools with NULL fee_apr_7d — no swaps
+          -- in the trailing 7d, so no computable fee APR — are dropped from the
+          -- opportunities board. Low impact (only tiny/inactive pools). Review C17.
           AND f.fee_apr_7d IS NOT NULL
           AND f.pool IS NOT NULL
     ),

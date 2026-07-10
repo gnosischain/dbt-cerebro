@@ -13,6 +13,8 @@
 -- Daily EIP-7251 consolidation event counts + transferred amounts, stacked by role
 -- ('self', 'source', 'target'). See int_consensus_validators_consolidations_daily for
 -- the application-day inference and amount derivation.
+-- int_consensus_validators_consolidations_daily's "_gno" columns are already
+-- REAL GNO (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
 SELECT
     date
     ,role

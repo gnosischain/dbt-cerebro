@@ -1,5 +1,36 @@
 # Model review (revisit 2026-06-21): contracts/lending-tokens-oracles
 
+## Re-verification 2026-06-30 (live prod `dbt` + code)
+
+All 19 cases re-checked against current code and warehouse, 9 days after the 06-21 revisit. **No reviewed model file changed in this window** — `git log` over `models/contracts/{agave,backedfi,aave,spark,chainlink,GBCDeposit}` + lending seeds since 2026-06-21 shows only a brand-new `contracts_ocsdai_events` model (`098fc082`, 2026-06-22) and the unrelated BalancerV2 fee refactor. Every defect is therefore code-identical to 06-21 and re-confirmed on live data. **0 resolved, C03 materially worse, 1 NEW case (N01). C01 action corrected — disable (dead-protocol orphan), not load the ABI; severity reframed critical→medium.**
+
+### Still valid — fix for sure
+| case | sev | live proof (2026-06-30, `dbt`) | fix |
+|---|---|---|---|
+| C01 | medium (was critical) | `contracts_agave_LendingPool_events` = `63,381,074` rows, `100%` blank `event_name`; addr `0x5E15…6d9c` (dune label: Agave) = `0` `event_signatures`. **The 63M is a Feb–Mar 2026 burst** (`43.1M` Feb + `20.1M` Mar; real distinct logs — top txs emit `604` logs each with `604` distinct `log_index`, not duplication). Real usage wound down: `18.5k` rows 2024 → `1.5k` 2025 → `26–40/mo` Apr–Jun 2026. Contract is live on-chain (`getReservesList()` = 11 reserves) but has `0` downstream consumers. | **Disable / decommission** the model — do NOT load the ABI (would only decode 63M rows of dead-protocol bot/loop noise that nothing consumes). Resolves C01 + C04 jointly. Optionally hand the Feb–Mar burst to security/forensics (604 logs/tx is loop-shaped). |
+| C03 | high (worse) | bC3M raw frozen at `2026-04-23` (`1,835` rows) = **68 days stale** (was 59); `fct_execution_rwa_backedfi_prices_daily` still serves price **`126.2`** forward to `2026-06-29` (`1,084` rows) with no staleness guard. | Cap/flag the bC3M forward-fill so downstream USD valuation stops consuming a 68-day-dead oracle. |
+| C02 | high | Phantom columns unchanged in `aave/schema.yml` (PoolInstance: `event_type/pool_address/reserve_asset/amount/user_address`; PoolConfigurator: `sender/new_config_value/old_config_value/event_data`) and `tokens/schema.yml` (sdai, wxdai_events, wxdai_calls); backedfi 9 + GBCDeposit unchanged. No phantom carries a test (doc-only drift). | Regenerate against the real 8-col `decode_logs` output; `aaveV3_AToken` and the new `ocsdai` schema are the correct templates. |
+| C04 | medium | `0` `ref()` consumers of the Agave model (only its own schema.yml); tags still `['production',…]`; appending daily. | Disable to stop the daily 63M-row `execution.logs` scan (resolve jointly with C01). |
+| C13 | medium | `deposists` typo still in the model filename `int_GBCDeposit_deposists_daily.sql` + `semantic_models.yml` + `GBCDeposit/intermediate/schema.yml` + `semantic/relationships/execution_graph.yml`. | Atomic rename `deposists`→`deposits` across file, semantic model, and relationship graph. |
+| N01 | medium (NEW) | `contracts_ocsdai_events` committed `098fc082` (06-22), tagged `production`; decodes cleanly in `playground_max` (`6,125` rows, `0%` blank, 22 event types) but **absent from prod `dbt`** (UNKNOWN_TABLE). Downstream `int_yields_ocsdai_share_price_daily` → revenue sDAI look-through has no prod source until deployed. Schema.yml correctly authored (no phantom). | Deploy/build the ocsDAI branch to prod (the pending prod move of the ocsDAI revenue work). |
+
+### Still valid — low / cosmetic / latent (no live harm; unchanged from 06-21)
+C05 (calls grain latent on `execution.transactions`), C06 (spark `start_blocktime` 1-month pre-launch, cost-only), C07 (`order_by` not the provable key; 0 dups), C09 (aGnoWXDAI checksum case), C14 (CHF/DAI/USDC peg-proxy masks token depeg, undocumented), C16 (aave/spark PoolConfigurator orphans; 15-row aave ABI gap).
+
+### Refuted / no-live-impact (held from 06-21, do not action)
+C08 (chainlink 2021 start — 63% of rows are real pre-2022 activity), C10 (bTSLA priced via Dune fallback, no NULL), C11 (osETH/stETH untracked, wstETH already priced), C12 (`atoken_reserve_mapping` gap covered by the `lending_market_mapping` union).
+
+### Healthy — confirmed clean on live data
+C15 spark_AToken `96,301` rows (activity floor, not ABI gap); C17 aaveV3_PoolInstance `3,733,670` rows fresh to today; C18 chainlink_feeds `1,172,599` rows fresh to today, 0 dups; C19 aaveV3_AToken `3,076,739` rows fresh to today.
+
+### Actions taken 2026-06-30
+- **C01 / C04 — DONE, verified.** `contracts_agave_LendingPool_events` set `enabled = false` (decommissioned). Verified Agave is a dead orphan: real usage `18.5k`(2024) → `1.5k`(2025) → `~30/mo`(Apr–Jun 2026); the 63M is a Feb–Mar 2026 bot burst (604 distinct logs/tx, not duplication). `dbt run -s contracts_agave_LendingPool_events` (2026-06-30) confirms: "does not match any enabled nodes" — the model is fully excluded from the manifest, not merely skipped, so it cannot be selected by `tag:production` or any cron job. Existing 63M-row table remains in the warehouse (disabling does not drop prior materializations); follow-up `DROP TABLE dbt.contracts_agave_LendingPool_events` in prod is optional cleanup, not urgent.
+- **C02 — DONE.** Regenerated `aave`, `tokens`, `backedfi` (9 models) and `GBCDeposit` schema.yml against the verified decode output — events = 8 cols (incl. `event_name String`, `decoded_params Map(String, Nullable(String))`); calls = 9 cols (incl. `function_name`, `decoded_input`). No dbt test referenced the phantom columns, so zero data/test impact. (`aaveV3_AToken` + `ocsdai` were already correct.)
+- **C03 — root cause confirmed; fix still open.** bC3M oracle `0x83Ec…` returns `latestRoundData()` round 915 / `updatedAt 2026-04-23` (deprecated on-chain). The other 8 BackedFi oracles are fresh (`2026-06-29`) — bC3M is the only dead feed. Remaining fix: add a staleness guard to the `fct_execution_rwa_backedfi_prices_daily` forward-fill.
+- **C13 — reframed to cosmetic.** The typo is consistent across every reference (incl. `cerebro-mcp/custom_tools.yaml`, graph-explorer UI, cerebro-docs), so nothing is functionally broken. Not worth a standalone cross-repo rename; fold into the GBCDeposit P0-11 (Gwei→GNO) fix.
+
+---
+
 Baseline `docs/model_review/contracts-lending-tokens.md` (2026-06-11), re-verified 2026-06-21 across 3 rounds; all `19` cases re-checked. Headline: `0` resolved, `4` downgraded/changed (C08/C10/C11/C12 — coverage-gap NULL-pricing premises refuted, chainlink wasted-scan premise refuted), `15` still confirmed at baseline-or-reconciled severity; the Agave LendingPool 63.4M-row 100%-undecoded defect (C01, critical) and the silent 59-day-stale bC3M price served downstream (C03, escalated to high) remain the two load-bearing findings.
 
 ## Status summary

@@ -69,6 +69,111 @@ sources:
           - name: ingested_at
             description: Wall-clock timestamp of the row insert.
 
+      - name: celo_gpay_transfers
+        description: >
+          Raw, UNCLASSIFIED whitelisted-token (USDT/USDC) ERC-20 transfers
+          touching a Celo GP card Safe on either side. Deliberately not
+          pre-classified here — Dune only does the extraction + wallet-
+          membership + token-whitelist filtering that requires querying
+          Celo chain data ClickHouse doesn't otherwise have; the actual
+          Payment/Top-up/Withdrawal/Reversal classification happens in
+          int_celo_gpay_activity.sql, mirroring how Gnosis Chain classifies
+          from raw execution.logs rather than a pre-classified source. This
+          keeps classification logic versioned/testable in dbt-cerebro
+          instead of living in an external Dune query. Ingested by
+          click-runner: a one-time full backfill since launch plus a daily
+          3-day-lookback incremental job (tolerates the job not running for
+          up to 2 days straight), both writing into the same
+          ReplacingMergeTree table. Deduped via `OPTIMIZE ... FINAL` after
+          every insert (see queries/celo_gpay/optimize_celo_gpay_transfers.sql)
+          so the overlap window never double-counts on same-day reads.
+        loaded_at_field: block_time
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: sender
+            description: Transfer sender address (may or may not be a GP Safe — see int_celo_gpay_activity for which side is the Safe).
+          - name: receiver
+            description: Transfer receiver address (may or may not be a GP Safe).
+          - name: token_symbol
+            description: >
+              USDT or USDC — the only tokens observed hitting the Celo
+              settlement contract as of the 2026-06-29 dashboard audit.
+              Anything else is filtered out upstream in Dune (spam/spoofed
+              tokens sent directly to Safe addresses as noise).
+          - name: amount_usd
+            description: >
+              USD value via Dune tokens.transfers.amount_usd. Nullable — a
+              brief Dune price-feed gap should not fail ingestion; downstream
+              SUM() skips nulls rather than treating them as zero.
+
+      - name: celo_gpay_wallet_events
+        description: >
+          Unified, append-only wallet-lifecycle event log for Celo GP card
+          Safes: issued_at (initial owner(s) at SafeSetup, one row per
+          owner) + add_owner + remove_owner. Replaces the earlier separate
+          celo_gpay_wallets (a per-safe snapshot table whose
+          is_activated/first_spend_at/owner_address MUTATED in place on
+          every daily refresh) and celo_gpay_owner_events tables — feedback
+          from review was that any source where rows change value over
+          time (not append-only) will break incremental models built on
+          top of it, and this is not a hypothetical: an incremental model
+          that already processed a row before a late-arriving fact caught
+          up has no mechanism to revisit it. An append-only log has no
+          row that can ever change, so it's immune to that failure class
+          by construction rather than by careful, easy-to-forget
+          engineering discipline (full-rebuild wallets + wide-enough
+          incremental windows) elsewhere in the pipeline.
+          first_spend_at/is_activated are deliberately NOT events here —
+          derived in dbt directly from crawlers_data.celo_gpay_transfers
+          instead (the fact is already fully present there — anything sent
+          to the settlement address, the same definition the Dune spine
+          itself uses for its own activation signal — so ingesting it
+          separately would just store the same fact twice).
+          Discovered while building this: GP's Celo provisioning flow
+          commonly swaps a Safe's owner within seconds of SafeSetup —in the
+          simplest observed case, the real EOA owner is removed and
+          replaced with a hardcoded dead/sentinel address (0x...002),
+          permanently disabling owner-based signing so only the
+          Roles/Delay module can move funds; more complex multi-owner
+          reconfigurations (1 remove + multiple adds) have also been
+          observed, so this is real variation worth tracking as data, not
+          a single deterministic rule to hardcode.
+          int_celo_gpay_wallets.owner_address (identity) reads only the
+          issued_at events and intentionally never reflects this later
+          churn — mirrors Gnosis Chain's initial_owner vs current-owner
+          split exactly (int_execution_gpay_user_identity_bridge vs
+          int_execution_gpay_wallet_owners).
+          Deliberately minimal columns — no tx_hash/log_index, since
+          nothing downstream reads them; the current-owners fold's
+          same-timestamp tie-break is resolved entirely in dbt (see
+          int_celo_gpay_safe_current_owners.sql) without needing raw chain
+          log metadata. Ingested by click-runner: a one-time full backfill
+          since launch plus a daily 3-day-lookback incremental job (tolerates
+          the job not running for up to 2 days straight), same shape as
+          celo_gpay_transfers.
+        loaded_at_field: event_time
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: safe_address
+            description: The GP card Safe this event is about.
+          - name: action
+            description: "issued_at | add_owner | remove_owner."
+          - name: action_value
+            description: >
+              The owner address involved — for issued_at, an initial
+              SafeSetup owner (one row per owner if multi-owner); for
+              add_owner/remove_owner, the owner being added or removed.
+              Nullable: null for an issued_at row when SafeSetup hasn't
+              been decoded yet (the Safe was recognized via the
+              bridge-module or activation signal alone) — a genuinely
+              unknown owner, not defaulted to an empty-string sentinel.
+          - name: event_time
+            description: On-chain timestamp of the event.
+
   # Separate source so the schema can be redirected (e.g. to playground_max)
   # during dev/backfill validation without also redirecting dune_* and the
   # other crawlers_data tables. Defaults to crawlers_data in prod.
