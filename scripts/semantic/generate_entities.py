@@ -33,6 +33,10 @@ Skips (all listed in the review report):
   wholesale for entities; an authored block WITHOUT entities still gets the
   generated overlay — the merge is entities-only, so nothing else is touched)
 * internal-only / ``privacy:*``-tagged models and ``expose_to_mcp: false``
+* ``dev``-tagged models — prod builds only ``tag:production`` and CI's docs
+  generate excludes ``tag:dev``, so dev models are outside the published
+  catalog; skipping them keeps the overlay consistent with prod and never
+  binds a WIP model whose columns may churn
 * raw sources (out of scope v1)
 
 The generator is idempotent — it rewrites both files from scratch each run.
@@ -217,6 +221,12 @@ def compute_overlay(
         if private:
             report["skipped_private"].append((name, why))
             continue
+        # dev-tagged models are outside the prod-published catalog (prod builds
+        # tag:production; CI docs generate excludes tag:dev). Skip them so the
+        # overlay matches prod and never binds a WIP model.
+        if "dev" in (node.get("tags") or []):
+            report["skipped_dev"].append(name)
+            continue
         cols = merge_column_info(
             node.get("columns", {}) or {},
             catalog_nodes.get(unique_id, {}).get("columns", {}) or {},
@@ -377,6 +387,7 @@ def print_report(result: dict[str, Any]) -> None:
     )
     for key, label in (
         ("skipped_private", "models skipped (privacy/internal)"),
+        ("skipped_dev", "models skipped (dev-tagged)"),
         ("multi_binding", "models binding an entity on >1 column (multi-binding)"),
         ("suggest_hand_edit", "hand-authored models missing a dictionary entity (edit by hand)"),
         ("hub_missing", "dictionary hubs not found in manifest"),

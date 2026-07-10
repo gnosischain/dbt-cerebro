@@ -128,8 +128,14 @@ jobs:
           python -m pytest tests/test_semantic_registry.py -v
 
       - name: Generate dbt docs
+        # Exclude dev-tagged models: prod builds only `tag:production`, so
+        # dev/WIP models (e.g. *_v2 staging variants) are never materialised
+        # and their tables don't exist — a bare `docs generate` aborts on the
+        # first missing dev table. Excluding them keeps the catalog to the
+        # published (prod) surface. (generate_entities.py also skips tag:dev,
+        # so the entity overlay matches this catalog.)
         run: |
-          dbt docs generate
+          dbt docs generate --exclude tag:dev
 
       - name: Assert docs artifacts
         run: |

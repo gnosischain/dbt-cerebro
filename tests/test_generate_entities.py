@@ -228,6 +228,20 @@ def test_override_on_hand_authored_reported():
     assert _entities(result, "fct_hand") == []
 
 
+def test_dev_tagged_models_are_skipped():
+    nodes = [
+        _node("api_real", ["address"]),
+        _node("int_wip_v2", ["address"], tags=["dev", "intermediate", "v2"]),
+    ]
+    dictionary = [_dict_entry("address", ["address"])]
+    result = _overlay(nodes, dictionary)
+    assert _entities(result, "api_real") == [
+        {"name": "address", "type": "foreign", "expr": "address"}
+    ]
+    assert _entities(result, "int_wip_v2") == []  # dev-tagged => skipped
+    assert "int_wip_v2" in result["report"]["skipped_dev"]
+
+
 def test_hand_authored_suggest_edit():
     nodes = [_node("fct_hand", ["avatar"])]
     dictionary = [_dict_entry("circles_avatar", ["avatar"])]
