@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_activity</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_activity</h1>
+    <p>Per-transfer classified Celo GP activity. Classification happens HERE,
+not upstream in Dune — Dune only supplies raw whitelisted-token transfers
+touching a GP Safe (crawlers_data.celo_gpay_transfers: sender, receiver,
+token, amount). This mirrors int_execution_gpay_activity on Gnosis Chain,
+which also classifies from raw log data rather than a pre-classified
+source, so fixing/extending classification is a dbt edit + re-run here,
+not a Dune query edit + re-backfill.
+Actions: Payment (Safe -&gt; AggregateBridge settlement), Withdrawal (Safe
+-&gt; anything else, including hypothetically another GP Safe), Reversal
+(AggregateBridge -&gt; Safe; a processor-side refund of a failed/disputed
+charge), Top-up (anything else -&gt; Safe, e.g. a MiniPay funding wallet).
+No Cashback action exists; the GNO cashback program is Gnosis Chain only.
+CASE ordering in the model checks sender-based branches (Payment/
+Withdrawal) before receiver-based branches (Reversal/Top-up) — required
+so a hypothetical Safe-to-Safe transfer classifies as a Withdrawal from
+the sending Safe, not a Top-up to the receiving Safe (safe_address always
+resolves to sender when sender is a Safe, so action must agree).
+Rows where neither sender nor receiver matches int_celo_gpay_wallets are
+dropped, not guessed at — observed in practice (2026-07-02 test backfill,
+3 rows) as a real race between crawlers_data.celo_gpay_transfers and
+int_celo_gpay_wallets, which are each independently derived from the same
+live, continuously-indexing Dune spine rather than one consistent
+snapshot: a brand-new Safe&#x27;s transfer can be extracted moments before
+that same Safe lands in the wallets snapshot.
+materialized=&#x27;incremental&#x27; with incremental_strategy=&#x27;insert_overwrite&#x27;
+and apply_monthly_incremental_filter (same macro/pattern already used by
+Gnosis Chain&#x27;s int_execution_gpay_activity_daily and
+int_execution_gpay_wallet_owners) — recomputes the whole current
+calendar-month partition every run, not just literally-new rows. This is
+what preserves the self-healing behavior above under incremental
+materialization: a Safe recognized a few seconds/minutes late (the only
+lag actually observed) gets correctly reclassified on the next run as
+long as it&#x27;s within the same month. int_celo_gpay_wallets itself stays a
+full rebuild regardless (see that model&#x27;s own doc) — only this
+per-transfer model needs incrementality, since it&#x27;s the one whose row
+count scales with transaction volume, not signup volume.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_activity.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>activity</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>action</code></td><td>String</td><td>Payment | Withdrawal | Reversal | Top-up.</td></tr><tr><td><code>amount</code></td><td>Float64</td><td>Token-native transfer amount.</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD value. Nullable — a brief Dune price-feed gap should not fail ingestion.</td></tr><tr><td><code>block_time</code></td><td>DateTime</td><td>Transfer timestamp.</td></tr><tr><td><code>counterparty</code></td><td>String</td><td>The non-Safe side of the transfer (settlement contract, funding wallet, another Safe, etc).</td></tr><tr><td><code>date</code></td><td>Date</td><td>Transfer date.</td></tr><tr><td><code>direction</code></td><td>String</td><td>&#x27;out&#x27; if the Safe is the sender, &#x27;in&#x27; otherwise.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The GP card Safe side of this transfer.</td></tr><tr><td><code>token_symbol</code></td><td>String</td><td>USDT or USDC.</td></tr><tr><td><code>tx_hash</code></td><td>String</td><td>Transaction hash.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_wallets</code></li><li><code>celo_gpay_transfers</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_payments_hourly</code></li><li><code>int_celo_gpay_activity_daily</code></li></ul>
+    
+  </body>
+</html>

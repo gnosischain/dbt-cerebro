@@ -1,13 +1,23 @@
 
 
 
+
+
+
+-- Values in real GNO. Source columns are gwei-of-mGNO (32 mGNO = 1 GNO), so the
+-- full conversion is /1e9 (gwei) /32 (mGNO -> GNO), applied HERE at the origin —
+-- downstream marts must NOT divide again.
+-- Full-history rebuilds must go through scripts/full_refresh/refresh.py (see
+-- meta.full_refresh in schema.yml): a single-pass FINAL scan over the whole
+-- stg_consensus__validators history exceeds the 10.8 GiB memory cap (CH 241).
 SELECT
     toStartOfDay(slot_timestamp) AS date
-    ,SUM(balance/POWER(10,9)) AS balance
-    ,SUM(effective_balance/POWER(10,9)) AS effective_balance
+    ,SUM(balance/POWER(10,9)/32) AS balance
+    ,SUM(effective_balance/POWER(10,9)/32) AS effective_balance
 FROM `dbt`.`stg_consensus__validators`
-WHERE 
+WHERE
     slot_timestamp < today()
+    
     
   
     
@@ -29,4 +39,5 @@ WHERE
     
   
 
+    
 GROUP BY date

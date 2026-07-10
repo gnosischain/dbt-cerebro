@@ -44,6 +44,9 @@ proposer_lifetime AS (
     GROUP BY validator_index
 )
 
+-- l.balance_gno etc. below come from latest_income's `i.*` (wildcard passthrough
+-- of int_consensus_validators_income_daily), which is already REAL GNO
+-- (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
 SELECT
     l.date AS latest_date
     ,l.validator_index AS validator_index

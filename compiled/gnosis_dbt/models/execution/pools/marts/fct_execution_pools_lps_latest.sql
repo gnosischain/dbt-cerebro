@@ -37,6 +37,14 @@ pool_token_map AS (
     FROM `dbt`.`stg_pools__v3_pool_registry` pt
     INNER JOIN `dbt`.`stg_pools__tokens_meta` tm ON tm.token_address = pt.token1_address
     WHERE tm.token IS NOT NULL
+
+    UNION ALL
+
+    
+    SELECT DISTINCT b.pool_address, b.protocol, b.token
+    FROM `dbt`.`int_execution_pools_balances_daily` b
+    WHERE b.protocol = 'Balancer V3'
+      AND b.token IS NOT NULL AND b.token != ''
 ),
 
 curr_lps AS (

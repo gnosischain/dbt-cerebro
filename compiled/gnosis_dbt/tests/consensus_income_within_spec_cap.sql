@@ -1,10 +1,11 @@
 -- Spec-cap overrun monitor for int_consensus_validators_income_daily.
 --
 -- After the v2 spec-cap refactor, consensus_income_amount_gno for a non-slashed,
--- currently-active validator must lie within [-1, expected_reward_cap_gno * 1.1]:
+-- currently-active validator must lie within [-0.05, expected_reward_cap_gno * 1.1]:
 --   * upper bound = spec reward cap × 10% safety margin; anything above suggests a
 --     consolidation inflow or deposit credit leaked into income;
---   * lower bound = -1 GNO daily loss; anything below is either a slashing event
+--   * lower bound = -0.05 GNO daily loss (the old -1 mGNO floor in real-GNO terms,
+--     rounded); anything below is either a slashing event
 --     (rare, validators with slashed=1 in status_latest are excluded) or an
 --     accounting bug.
 --
@@ -34,7 +35,7 @@ SELECT
     ,consolidation_inflow_gno
     ,CASE
         WHEN consensus_income_amount_gno > expected_reward_cap_gno * 1.1 THEN 'above_cap'
-        WHEN consensus_income_amount_gno < -1 THEN 'below_floor'
+        WHEN consensus_income_amount_gno < -0.05 THEN 'below_floor'
         ELSE 'ok'
     END AS violation_kind
 FROM `dbt`.`int_consensus_validators_income_daily`
@@ -46,7 +47,7 @@ WHERE
     AND effective_balance_gno > 0
     AND (
         consensus_income_amount_gno > expected_reward_cap_gno * 1.1
-        OR consensus_income_amount_gno < -1
+        OR consensus_income_amount_gno < -0.05
     )
     -- Exclude known-slashed validators (real losses).
     AND validator_index NOT IN (

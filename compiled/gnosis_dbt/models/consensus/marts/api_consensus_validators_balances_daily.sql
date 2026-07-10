@@ -1,5 +1,7 @@
 
 
+-- int_consensus_validators_balances_daily is already REAL GNO
+-- (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
 SELECT
     date
     ,label
@@ -11,7 +13,7 @@ FROM (
         ,balance AS value
     FROM `dbt`.`int_consensus_validators_balances_daily`
 
-    UNION ALL 
+    UNION ALL
 
     SELECT
         date

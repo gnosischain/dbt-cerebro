@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>crawlers_data.celo_gpay_wallet_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>crawlers_data.celo_gpay_wallet_events</h1>
+    <p>Unified, append-only wallet-lifecycle event log for Celo GP card Safes: issued_at (initial owner(s) at SafeSetup, one row per owner) + add_owner + remove_owner. Replaces the earlier separate celo_gpay_wallets (a per-safe snapshot table whose is_activated/first_spend_at/owner_address MUTATED in place on every daily refresh) and celo_gpay_owner_events tables — feedback from review was that any source where rows change value over time (not append-only) will break incremental models built on top of it, and this is not a hypothetical: an incremental model that already processed a row before a late-arriving fact caught up has no mechanism to revisit it. An append-only log has no row that can ever change, so it&#x27;s immune to that failure class by construction rather than by careful, easy-to-forget engineering discipline (full-rebuild wallets + wide-enough incremental windows) elsewhere in the pipeline. first_spend_at/is_activated are deliberately NOT events here — derived in dbt directly from crawlers_data.celo_gpay_transfers instead (the fact is already fully present there — anything sent to the settlement address, the same definition the Dune spine itself uses for its own activation signal — so ingesting it separately would just store the same fact twice). Discovered while building this: GP&#x27;s Celo provisioning flow commonly swaps a Safe&#x27;s owner within seconds of SafeSetup —in the simplest observed case, the real EOA owner is removed and replaced with a hardcoded dead/sentinel address (0x...002), permanently disabling owner-based signing so only the Roles/Delay module can move funds; more complex multi-owner reconfigurations (1 remove + multiple adds) have also been observed, so this is real variation worth tracking as data, not a single deterministic rule to hardcode. int_celo_gpay_wallets.owner_address (identity) reads only the issued_at events and intentionally never reflects this later churn — mirrors Gnosis Chain&#x27;s initial_owner vs current-owner split exactly (int_execution_gpay_user_identity_bridge vs int_execution_gpay_wallet_owners). Deliberately minimal columns — no tx_hash/log_index, since nothing downstream reads them; the current-owners fold&#x27;s same-timestamp tie-break is resolved entirely in dbt (see int_celo_gpay_safe_current_owners.sql) without needing raw chain log metadata. Ingested by click-runner: a one-time full backfill since launch plus a daily 3-day-lookback incremental job (tolerates the job not running for up to 2 days straight), same shape as celo_gpay_transfers.
+</p>
+    <p><strong>Module:</strong> crawlers_data</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/crawlers_data/sources.yml</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>no-tags</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>action</code></td><td>LowCardinality(String)</td><td>issued_at | add_owner | remove_owner.</td></tr><tr><td><code>action_value</code></td><td>Nullable(String)</td><td>The owner address involved — for issued_at, an initial SafeSetup owner (one row per owner if multi-owner); for add_owner/remove_owner, the owner being added or removed. Nullable: null for an issued_at row when SafeSetup hasn&#x27;t been decoded yet (the Safe was recognized via the bridge-module or activation signal alone) — a genuinely unknown owner, not defaulted to an empty-string sentinel.
+</td></tr><tr><td><code>event_time</code></td><td>DateTime</td><td>On-chain timestamp of the event.</td></tr><tr><td><code>ingested_at</code></td><td>DateTime</td><td></td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The GP card Safe this event is about.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li>None</li></ul>
+    <h2>Downstream</h2><ul><li><code>int_celo_gpay_wallet_events</code></li></ul>
+    
+  </body>
+</html>

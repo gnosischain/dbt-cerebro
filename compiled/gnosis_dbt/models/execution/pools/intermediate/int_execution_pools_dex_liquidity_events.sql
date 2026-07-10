@@ -66,10 +66,28 @@ tx_context AS (
     FROM `execution`.`transactions`
     WHERE transaction_hash IN (SELECT DISTINCT transaction_hash FROM events_base)
       
-      AND block_timestamp >= (
-          SELECT addDays(max(toDate(block_timestamp)), -3)
-          FROM `dbt`.`int_execution_pools_dex_liquidity_events`
+        
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_pools_dex_liquidity_events` AS x1
+        WHERE 1=1 
       )
+      
+    
+  
+
       
 ),
 

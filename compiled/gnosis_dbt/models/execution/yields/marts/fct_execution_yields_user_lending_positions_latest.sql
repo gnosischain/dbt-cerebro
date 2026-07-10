@@ -19,6 +19,8 @@ latest_balances AS (
     FROM `dbt`.`int_execution_lending_aave_user_balances_daily` b
     CROSS JOIN latest_date d
     WHERE b.date = d.max_date
+      -- supply balance worth > $0.01 (filters sub-cent dust); canonical,
+      -- consistent across yields surfaces + overview + lending counts (C14)
       AND b.balance_usd > 0.01
 ),
 

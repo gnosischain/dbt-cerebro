@@ -13,8 +13,10 @@
 --     helps the dashboard annotate any days where an upstream crawler hiccup
 --     reduced coverage.
 --   * anomaly_flag — True when abs(income_gno) > 5 * trailing-30d median(abs(income_gno))
---     AND abs(income_gno) > 500 GNO. Dashboard surfaces in tooltip; does NOT drop
+--     AND abs(income_gno) > 16 GNO. Dashboard surfaces in tooltip; does NOT drop
 --     rows. Expected to be rare post-A1 / A2 consolidation fixes.
+--     (16 = the old 500-mGNO floor re-expressed in real GNO after the int-layer
+--     mGNO->GNO conversion; income_gno is now real GNO.)
 
 WITH base AS (
     SELECT
@@ -58,7 +60,7 @@ SELECT
     ,validators_snapshot_count
     ,IF(
         ABS(income_gno) > 5 * abs_income_rolling_30d_median_prev
-          AND ABS(income_gno) > 500,
+          AND ABS(income_gno) > 16,
         1, 0
     ) AS anomaly_flag
 FROM with_rolling

@@ -24,6 +24,10 @@ WITH time_helpers AS (
 SELECT
     i.date AS date
     ,wl.withdrawal_credentials AS withdrawal_credentials
+    -- All "_gno" columns from int_consensus_validators_income_daily and
+    -- int_consensus_validators_proposer_rewards_daily are already REAL GNO
+    -- (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
+    -- The apy ratio is unit-invariant.
     ,SUM(i.balance_gno) AS balance_gno
     ,SUM(i.effective_balance_gno) AS effective_balance_gno
     ,SUM(i.consensus_income_amount_gno) AS consensus_income_amount_gno

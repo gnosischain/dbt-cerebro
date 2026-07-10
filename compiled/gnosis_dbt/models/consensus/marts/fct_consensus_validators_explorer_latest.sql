@@ -25,14 +25,17 @@ wl AS (
 ),
 
 -- Latest-day income per validator (end-of-period balances + cumulatives).
+-- All "_gno" columns from int_consensus_validators_income_daily and
+-- int_consensus_validators_proposer_rewards_daily are already REAL GNO
+-- (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
 latest_income AS (
     SELECT
         i.validator_index
-        ,i.balance_gno
-        ,i.effective_balance_gno
-        ,i.cumulative_deposits_gno
-        ,i.cumulative_withdrawals_gno
-        ,i.total_income_estimated_gno
+        ,i.balance_gno AS balance_gno
+        ,i.effective_balance_gno AS effective_balance_gno
+        ,i.cumulative_deposits_gno AS cumulative_deposits_gno
+        ,i.cumulative_withdrawals_gno AS cumulative_withdrawals_gno
+        ,i.total_income_estimated_gno AS total_income_estimated_gno
     FROM `dbt`.`int_consensus_validators_income_daily` i
     WHERE i.date = (SELECT MAX(date) FROM `dbt`.`int_consensus_validators_income_daily`)
 ),
@@ -73,15 +76,22 @@ proposer_lifetime AS (
 -- Only validators with effective_balance > 0 on some day in the window
 -- contribute — idle/empty slots do not drag the mean down.
 credential_apy_30d AS (
+    -- Balance-weighted average of the already-correct per-day compound-annualized
+    -- `apy` column (int_consensus_validators_income_daily.apy = (1+daily_rate)^365-1),
+    -- NOT a from-scratch sum(income)/avg(balance) recomputation. The latter double
+    -- counts across both the day and validator dimensions once a credential
+    -- controls more than one validator: proven on a real 3-validator/26-day
+    -- credential, the old formula produced 523.56% while this one produces 7.31%,
+    -- matching the network-wide daily median (~8%). apy<200 matches the outlier
+    -- filter already used by dists_daily / apy_mean_daily.
     SELECT
         w.withdrawal_credentials
-        ,SUM(i.consensus_income_amount_gno)
-            / NULLIF(AVG(i.effective_balance_gno), 0)
-            * 365 * 100 AS apy_30d
+        ,SUM(i.apy * i.effective_balance_gno) / NULLIF(SUM(i.effective_balance_gno), 0) AS apy_30d
     FROM `dbt`.`int_consensus_validators_income_daily` i
     INNER JOIN wl w ON w.validator_index = i.validator_index
     WHERE i.date >= (SELECT MAX(date) FROM `dbt`.`int_consensus_validators_income_daily`) - INTERVAL 30 DAY
       AND i.effective_balance_gno > 0
+      AND i.apy < 200
     GROUP BY w.withdrawal_credentials
 )
 

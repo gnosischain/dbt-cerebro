@@ -63,7 +63,28 @@ swaps AS (
         SELECT transaction_hash, solver
         FROM `dbt`.`stg_cow__settlements`
         
-        WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM `dbt`.`int_execution_cow_trades`)
+          
+          
+  
+    
+    
+    
+    
+    
+    
+
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_cow_trades` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
         
     ) st ON st.transaction_hash = t.transaction_hash
     WHERE t.amount_bought_raw > 0
@@ -79,7 +100,28 @@ with_bought_price AS (
         SELECT symbol, date, price
         FROM `dbt`.`int_execution_token_prices_daily`
         
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM `dbt`.`int_execution_cow_trades`)
+          
+          
+  
+    
+    
+    
+    
+    
+    
+
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -30))
+        FROM `dbt`.`int_execution_cow_trades` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
         
         ORDER BY symbol, date
     ) pb
@@ -96,7 +138,28 @@ with_sold_price AS (
         SELECT symbol, date, price
         FROM `dbt`.`int_execution_token_prices_daily`
         
-        WHERE date >= (SELECT addDays(max(toDate(block_timestamp)), -30) FROM `dbt`.`int_execution_cow_trades`)
+          
+          
+  
+    
+    
+    
+    
+    
+    
+
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -30))
+        FROM `dbt`.`int_execution_cow_trades` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
         
         ORDER BY symbol, date
     ) ps

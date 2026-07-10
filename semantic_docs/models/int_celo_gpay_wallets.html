@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_wallets</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_wallets</h1>
+    <p>Canonical Celo GP card Safe list, reconstructed from
+int_celo_gpay_wallet_events (action=&#x27;issued_at&#x27;) rather than read from
+a per-safe snapshot table — see sources.yml for why the earlier
+mutable-row wallets table was replaced with an append-only event log.
+first_spend_at/is_activated are derived here directly from
+crawlers_data.celo_gpay_transfers (not from an ingested event) — see
+this model&#x27;s own header comment for why that read goes straight to the
+source rather than through int_celo_gpay_activity (would create a
+circular dbt ref) and why a full scan of the transfers table on every
+rebuild is acceptable (Gnosis Chain&#x27;s own int_execution_gpay_wallets
+already does an equivalent full scan of the much larger execution.logs,
+successfully, as a materialized=&#x27;table&#x27; full rebuild).
+Deliberately materialized=&#x27;table&#x27; (full rebuild), not incremental, and
+expected to stay that way indefinitely: this table&#x27;s size is bounded by
+total card count, not transaction volume, so it stays small even at full
+scale. A full rebuild also correctly re-checks is_activated/first_spend_at
+for every Safe on every run regardless of how long ago it was issued —
+e.g. a Safe issued today whose first spend happens two months from now is
+picked up correctly with no special handling, because nothing here is
+windowed by the Safe&#x27;s age.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_wallets.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>wallets</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>first_spend_at</code></td><td>Nullable(Date)</td><td>Date of first spend (transfer to settlement). Null if never activated.</td></tr><tr><td><code>is_activated</code></td><td>UInt8</td><td>1 if the Safe has ever spent, else 0. Computed as first_spend_at IS NOT NULL — not stored anywhere, since it&#x27;s a pure derivation with no interpretive logic, unlike transfer classification.
+</td></tr><tr><td><code>issued_at</code></td><td>Date</td><td>Date of card issuance (SafeSetup event, or module-enable time as fallback).</td></tr><tr><td><code>owner_address</code></td><td>Nullable(String)</td><td>SafeSetup owner / signer key (first owner encountered). For MiniPay cards, the MiniPay EOA — holds no funds. Nullable: a Safe can be recognized via the bridge-module or activation signal alone, before its SafeSetup event has been decoded, in which case this is genuinely unknown rather than defaulted to an empty string.
+</td></tr><tr><td><code>owners</code></td><td>Array(String)</td><td>Full owner/signer list for the Safe (usually a single element). Empty array — not null — when SafeSetup hasn&#x27;t been decoded yet, since &quot;zero owners&quot; is an unambiguous representation of &quot;no data&quot; for an array (unlike an empty string, which could be misread as a real address).
+</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address on Celo (0x-prefixed, lowercase). The fund holder.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_wallet_events</code></li><li><code>celo_gpay_transfers</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_celo_gpay_activity</code></li></ul>
+    
+  </body>
+</html>

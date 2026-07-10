@@ -278,6 +278,90 @@ balancer_v3_swap_fees AS (
 ),
 
 /* -----------------------------
+   Balancer V2: dynamic per-pool swap fee (rate decoded from pool events;
+   the Vault Swap event carries volume only, so fee = amountIn x prevailing rate)
+------------------------------ */
+balancer_v2_pool_map AS (
+    SELECT pool_id, pool_address
+    FROM `dbt`.`stg_pools__balancer_v2_pool_registry`
+),
+
+balancer_v2_fee_changes AS (
+    SELECT
+        concat('0x', replaceAll(lower(contract_address), '0x', '')) AS pool_address,
+        (toUInt64(toUnixTimestamp(block_timestamp)) * (SELECT log_index_factor FROM constants)
+            + toUInt64(log_index))                                  AS event_order,
+        toFloat64OrNull(decoded_params['swapFeePercentage']) / 1e18 AS fee_fraction
+    FROM `dbt`.`contracts_BalancerV2_Pool_events`
+    WHERE event_name = 'SwapFeePercentageChanged'
+      AND decoded_params['swapFeePercentage'] IS NOT NULL
+),
+
+balancer_v2_swaps AS (
+    SELECT
+        s.date          AS date,
+        m.pool_address  AS pool_address,
+        s.token_address AS token_address,
+        s.amount_in_raw AS amount_in_raw,
+        s.event_order   AS event_order
+    FROM (
+        SELECT
+            toDate(block_timestamp)     AS date,
+            lower(pool_id)              AS pool_id,
+            lower(token_address)        AS token_address,
+            toUInt256(delta_amount_raw) AS amount_in_raw,
+            (toUInt64(toUnixTimestamp(block_timestamp)) * (SELECT log_index_factor FROM constants)
+                + toUInt64(log_index))  AS event_order
+        FROM `dbt`.`stg_pools__balancer_v2_events`
+        WHERE event_type = 'Swap'
+          AND delta_amount_raw > toInt256(0)   -- tokenIn leg carries amountIn
+          AND block_timestamp < today()
+          
+            
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_execution_pools_fees_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
+          
+    ) s
+    INNER JOIN balancer_v2_pool_map m ON m.pool_id = s.pool_id
+),
+
+balancer_v2_swap_fees AS (
+    SELECT
+        sw.date                                                    AS date,
+        'Balancer V2'                                              AS protocol,
+        sw.pool_address                                            AS pool_address,
+        sw.token_address                                           AS token_address,
+        toFloat64(sw.amount_in_raw) * coalesce(fc.fee_fraction, 0) AS fee_raw,
+        toFloat64(sw.amount_in_raw)                                AS volume_raw
+    FROM balancer_v2_swaps sw
+    ASOF LEFT JOIN (
+        SELECT pool_address, event_order, fee_fraction
+        FROM balancer_v2_fee_changes
+        ORDER BY pool_address, event_order
+    ) fc
+      ON  sw.pool_address = fc.pool_address
+      AND sw.event_order >= fc.event_order
+),
+
+/* -----------------------------
    Token mapping + aggregation
 ------------------------------ */
 all_fees_token AS (
@@ -338,6 +422,24 @@ all_fees_with_token AS (
      AND bf.date >= toDate(tm.date_start)
     WHERE bf.token_address IS NOT NULL
       AND bf.fee_raw IS NOT NULL
+      AND tm.token IS NOT NULL
+      AND tm.token != ''
+
+    UNION ALL
+
+    SELECT
+        v2.date          AS date,
+        v2.protocol      AS protocol,
+        v2.pool_address  AS pool_address,
+        v2.token_address AS token_address,
+        tm.token         AS token,
+        (v2.fee_raw    / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS fee_amount,
+        (v2.volume_raw / pow(10, if(tm.decimals > 0, tm.decimals, 18))) AS volume_amount
+    FROM balancer_v2_swap_fees v2
+    LEFT JOIN `dbt`.`stg_pools__tokens_meta` tm
+        ON tm.token_address = v2.token_address
+       AND v2.date >= toDate(tm.date_start)
+    WHERE v2.token_address IS NOT NULL
       AND tm.token IS NOT NULL
       AND tm.token != ''
 ),

@@ -66,8 +66,8 @@ status_7d AS (
 staked_latest AS (
     SELECT
         'Staked' AS label
-        ,effective_balance/32 AS value
-    FROM 
+        ,effective_balance AS value
+    FROM
         `dbt`.`int_consensus_validators_balances_daily`
     WHERE
         date = (SELECT MAX(date) FROM `dbt`.`int_consensus_validators_balances_daily`)
@@ -76,8 +76,8 @@ staked_latest AS (
 staked_7d AS (
     SELECT
         'Staked' AS label
-        ,effective_balance/32 AS value
-    FROM 
+        ,effective_balance AS value
+    FROM
         `dbt`.`int_consensus_validators_balances_daily`
     WHERE
         date = subtractDays((SELECT MAX(date) FROM `dbt`.`int_consensus_validators_balances_daily`), 7)

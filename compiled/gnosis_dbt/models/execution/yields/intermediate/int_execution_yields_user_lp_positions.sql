@@ -83,13 +83,13 @@ SELECT
     round(pa.capital_in_usd, 2)              AS capital_in_usd,
     round(pa.capital_out_usd, 2)             AS capital_out_usd,
     multiIf(
+        -- V3 (Uniswap/Swapr): Collect events net of withdrawn principal
         pa.tick_lower IS NOT NULL,
             round(greatest(pa.fees_collected_usd - pa.capital_out_usd, 0), 2),
-        coalesce(ba.has_active_tokens, 0) = 0
-            AND pa.capital_in_usd > 0
-            AND pa.capital_out_usd > pa.capital_in_usd,
-                round(pa.capital_out_usd - pa.capital_in_usd, 2),
-        0
+        -- Balancer (V2/V3): real swap fees attributed from pool fees by
+        -- contribution share. Replaces the capital_out - capital_in PnL proxy
+        -- (model review EXECUTIONYIELDS-C12).
+        round(coalesce(blf.fees_usd, 0), 2)
     )                                        AS fees_collected_usd,
     coalesce(nl.net_liquidity, toInt256(0))  AS net_liquidity,
     multiIf(
@@ -117,3 +117,6 @@ LEFT JOIN balancer_active ba
     AND pa.tick_lower IS NULL
 LEFT JOIN current_ticks ct
     ON ct.pool_address = pa.pool_address
+LEFT JOIN `dbt`.`int_execution_yields_balancer_lp_fees` blf
+    ON  blf.provider     = pa.provider
+    AND blf.pool_address = pa.pool_address

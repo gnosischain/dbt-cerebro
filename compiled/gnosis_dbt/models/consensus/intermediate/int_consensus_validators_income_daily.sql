@@ -11,6 +11,17 @@
 -- int_consensus_validators_income_daily — per-(date, validator_index) income fact
 -- =============================================================================
 --
+-- *** UNITS: every "_gno" column below is REAL GNO. ***
+-- Gnosis Beacon Chain internally mirrors Ethereum's 32-unit-per-validator
+-- convention: source amounts are gwei-of-mGNO, where 32 mGNO = 1 real GNO
+-- (confirmed via Gnosis docs "1 GNO wrapped into 32 mGNO", a raw GBCDeposit
+-- decode, and the official beacon explorer's "32 mGNO" label). The full
+-- conversion /1e9 (gwei) /32 (mGNO -> GNO) is applied HERE at the origin —
+-- consumers must NOT divide by 32 again. Internal *_gwei columns stay raw
+-- because the beacon-spec reward-cap math operates in gwei.
+-- Ratio/percentage columns (daily_rate, apy) are unit-invariant: numerator and
+-- denominator share the same scale, which cancels in the division.
+--
 -- GRAIN: one row per (date, validator_index), including exited / zero-balance.
 --
 -- COLUMNS emitted downstream:
@@ -128,8 +139,8 @@ snapshots AS (
     SELECT
         s.date AS date
         ,s.validator_index AS validator_index
-        ,s.balance_gwei / POWER(10, 9) AS balance_gno
-        ,s.effective_balance_gwei / POWER(10, 9) AS effective_balance_gno
+        ,s.balance_gwei / POWER(10, 9) / 32 AS balance_gno
+        ,s.effective_balance_gwei / POWER(10, 9) / 32 AS effective_balance_gno
         ,s.effective_balance_gwei AS effective_balance_gwei   -- kept raw for spec-cap math
     FROM `dbt`.`int_consensus_validators_snapshots_daily` s
     WHERE s.date < today()
@@ -306,8 +317,8 @@ consol_flags AS (
 
 -- Daily network-wide active effective balance (the denominator of the spec reward
 -- formula). int_consensus_validators_balances_daily stores effective_balance already
--- summed across all validators (in GNO). We convert back to gwei so the √ in the spec
--- formula sees the same units the consensus spec does.
+-- summed across all validators, in REAL GNO. The spec formula operates in gwei, so
+-- the √ below re-inflates by ×32 (GNO -> mGNO) ×1e9 (mGNO -> gwei).
 network_state AS (
     SELECT
         toStartOfDay(date) AS date
@@ -447,7 +458,7 @@ prev_state AS (
 --   balance_delta := balance_gno - balance_prev_gno
 --   observed_net_inflow := balance_delta + withdrawals - cons_inflow + cons_outflow
 --       (this is the total mass change attributable to deposits+rewards on this day)
---   expected_reward_cap := 3 × eb_gwei × 25 × 1080 / √(net_eb_gwei)  ÷ 1e9  (→ GNO)
+--   expected_reward_cap := 3 × eb_gwei × 25 × 1080 / √(net_eb_gwei)  ÷ 1e9 ÷ 32  (→ real GNO)
 --   effective_credit := LEAST(reported_deposit, GREATEST(0, observed_net_inflow − expected_reward_cap))
 --   income := balance_delta − effective_credit + withdrawals − cons_net
 scored AS (
@@ -476,8 +487,8 @@ scored AS (
         -- Guarded SQRT: NULLIF 0 prevents div-by-zero on genesis / empty-network days.
         ,3.0
          * toFloat64(r.effective_balance_gwei) * 25 * 1080
-         / NULLIF(SQRT(toFloat64(r.network_effective_balance_gno) * POWER(10, 9)), 0)
-         / POWER(10, 9)
+         / NULLIF(SQRT(toFloat64(r.network_effective_balance_gno) * 32 * POWER(10, 9)), 0)
+         / POWER(10, 9) / 32
          AS expected_reward_cap_gno
     FROM daily_raw r
     

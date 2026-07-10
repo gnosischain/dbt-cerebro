@@ -7,6 +7,10 @@ SELECT
     ,s.pubkey AS pubkey
     ,s.withdrawal_credentials AS withdrawal_credentials
     ,s.withdrawal_address AS withdrawal_address
+    -- All "_gno" columns from int_consensus_validators_income_daily and
+    -- int_consensus_validators_proposer_rewards_daily are already REAL GNO
+    -- (the mGNO->GNO /32 happens at the int layer) — pass through unscaled.
+    -- daily_rate/apy are unit-invariant ratios.
     ,i.balance_gno AS balance_gno
     ,i.balance_prev_gno AS balance_prev_gno
     ,i.effective_balance_gno AS effective_balance_gno

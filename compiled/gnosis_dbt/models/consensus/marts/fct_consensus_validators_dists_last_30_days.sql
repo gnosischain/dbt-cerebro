@@ -1,5 +1,9 @@
 
 
+-- q_balance is REAL GNO: source balance is gwei-of-mGNO (32 mGNO = 1 GNO),
+-- converted here at the origin via /1e9/32 (this mart reads the gwei-native
+-- per-index table directly). Consumers must NOT divide by 32 again.
+-- q_apy is a ratio (unit-invariant).
 SELECT
     date,
     q_balance[1] AS q05_balance,
@@ -21,7 +25,7 @@ FROM (
         (SELECT max(date) FROM  `dbt`.`int_consensus_validators_per_index_apy_daily` ) AS date
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
-        )(balance/POWER(10,9)) AS q_balance
+        )(balance/POWER(10,9)/32) AS q_balance
         ,quantilesTDigest(
             0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95
         )(apy) AS q_apy

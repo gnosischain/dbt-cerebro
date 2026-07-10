@@ -43,7 +43,28 @@ interactions AS (
         count(*) AS num_interactions
     FROM `dbt`.`stg_cow__interactions`
     
-    WHERE block_timestamp >= (SELECT addDays(max(toDate(block_timestamp)), -3) FROM `dbt`.`int_execution_cow_batches`)
+      
+      
+  
+    
+    
+    
+    
+    
+    
+
+    WHERE 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_cow_batches` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
     
     GROUP BY transaction_hash
 ),
@@ -68,10 +89,28 @@ tx_context AS (
     FROM `execution`.`transactions`
     WHERE replaceAll(lower(to_address), '0x', '') = '9008d19f58aabd9ed0d60971565aa8510560ab41'
     
-      AND block_timestamp >= (
-          SELECT addDays(max(toDate(block_timestamp)), -3)
-          FROM `dbt`.`int_execution_cow_batches`
+      
+      
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_cow_batches` AS x1
+        WHERE 1=1 
       )
+      
+    
+  
+
     
 )
 

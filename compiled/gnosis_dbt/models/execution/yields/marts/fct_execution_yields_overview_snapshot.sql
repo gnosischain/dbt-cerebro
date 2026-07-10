@@ -84,7 +84,7 @@ FROM (
         FROM `dbt`.`int_execution_lending_aave_user_balances_daily` b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date
-          AND b.balance > 0
+          AND b.balance_usd > 0.01
     ),
 
     -- Active lenders (7 days ago) for change calculation
@@ -93,7 +93,7 @@ FROM (
         FROM `dbt`.`int_execution_lending_aave_user_balances_daily` b
         CROSS JOIN lending_tvl_latest_date d
         WHERE b.date = d.max_date - INTERVAL 7 DAY
-          AND b.balance > 0
+          AND b.balance_usd > 0.01
     ),
     
     

@@ -37,7 +37,25 @@ WHERE t.transaction_hash IN (
     
 )
 
-AND t.block_timestamp >= (
-    SELECT addDays(max(toDate(block_timestamp)), -3)
-    FROM `dbt`.`int_execution_pools_dex_trades_tx_context`
-)
+  
+  
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(t.block_timestamp)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.block_timestamp)), -0))
+        FROM `dbt`.`int_execution_pools_dex_trades_tx_context` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
