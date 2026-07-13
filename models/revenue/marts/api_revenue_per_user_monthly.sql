@@ -9,7 +9,7 @@
         "parameters": [
           {"name": "start_month", "column": "month", "operator": ">=", "type": "date", "description": "Inclusive start month"},
           {"name": "end_month",   "column": "month", "operator": "<=", "type": "date", "description": "Inclusive end month"},
-          {"name": "is_revenue_active", "column": "is_revenue_active", "operator": "=", "type": "bool", "description": "Filter to users above the $0.50 / month threshold"}
+          {"name": "is_revenue_active", "column": "is_revenue_active", "operator": "=", "type": "string", "description": "Filter to users above the $0.50 / month threshold (1 or 0)"}
         ],
         "sort": [{"column": "month", "direction": "DESC"}]
       }

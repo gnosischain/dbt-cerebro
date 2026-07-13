@@ -12,7 +12,7 @@
                         "name": "validator_index",
                         "column": "validator_index",
                         "operator": "IN",
-                        "type": "integer_list",
+                        "type": "string_list",
                         "max_items": 200,
                         "description": "Validator index / indices"
                     },

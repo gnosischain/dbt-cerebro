@@ -1949,6 +1949,18 @@ models:
 - name: api_consensus_validators_performance_latest
   description: Public API view — one row per validator with latest snapshot fields plus 30-day and lifetime aggregates.
   columns:
+  - name: effective_balance_gno
+    description: "End-of-day effective balance in real GNO (the 1-GNO-step stake used in the reward-cap formula; the spec's 32-mGNO step equals 1 GNO)."
+    data_type: Float64
+  - name: pubkey
+    description: "Lowercased validator public key."
+    data_type: String
+  - name: withdrawal_address
+    description: "20-byte withdrawal address derived from credentials when prefix is 0x01 or 0x02; NULL otherwise."
+    data_type: Nullable(String)
+  - name: withdrawal_credentials
+    description: "Lowercased withdrawal credentials."
+    data_type: String
   - name: validator_index
     description: Beacon-chain validator index.
     data_type: UInt64
@@ -2578,6 +2590,9 @@ models:
   description: Public API view — SELECT * FROM fct_consensus_validators_explorer_latest. Requires withdrawal_credentials filter; see model config.
 
   columns:
+  - name: withdrawal_credentials
+    description: "Lowercased withdrawal credentials \u2014 the per-operator grouping key; one row per credential."
+    data_type: String
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date
@@ -2628,6 +2643,24 @@ models:
   description: Public API view — SELECT * FROM fct_consensus_validators_explorer_members_table. Requires withdrawal_credentials filter; see model config.
 
   columns:
+  - name: balance_gno
+    description: "End-of-day validator balance in GNO."
+    data_type: Float64
+  - name: consensus_income_amount_30d_gno
+    description: "Sum of consensus income over the trailing 30 days, in GNO."
+    data_type: Float64
+  - name: proposed_blocks_count_lifetime
+    description: "Lifetime count of blocks proposed by the validator."
+    data_type: UInt64
+  - name: total_income_estimated_gno
+    description: "balance_gno + cumulative_withdrawals_gno \u2212 cumulative_deposits_gno (effective) \u2212 cumulative_consolidation_inflow_gno + cumulative_consolidation_outflow_gno. In GNO."
+    data_type: Float64
+  - name: validator_index
+    description: "Beacon-chain validator index. Unique per date (see model-level unique_key)."
+    data_type: UInt64
+  - name: withdrawal_credentials
+    description: "Lowercased withdrawal credentials the validator sits under \u2014 the Validator Explorer's operator grouping key."
+    data_type: String
   - name: as_of_date
     description: Date the snapshot is computed as of (max date in the underlying data).
     data_type: Date

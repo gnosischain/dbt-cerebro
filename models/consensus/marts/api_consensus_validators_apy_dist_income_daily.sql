@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", 'tier1', 'api:validators_apy', 'granularity:daily'],
+        tags=["production", "consensus", 'tier1', 'api:validators_apy_income_dist', 'granularity:daily'],
         meta={
             "api": {
                 "methods": ["GET", "POST"],

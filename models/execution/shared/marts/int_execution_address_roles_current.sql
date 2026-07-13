@@ -9,14 +9,16 @@
             "SET max_threads = 1",
             "SET max_block_size = 8192",
             "SET max_bytes_before_external_group_by = 2000000000",
-            "SET max_bytes_before_external_sort = 2000000000"
+            "SET max_bytes_before_external_sort = 2000000000",
+            "SET max_memory_usage = 8000000000"
         ],
         post_hook=[
             "SET join_algorithm = 'default'",
             "SET max_threads = 0",
             "SET max_block_size = 65505",
             "SET max_bytes_before_external_group_by = 0",
-            "SET max_bytes_before_external_sort = 0"
+            "SET max_bytes_before_external_sort = 0",
+            "SET max_memory_usage = 0"
         ]
     )
 }}

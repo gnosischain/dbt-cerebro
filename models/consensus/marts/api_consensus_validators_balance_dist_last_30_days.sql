@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=["production", "consensus", 'tier0', 'api:validators_balance_dististribution', 'granularity:last_30d']
+        tags=["production", "consensus", 'tier0', 'api:validators_balance_distribution', 'granularity:last_30d']
     )
 }}
 

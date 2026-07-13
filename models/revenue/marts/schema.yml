@@ -463,34 +463,232 @@ models:
     API view over fct_revenue_per_user_weekly. Per-user weekly revenue
     keyed on `user_pseudonym` — the canonical join key for cross-sector
     user-overlap queries. Filterable by week range and `is_revenue_active`.
+  columns:
+  - name: week
+    description: "ISO week start (Monday)."
+    data_type: Date
+  - name: user_pseudonym
+    description: "Cross-sector pseudonym (sipHash64 of lowercased address)."
+    data_type: UInt64
+  - name: rolling_fees_total
+    description: "Sum of 52w-rolling potential revenue across all streams (USD)."
+    data_type: Float64
+  - name: has_holdings
+    description: "1 if user has any rolling fees from the holdings stream."
+    data_type: UInt8
+  - name: has_sdai
+    description: "1 if user has any rolling fees from the sDAI stream."
+    data_type: UInt8
+  - name: has_gpay
+    description: "1 if user has any rolling fees from the Gnosis Pay stream."
+    data_type: UInt8
+  - name: has_gnosis_app
+    description: "1 if user has any rolling fees from the Gnosis App stream."
+    data_type: UInt8
+  - name: n_streams
+    description: "Number of distinct streams the user accrued fees in."
+    data_type: UInt8
+  - name: is_revenue_active
+    description: "1 iff rolling_fees_total >= $6 (Dune active-user threshold)."
+    data_type: UInt8
 - name: api_revenue_per_user_monthly
   description: |
     API view over fct_revenue_per_user_monthly. Per-user monthly revenue
     keyed on `user_pseudonym`. Filterable by month range and
     `is_revenue_active`.
+  columns:
+  - name: month
+    description: "First day of the calendar month."
+    data_type: Date
+  - name: user_pseudonym
+    description: "Cross-sector pseudonym (sipHash64)."
+    data_type: UInt64
+  - name: month_fees_total
+    description: "Sum of monthly potential revenue across all streams (USD)."
+    data_type: Float64
+  - name: has_holdings
+    description: "1 if user had holdings-stream fees this month."
+    data_type: UInt8
+  - name: has_sdai
+    description: "1 if user had sDAI-stream fees this month."
+    data_type: UInt8
+  - name: has_gpay
+    description: "1 if user had Gnosis Pay-stream fees this month."
+    data_type: UInt8
+  - name: has_gnosis_app
+    description: "1 if user had Gnosis App-stream fees this month."
+    data_type: UInt8
+  - name: n_streams
+    description: "Number of distinct streams contributing in the month."
+    data_type: UInt8
+  - name: is_revenue_active
+    description: "1 iff month_fees_total >= $0.50 (month-scaled $6 threshold)."
+    data_type: UInt8
 
 # ---------- API views (thin wrappers for the query API) ----------
 
 - name: api_revenue_holdings_cohorts_weekly
   description: API view over fct_revenue_holdings_cohorts_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: symbol
+    description: "Canonical token symbol."
+    data_type: String
+  - name: cohort
+    description: "Annualised $-bucket for user's rolling fees."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 rolling fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_cohorts_monthly
   description: API view over fct_revenue_holdings_cohorts_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: symbol
+    description: "Canonical token symbol."
+    data_type: String
+  - name: cohort
+    description: "Monthly $-bucket for user's monthly fees."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 monthly fees in cohort."
+    data_type: UInt64
 - name: api_revenue_sdai_cohorts_weekly
   description: API view over fct_revenue_sdai_cohorts_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_sdai_cohorts_monthly
   description: API view over fct_revenue_sdai_cohorts_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64
 - name: api_revenue_gpay_cohorts_weekly
   description: API view over fct_revenue_gpay_cohorts_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: symbol
+    description: "Payment token (EURe, GBPe, USDC.e)."
+    data_type: String
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_gpay_cohorts_monthly
   description: API view over fct_revenue_gpay_cohorts_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: symbol
+    description: "Payment token."
+    data_type: String
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64
 - name: api_revenue_gnosis_app_cohorts_weekly
   description: API view over fct_revenue_gnosis_app_cohorts_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_gnosis_app_cohorts_monthly
   description: API view over fct_revenue_gnosis_app_cohorts_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64
 - name: api_revenue_active_users_cohorts_weekly
   description: API view over fct_revenue_active_users_cohorts_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket (includes `<1`)."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees across all streams for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Unique users in this cohort."
+    data_type: UInt64
 - name: api_revenue_active_users_cohorts_monthly
   description: API view over fct_revenue_active_users_cohorts_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees across all streams."
+    data_type: Float64
+  - name: users_cnt
+    description: "Unique users in this cohort."
+    data_type: UInt64
 
 # ---------- Cross-stream totals ----------
 
@@ -527,39 +725,241 @@ models:
 
 - name: api_revenue_active_users_totals_weekly
   description: API view over fct_revenue_active_users_totals_weekly.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: users_cnt
+    description: "Unique users above the $6/year threshold."
+    data_type: UInt64
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees from qualifying users."
+    data_type: Float64
 - name: api_revenue_active_users_totals_monthly
   description: API view over fct_revenue_active_users_totals_monthly.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: users_cnt
+    description: "Unique users above the $0.50/month threshold."
+    data_type: UInt64
+  - name: fees_total
+    description: "Sum of monthly fees from qualifying users."
+    data_type: Float64
 
 # ---------- Per-token holdings API views ----------
 
 - name: api_revenue_holdings_eure_cohorts_weekly
   description: EURe holdings rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket for user's rolling fees."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 rolling fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_eure_cohorts_monthly
   description: EURe holdings monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket for user's monthly fees."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 monthly fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_usdce_cohorts_weekly
   description: USDC.e holdings rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket for user's rolling fees."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 rolling fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_usdce_cohorts_monthly
   description: USDC.e holdings monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket for user's monthly fees."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 monthly fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_brla_cohorts_weekly
   description: BRLA holdings rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket for user's rolling fees."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 rolling fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_brla_cohorts_monthly
   description: BRLA holdings monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket for user's monthly fees."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 monthly fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_zchf_cohorts_weekly
   description: ZCHF holdings rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket for user's rolling fees."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 rolling fees in cohort."
+    data_type: UInt64
 - name: api_revenue_holdings_zchf_cohorts_monthly
   description: ZCHF holdings monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket for user's monthly fees."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Number of users with >$0 monthly fees in cohort."
+    data_type: UInt64
 
 # ---------- Per-token Gnosis Pay API views ----------
 
 - name: api_revenue_gpay_eure_cohorts_weekly
   description: EURe Gnosis Pay rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_gpay_eure_cohorts_monthly
   description: EURe Gnosis Pay monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64
 - name: api_revenue_gpay_gbpe_cohorts_weekly
   description: GBPe Gnosis Pay rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_gpay_gbpe_cohorts_monthly
   description: GBPe Gnosis Pay monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64
 - name: api_revenue_gpay_usdce_cohorts_weekly
   description: USDC.e Gnosis Pay rolling-52w cohort API view.
+  columns:
+  - name: week
+    description: "Week start."
+    data_type: Date
+  - name: cohort
+    description: "Annualised $-bucket."
+    data_type: String
+  - name: annual_rolling_fees_total
+    description: "Sum of rolling-52w fees for users in this cohort."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 rolling fees."
+    data_type: UInt64
 - name: api_revenue_gpay_usdce_cohorts_monthly
   description: USDC.e Gnosis Pay monthly cohort API view.
+  columns:
+  - name: month
+    description: "First day of the month."
+    data_type: Date
+  - name: cohort
+    description: "Monthly $-bucket."
+    data_type: String
+  - name: fees_total
+    description: "Sum of monthly fees."
+    data_type: Float64
+  - name: users_cnt
+    description: "Users with >$0 monthly fees."
+    data_type: UInt64

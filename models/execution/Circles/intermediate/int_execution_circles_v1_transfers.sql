@@ -47,7 +47,7 @@ WITH deduped_logs AS (
             pre_filter=logs_pre_filter
         ) }}
     )
-),
+)
 
 SELECT
     block_number,

@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production', 'execution', 'yields', 'api:yields_overview', 'granularity:latest', 'tier1']
+        tags=['production', 'execution', 'yields', 'api:yields_overview_sdai_supply', 'granularity:latest', 'tier1']
     )
 }}
 

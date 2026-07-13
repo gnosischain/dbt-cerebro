@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier1','api:execution_pools','metric:tvl_token','granularity:daily']
+        tags=['production','execution','tier1','api:execution_pools_tvl_token','metric:tvl_token','granularity:daily']
     )
 }}
 

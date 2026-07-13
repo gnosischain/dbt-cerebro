@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier1','api:execution_pools', 'metric:lp_activity', 'granularity:daily']
+        tags=['production','execution','tier1','api:execution_pools_lp_activity', 'metric:lp_activity', 'granularity:daily']
     )
 }}
 

@@ -79,6 +79,12 @@ models:
     so LabelSelector loads the full list in one request and substring-matches
     client-side.
   columns:
+  - name: connected_safe_count
+    description: "Number of Safes this address currently owns (0 if not an owner)."
+    data_type: UInt64
+  - name: connected_validator_count
+    description: "Number of validators whose withdrawal_address is this address (0 if none)."
+    data_type: UInt64
   - name: address
     data_type: Nullable(String)
     tests:
@@ -132,6 +138,12 @@ models:
 - name: api_execution_account_token_balances_latest
   description: Simple API view for latest Account Portfolio token balances.
   columns:
+  - name: balance_usd
+    description: "Balance multiplied by the daily token price in USD. Null when no price is available for that (date, symbol)."
+    data_type: Float64
+  - name: symbol
+    description: "The token's symbol, serving as a human-readable identifier."
+    data_type: String
   - name: address
     data_type: Nullable(String)
     tests: [not_null]
@@ -173,6 +185,15 @@ models:
 - name: api_execution_account_token_movements_daily
   description: Simple API view for Account Portfolio token movements.
   columns:
+  - name: counterparty
+    description: "Counterparty address of the movement (other side of the transfer)."
+    data_type: Nullable(String)
+  - name: date
+    description: "Movement date (daily grain)."
+    data_type: Date
+  - name: symbol
+    description: "Token symbol of the moved asset."
+    data_type: String
   - name: address
     data_type: Nullable(String)
     tests: [not_null]
@@ -234,6 +255,12 @@ models:
 - name: api_execution_account_counterparty_graph
   description: Simple API view for Account Portfolio counterparty graph rows.
   columns:
+  - name: edge_type
+    description: "Kind of relationship the edge represents."
+    data_type: String
+  - name: weight
+    description: "Edge weight \u2014 aggregated interaction count (or 1 for structural relations)."
+    data_type: UInt64
   - name: source
     data_type: Nullable(String)
     tests: [not_null]
@@ -297,6 +324,9 @@ models:
 - name: api_execution_account_recent_transactions
   description: Recent production-backed token movement rows for Account Portfolio transaction tables.
   columns:
+  - name: counterparty
+    description: "Counterparty address of the movement (other side of the transfer)."
+    data_type: Nullable(String)
   - name: address
     data_type: Nullable(String)
     tests: [not_null]
@@ -340,6 +370,15 @@ models:
 - name: api_execution_account_linked_entities_latest
   description: Simple API view for direct linked entities.
   columns:
+  - name: entity_type
+    description: "Type of linked entity ('safe', 'safe_owner', 'gpay_wallet', 'validator_credential')."
+    data_type: String
+  - name: last_seen_at
+    description: "Most recent timestamp evidencing the link (became-owner / last module event / slot timestamp)."
+    data_type: DateTime
+  - name: relation
+    description: "Relationship of the entity to root_address."
+    data_type: String
   - name: root_address
     data_type: Nullable(String)
     tests: [not_null]
@@ -540,6 +579,9 @@ models:
 - name: api_execution_account_search_index
   description: Simple API view over Account Portfolio search index.
   columns:
+  - name: address
+    description: "Resolved account address for the search result (lowercase)."
+    data_type: String
   - name: search_key
     data_type: Nullable(String)
     tests: [not_null]
@@ -601,6 +643,9 @@ models:
 - name: api_execution_gnosis_app_user_activity_daily
   description: Account-facing Gnosis App activity view.
   columns:
+  - name: activity_kind
+    description: "See enum above."
+    data_type: String
   - name: address
     data_type: Nullable(String)
     tests: [not_null]
@@ -611,6 +656,9 @@ models:
 - name: api_execution_account_validators_latest
   description: Account-facing validator member view filterable by withdrawal address or credential.
   columns:
+  - name: withdrawal_credentials
+    description: "Lowercased withdrawal credentials the validator sits under \u2014 the Validator Explorer's operator grouping key."
+    data_type: String
   - name: validator_index
     data_type: UInt32
     tests: [not_null]
