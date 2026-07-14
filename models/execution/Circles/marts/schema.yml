@@ -1227,6 +1227,112 @@ models:
     description: Date the snapshot is computed as of (max InvitationFarm event date).
     data_type: Date
 
+- name: api_execution_circles_v2_balance_cohorts_daily
+  description: >
+    Daily wealth distribution: distinct CRC holders bucketed by balance tier
+    (0-1 / 1-10 / 10-100 / 100-1k / 1k-10k / 10k-100k / 100k+). Passthrough over
+    int_execution_circles_v2_balance_cohorts_daily, excluding the current incomplete day.
+  columns:
+  - name: date
+    description: Calendar date (current incomplete day excluded).
+    data_type: Date
+    tests: [not_null]
+  - {name: balance_bucket, description: "Balance range bucket label (e.g. '0-1', '1-10', '100k+').", data_type: String}
+  - {name: holder_count, description: Number of distinct holders in this bucket., data_type: UInt64}
+  - {name: total_balance, description: Sum of nominal balances in this bucket in CRC., data_type: Float64}
+  - {name: total_demurraged_balance, description: Sum of demurrage-adjusted balances in this bucket in CRC., data_type: Nullable(Float64)}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_daily
+  description: >
+    Daily liquidity/market metrics for the main Circles DEX pools (seed
+    circles_liquidity_pools), one row per (date, pool). Sourced from
+    int_execution_pools_metrics_daily; current incomplete day excluded.
+  columns:
+  - {name: date, description: Calendar day (UTC)., data_type: Date}
+  - {name: pool, description: Human-readable pool label (token pair)., data_type: String}
+  - {name: pool_address, description: Pool contract address (lowercase)., data_type: String}
+  - {name: protocol, description: DEX protocol (Uniswap V3)., data_type: String}
+  - {name: tvl_usd, description: Total value locked in USD., data_type: Nullable(Float64)}
+  - {name: volume_usd, description: Daily trading volume in USD., data_type: Float64}
+  - {name: fees_usd, description: Daily accrued fees in USD., data_type: Float64}
+  - {name: swap_count, description: Number of Swap events on this pool on this day., data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_traders_daily
+  description: >
+    Daily distinct traders and trade count per main Circles DEX pool. A trader
+    is the swap taker (Swap recipient), falling back to the tx signer.
+  columns:
+  - {name: date, description: Calendar day (UTC)., data_type: Date}
+  - {name: pool, description: Human-readable pool label (token pair)., data_type: String}
+  - {name: pool_address, description: Pool contract address (lowercase)., data_type: String}
+  - {name: distinct_traders, description: Distinct traders active in the pool that day., data_type: UInt64}
+  - {name: trades, description: Number of swaps in the pool that day., data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_latest
+  description: >
+    One row per main Circles DEX pool: latest TVL plus trailing-7d volume,
+    trades, distinct traders and fees. Backs the Liquidity KPI tiles and pools
+    leaderboard.
+  columns:
+  - {name: pool_address, description: Pool contract address (lowercase)., data_type: String, tests: [not_null, unique]}
+  - {name: pool, description: Human-readable pool label (token pair)., data_type: String}
+  - {name: protocol, description: DEX protocol (Uniswap V3)., data_type: Nullable(String)}
+  - {name: tvl_usd, description: Most recent daily TVL in USD., data_type: Nullable(Float64)}
+  - {name: volume_7d, description: Trailing-7d trading volume in USD., data_type: Float64}
+  - {name: trades_7d, description: Trailing-7d swap count., data_type: UInt64}
+  - {name: traders_7d, description: Trailing-7d distinct traders (deduplicated across days)., data_type: UInt64}
+  - {name: fees_7d, description: Trailing-7d fees in USD., data_type: Float64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_group_member_scores
+  description: >
+    Latest on-chain score per (score-based group, member), from the
+    OffchainScoreBasedMintPolicy PersonalMinted event. One row per member per
+    group; score is the value at the member's most recent mint.
+  columns:
+  - {name: group_address, description: Lowercased group avatar address., data_type: String, tests: [not_null]}
+  - {name: member, description: Member (minter) avatar address, derived from the collateral token id., data_type: String}
+  - {name: score, description: Member's off-chain trust score at their latest mint., data_type: UInt64}
+  - {name: last_mint_at, description: Timestamp of the member's latest score-based mint., data_type: DateTime}
+  - {name: last_mint_amount, description: Group tokens minted at the latest mint (CRC)., data_type: Float64}
+  - {name: n_mints, description: Number of score-based mints by this member in this group., data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_group_score_distribution
+  description: >
+    Count of members per score bucket, per score-based group. Buckets carry a
+    bucket_rank for stable ordering in charts.
+  columns:
+  - {name: group_address, description: Lowercased group avatar address., data_type: String, tests: [not_null]}
+  - {name: score_bucket, description: "Score range bucket label (0-24 / 25-49 / 50-74 / 75-99 / 100-149 / 150+).", data_type: String}
+  - {name: bucket_rank, description: Ordinal rank of the bucket for chart ordering., data_type: UInt8}
+  - {name: n_members, description: Number of members in this score bucket., data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_score_mints_daily
+  description: >
+    Daily score-based mint activity per group: mint count, distinct minters,
+    average member score at mint, and total group tokens minted. Current
+    incomplete day excluded.
+  columns:
+  - {name: group_address, description: Lowercased group avatar address., data_type: String, tests: [not_null]}
+  - {name: date, description: Calendar day (UTC)., data_type: Date}
+  - {name: n_mints, description: Number of score-based mints that day., data_type: UInt64}
+  - {name: n_minters, description: Distinct minters that day., data_type: UInt64}
+  - {name: avg_score, description: Average member score at mint that day., data_type: Float64}
+  - {name: amount, description: Total group tokens minted that day (CRC)., data_type: Float64}
+  meta: *meta_api
+  tests: *elementary_error
+
 - name: api_execution_circles_v2_trusts_distribution
   description: >
     Distribution histogram of trust degree (given / received) across avatars.

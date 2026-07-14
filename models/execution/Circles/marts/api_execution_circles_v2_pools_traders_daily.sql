@@ -1,0 +1,22 @@
+{{
+  config(
+    materialized='view',
+    tags=['production','execution','circles_v2','api:circles_v2_pools_traders_daily','granularity:daily']
+  )
+}}
+
+-- Daily distinct traders per main Circles DEX pool (seed circles_liquidity_pools).
+-- A "trader" is the swap taker (Swap event recipient), falling back to the tx signer.
+WITH p AS (
+    SELECT lower(pool_address) AS pool_address, label FROM {{ ref('circles_liquidity_pools') }}
+)
+SELECT
+    toDate(t.block_timestamp)                 AS date,
+    p.label                                   AS pool,
+    lower(t.pool_address)                     AS pool_address,
+    uniqExact(coalesce(t.taker, t.tx_from))   AS distinct_traders,
+    count()                                   AS trades
+FROM {{ ref('int_execution_pools_dex_trades') }} t
+INNER JOIN p ON p.pool_address = lower(t.pool_address)
+WHERE toDate(t.block_timestamp) < today()
+GROUP BY date, pool, pool_address

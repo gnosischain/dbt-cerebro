@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: api_execution_circles_v2_group_search
+    description: >
+      (group_address, display_name) lookup backing the Group Explorer global
+      filter. One row per Circles v2 Group avatar.
+    columns:
+      - name: group_address
+        description: Lowercased group avatar address.
+        tests: [not_null, unique]
+      - name: display_name
+        description: IPFS metadata name, else on-chain name, else the address.
+
+  - name: api_execution_circles_v2_group_explorer_profile
+    description: >
+      One row per Circles v2 group: identity, on-chain handlers, and snapshot
+      KPIs (members, supply, wrapped %, collateral, 7d mints, holders). Backs
+      the Group Explorer identity header and KPI tiles.
+    columns:
+      - name: group_address
+        description: Lowercased group avatar address.
+        tests: [not_null, unique]
+
+  - name: api_execution_circles_v2_group_members
+    description: >
+      Members of a group (trustees on its outgoing trust list) with profile
+      and join date; is_mutual flags reciprocal trust.
+    columns:
+      - name: group_address
+        description: Lowercased group avatar address.
+        tests: [not_null]
+      - name: member
+        description: Lowercased member avatar address.
+
+  - name: api_execution_circles_v2_group_holders
+    description: >
+      Holders of a group's token, resolving both native ERC-1155 and ERC-20
+      wrapper legs (wrapper mapped back to group via the wrapper registry).
+    columns:
+      - name: group_address
+        description: Lowercased group avatar address.
+        tests: [not_null]
+
+  - name: api_execution_circles_v2_group_supply_daily
+    description: >
+      Per-group daily token supply, split native ERC-1155 vs ERC-20 wrapper
+      (wrapper level = prefix-sum of wrapper supply deltas).
+    columns:
+      - name: group_address
+        description: Lowercased group avatar address.
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+
+  - name: api_execution_circles_v2_group_collateral_daily
+    description: Per-group daily member-CRC collateral (native units).
+    columns:
+      - name: group_address
+        tests: [not_null]
+
+  - name: api_execution_circles_v2_group_mints_daily
+    description: >
+      Per-group daily group-token mints vs collateral redemptions (distinct
+      tokens/units, labelled in the kind column).
+    columns:
+      - name: group_address
+        tests: [not_null]
+
+  - name: api_execution_circles_v2_group_size_daily
+    description: Per-group daily member count, from historical trust intervals.
+    columns:
+      - name: group_address
+        tests: [not_null]
+      - name: date
+        tests: [not_null]

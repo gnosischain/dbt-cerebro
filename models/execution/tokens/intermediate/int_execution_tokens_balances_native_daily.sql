@@ -1,12 +1,34 @@
+{#
+  Windowed batches (start_month) normally append -- the batch runner does
+  non-overlapping months. Pass reprocess_overwrite=true to re-run an
+  OVERLAPPING window safely: delete+insert atomically replaces the touched
+  month-partitions (no duplicate rows, no OPTIMIZE/FINAL). Paired with the
+  start_month-aware seed below (reseed from the last day BEFORE the window),
+  this makes a corrupted month self-healing:
+    dbt run -s int_execution_tokens_balances_native_daily \
+      --vars 'start_month: 2026-07-01, end_month: 2026-07-01, reprocess_overwrite: true'
+#}
 {{
   config(
     materialized='incremental',
-    incremental_strategy='delete+insert',
+    incremental_strategy=('delete+insert' if var('reprocess_overwrite', false) else ('append' if var('start_month', none) else 'delete+insert')),
     engine='ReplacingMergeTree()',
     order_by='(date, token_address, address)',
     partition_by='toStartOfMonth(date)',
     unique_key='(date, token_address, address)',
     settings={ 'allow_nullable_key': 1 },
+    pre_hook=[
+      "SET max_memory_usage = 8000000000",
+      "SET max_bytes_before_external_group_by = 2000000000",
+      "SET max_bytes_before_external_sort = 2000000000",
+      "SET join_algorithm = 'grace_hash'"
+    ],
+    post_hook=[
+      "SET max_memory_usage = 0",
+      "SET max_bytes_before_external_group_by = 0",
+      "SET max_bytes_before_external_sort = 0",
+      "SET join_algorithm = 'default'"
+    ],
     tags=['production','execution','tokens','balances_daily']
   )
 }}
@@ -63,7 +85,37 @@ overall_max_date AS (
         ) AS max_date
 ),
 
-{% if is_incremental() %}
+{% if start_month and end_month %}
+-- Reprocess/backfill a bounded window: seed the carry-forward from the last
+-- GOOD day BEFORE the window (date < start_month), NOT from the current
+-- max(date) -- which may itself sit inside the window being repaired. This is
+-- what lets an overlapping re-run (reprocess_overwrite=true) rebuild the window
+-- from a correct base instead of a poisoned tail.
+prev_balances AS (
+    -- Dedup the seed day with a partition-pruned GROUP BY any() instead of a
+    -- full-table FINAL. FINAL over this 395M-row table forces a whole-table
+    -- merge-sort (MergeSortingTransform) and OOMs; the seed day is a single,
+    -- already-clean past partition, so GROUP BY on that one day is correct and cheap.
+    SELECT
+        token_address,
+        symbol,
+        token_class,
+        address,
+        any(balance_raw) AS balance_raw
+    FROM {{ this }}
+    WHERE date = (
+        SELECT max(date)
+        FROM {{ this }}
+        WHERE date < toDate('{{ start_month }}')
+          {{ symbol_filter('symbol', symbol, 'include') }}
+          {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
+    )
+    {{ symbol_filter('symbol', symbol, 'include') }}
+    {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
+    GROUP BY token_address, symbol, token_class, address
+),
+
+{% elif is_incremental() %}
 current_partition AS (
     SELECT
         max(toStartOfMonth(date)) AS month
@@ -87,7 +139,9 @@ prev_balances AS (
         {{ symbol_filter('t1.symbol', symbol, 'include') }}
         {{ symbol_filter('t1.symbol', symbol_exclude, 'exclude') }}
 ),
+{% endif %}
 
+{% if is_incremental() %}
 keys AS (
     SELECT DISTINCT
         token_address,
@@ -119,12 +173,28 @@ calendar AS (
         k.symbol,
         k.token_class,
         k.address,
+        {% if start_month and end_month %}
+        addDays(
+            (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+            offset + 1
+        ) AS date
+        {% else %}
         addDays(cp.max_date + 1, offset) AS date
+        {% endif %}
     FROM keys k
+    {% if not (start_month and end_month) %}
     CROSS JOIN current_partition cp
+    {% endif %}
     CROSS JOIN overall_max_date o
     ARRAY JOIN range(
+        {% if start_month and end_month %}
+        toUInt32(dateDiff('day',
+            (SELECT max(date) FROM {{ this }} WHERE date < toDate('{{ start_month }}')),
+            o.max_date
+        ))
+        {% else %}
         dateDiff('day', cp.max_date, o.max_date)
+        {% endif %}
     ) AS offset
 ),
 

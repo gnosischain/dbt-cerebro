@@ -1,7 +1,12 @@
+{#
+  Windowed batches (start_month) normally append -- refresh.py runs non-overlapping months.
+  Pass reprocess_overwrite=true to re-run an OVERLAPPING window safely: delete+insert
+  atomically replaces the touched month-partitions (no duplicate rows, no OPTIMIZE/FINAL).
+#}
 {{
     config(
         materialized='incremental',
-        incremental_strategy=('append' if var('start_month', none) else 'delete+insert'),
+        incremental_strategy=('delete+insert' if var('reprocess_overwrite', false) else ('append' if var('start_month', none) else 'delete+insert')),
         engine='ReplacingMergeTree()',
         order_by='(date, pool_address, token_address)',
         unique_key='(date, pool_address, token_address)',

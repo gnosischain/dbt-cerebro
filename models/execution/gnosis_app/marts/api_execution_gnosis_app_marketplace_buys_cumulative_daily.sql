@@ -28,4 +28,5 @@ SELECT
     cumulative_buys,
     cumulative_payers
 FROM {{ ref('fct_execution_gnosis_app_marketplace_buys_cumulative_daily') }}
+WHERE date < today()   -- exclude the current, incomplete day
 ORDER BY date, offer_name
