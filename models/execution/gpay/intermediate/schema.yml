@@ -26,6 +26,32 @@ models:
     owner: analytics_team
     authoritative: false
 
+- name: int_execution_gpay_accounts_deployed
+  description: |
+    True Gnosis Pay account universe, one row per deployed account. Unlike
+    int_execution_gpay_wallets (payment-gated), accounts are identified by the
+    deploy-time on-chain signature: a Safe that enabled a Gnosis Pay Zodiac
+    module (Delay / Roles / Spender mastercopy), independent of whether it ever
+    made a card payment - so this also counts deployed-but-never-spent accounts.
+    June 2026 migrated Safes are collapsed onto their canonical NEW Safe (via
+    int_execution_gpay_safe_canonical) and keep the earliest deploy time.
+  columns:
+  - name: account
+    description: Deployed Gnosis Pay account address (0x-prefixed, lowercase; canonical NEW Safe for migrated accounts).
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: deployed_at
+    description: Earliest timestamp at which this account enabled a Gnosis Pay module (its on-chain deployment/setup time).
+    data_type: DateTime
+  - name: deployed_date
+    description: Calendar date of deployed_at.
+    data_type: Date
+  meta:
+    owner: analytics_team
+    authoritative: false
+
 - name: int_execution_gpay_activity
   description: Incremental model that captures individual Gnosis Pay wallet transactions including payments, deposits, withdrawals, and cashback events with USD valuations.
   columns:

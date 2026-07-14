@@ -3419,6 +3419,48 @@ models:
       severity: error
       tags:
       - elementary
+- name: api_execution_gpay_total_accounts
+  description: All-time total count of deployed Gnosis Pay accounts (Safes that enabled a Gnosis Pay Zodiac module - Delay / Roles / Spender), including accounts that never made a payment. Migrated Safes from the June 2026 migration are collapsed to a single account. This is the true "accounts deployed" figure, versus api_execution_gpay_total_funded which counts only wallets that made a first payment.
+  columns:
+
+  - name: value
+    description: The total number of deployed Gnosis Pay accounts.
+    data_type: Float64
+  - name: as_of_date
+    description: Date the snapshot is computed as of (max date in the underlying data).
+    data_type: Date
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
+- name: api_execution_gpay_accounts_daily
+  description: Daily time series of the cumulative number of deployed Gnosis Pay accounts.
+  columns:
+
+  - name: date
+    description: The calendar date (account deploy date).
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: value
+    description: The cumulative number of deployed Gnosis Pay accounts up to and including the date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+  tests:
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
 - name: api_execution_gpay_total_payments
   description: All-time total count of Gnosis Pay payments.
   columns:
