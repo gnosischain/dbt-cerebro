@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_swaps_daily','granularity:daily']) }}
+{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_swaps','granularity:daily','tier1']) }}
 -- Daily swap activity per main Circles DEX pool (scoped by pool_address in the Pool Explorer).
 WITH p AS ( SELECT lower(pool_address) AS pool_address FROM {{ ref('circles_liquidity_pools') }} )
 SELECT

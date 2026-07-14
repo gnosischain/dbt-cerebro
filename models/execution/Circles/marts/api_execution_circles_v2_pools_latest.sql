@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','circles_v2','api:circles_v2_pools_latest','granularity:latest']
+    tags=['production','execution','circles_v2','api:circles_v2_pools','granularity:latest','tier1']
   )
 }}
 
@@ -32,6 +32,7 @@ tv AS (
     GROUP BY pool_address
 )
 SELECT
+    today()                                     AS as_of_date,
     p.pool_address                              AS pool_address,
     p.label                                     AS pool,
     any(d.protocol)                             AS protocol,

@@ -1,13 +1,14 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','circles_v2','scores','api:circles_v2_group_score_distribution','granularity:latest']
+    tags=['production','execution','circles_v2','scores','api:circles_v2_group_score_distribution','granularity:latest','tier1']
   )
 }}
 
 -- Distribution of members across score buckets, per score-based group.
 -- Buckets are ordered via bucket_rank for stable chart display.
 SELECT
+    today() AS as_of_date,
     group_address,
     multiIf(score < 25,  '0-24',
             score < 50,  '25-49',

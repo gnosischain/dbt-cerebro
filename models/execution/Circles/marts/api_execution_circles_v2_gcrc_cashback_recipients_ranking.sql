@@ -32,6 +32,7 @@ meta AS (
     GROUP BY avatar
 )
 SELECT
+    today() AS as_of_date,
     row_number() OVER (ORDER BY a.total_amount DESC) AS rank,
     a.address,
     coalesce(m.display_name, a.address) AS display_name,

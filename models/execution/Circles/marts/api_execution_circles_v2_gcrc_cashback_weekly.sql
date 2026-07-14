@@ -1,7 +1,7 @@
 {{
     config(
         materialized='view',
-        tags=['production','execution','tier1','api:circles_v2_gcrc_cashback_weekly','granularity:weekly']
+        tags=['production','execution','tier1','api:circles_v2_gcrc_cashback','granularity:weekly']
     )
 }}
 

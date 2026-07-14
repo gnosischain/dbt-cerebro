@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_swaps']) }}
+{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_swaps','granularity:snapshot','tier1']) }}
 -- Individual recent swaps per main Circles DEX pool (scoped, for the Pool Explorer swaps table).
 WITH p AS ( SELECT lower(pool_address) AS pool_address FROM {{ ref('circles_liquidity_pools') }} )
 SELECT

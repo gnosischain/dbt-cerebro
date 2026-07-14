@@ -6,11 +6,17 @@ models:
       (group_address, display_name) lookup backing the Group Explorer global
       filter. One row per Circles v2 Group avatar.
     columns:
+      - name: as_of_date
+        description: Snapshot date the lookup was materialised (today() at build time).
+        data_type: Date
       - name: group_address
         description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null, unique]
       - name: display_name
         description: IPFS metadata name, else on-chain name, else the address.
+        data_type: String
+
 
   - name: api_execution_circles_v2_group_explorer_profile
     description: >
@@ -20,27 +26,70 @@ models:
     columns:
       - name: group_address
         description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null, unique]
+      - {name: as_of_date, description: Snapshot date the row was materialized (UTC)., data_type: Date}
+      - {name: display_name, description: Group display name from metadata or on-chain fallback., data_type: String}
+      - {name: preview_image_url, description: Group avatar preview image URL from metadata., data_type: Nullable(String)}
+      - {name: registered_at, description: Most recent on-chain registration timestamp for the group., data_type: DateTime}
+      - {name: invited_by, description: Address that invited the group per metadata., data_type: Nullable(String)}
+      - {name: owner, description: Current group owner address., data_type: Nullable(String)}
+      - {name: treasury_address, description: Current treasury handler address., data_type: Nullable(String)}
+      - {name: service, description: Current service handler address., data_type: Nullable(String)}
+      - {name: mint_handler, description: Current mint handler address., data_type: Nullable(String)}
+      - {name: redemption_handler, description: Current redemption handler address., data_type: Nullable(String)}
+      - {name: n_members, description: Current group member count., data_type: UInt64}
+      - {name: supply, description: Current group token supply in native units., data_type: Float64}
+      - {name: wrapped_pct, description: Share of supply held as ERC-20 wrapper., data_type: Float64}
+      - {name: collateral_total, description: Latest total member-CRC collateral in native units., data_type: Float64}
+      - {name: mints_7d, description: Group-token minted in the last 7 days in native units., data_type: Float64}
+      - {name: holders_count, description: Distinct holders of the group token., data_type: UInt64}
 
   - name: api_execution_circles_v2_group_members
     description: >
       Members of a group (trustees on its outgoing trust list) with profile
       and join date; is_mutual flags reciprocal trust.
     columns:
+      - name: as_of_date
+        description: Snapshot date the row was materialized (constant today()).
+        data_type: Date
       - name: group_address
         description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null]
       - name: member
         description: Lowercased member avatar address.
+        data_type: String
+      - name: display_name
+        description: Member IPFS metadata name, else on-chain name, else the address.
+        data_type: String
+      - name: preview_image_url
+        description: Member profile preview image URL from IPFS metadata, if any.
+        data_type: Nullable(String)
+      - name: member_since
+        description: Timestamp the member's trust edge became valid (join date).
+        data_type: DateTime
+      - name: is_mutual
+        description: 1 when the member also trusts the group back (reciprocal trust).
+        data_type: UInt8
+      - name: score
+        description: Member's latest on-chain mint score for score-based groups, else null.
+        data_type: Nullable(UInt64)
 
   - name: api_execution_circles_v2_group_holders
     description: >
       Holders of a group's token, resolving both native ERC-1155 and ERC-20
       wrapper legs (wrapper mapped back to group via the wrapper registry).
     columns:
+      - {name: as_of_date, description: Snapshot date the holder list was computed (today() UTC)., data_type: Date}
       - name: group_address
         description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null]
+      - {name: holder, description: Lowercased holder avatar address., data_type: String}
+      - {name: display_name, description: Holder display name from IPFS metadata or on-chain name or address fallback., data_type: String}
+      - {name: balance, description: Holder total group-token balance in native units summing the native and wrapper legs., data_type: Float64}
+      - {name: is_wrapped, description: 1 if any of the holder balance is held via an ERC-20 wrapper., data_type: UInt8}
 
   - name: api_execution_circles_v2_group_supply_daily
     description: >
@@ -49,28 +98,67 @@ models:
     columns:
       - name: group_address
         description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null]
       - name: date
+        description: Calendar day (UTC).
+        data_type: Date
         tests: [not_null]
+      - name: supply
+        description: Nominal (non-demurraged) group token supply that day (native CRC units, 1e18-scaled).
+        data_type: Float64
+      - name: supply_demurraged
+        description: Demurraged group token supply that day (native CRC units, 1e18-scaled).
+        data_type: Float64
+
 
   - name: api_execution_circles_v2_group_collateral_daily
     description: Per-group daily member-CRC collateral (native units).
     columns:
+      - name: date
+        description: Calendar day (UTC).
+        data_type: Date
       - name: group_address
+        description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null]
+      - name: collateral
+        description: Member-CRC collateral held by the group at end-of-day (native units, summed across all backing token ids).
+        data_type: Float64
 
   - name: api_execution_circles_v2_group_mints_daily
     description: >
       Per-group daily group-token mints vs collateral redemptions (distinct
       tokens/units, labelled in the kind column).
     columns:
-      - name: group_address
+      - name: date
+        description: Calendar day (UTC).
+        data_type: Date
         tests: [not_null]
+      - name: group_address
+        description: Lowercased group avatar address.
+        data_type: String
+        tests: [not_null]
+      - name: kind
+        description: Series label distinguishing group-token mints from collateral redemptions.
+        data_type: String
+      - name: amount
+        description: Summed amount for that day/group/kind (native CRC units, 1e18-scaled).
+        data_type: Float64
+
 
   - name: api_execution_circles_v2_group_size_daily
     description: Per-group daily member count, from historical trust intervals.
     columns:
       - name: group_address
+        description: Lowercased group avatar address.
+        data_type: String
         tests: [not_null]
       - name: date
+        description: Calendar day (UTC).
+        data_type: Date
         tests: [not_null]
+      - name: n_members
+        description: Number of members (trustees) in the group that day.
+        data_type: UInt64
+

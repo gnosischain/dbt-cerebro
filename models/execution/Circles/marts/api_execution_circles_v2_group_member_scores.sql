@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','circles_v2','scores','api:circles_v2_group_member_scores','granularity:latest']
+    tags=['production','execution','circles_v2','scores','api:circles_v2_group_member_scores','granularity:latest','tier1']
   )
 }}
 
@@ -9,6 +9,7 @@
 -- One row per member per score-based group; score is the value at the member's
 -- most recent PersonalMinted event.
 SELECT
+    today()                          AS as_of_date,
     group_address                    AS group_address,
     avatar                           AS member,
     argMax(score, block_timestamp)   AS score,

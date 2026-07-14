@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_liquidity_daily','granularity:daily']) }}
+{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_liquidity','granularity:daily','tier1']) }}
 -- Daily liquidity events (Mint = add, Burn = remove) per Uniswap V3 Circles pool.
 -- One event emits two token rows in the staging view, so events are deduped on (tx, log_index).
 WITH p AS (

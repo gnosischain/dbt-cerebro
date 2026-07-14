@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','circles_v2','api:circles_v2_balance_cohorts_daily','granularity:daily']
+    tags=['production','execution','circles_v2','api:circles_v2_balance_cohorts','granularity:daily','tier1']
   )
 }}
 

@@ -37,6 +37,7 @@ meta AS (
     GROUP BY avatar
 )
 SELECT
+    today() AS as_of_date,
     g.group_address,
     b.avatar AS holder,
     coalesce(m.display_name, b.avatar) AS display_name,

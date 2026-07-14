@@ -284,6 +284,25 @@ models:
       - log_index
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_execution_gnosis_app_gpay_txns
+  description: |
+    Any USER-INITIATED Gnosis Pay card-wallet transaction (Payment = card spend,
+    Crypto Withdrawal, Fiat Off-ramp, Fiat Top Up) by a currently GA-owned wallet,
+    from the GA launch (2025-11-12) on, attributed to the safe's first GA owner
+    (ga_user) via the int_execution_gnosis_app_gpay_wallets bridge. Structural twin
+    of int_execution_gnosis_app_gpay_topups; excludes 'Crypto Deposit' (already the
+    topup leg, so the two gPay legs stay disjoint) and system-side 'Reversal' /
+    'Cashback' (not user activity).
+- name: int_execution_gnosis_app_user_activity_daily_incl_gpay
+  description: |
+    The composite Gnosis App activity feed (int_execution_gnosis_app_user_activity_daily)
+    EXTENDED with a `gpay_txn` activity_kind sourced from int_execution_gnosis_app_gpay_txns,
+    plus a first-touch onboard for GP-only owners. Consumed only by the "incl. Gnosis Pay"
+    WAU variant (fct_execution_gnosis_app_users_weekly_incl_gpay), so the current metric —
+    and DAU / MAU / WEAU / retention — stay unchanged for comparison. Reads the base activity
+    table ONCE (all activity_kinds) to avoid a ClickHouse predicate-pushdown bug that leaks
+    non-onboard rows into the 'onboard' branch when the same table is read via two
+    opposite-filter CTEs.
 - name: int_execution_gnosis_app_gpay_topups
   description: |
     Gnosis App → Gnosis Pay top-ups.

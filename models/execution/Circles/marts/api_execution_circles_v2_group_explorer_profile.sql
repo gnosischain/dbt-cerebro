@@ -83,6 +83,7 @@ groups_meta AS (
     GROUP BY group_address
 )
 SELECT
+    today() AS as_of_date,
     m.group_address AS group_address,
     m.display_name AS display_name,
     m.preview_image_url AS preview_image_url,

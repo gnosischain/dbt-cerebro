@@ -18,6 +18,7 @@ steps AS (
     FROM {{ ref('fct_execution_gnosis_app_funnel_daily') }}
 )
 SELECT
+    today() AS as_of_date,
     s.funnel_name,
     s.level,
     concat('Step ', toString(s.level)) AS step_label,

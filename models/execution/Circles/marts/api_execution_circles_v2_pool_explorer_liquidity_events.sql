@@ -1,4 +1,4 @@
-{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_liquidity_events']) }}
+{{ config(materialized='view', tags=['production','execution','circles_v2','api:circles_v2_pool_explorer_liquidity_events','granularity:snapshot','tier1']) }}
 -- Individual liquidity events (Mint = Add, Burn = Remove) for the main Uniswap V3
 -- Circles pools, one row per event, with each token amount added/removed, the USD
 -- value of the event, and the LP (position owner). Scoped by pool_address in the

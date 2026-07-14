@@ -1,13 +1,14 @@
 {{
   config(
     materialized='view',
-    tags=['production','execution','circles_v2','api:circles_v2_pools_reserves_latest','granularity:latest']
+    tags=['production','execution','circles_v2','api:circles_v2_pools_reserves','granularity:latest','tier1']
   )
 }}
 
 -- Latest per-(pool, token) reserve and USD value for the main Circles DEX pools.
 -- Two rows per pool (the two legs); backs the pool-reserves card.
 SELECT
+    today() AS as_of_date,
     pool,
     pool_address,
     token_address,

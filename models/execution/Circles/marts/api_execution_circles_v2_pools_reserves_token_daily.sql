@@ -1,7 +1,7 @@
 {{
   config(
     materialized='table',
-    tags=['production','execution','circles_v2','api:circles_v2_pools_reserves_token_daily','granularity:daily']
+    tags=['production','execution','circles_v2','api:circles_v2_pools_reserves_token','granularity:daily','tier1']
   )
 }}
 

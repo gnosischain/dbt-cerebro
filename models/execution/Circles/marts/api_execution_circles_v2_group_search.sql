@@ -10,6 +10,7 @@
 -- One row per registered Circles v2 Group avatar (deduped by latest
 -- registration, since avatar_metadata can carry >1 registration row).
 SELECT
+    today() AS as_of_date,
     group_address,
     argMax(display_name, registered_at) AS display_name
 FROM (
