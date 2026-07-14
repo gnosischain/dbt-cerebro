@@ -1760,3 +1760,188 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+
+
+- name: api_execution_circles_v2_gcrc_cashback_cumulative
+  description: >
+    Cumulative Circles v2 gCRC cashback over time, one row per week: the
+    running total gCRC distributed and the running count of distinct lifetime
+    recipients (each recipient counted in the week they first received
+    cashback).
+  columns:
+  - {name: week, description: "Week start (Monday, UTC).", data_type: Date}
+  - {name: cumulative_amount, description: "Running total gCRC cashback distributed through the end of this week.", data_type: Float64}
+  - {name: cumulative_recipients, description: "Running count of distinct lifetime cashback recipients, each counted in the week they first received cashback.", data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_gcrc_cashback_recipients_ranking
+  description: >
+    Top 100 lifetime recipients of Circles v2 gCRC cashback, ranked by total
+    amount received, enriched with each recipient's avatar profile (display
+    name and preview image).
+  columns:
+  - {name: as_of_date, description: "Date the snapshot was generated (today, UTC).", data_type: Date}
+  - {name: rank, description: "Rank by total cashback received (1 = highest).", data_type: UInt64}
+  - {name: address, description: "Recipient avatar address.", data_type: String}
+  - {name: display_name, description: "Human-readable display name, falling back to the address when no profile name exists.", data_type: String}
+  - {name: preview_image_url, description: "Avatar preview image URL, if available.", data_type: Nullable(String)}
+  - {name: total_amount, description: "Total gCRC cashback received across all weeks.", data_type: Float64}
+  - {name: n_weeks, description: "Number of distinct weeks the recipient received cashback.", data_type: UInt64}
+  - {name: last_week, description: "Most recent week (UTC week start) the recipient received cashback.", data_type: Date}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_gcrc_cashback_total
+  description: >
+    Lifetime (single-row) Circles v2 gCRC cashback totals for KPI tiles: the
+    cumulative cashback amount distributed and the number of distinct
+    recipients across all completed weeks.
+  columns:
+  - {name: as_of_date, description: "Snapshot date the totals were computed (today, UTC).", data_type: Date}
+  - {name: total_amount, description: "Cumulative gCRC cashback amount distributed across all completed weeks.", data_type: Float64}
+  - {name: total_recipients, description: "Distinct addresses that received gCRC cashback across all completed weeks.", data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_gcrc_cashback_weekly
+  description: >
+    Weekly Circles v2 gCRC cashback distribution: distinct recipient count and
+    total gCRC amount sent from the cashback wallet to app users (weeks
+    meeting the >= 1 gCRC threshold). The latest incomplete week is excluded.
+  columns:
+  - {name: week, description: "Start-of-week date (UTC, Monday start) for the cashback aggregation.", data_type: Date}
+  - {name: n_recipients, description: "Distinct recipients that received gCRC cashback that week.", data_type: UInt64}
+  - {name: amount, description: "Total gCRC amount distributed as cashback that week.", data_type: Float64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pool_explorer_liquidity_daily
+  description: >
+    Daily count of liquidity events (Mint = 'Add', Burn = 'Remove') per
+    Uniswap V3 Circles pool, deduped on (transaction_hash, log_index) so each
+    add/remove event counts once. One row per day, pool, and event kind.
+  columns:
+  - {name: date, description: "Calendar day (UTC) of the liquidity events, derived from block_timestamp.", data_type: Date}
+  - {name: pool_address, description: "Lowercase 0x-prefixed address of the Uniswap V3 Circles liquidity pool.", data_type: String}
+  - {name: event_kind, description: "Liquidity event kind: 'Add' for Mint events, 'Remove' otherwise (Burn).", data_type: String}
+  - {name: n_events, description: "Distinct count of liquidity events that day for the pool and event kind, deduped on (transaction_hash, log_index).", data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pool_explorer_liquidity_events
+  description: >
+    Individual liquidity events (Mint mapped to Add, Burn to Remove) for the
+    main Uniswap V3 Circles pools, one row per event, with each token amount
+    added/removed, the USD value of the event, and the LP (position owner).
+    Prices are resolved via daily ASOF carry-forward (CRC legs from the crc20
+    price model, stable legs from the oracle), with early events valued at
+    each token's first observed price.
+  columns:
+  - {name: pool_address, description: "Lowercase 0x pool contract address of the Uniswap V3 Circles pool the event belongs to.", data_type: String}
+  - {name: ts, description: "Block timestamp of the liquidity event (UTC); serves as the freshness column.", data_type: DateTime}
+  - {name: tx_hash, description: "Transaction hash of the liquidity event.", data_type: String}
+  - {name: event_kind, description: "Liquidity action: 'Add' for Mint events, 'Remove' for Burn events.", data_type: String}
+  - {name: token0_symbol, description: "Human-readable symbol of pool token0 (sDAI, EURe, s-gCRC, s-CBG, or an address prefix fallback).", data_type: String}
+  - {name: amount0, description: "Amount of token0 added or removed in the event, scaled to whole units (divided by 1e18).", data_type: Float64}
+  - {name: token1_symbol, description: "Human-readable symbol of pool token1 (sDAI, EURe, s-gCRC, s-CBG, or an address prefix fallback).", data_type: String}
+  - {name: amount1, description: "Amount of token1 added or removed in the event, scaled to whole units (divided by 1e18).", data_type: Float64}
+  - {name: amount_usd, description: "Total USD value of the event across both token legs, using ASOF carry-forward prices (0 when unpriced).", data_type: Float64}
+  - {name: lp, description: "Lowercase 0x address of the liquidity provider (position owner) for the event.", data_type: String}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pool_explorer_swaps
+  description: >
+    Individual recent swaps executed on the main Circles v2 DEX pools, scoped
+    to the curated liquidity pools for the Pool Explorer swaps table. One row
+    per trade with the pool, timestamp, transaction hash, tokens and amounts
+    on each side, USD value, and the trader address.
+  columns:
+  - {name: pool_address, description: "Lower-cased address of the Circles DEX pool the swap occurred in.", data_type: String}
+  - {name: ts, description: "Block timestamp of the swap (UTC); serves as the freshness column.", data_type: DateTime}
+  - {name: tx_hash, description: "Transaction hash of the swap.", data_type: String}
+  - {name: token_sold, description: "Symbol of the token sold (input side) in the swap.", data_type: String}
+  - {name: amount_sold, description: "Amount of the token sold (input side).", data_type: Float64}
+  - {name: token_bought, description: "Symbol of the token bought (output side) in the swap.", data_type: String}
+  - {name: amount_bought, description: "Amount of the token bought (output side).", data_type: Float64}
+  - {name: amount_usd, description: "USD value of the swap; null when no price is available.", data_type: Nullable(Float64)}
+  - {name: trader, description: "Trader address, taken as the taker if present else the transaction sender.", data_type: String}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pool_explorer_swaps_daily
+  description: >
+    Daily swap activity per main Circles DEX pool tracked in the Pool
+    Explorer: number of swaps, total USD volume, and distinct trader count,
+    scoped to the curated set of liquidity pools.
+  columns:
+  - {name: date, description: "Calendar day of the swap activity (UTC), derived from block_timestamp.", data_type: Date}
+  - {name: pool_address, description: "Lower-cased liquidity pool contract address.", data_type: String}
+  - {name: n_swaps, description: "Number of swaps executed in the pool that day.", data_type: UInt64}
+  - {name: volume_usd, description: "Total swap volume in USD for the pool that day.", data_type: Float64}
+  - {name: n_traders, description: "Distinct traders (taker, falling back to tx sender) that day.", data_type: UInt64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pool_search
+  description: >
+    Point-in-time (pool_address, display_name) lookup of Circles v2 liquidity
+    pools that backs the Pool Explorer filter dropdown. Returns one row per
+    known pool with its lowercased contract address and human-readable label.
+  columns:
+  - {name: as_of_date, description: "Snapshot date the lookup was generated (today(), UTC).", data_type: Date}
+  - {name: pool_address, description: "Lowercased Circles liquidity pool contract address.", data_type: String}
+  - {name: display_name, description: "Human-readable pool label shown in the Pool Explorer dropdown.", data_type: String}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_reserves_daily
+  description: >
+    Daily USD total value locked (TVL) per main Circles DEX pool, computed as
+    the sum of both token legs' USD value. Backs the reserves-over-time chart
+    and the latest-TVL used by the KPI and leaderboard.
+  columns:
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: pool, description: "Human-readable pool label.", data_type: String}
+  - {name: pool_address, description: "Pool contract address.", data_type: String}
+  - {name: tvl_usd, description: "Total value locked in the pool that day in USD (sum of both token legs, rounded to 2 decimals).", data_type: Float64}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_reserves_latest
+  description: >
+    Latest per-(pool, token) reserve, token USD price and TVL for the main
+    Circles DEX pools. Emits two rows per pool (one per leg), backing the
+    pool-reserves card.
+  columns:
+  - {name: as_of_date, description: "Freshness date the row was materialized (today, UTC).", data_type: Date}
+  - {name: pool, description: "Human-readable pool label.", data_type: String}
+  - {name: pool_address, description: "On-chain address of the DEX pool contract.", data_type: String}
+  - {name: token_address, description: "On-chain address of the reserve token (one of the pool's two legs).", data_type: String}
+  - {name: token_symbol, description: "Symbol of the reserve token.", data_type: String}
+  - {name: reserve, description: "Latest reserve amount held for this token in the pool.", data_type: Float64}
+  - {name: price_usd, description: "Latest USD price of the reserve token.", data_type: Float64}
+  - {name: tvl_usd, description: "Latest USD value of this token's reserve (reserve x price).", data_type: Float64}
+  - {name: as_of, description: "Most recent source date the latest reserve/price/TVL values were observed.", data_type: Date}
+  meta: *meta_api
+  tests: *elementary_error
+
+- name: api_execution_circles_v2_pools_reserves_token_daily
+  description: >
+    Daily per-(pool, token) reserve balance and USD valuation for the main
+    Circles DEX pools (Uniswap V3 and Balancer V3). Base model behind the TVL
+    rollup, the reserves-over-time chart and the reserves card; prices come
+    from a daily ASOF carry-forward and the current incomplete day is
+    excluded.
+  columns:
+  - {name: date, description: "Calendar day (UTC).", data_type: Date}
+  - {name: pool, description: "Human-readable pool label.", data_type: String}
+  - {name: pool_address, description: "Pool contract address (lowercased, 0x-prefixed).", data_type: String}
+  - {name: token_address, description: "Reserve token contract address (lowercased).", data_type: String}
+  - {name: token_symbol, description: "Human-readable token symbol (sDAI/EURe/s-gCRC/s-CBG, or the address prefix as fallback).", data_type: String}
+  - {name: reserve, description: "Token reserve balance held by the pool that day (native token units).", data_type: Float64}
+  - {name: price_usd, description: "ASOF carry-forward USD price for the token, falling back to the earliest observed price; may be null when the token is unpriced.", data_type: Nullable(Float64)}
+  - {name: tvl_usd, description: "USD value of the reserve (reserve * price_usd); null when the token leg is unpriced.", data_type: Nullable(Float64)}
+  meta: *meta_api
+  tests: *elementary_error
