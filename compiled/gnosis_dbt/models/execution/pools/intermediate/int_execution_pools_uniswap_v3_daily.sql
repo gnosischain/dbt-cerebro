@@ -2,6 +2,7 @@
 
 
 
+
 WITH
 
 pools AS (

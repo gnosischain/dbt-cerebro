@@ -20,6 +20,7 @@ acts AS (
     FROM `dbt`.`stg_envio_ga__wallet_activity_daily` w
     INNER JOIN first_seen f USING (address)
 )
+SELECT * FROM (
 SELECT
     'day'                                                                          AS period_type,
     activity_date                                                                  AS period_start,
@@ -53,3 +54,9 @@ SELECT
     uniqExactIf(address, is_app_tagged_day AND toStartOfMonth(first_day_app) = toStartOfMonth(activity_date))
 FROM acts
 GROUP BY toStartOfMonth(activity_date)
+)
+-- Exclude the current, still-incomplete period so the latest point isn't a
+-- partial-week/-month dip.
+WHERE (period_type = 'day'   AND period_start <  today())
+   OR (period_type = 'week'  AND period_start <  toMonday(today()))
+   OR (period_type = 'month' AND period_start <  toStartOfMonth(today()))

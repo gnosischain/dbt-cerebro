@@ -1,5 +1,6 @@
 
 
+
 -- depends_on: `dbt`.`int_execution_tokens_address_diffs_daily`
 
 
@@ -306,6 +307,8 @@ prev_balances AS (
 
 ),
 
+
+
 keys AS (
     SELECT DISTINCT
         token_address,
@@ -337,12 +340,18 @@ calendar AS (
         k.symbol,
         k.token_class,
         k.address,
+        
         addDays(cp.max_date + 1, offset) AS date
+        
     FROM keys k
+    
     CROSS JOIN current_partition cp
+    
     CROSS JOIN overall_max_date o
     ARRAY JOIN range(
+        
         dateDiff('day', cp.max_date, o.max_date)
+        
     ) AS offset
 ),
 

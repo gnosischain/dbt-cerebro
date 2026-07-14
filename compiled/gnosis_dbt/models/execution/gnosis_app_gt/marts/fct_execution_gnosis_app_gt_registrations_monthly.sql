@@ -14,3 +14,4 @@ SELECT
 FROM `dbt`.`stg_envio_ga__avatars`
 WHERE created_at > toDateTime('2019-01-01 00:00:00')
 GROUP BY month
+HAVING month < toStartOfMonth(today())   -- exclude the current, incomplete month

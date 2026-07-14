@@ -10,4 +10,5 @@ SELECT
     funded_volume_cumulative_usd,
     spend_cumulative_usd
 FROM `dbt`.`fct_execution_gnosis_app_gpay_volume_daily`
+WHERE date < today()   -- exclude the current, incomplete day
 ORDER BY date, onboarding_class
