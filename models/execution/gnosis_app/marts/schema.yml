@@ -2838,6 +2838,139 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+- name: fct_execution_gnosis_app_users_daily_incl_gpay
+  description: |
+    "Incl. Gnosis Pay" twin of fct_execution_gnosis_app_users_daily: identical New / Returning /
+    Reactivated / Active logic over int_execution_gnosis_app_user_activity_daily_incl_gpay, which
+    also counts any user-initiated Gnosis Pay card-wallet transaction (via the safe's GA owner).
+    returning_users = active today AND active in the prior 7 days; reactivated_users = active today,
+    inactive for prior 30 days, but active before that. Dense calendar spine keeps cumulative_users
+    continuous. Kept separate so the current DAU/WAU/MAU lineage stays unchanged for comparison.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this period.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this period.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this period (incl. Gnosis Pay).
+    data_type: UInt64
+  - name: returning_users
+    description: Active this period and also active in the immediately prior period.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this period after a dormancy gap, having been active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+- name: fct_execution_gnosis_app_users_monthly_incl_gpay
+  description: |
+    "Incl. Gnosis Pay" twin of fct_execution_gnosis_app_users_monthly: identical New / Returning /
+    Reactivated / Active logic over int_execution_gnosis_app_user_activity_daily_incl_gpay, which
+    also counts any user-initiated Gnosis Pay card-wallet transaction (via the safe's GA owner).
+    returning_users = active this month AND previous month; reactivated_users = active this month,
+    inactive for prior 2 months, but active before that. Kept separate so the current DAU/WAU/MAU
+    lineage stays unchanged for comparison.
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this period.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this period.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this period (incl. Gnosis Pay).
+    data_type: UInt64
+  - name: returning_users
+    description: Active this period and also active in the immediately prior period.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this period after a dormancy gap, having been active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+- name: api_execution_gnosis_app_active_users_incl_gpay_daily
+  description: "Gnosis App Daily Active Users (DAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_daily_incl_gpay. Daily-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete day (today) excluded."
+  columns:
+  - name: date
+    description: Calendar date (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users on this date, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was on this date.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this date AND active in the prior 7 days.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this date, not active in the prior 30 days, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: api_execution_gnosis_app_active_users_incl_gpay_weekly
+  description: "Gnosis App Weekly Active Users (WAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_weekly_incl_gpay. Resolution-suffixed twin of api_execution_gnosis_app_weekly_active_users_incl_gpay; weekly-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete week excluded."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users in the week, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was this week.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this week AND active the previous week.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this week, not active in the prior 4 weeks, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: api_execution_gnosis_app_active_users_incl_gpay_monthly
+  description: "Gnosis App Monthly Active Users (MAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_monthly_incl_gpay. Monthly-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete month excluded."
+  columns:
+  - name: month
+    description: First day of the month (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users in the month, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was this month.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this month AND active the previous month.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this month, not active in the prior 2 months, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
 - name: api_execution_gnosis_app_kpi_weekly_active_users_latest
   description: "KPI: latest complete week's Gnosis App WAU (Lineage A, fct_execution_gnosis_app_users_weekly.active_users — same population/columns as DAU & MAU) with WoW pct change."
   meta:
