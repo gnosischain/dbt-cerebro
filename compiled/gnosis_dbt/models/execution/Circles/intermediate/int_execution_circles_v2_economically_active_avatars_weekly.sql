@@ -15,18 +15,27 @@
 -- DOWNSTREAM by filtering this layer to in-app users/actions
 -- (int_execution_gnosis_app_weekly_earners).
 --
--- any_in_app_tx: 1 if at least one contributing event that week originated
--- from an active Gnosis App relayer tx (only meaningful for inviter_fee —
--- cashback payouts have no tx-origin attribution; the app scoping for
--- cashback is membership-based downstream).
+-- any_in_app_tx: 1 if this earning is attributable to the Gnosis App, using
+-- the SAME rule as the app-side earner layer (int_execution_gnosis_app_weekly_earners),
+-- so the downstream avatars_in_app_tx line is CONSISTENT with the Gnosis App WEAU:
+--   * gcrc_cashback → the recipient is a current Gnosis App user (membership);
+--   * inviter_fee   → the inviter is a Gnosis App user AND >= 1 fee that week
+--                     came through an active Gnosis App relayer tx (is_gnosis_app_tx).
+-- avatars_in_app_tx (fct) therefore == the WEAU earner population; the Gnosis
+-- App WEAU narrows that further to app-active users (WAU ∩ earners). Membership
+-- comes from int_execution_gnosis_app_users_current.
 
-WITH cashback AS (
+WITH ga_users AS (
+    SELECT address FROM `dbt`.`int_execution_gnosis_app_users_current`
+),
+
+cashback AS (
     SELECT
         week,
         address                 AS avatar,
         'gcrc_cashback'         AS earning_kind,
         amount,
-        toUInt8(0)              AS any_in_app_tx
+        toUInt8(address IN (SELECT address FROM ga_users)) AS any_in_app_tx
     FROM `dbt`.`int_execution_circles_v2_gcrc_cashback_recipients_weekly`
 ),
 
@@ -36,7 +45,7 @@ inviter_fees AS (
         inviter                            AS avatar,
         'inviter_fee'                      AS earning_kind,
         sum(amount)                        AS amount,
-        max(is_gnosis_app_tx)              AS any_in_app_tx
+        toUInt8(max(is_gnosis_app_tx) = 1 AND inviter IN (SELECT address FROM ga_users)) AS any_in_app_tx
     FROM `dbt`.`int_execution_circles_v2_inviter_fees`
     WHERE block_timestamp < today()
     GROUP BY week, inviter
