@@ -37,6 +37,53 @@ ev AS (
       AND e.event_name IN ('Mint', 'Burn')
     GROUP BY pool_address, tx_hash, log_index
 ),
+-- Balancer V3 liquidity events. The Vault emits amounts as a POSITIONAL array with no
+-- token addresses; Balancer registers a pool's tokens in ascending address order, so we
+-- reuse the tokens the reserves model already resolves and sort them by address to line
+-- the array up (toks[1] = slot 0, toks[2] = slot 1). Owner = liquidityProvider.
+bal_seed AS (
+    SELECT lower(pool_address) AS pool_address
+    FROM `dbt`.`circles_liquidity_pools`
+    WHERE protocol = 'Balancer V3'
+),
+bal_pool_tokens AS (
+    SELECT pool_address,
+           arraySort(groupUniqArray(lower(token_address))) AS toks
+    FROM `dbt`.`int_execution_pools_balancer_v3_daily`
+    WHERE lower(pool_address) IN (SELECT pool_address FROM bal_seed)
+    GROUP BY pool_address
+),
+bal_ev AS (
+    SELECT
+        concat('0x', replaceAll(lower(e.decoded_params['pool']), '0x', '')) AS pool_address,
+        any(e.block_timestamp)                                              AS ts,
+        e.transaction_hash                                                  AS tx_hash,
+        e.log_index                                                         AS log_index,
+        if(any(e.event_name) = 'LiquidityAdded', 'Add', 'Remove')           AS event_kind,
+        any(lower(e.decoded_params['liquidityProvider']))                   AS lp,
+        any(if(e.event_name = 'LiquidityAdded',
+               e.decoded_params['amountsAddedRaw'],
+               e.decoded_params['amountsRemovedRaw']))                      AS amounts_json
+    FROM `dbt`.`contracts_BalancerV3_Vault_events` e
+    WHERE e.event_name IN ('LiquidityAdded', 'LiquidityRemoved')
+      AND concat('0x', replaceAll(lower(e.decoded_params['pool']), '0x', '')) IN (SELECT pool_address FROM bal_seed)
+    GROUP BY pool_address, tx_hash, log_index
+),
+bal_pivot AS (
+    SELECT
+        b.pool_address AS pool_address,
+        b.ts           AS ts,
+        b.tx_hash      AS tx_hash,
+        b.log_index    AS log_index,
+        b.event_kind   AS event_kind,
+        b.lp           AS lp,
+        pt.toks[1]     AS token0_address,
+        toFloat64(toUInt256OrZero(JSONExtractString(b.amounts_json, 1))) / 1e18 AS amount0,
+        pt.toks[2]     AS token1_address,
+        toFloat64(toUInt256OrZero(JSONExtractString(b.amounts_json, 2))) / 1e18 AS amount1
+    FROM bal_ev b
+    INNER JOIN bal_pool_tokens pt ON lower(pt.pool_address) = lower(b.pool_address)
+),
 prices AS (
     SELECT lower(crc20_token) AS token_address, date, price_median_usd AS price
     FROM `dbt`.`api_execution_circles_v2_crc20_prices_daily`
@@ -63,6 +110,10 @@ legs AS (
     SELECT tx_hash, log_index, date, token0_address AS token_address, amount0 AS amount FROM ev
     UNION ALL
     SELECT tx_hash, log_index, date, token1_address AS token_address, amount1 AS amount FROM ev
+    UNION ALL
+    SELECT tx_hash, log_index, toDate(ts) AS date, token0_address AS token_address, amount0 AS amount FROM bal_pivot
+    UNION ALL
+    SELECT tx_hash, log_index, toDate(ts) AS date, token1_address AS token_address, amount1 AS amount FROM bal_pivot
 ),
 legs_asof AS (
     SELECT l.tx_hash AS tx_hash, l.log_index AS log_index, l.token_address AS token_address,
@@ -99,3 +150,27 @@ SELECT
     ev.lp                                                 AS lp
 FROM ev
 LEFT JOIN legs_usd u ON u.tx_hash = ev.tx_hash AND u.log_index = ev.log_index
+
+UNION ALL
+
+SELECT
+    bp.pool_address                                       AS pool_address,
+    bp.ts                                                 AS ts,
+    bp.tx_hash                                            AS tx_hash,
+    bp.event_kind                                         AS event_kind,
+    multiIf(bp.token0_address = '0xaf204776c7245bf4147c2612bf6e5972ee483701', 'sDAI',
+            bp.token0_address = '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430', 'EURe',
+            bp.token0_address = '0x78bab8d5ea6b72f8375cc21436857815210f7d02', 's-gCRC',
+            bp.token0_address = '0xa0ea681f5685bfa6857d776b5acbf3d51bbecc9a', 's-CBG',
+            substring(bp.token0_address, 1, 8))           AS token0_symbol,
+    bp.amount0                                            AS amount0,
+    multiIf(bp.token1_address = '0xaf204776c7245bf4147c2612bf6e5972ee483701', 'sDAI',
+            bp.token1_address = '0x420ca0f9b9b604ce0fd9c18ef134c705e5fa3430', 'EURe',
+            bp.token1_address = '0x78bab8d5ea6b72f8375cc21436857815210f7d02', 's-gCRC',
+            bp.token1_address = '0xa0ea681f5685bfa6857d776b5acbf3d51bbecc9a', 's-CBG',
+            substring(bp.token1_address, 1, 8))           AS token1_symbol,
+    bp.amount1                                            AS amount1,
+    coalesce(u.amount_usd, 0)                             AS amount_usd,
+    bp.lp                                                 AS lp
+FROM bal_pivot bp
+LEFT JOIN legs_usd u ON u.tx_hash = bp.tx_hash AND u.log_index = bp.log_index

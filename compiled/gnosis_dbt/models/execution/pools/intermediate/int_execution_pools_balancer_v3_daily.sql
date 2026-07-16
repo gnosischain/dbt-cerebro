@@ -194,10 +194,27 @@ overall_max_date AS (
 
 
 current_partition AS (
-    SELECT
-        max(date) AS max_date
-    FROM `dbt`.`int_execution_pools_balancer_v3_daily`
-    WHERE date < yesterday()
+    -- Carry-forward frontier = the EARLIEST per-(pool,token) last date, NOT the
+    -- single global max(date). A thin / sporadically-traded pool that skips a day
+    -- used to fall off the global frontier: it dropped out of prev_balances, the
+    -- calendar only ever generated dates from the global frontier (never its own),
+    -- so it accreted permanent gaps and only re-materialised a stray day when it
+    -- happened to trade inside a run's window (observed: 0x155c… s-gCRC/sDAI at
+    -- 5/48 days; density tracked trade frequency across all thin pools).
+    -- Anchoring the window at the earliest per-pool frontier regenerates EVERY pool
+    -- densely from a date they all share, so behind pools are re-densified together
+    -- with the rest and none can drop. In steady state all pools share one frontier,
+    -- so this stays a 1-day window; insert_overwrite is safe because every touched
+    -- partition is rebuilt with all pools present (no partition-replace wipe).
+    -- Deep historical gaps: rebuild with --full-refresh (per-pool non-incremental
+    -- calendar below).
+    SELECT min(pool_max) AS max_date
+    FROM (
+        SELECT max(date) AS pool_max
+        FROM `dbt`.`int_execution_pools_balancer_v3_daily`
+        WHERE date < yesterday()
+        GROUP BY pool_address, token_address
+    )
 ),
 prev_balances AS (
     SELECT
