@@ -1,6 +1,7 @@
 {{
   config(
-    materialized='table',
+    materialized='incremental',
+    incremental_strategy='insert_overwrite',
     engine='ReplacingMergeTree()',
     order_by='(block_time, tx_hash, log_index)',
     partition_by='toStartOfMonth(block_date)',
@@ -24,9 +25,17 @@
 -- no feed yet (no Chainlink XAU on Celo, not in the Dune price dump) so its
 -- amount_usd is NULL, not 0 — visibly unpriced rather than silently zero.
 --
--- materialized='table': full rebuild while the celo_execution backfill is in
--- flight (old months keep appearing), same rationale as
--- int_celo_gpay_safe_events_native. Revisit once the indexer follows head.
+-- materialized='incremental' (insert_overwrite + apply_monthly_incremental_filter),
+-- the prod shape — mirrors int_celo_gpay_activity. This is the only native model
+-- that scales with tx volume (it scans all of celo_execution.logs), so it's the
+-- one that benefits from incrementality; the registry / wallet / safe-event
+-- models stay full-rebuild tables (bounded by card count, and the registries are
+-- min() aggregations that cannot be incremental).
+-- IMPORTANT while the celo_execution backfill is still in flight: run this with
+-- --full-refresh. A plain incremental run only recomputes the current month's
+-- partition, so any OLDER month the backfill fills in later (out-of-order
+-- arrival) would be missed. Once the indexer follows head (data only arrives at
+-- the tip), plain daily incremental runs are correct and cheap.
 
 WITH registry AS (
     SELECT lower(replaceAll(address, '0x', '')) AS addr
@@ -53,6 +62,10 @@ transfer_logs AS (
         WHERE replaceAll(topic0, '0x', '') = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'  -- Transfer
           AND lower(replaceAll(address, '0x', '')) IN (SELECT token_addr FROM whitelist)
           AND block_timestamp >= toDateTime('2026-01-01')
+          -- On incremental runs, prune the log scan to the current month(s);
+          -- emits nothing under --full-refresh (full rebuild). block_date is
+          -- this model's own partition/date column.
+          {{ apply_monthly_incremental_filter('block_timestamp', 'block_date', true) }}
     )
     WHERE _dedup_rn = 1
 ),

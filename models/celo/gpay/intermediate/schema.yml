@@ -209,7 +209,7 @@ models:
     int_celo_gpay_safe_registry). Same shape and action vocabulary as the
     Dune-fed table so int_celo_gpay_wallets /
     int_celo_gpay_safe_current_owners can be repointed with a one-line ref
-    swap once int_celo_gpay_native_reconciliation signs off.
+    swap once validated manually against the Dune-fed pipeline.
   columns:
   - name: safe_address
     description: GP card Safe address.
@@ -234,8 +234,12 @@ models:
     celo_execution.logs (fixed Transfer layout; skipping the ABI join keeps
     the highest-volume Celo scan cheap). amount_usd prices at the transfer
     date via int_celo_token_prices_daily; XAUt0 rows carry NULL (visibly
-    unpriced) until a gold price source lands. Full rebuild while the
-    backfill is in flight, same rationale as int_celo_gpay_safe_events_native.
+    unpriced) until a gold price source lands. Incremental (insert_overwrite +
+    apply_monthly_incremental_filter), mirroring int_celo_gpay_activity — the
+    only native model that scales with tx volume. Must be run with
+    --full-refresh while the celo_execution backfill is still filling old
+    months (see model header); plain daily incremental is correct once the
+    indexer follows head.
   columns:
   - name: block_date
     description: Transfer date.
@@ -266,50 +270,6 @@ models:
     data_type: Float64
   - name: amount_usd
     description: USD value at the transfer date; NULL when no price exists for the token/date.
-    data_type: Nullable(Float64)
-  meta:
-    owner: analytics_team
-    authoritative: false
-
-- name: int_celo_gpay_native_reconciliation
-  description: |
-    Side-by-side comparison of the Dune-fed pipeline (crawlers_data.*) and
-    the native celo_execution pipeline, restricted to the block range the
-    native indexer has actually covered. Domains: 'transfers' (row counts +
-    token volume per date/token) and 'wallets' (issued_at counts per date,
-    token_symbol='ALL'). The repoint of int_celo_gpay_activity /
-    int_celo_gpay_wallets to the native twins is safe when the diff columns
-    hold at ~0 across the covered range for a sustained period. While the
-    backfill is partial, negative rows_diff mostly measures the registry gap
-    (cards issued in not-yet-indexed blocks), not decode correctness — see
-    model header.
-  columns:
-  - name: domain
-    description: "transfers | wallets."
-    data_type: String
-  - name: date
-    description: Comparison date.
-    data_type: Date
-  - name: token_symbol
-    description: Token for transfer rows; 'ALL' for wallet rows.
-    data_type: String
-  - name: dune_rows
-    description: Row/wallet count from the Dune-fed pipeline.
-    data_type: Nullable(UInt64)
-  - name: native_rows
-    description: Row/wallet count from the native pipeline.
-    data_type: Nullable(UInt64)
-  - name: rows_diff
-    description: native_rows - dune_rows.
-    data_type: Nullable(Int64)
-  - name: dune_amount
-    description: Token-native volume from the Dune-fed pipeline (transfers domain only).
-    data_type: Nullable(Float64)
-  - name: native_amount
-    description: Token-native volume from the native pipeline (transfers domain only).
-    data_type: Nullable(Float64)
-  - name: amount_diff
-    description: native_amount - dune_amount.
     data_type: Nullable(Float64)
   meta:
     owner: analytics_team
