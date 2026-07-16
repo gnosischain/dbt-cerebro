@@ -78,6 +78,24 @@ usd_pegs AS (
     ARRAY JOIN ['USDC','USDC.E','USDT'] AS symbol
 ),
 
+ocsdai_price AS (
+    -- OpenCover OC-sDAI is an ERC-4626 sDAI vault: 1 share is worth `share_price`
+    -- sDAI. Value it via the sDAI reserve's native price (look-through) -- exactly
+    -- how wrapper_prices inherits an aToken/spToken from its reserve, but with the
+    -- vault's share exchange rate instead of 1:1. share_price
+    -- (int_yields_ocsdai_share_price_daily, reconstructed from the vault's ERC-4626
+    -- events) and native SDAI are both dense from the 2026-03-16 launch. Priority 2.
+    SELECT
+        sp.date,
+        'OC-SDAI' AS symbol,
+        n.price * sp.share_price AS price
+    FROM `dbt`.`int_yields_ocsdai_share_price_daily` sp
+    INNER JOIN native n
+        ON n.date = sp.date
+       AND n.symbol = 'SDAI'
+    WHERE sp.share_price IS NOT NULL
+),
+
 all_prices AS (
     -- Fresh native = priority 1; native forward-filled beyond the staleness budget is
     -- demoted to priority 5 (below Dune) so a stale frozen DEX price stops winning.
@@ -97,6 +115,8 @@ all_prices AS (
     SELECT date, symbol, price, 3 AS priority FROM dune
     UNION ALL
     SELECT date, symbol, 1.0 AS price, 4 AS priority FROM usd_pegs
+    UNION ALL
+    SELECT date, symbol, price, 2 AS priority FROM ocsdai_price
 ),
 
 deduplicated AS (
