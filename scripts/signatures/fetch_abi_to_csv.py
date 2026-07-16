@@ -14,6 +14,7 @@ Usage:
     python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS
     python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --name CustomName
     python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --force   # overwrite existing row
+    python scripts/signatures/fetch_abi_to_csv.py 0xADDRESS --chain celo   # non-default chain
 
 Egress-less fallback (reads from the ClickHouse contracts_abi table
 instead of the Blockscout HTTP API — requires that
@@ -45,8 +46,16 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-BLOCKSCOUT_BASE = "https://gnosis.blockscout.com/api/v2/smart-contracts"
-BLOCKSCOUT_V1 = "https://gnosis.blockscout.com/api"
+# Per-chain Blockscout instances. Adding a chain here (plus rows in the
+# seed CSVs) is all the decoding pipeline needs to support it.
+BLOCKSCOUT_HOSTS = {
+    "gnosis": "https://gnosis.blockscout.com",
+    "celo": "https://celo.blockscout.com",
+}
+DEFAULT_CHAIN = "gnosis"
+# Set by main() from --chain; module-level so the fetch helpers stay simple.
+BLOCKSCOUT_BASE = f"{BLOCKSCOUT_HOSTS[DEFAULT_CHAIN]}/api/v2/smart-contracts"
+BLOCKSCOUT_V1 = f"{BLOCKSCOUT_HOSTS[DEFAULT_CHAIN]}/api"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CSV_PATH = REPO_ROOT / "seeds" / "contracts_abi.csv"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -162,7 +171,7 @@ def fetch_from_clickhouse(address: str) -> dict:
     # Simpler approach: dbt compile a tiny query via show.
     query = (
         "SELECT contract_address, implementation_address, abi_json, "
-        "contract_name, source, toString(updated_at) AS updated_at "
+        "contract_name, source, toString(updated_at) AS updated_at, chain "
         "FROM contracts_abi WHERE lower(replaceAll(contract_address, '0x', '')) = '"
         f"{address.lower().replace('0x', '')}"
         "' AND implementation_address = '' LIMIT 1"
@@ -212,11 +221,11 @@ def read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
         reader = csv.reader(f)
         header = next(reader)
         rows = list(reader)
-    if header[:6] != ["contract_address", "implementation_address", "abi_json",
-                      "contract_name", "source", "updated_at"]:
+    if header != ["contract_address", "implementation_address", "abi_json",
+                  "contract_name", "source", "updated_at", "chain"]:
         raise SystemExit(f"Unexpected contracts_abi.csv header: {header}")
-    # every row must have 6 fields
-    bad = [(i, len(r)) for i, r in enumerate(rows, start=2) if len(r) != 6]
+    # every row must have 7 fields
+    bad = [(i, len(r)) for i, r in enumerate(rows, start=2) if len(r) != 7]
     if bad:
         raise SystemExit(f"Malformed rows in contracts_abi.csv (line, field count): {bad[:5]}")
     return header, rows
@@ -230,13 +239,15 @@ def write_csv(path: Path, header: list[str], rows: list[list[str]]) -> None:
 
 
 def upsert_row(rows: list[list[str]], new_row: list[str], *, force: bool) -> str:
-    """Insert or replace new_row in rows, keyed on (contract_address, implementation_address).
+    """Insert or replace new_row in rows, keyed on
+    (chain, contract_address, implementation_address).
     Returns one of: 'inserted', 'replaced', 'skipped_exists'.
     """
     key_addr = new_row[0].lower()
     key_impl = new_row[1].lower()
+    key_chain = new_row[6].lower()
     for i, r in enumerate(rows):
-        if r[0].lower() == key_addr and r[1].lower() == key_impl:
+        if r[0].lower() == key_addr and r[1].lower() == key_impl and r[6].lower() == key_chain:
             if not force:
                 return "skipped_exists"
             rows[i] = new_row
@@ -277,7 +288,15 @@ def main() -> None:
                              "outbound HTTP access or Blockscout returns 403/429. Requires "
                              "that `dbt run-operation fetch_and_insert_abi` has already "
                              "run for this address so the row exists in ClickHouse.")
+    parser.add_argument("--chain", default=DEFAULT_CHAIN, choices=sorted(BLOCKSCOUT_HOSTS),
+                        help=f"Chain the contract lives on (default: {DEFAULT_CHAIN}). "
+                             "Selects the Blockscout instance and is written to the "
+                             "chain column of contracts_abi.csv.")
     args = parser.parse_args()
+
+    global BLOCKSCOUT_BASE, BLOCKSCOUT_V1
+    BLOCKSCOUT_BASE = f"{BLOCKSCOUT_HOSTS[args.chain]}/api/v2/smart-contracts"
+    BLOCKSCOUT_V1 = f"{BLOCKSCOUT_HOSTS[args.chain]}/api"
 
     if not ADDRESS_RE.match(args.address):
         raise SystemExit(f"Invalid address: {args.address!r} (expected 0x + 40 hex chars)")
@@ -307,7 +326,7 @@ def main() -> None:
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     # 1. The contract itself
-    new_row = [args.address, "", meta["abi_json"], name, args.source, now]
+    new_row = [args.address, "", meta["abi_json"], name, args.source, now, args.chain]
     status = upsert_row(rows, new_row, force=args.force)
     if status == "skipped_exists":
         print(f"\n{args.address} already exists in CSV and --force was not passed. "
@@ -331,6 +350,7 @@ def main() -> None:
                 impl_name or impl_meta["contract_name"],
                 args.source,
                 now,
+                args.chain,
             ]
             impl_status = upsert_row(rows, impl_new, force=args.force)
             print(f"{impl_status:9s}  {args.address:44s}  (impl {impl_addr}  {impl_new[3]})")

@@ -14,6 +14,8 @@
    Parameters:
    - tx_table          : Source table of transactions to decode
    - contract_address  : Ethereum contract address whose calls to decode
+   - chain             : Which chain's ABIs to load from function_signatures
+                        (default 'gnosis'). Must match the network of tx_table.
    - output_json_type  : If true, returns a native Map; otherwise JSON string
    - incremental_column: Column used for incremental processing (e.g. block_timestamp)
    - selector_column   : Column containing the to_address or method selector filter
@@ -150,7 +152,8 @@
         output_json_type=false,
         incremental_column='block_timestamp',
         selector_column='to_address',
-        start_blocktime=null
+        start_blocktime=null,
+        chain='gnosis'
 ) %}
 
 {% if contract_address_ref %}
@@ -225,7 +228,8 @@ SELECT
     arrayMap(x -> JSONExtractString(x,'name'), params_raw) AS names,
     arrayMap(x -> JSONExtractString(x,'type'), params_raw) AS types
 FROM {{ ref('function_signatures') }}
-WHERE {{ abi_filter }}
+WHERE chain = '{{ chain }}'
+  AND {{ abi_filter }}
 {% endset %}
 
 {% set sql_body %}
@@ -310,8 +314,12 @@ WITH
            every run to read across the full traces span. The extra literal
            timestamp bound enables pruning and is safe because the strict
            block_number bound already excludes the watermark and everything
-           before it. Empty/missing target => no watermark (same as before). #}
-        {% if incremental_column and not flags.FULL_REFRESH %}
+           before it. Empty/missing target => no watermark (same as before).
+
+           is_incremental() guard: watermark only applies when appending to an
+           existing incremental target — table-materialized callers and first
+           builds skip it (see decode_logs.sql for the full rationale). #}
+        {% if incremental_column and not flags.FULL_REFRESH and is_incremental() %}
           {% set _wm_bn = none %}{% set _wm_ts = none %}
           {% if execute %}
             {% set _wm = run_query("SELECT max(block_number), toString(max(" ~ incremental_column ~ ")) FROM " ~ this) %}

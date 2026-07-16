@@ -1,0 +1,154 @@
+version: 2
+
+sources:
+  - name: celo_execution
+    description: >
+      Raw execution-layer tables captured from Celo (chain_id 42220, an OP-stack
+      L2 since March 2025) by Hugo's cryo-indexer deployment. Same table shapes
+      as the Gnosis `execution` source (including the MATERIALIZED
+      insert_version column the decode macros rely on for dedup). The indexer
+      runs in MINIMAL mode, so only blocks / transactions / logs are populated —
+      traces, native_transfers and contracts exist but stay empty. History
+      starts at the L2 migration block (~31,056,500, 2025-03-26).
+    schema: celo_execution
+    loaded_at_field: block_timestamp
+    tags: ["celo", "execution", "l2", "authoritative", "crawler"]
+    # Freshness is intentionally NOT enforced yet: the backfill is still
+    # catching up (about a year behind head as of 2026-07). Enable the same
+    # thresholds as the Gnosis `execution` source once the indexer reaches
+    # continuous head-following:
+    #   freshness:
+    #     warn_after: {count: 26, period: hour}
+    #     error_after: {count: 48, period: hour}
+    #     filter: "block_timestamp > now() - INTERVAL 7 DAY"
+    meta:
+      owner: analytics_team
+      authoritative: true
+
+    tables:
+      - name: blocks
+        description: "Canonical Celo block headers (one row per block, ~1s block time on the L2)."
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+          - name: block_hash
+            data_type: String
+          - name: author
+            data_type: String
+          - name: gas_used
+            data_type: UInt64
+          - name: gas_limit
+            data_type: UInt64
+          - name: base_fee_per_gas
+            data_type: UInt64
+          - name: chain_id
+            data_type: UInt64
+            description: "42220 for Celo mainnet."
+          - name: block_timestamp
+            data_type: DateTime
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds), MATERIALIZED."
+
+      - name: transactions
+        description: >
+          Signed transactions included in Celo blocks. transaction_type 123
+          (0x7b, CIP-64) marks fee-abstraction transactions that pay gas in an
+          ERC-20 fee currency (cUSD/USDT/USDC) — the strongest on-chain signal
+          for MiniPay-originated EOA activity. Type 126 (0x7e) is the OP-stack
+          deposit/system transaction.
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+          - name: transaction_index
+            data_type: UInt64
+          - name: transaction_hash
+            data_type: String
+          - name: from_address
+            data_type: String
+          - name: to_address
+            data_type: String
+          - name: value_string
+            data_type: String
+          - name: input
+            data_type: String
+          - name: gas_used
+            data_type: UInt64
+          - name: gas_price
+            data_type: UInt64
+          - name: transaction_type
+            data_type: UInt32
+            description: "Envelope type: 0/1/2 standard, 123 = CIP-64 fee-currency, 126 = OP deposit."
+          - name: success
+            data_type: UInt8
+          - name: chain_id
+            data_type: UInt64
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds), MATERIALIZED."
+
+      - name: logs
+        description: >
+          Event logs emitted by Celo smart contracts. Primary input for the
+          Celo GPay decoded layer (Safe lifecycle, Zodiac module events,
+          ERC-20 transfers, Chainlink AnswerUpdated).
+        loaded_at_field: block_timestamp
+        columns:
+          - name: block_number
+            data_type: UInt32
+          - name: transaction_index
+            data_type: UInt32
+          - name: log_index
+            data_type: UInt32
+          - name: transaction_hash
+            data_type: String
+          - name: address
+            data_type: String
+            description: "Emitting contract address (no 0x prefix, lowercase hex)."
+          - name: topic0
+            data_type: String
+          - name: topic1
+            data_type: String
+          - name: topic2
+            data_type: String
+          - name: topic3
+            data_type: String
+          - name: data
+            data_type: String
+          - name: chain_id
+            data_type: UInt64
+          - name: block_timestamp
+            data_type: DateTime64(0, 'UTC')
+          - name: insert_version
+            data_type: UInt64
+            description: "Monotonic ingestion version (nanoseconds), MATERIALIZED."
+
+      - name: indexing_state
+        freshness: null
+        description: "Worker-reported state for each indexed range (mirror of execution.indexing_state)."
+        columns:
+          - name: mode
+            data_type: String
+          - name: dataset
+            data_type: String
+          - name: start_block
+            data_type: UInt32
+          - name: end_block
+            data_type: UInt32
+          - name: status
+            data_type: String
+
+      - name: indexing_progress
+        freshness: null
+        description: "View aggregating celo_execution.indexing_state into per-(mode,dataset) stats."
+        columns:
+          - name: dataset
+            data_type: String
+          - name: completion_percentage
+            data_type: Float64
+          - name: highest_block_completed
+            data_type: UInt32

@@ -165,10 +165,10 @@ def process_param_with_components(param: dict, position: int) -> dict:
 # Data loading
 # --------------------------------------------------------------------------------------
 
-def try_fetch_from_clickhouse() -> Optional[List[Tuple[str, str, str, str]]]:
+def try_fetch_from_clickhouse() -> Optional[List[Tuple[str, str, str, str, str]]]:
     """
     Returns list of tuples:
-      (contract_address, implementation_address, abi_json, contract_name)
+      (contract_address, implementation_address, abi_json, contract_name, chain)
     or None if cannot fetch.
     """
     if not CLICKHOUSE_AVAILABLE or force_csv:
@@ -191,7 +191,8 @@ def try_fetch_from_clickhouse() -> Optional[List[Tuple[str, str, str, str]]]:
             contract_address,
             implementation_address,
             abi_json,
-            contract_name
+            contract_name,
+            chain
         FROM contracts_abi
         WHERE abi_json IS NOT NULL AND abi_json != '[]' AND abi_json != '{}'
         """
@@ -204,18 +205,19 @@ def try_fetch_from_clickhouse() -> Optional[List[Tuple[str, str, str, str]]]:
         logger.warning(f"Falling back to CSV. Could not fetch from ClickHouse: {e}")
         return None
 
-def read_contracts_abi_from_csv(path: Path) -> List[Tuple[str, str, str, str]]:
+def read_contracts_abi_from_csv(path: Path) -> List[Tuple[str, str, str, str, str]]:
     """
     Read contracts_abi.csv with columns:
-      contract_address, implementation_address, abi_json, contract_name
+      contract_address, implementation_address, abi_json, contract_name, chain
 
-    Returns list of tuples matching DB shape.
+    Returns list of tuples matching DB shape. Rows without a chain value
+    (pre-multichain CSVs) default to 'gnosis'.
     """
     if not path.exists():
         logger.error(f"contracts_abi seed not found at {path}")
         return []
 
-    rows: List[Tuple[str, str, str, str]] = []
+    rows: List[Tuple[str, str, str, str, str]] = []
     logger.info(f"Reading ABIs from {path} ...")
     with path.open('r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -231,6 +233,7 @@ def read_contracts_abi_from_csv(path: Path) -> List[Tuple[str, str, str, str]]:
                 r.get('implementation_address', '') or '',
                 r.get('abi_json', '') or '',
                 r.get('contract_name', '') or '',
+                r.get('chain', '') or 'gnosis',
             ))
     logger.info(f"Loaded {len(rows)} ABI rows from CSV.")
     return rows
@@ -240,7 +243,7 @@ def read_contracts_abi_from_csv(path: Path) -> List[Tuple[str, str, str, str]]:
 # --------------------------------------------------------------------------------------
 
 def generate_signatures(
-    abi_rows: List[Tuple[str, str, str, str]]
+    abi_rows: List[Tuple[str, str, str, str, str]]
 ) -> Tuple[List[dict], List[dict]]:
     """
     Given ABI rows, produce two lists of dicts:
@@ -249,17 +252,17 @@ def generate_signatures(
 
     Event dict fields:
       contract_address, implementation_address, contract_name, event_name,
-      signature, anonymous, params, indexed_params, non_indexed_params
+      signature, anonymous, params, indexed_params, non_indexed_params, chain
 
     Function dict fields:
       contract_address, implementation_address, contract_name, function_name,
-      signature, state_mutability, input_params, output_params
+      signature, state_mutability, input_params, output_params, chain
     """
     event_signatures: List[dict] = []
     function_signatures: List[dict] = []
 
     logger.info("Processing ABIs to generate signatures...")
-    for (contract_address, implementation_address, abi_json, contract_name) in abi_rows:
+    for (contract_address, implementation_address, abi_json, contract_name, chain) in abi_rows:
         try:
             if not abi_json:
                 continue
@@ -305,6 +308,7 @@ def generate_signatures(
                         'params': json.dumps(params, ensure_ascii=False),
                         'indexed_params': json.dumps(indexed_params, ensure_ascii=False),
                         'non_indexed_params': json.dumps(non_indexed_params, ensure_ascii=False),
+                        'chain': chain or 'gnosis',
                     })
 
                 elif typ == 'function':
@@ -341,6 +345,7 @@ def generate_signatures(
                         'state_mutability': state_mutability,
                         'input_params': json.dumps(input_params, ensure_ascii=False),
                         'output_params': json.dumps(output_params, ensure_ascii=False),
+                        'chain': chain or 'gnosis',
                     })
 
                 else:
@@ -405,7 +410,8 @@ def main():
         'anonymous',
         'params',
         'indexed_params',
-        'non_indexed_params'
+        'non_indexed_params',
+        'chain'
     ]
     function_headers = [
         'contract_address',
@@ -415,7 +421,8 @@ def main():
         'signature',
         'state_mutability',
         'input_params',
-        'output_params'
+        'output_params',
+        'chain'
     ]
 
     write_csv(event_csv_path, event_signatures, event_headers)

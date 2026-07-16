@@ -117,6 +117,204 @@ models:
     owner: analytics_team
     authoritative: false
 
+- name: int_celo_gpay_roles_modules
+  description: |
+    GP-specific Zodiac Roles module proxies on Celo, discovered natively from
+    celo_execution.logs: an EnabledModule(AggregateBridge) event emitted BY a
+    Roles proxy is a GP-only fingerprint set at card provisioning. Replaces
+    the roles_with_bridge CTE of Dune query 7808895. Raw topic slicing, not
+    the decode macro — this registry is itself an input to the decoded layer
+    (see model header). Full rebuild every run; bounded by card count.
+  columns:
+  - name: address
+    description: Roles module proxy address (0x-prefixed, lowercase).
+    data_type: String
+  - name: contract_type
+    description: Always 'RolesModProxy'.
+    data_type: String
+  - name: first_seen_at
+    description: First EnabledModule(bridge) event for this proxy.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_safe_registry
+  description: |
+    GP card Safes on Celo, discovered natively: a Safe that emits
+    EnabledModule(<GP Roles proxy>) has been provisioned as a GP card
+    (replaces the fp CTE of Dune query 7808895). Confirmed pre-spend, so this
+    also covers created-but-never-funded cards. Validated 2026-07-16 against
+    the Dune spine: within the then-indexed celo_execution window every one
+    of the 116 native Safes matched a Dune-discovered wallet, with zero
+    native-only extras. address/contract_type columns follow the whitelist
+    shape the decode macros expect via contract_address_ref.
+  columns:
+  - name: address
+    description: GP card Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: contract_type
+    description: Always 'SafeProxy'.
+    data_type: String
+  - name: module_enabled_at
+    description: When the GP Roles module was enabled on this Safe (provisioning time).
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_safe_events_native
+  description: |
+    Safe lifecycle events (SafeSetup / AddedOwner / RemovedOwner) for GP card
+    Safes on Celo, decoded through the multichain decode pipeline
+    (chain='celo', ABI resolved from the Safe v1.3.0 L2 singleton row of the
+    celo partition of event_signatures). SafeSetup rows are exploded one row
+    per owner. materialized='table' full rebuild deliberately while the
+    celo_execution backfill is in flight — a block watermark would silently
+    skip rows landing for old months; flip to the Gnosis-style incremental
+    append once the indexer follows head.
+  columns:
+  - name: safe_address
+    description: GP card Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: event_kind
+    description: "safe_setup | added_owner | removed_owner."
+    data_type: String
+  - name: owner
+    description: Owner address this event is about (one row per owner for safe_setup).
+    data_type: String
+  - name: threshold
+    description: Signing threshold from SafeSetup; null for owner-delta events.
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: On-chain timestamp of the event.
+    data_type: DateTime
+  - name: block_number
+    description: Block number of the event.
+    data_type: UInt64
+  - name: transaction_hash
+    description: Transaction hash (0x-prefixed).
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_wallet_events_native
+  description: |
+    Native twin of crawlers_data.celo_gpay_wallet_events, derived entirely
+    from celo_execution (int_celo_gpay_safe_events_native gated by
+    int_celo_gpay_safe_registry). Same shape and action vocabulary as the
+    Dune-fed table so int_celo_gpay_wallets /
+    int_celo_gpay_safe_current_owners can be repointed with a one-line ref
+    swap once int_celo_gpay_native_reconciliation signs off.
+  columns:
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+  - name: action
+    description: "issued_at | add_owner | remove_owner."
+    data_type: String
+  - name: action_value
+    description: The owner address involved.
+    data_type: String
+  - name: event_time
+    description: On-chain timestamp of the event.
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_transfers_native
+  description: |
+    Native twin of crawlers_data.celo_gpay_transfers: whitelisted-token
+    ERC-20 Transfer events touching a GP card Safe, raw-sliced from
+    celo_execution.logs (fixed Transfer layout; skipping the ABI join keeps
+    the highest-volume Celo scan cheap). amount_usd prices at the transfer
+    date via int_celo_token_prices_daily; XAUt0 rows carry NULL (visibly
+    unpriced) until a gold price source lands. Full rebuild while the
+    backfill is in flight, same rationale as int_celo_gpay_safe_events_native.
+  columns:
+  - name: block_date
+    description: Transfer date.
+    data_type: Date
+  - name: block_time
+    description: Transfer timestamp.
+    data_type: DateTime
+  - name: tx_hash
+    description: Transaction hash (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  - name: sender
+    description: Sending address (0x-prefixed, lowercase).
+    data_type: String
+  - name: receiver
+    description: Receiving address (0x-prefixed, lowercase).
+    data_type: String
+  - name: token_address
+    description: Token contract address (0x-prefixed, lowercase).
+    data_type: String
+  - name: token_symbol
+    description: Whitelist display symbol (USDT, USDC, USDm, XAUt0).
+    data_type: String
+  - name: amount
+    description: Token-native transfer amount.
+    data_type: Float64
+  - name: amount_usd
+    description: USD value at the transfer date; NULL when no price exists for the token/date.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_native_reconciliation
+  description: |
+    Side-by-side comparison of the Dune-fed pipeline (crawlers_data.*) and
+    the native celo_execution pipeline, restricted to the block range the
+    native indexer has actually covered. Domains: 'transfers' (row counts +
+    token volume per date/token) and 'wallets' (issued_at counts per date,
+    token_symbol='ALL'). The repoint of int_celo_gpay_activity /
+    int_celo_gpay_wallets to the native twins is safe when the diff columns
+    hold at ~0 across the covered range for a sustained period. While the
+    backfill is partial, negative rows_diff mostly measures the registry gap
+    (cards issued in not-yet-indexed blocks), not decode correctness — see
+    model header.
+  columns:
+  - name: domain
+    description: "transfers | wallets."
+    data_type: String
+  - name: date
+    description: Comparison date.
+    data_type: Date
+  - name: token_symbol
+    description: Token for transfer rows; 'ALL' for wallet rows.
+    data_type: String
+  - name: dune_rows
+    description: Row/wallet count from the Dune-fed pipeline.
+    data_type: Nullable(UInt64)
+  - name: native_rows
+    description: Row/wallet count from the native pipeline.
+    data_type: Nullable(UInt64)
+  - name: rows_diff
+    description: native_rows - dune_rows.
+    data_type: Nullable(Int64)
+  - name: dune_amount
+    description: Token-native volume from the Dune-fed pipeline (transfers domain only).
+    data_type: Nullable(Float64)
+  - name: native_amount
+    description: Token-native volume from the native pipeline (transfers domain only).
+    data_type: Nullable(Float64)
+  - name: amount_diff
+    description: native_amount - dune_amount.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
 - name: int_celo_gpay_activity
   description: |
     Per-transfer classified Celo GP activity. Classification happens HERE,

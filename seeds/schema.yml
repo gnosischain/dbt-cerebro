@@ -1,0 +1,63 @@
+version: 2
+
+seeds:
+  - name: contracts_abi
+    description: >
+      Canonical ABI store for the decoding pipeline (multichain). One row per
+      (chain, contract_address, implementation_address); proxies carry a
+      second row with the implementation's ABI. Maintained via
+      scripts/signatures/fetch_abi_to_csv.py (--chain selects the Blockscout
+      instance and the chain value written).
+    columns:
+      - name: chain
+        description: "Network the contract is deployed on (e.g. gnosis, celo)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+
+  - name: event_signatures
+    description: >
+      Event topic0 signatures generated from contracts_abi by
+      scripts/signatures/signature_generator.py. Consumed by the decode_logs
+      macro, which filters on `chain` — the same address can host different
+      contracts on different chains, so the chain column prevents cross-chain
+      ABI collisions.
+    columns:
+      - name: chain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+            - signature
+
+  - name: function_signatures
+    description: >
+      Function 4-byte selectors generated from contracts_abi by
+      scripts/signatures/signature_generator.py. Consumed by the decode_calls
+      macro, which filters on `chain`.
+    columns:
+      - name: chain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+            - signature
