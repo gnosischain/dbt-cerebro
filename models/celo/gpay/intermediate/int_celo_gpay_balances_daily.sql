@@ -16,16 +16,19 @@
 -- balance signal. Rows only exist on days with flow activity; a line chart
 -- reading this still renders continuously since it's a running total.
 
--- Inflows: Top-up (user-funded) and Reversal (processor refund of a
--- failed/disputed charge) both add to the float. Outflows: Payment and
--- Withdrawal both remove from it.
+-- Inflows: Top-up (user-funded), Reversal (processor refund of a
+-- failed/disputed charge) and Cashback (reward disbursed into the Safe) all add
+-- to the float. Outflows: Payment and Withdrawal both remove from it. Cashback
+-- is listed for forward-compatibility — it produces no rows until the cashback
+-- disburser is configured (var celo_gp_cashback_sources), but listing it here
+-- ensures a future reward inflow is added, not subtracted as a default outflow.
 WITH daily_net AS (
     SELECT
         date,
         safe_address,
         token_symbol,
-        SUM(CASE WHEN action IN ('Top-up', 'Reversal') THEN amount ELSE -amount END)      AS net_amount,
-        SUM(CASE WHEN action IN ('Top-up', 'Reversal') THEN amount_usd ELSE -amount_usd END) AS net_amount_usd
+        SUM(CASE WHEN action IN ('Top-up', 'Reversal', 'Cashback') THEN amount ELSE -amount END)      AS net_amount,
+        SUM(CASE WHEN action IN ('Top-up', 'Reversal', 'Cashback') THEN amount_usd ELSE -amount_usd END) AS net_amount_usd
     FROM {{ ref('int_celo_gpay_activity_daily') }}
     GROUP BY date, safe_address, token_symbol
 )

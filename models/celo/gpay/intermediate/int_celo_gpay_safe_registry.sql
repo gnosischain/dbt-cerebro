@@ -8,6 +8,9 @@
   )
 }}
 
+{% set settlement_bare = var('celo_gp_settlement_address') | replace('0x', '') %}
+{% set gp_start = var('celo_gp_start_date') %}
+
 -- GP card Safes on Celo, discovered natively (replaces the fp CTE of Dune
 -- query 7808895): a Safe that emits EnabledModule(<GP Roles proxy>) has been
 -- provisioned as a GP card. Confirmed GP pre-spend, so this registry also
@@ -26,10 +29,10 @@ SELECT
     min(l.block_timestamp)          AS module_enabled_at
 FROM {{ source('celo_execution', 'logs') }} l
 WHERE replaceAll(l.topic0, '0x', '') = 'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440'  -- EnabledModule
-  AND l.block_timestamp >= toDateTime('2026-01-01')
+  AND l.block_timestamp >= toDateTime('{{ gp_start }}')
   AND substring(replaceAll(l.data, '0x', ''), 25, 40) IN (
       SELECT lower(replaceAll(address, '0x', ''))
       FROM {{ ref('int_celo_gpay_roles_modules') }}
   )
-  AND lower(l.address) != 'c07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1'  -- AggregateBridge
+  AND lower(l.address) != '{{ settlement_bare }}'  -- AggregateBridge
 GROUP BY l.address

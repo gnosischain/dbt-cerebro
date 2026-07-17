@@ -12,8 +12,8 @@
 -- Celo price hub (native-first, same design as the Gnosis
 -- int_execution_token_prices_daily but with a smaller source set):
 --   1. Chainlink AnswerUpdated decoded from celo_execution.logs (CELO, USDT,
---      USDC, USDm, plus EUR/GBP FX for future display currencies), and
---      XAUt0 derived on-chain: no direct Chainlink XAU feed exists on Celo,
+--      USDC, USDm — the GP-relevant tokens; CELO is needed only to derive
+--      XAUt0), and XAUt0 derived on-chain: no direct Chainlink XAU feed on Celo,
 --      but Mento's SortedOracles publishes a relayed CELO/XAUt rate daily
 --      (CGP-0240, live since 2026-06-09), so
 --      XAUt/USD = CELO/USD / (CELO/XAUt) — both factors native.

@@ -16,8 +16,10 @@ version: 2
 # Balances are net-flow (cumulative inflows − outflows since a Safe's first
 # activity), which equals the true on-chain balance here because Safes start
 # empty pre-launch, there are no Safe-to-Safe transfers, and only the two
-# whitelisted tokens carry value. There is no GNO cashback program on Celo, so
-# no cashback/revenue models exist (unlike the Gnosis Chain GP dashboard).
+# whitelisted tokens carry value. The MiniPay Card's XAUt0/USDT/USDC cashback is
+# NOT yet modeled in these marts (the on-chain rewards disburser is not yet
+# identified; see the celo_gp_cashback_sources scaffold in int_celo_gpay_activity).
+# There is no GNO cashback program on Celo (unlike the Gnosis Chain GP dashboard).
 # ────────────────────────────────────────────────────────────────────────────
 
 models:
@@ -1002,3 +1004,72 @@ models:
   - name: value_usd
     description: "The total USD value in this bucket."
     data_type: Float64
+
+- name: fct_celo_gpay_card_balances_alltoken_daily
+  description: |
+    Deterministic ALL-TOKEN running balance per card Safe (net-flow-since-
+    inception, same idiom as int_celo_gpay_balances_daily but across every token
+    the Safe touches). NOTE: the marts-level USDC/USDT scope comment above does
+    NOT apply here — this model is intentionally all-token. balance_raw is the
+    exact integer net flow (always set); balance is human units, set only for
+    known-decimals tokens. No USD.
+  columns:
+  - name: date
+    data_type: Date
+  - name: safe_address
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token_symbol
+    description: Whitelist symbol; NULL for non-whitelisted tokens.
+    data_type: Nullable(String)
+  - name: balance_raw
+    description: Cumulative exact integer net flow (in - out). Always populated.
+    data_type: Int256
+  - name: balance
+    description: Cumulative human-unit balance; NULL for unknown-decimals tokens.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_card_funding
+  description: |
+    Deterministic funding-relationship per card Safe: which addresses fund it
+    (inbound transfers), per token, plus each funder's fan-out — RAW addresses,
+    NO labels. funder_n_cards_funded is the label-free signal separating a shared
+    onboarding/relayer EOA (funds many cards) from an individual funder (funds
+    one), without asserting any identity. Grain (safe_address, funder,
+    token_address). All-token (the marts USDC/USDT scope comment does not apply).
+  columns:
+  - name: safe_address
+    data_type: String
+  - name: funder
+    description: RAW inbound sender address, deliberately unlabeled.
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token_symbol
+    data_type: Nullable(String)
+  - name: n_transfers
+    description: Inbound transfers from this funder to this card in this token.
+    data_type: UInt64
+  - name: first_funded_at
+    data_type: DateTime
+  - name: last_funded_at
+    data_type: DateTime
+  - name: total_amount_raw
+    description: Exact integer sum of inbound amounts (this card/funder/token).
+    data_type: Int256
+  - name: total_amount
+    description: Native total for known-decimals tokens; NULL otherwise.
+    data_type: Nullable(Float64)
+  - name: funder_n_cards_funded
+    description: Distinct cards this funder funds (fan-out; the relayer-vs-individual signal).
+    data_type: UInt64
+  - name: funder_n_funding_transfers
+    description: Total inbound funding transfers this funder makes across all cards.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false

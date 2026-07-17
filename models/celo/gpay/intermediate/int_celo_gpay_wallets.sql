@@ -8,36 +8,26 @@
   )
 }}
 
-{% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}
+{% set settlement = var('celo_gp_settlement_address') %}
 
--- Reconstructs the wallet list from the append-only
--- crawlers_data.celo_gpay_wallet_events log (action='issued_at') rather
--- than reading a per-safe snapshot table directly — the earlier
--- celo_gpay_wallets table stored is_activated/first_spend_at/owner_address
--- as MUTABLE per-safe fields (same safe_address reinserted daily with
--- evolving values), which is exactly the class of source that breaks
--- incremental models downstream. Event-sourcing issued_at removes that
--- entirely: each issued_at row is an immutable fact, written once, never
--- revised.
+-- Canonical Celo GP card Safe list, native-only. Issuance comes from the
+-- append-only int_celo_gpay_wallet_events log (action='issued_at'); each
+-- issued_at row is an immutable SafeSetup fact, written once, never revised.
 --
--- first_spend_at/is_activated are derived directly from
--- crawlers_data.celo_gpay_transfers here, not stored as an ingested event
--- at all — the fact is already fully present in the transfers data
--- (anything sent to the settlement address, by the same definition the
--- Dune spine itself uses for its own activation signal), so ingesting it
--- separately would just be storing the same fact twice. This reads
--- directly from the source table (not through int_celo_gpay_activity, or
--- through this model itself) specifically to avoid a circular dbt ref:
--- int_celo_gpay_activity depends on this model for wallet-membership
--- classification, so this model computing first_spend_at via
--- int_celo_gpay_activity would create a dependency cycle. Reading the
--- unfiltered source directly (no wallet-membership check needed, since
--- anything sent to the settlement address is presumed to be a GP Safe,
--- matching the spine's own definition) avoids that entirely. This is a
--- full-table GROUP BY over the whole transfers history on every rebuild —
--- confirmed acceptable at scale by precedent: Gnosis Chain's own
--- int_execution_gpay_wallets does an equivalent full scan of the much
--- larger execution.logs on every run, materialized='table', successfully.
+-- first_spend_at / is_activated are derived directly from
+-- int_celo_gpay_transfers_native (a transfer to the settlement bridge — the
+-- same activation signal the Dune spine used), NOT via int_celo_gpay_activity:
+-- that model depends on THIS one for wallet-membership classification, so
+-- reading it here would create a dbt cycle. transfers_native does not depend on
+-- wallets, so reading it directly is cycle-free. The full-table GROUP BY on
+-- every rebuild is acceptable at scale by precedent — Gnosis Chain's own
+-- int_execution_gpay_wallets does an equivalent full scan of the much larger
+-- execution.logs on every run, materialized='table', successfully.
+--
+-- Deliberately materialized='table' (full rebuild), bounded by card count not
+-- transaction volume, so it stays small and re-checks is_activated/first_spend_at
+-- for every Safe on every run (a Safe issued today whose first spend happens
+-- months from now is picked up correctly, since nothing here is windowed by age).
 
 WITH issued AS (
     SELECT
@@ -54,7 +44,7 @@ activation AS (
     SELECT
         sender          AS safe_address,
         min(block_date) AS first_spend_at
-    FROM {{ source('crawlers_data', 'celo_gpay_transfers') }}
+    FROM {{ ref('int_celo_gpay_transfers_native') }}
     FINAL
     WHERE receiver = '{{ settlement }}'
     GROUP BY sender

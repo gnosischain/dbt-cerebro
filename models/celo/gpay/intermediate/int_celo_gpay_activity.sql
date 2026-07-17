@@ -10,18 +10,29 @@
   )
 }}
 
-{% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}
+{% set settlement = var('celo_gp_settlement_address') %}
+{% set cashback_sources = var('celo_gp_cashback_sources', []) %}
 
--- Classification lives here, not upstream in Dune (mirrors Gnosis Chain's
--- int_execution_gpay_activity.sql) so fixes/additions (like Reversal below)
--- are a dbt edit + re-run, not a Dune query edit + re-backfill.
+-- Per-transfer classification of Celo GP activity, NATIVE-only: reads
+-- int_celo_gpay_transfers_native (whitelisted-token ERC-20 transfers touching a
+-- GP card Safe, decoded straight from celo_execution.logs). Classification
+-- lives HERE, not upstream (mirrors Gnosis Chain's int_execution_gpay_activity),
+-- so fixes/additions are a dbt edit + re-run.
 --
--- CASE ordering matters: sender-based branches (Payment/Withdrawal) must be
--- checked before receiver-based branches (Reversal/Top-up). A hypothetical
+-- CASE ordering matters: sender-based branches (Payment/Withdrawal) are checked
+-- before receiver-based branches (Reversal/Cashback/Top-up). A hypothetical
 -- Safe-to-Safe transfer has sender AND receiver both in `wallets`; checking
--- receiver first would misclassify it as a Top-up to the receiving Safe
--- instead of a Withdrawal from the sending Safe (safe_address below always
--- resolves to sender when sender is a Safe, so action must agree with that).
+-- receiver first would misclassify it as a Top-up to the receiving Safe instead
+-- of a Withdrawal from the sending Safe (safe_address below always resolves to
+-- sender when sender is a Safe, so action must agree with that).
+--
+-- Cashback: the MiniPay Card pays up to 5% cashback in XAUt0 (also USDT/USDC in
+-- some markets) from a rewards disburser that is SEPARATE from the settlement
+-- bridge (verified 2026-07: zero reward-token flow through the bridge). The
+-- disburser address is not yet identified, so var celo_gp_cashback_sources is
+-- empty and the Cashback branch below is COMPILED OUT — reward inflows currently
+-- fall through to Top-up exactly as before (a safe no-op). Populate the var (with
+-- 0x-prefixed lowercase addresses) to separate Cashback from user Top-ups.
 
 WITH wallets AS (
     SELECT safe_address FROM {{ ref('int_celo_gpay_wallets') }}
@@ -49,6 +60,12 @@ classified AS (
             WHEN t.receiver IN (SELECT safe_address FROM wallets)
              AND t.sender = '{{ settlement }}'
             THEN 'Reversal'
+{%- if cashback_sources %}
+
+            WHEN t.receiver IN (SELECT safe_address FROM wallets)
+             AND t.sender IN ({% for a in cashback_sources %}'{{ a }}'{% if not loop.last %}, {% endif %}{% endfor %})
+            THEN 'Cashback'
+{%- endif %}
 
             WHEN t.receiver IN (SELECT safe_address FROM wallets)
             THEN 'Top-up'
@@ -65,36 +82,25 @@ classified AS (
             WHEN t.sender IN (SELECT safe_address FROM wallets) THEN t.receiver
             ELSE t.sender
         END AS counterparty
-    -- FINAL: don't depend on OPTIMIZE having run in click-runner (already
-    -- failed once here on permissions) — without it, a transfer caught in
-    -- two overlapping daily 3-day windows could double-count before a
-    -- merge collapses it.
-    FROM {{ source('crawlers_data', 'celo_gpay_transfers') }} t
+    -- FINAL: int_celo_gpay_transfers_native is a ReplacingMergeTree; read it
+    -- collapsed so a row that landed in two overlapping incremental windows
+    -- cannot double-count before a background merge collapses it.
+    FROM {{ ref('int_celo_gpay_transfers_native') }} t
     FINAL
     -- insert_overwrite + this macro recomputes the WHOLE current month's
-    -- partition every run (not just literally-new rows) — required so
-    -- int_celo_gpay_wallets (always a full, up-to-date rebuild — see that
-    -- model's header) can correct an earlier misclassification within the
-    -- same month. wallets itself never needs this treatment: it stays a
-    -- full table rebuild regardless of transfer volume, since its size is
-    -- bounded by total card count, not transaction count.
+    -- partition every run (not just literally-new rows) — so a Safe recognized
+    -- slightly late (registry lag) is reclassified correctly on the next run
+    -- within the same month. int_celo_gpay_wallets stays a full rebuild
+    -- regardless (bounded by card count, not transaction volume).
     {{ apply_monthly_incremental_filter('t.block_date', 'date', false) }}
 )
 
 -- action IS NULL means neither sender nor receiver matched a wallet at
--- classification time. This is a real, observed race: crawlers_data.
--- celo_gpay_transfers and int_celo_gpay_wallets are each independently
--- derived from the same live, continuously-indexing Dune spine, not from
--- one consistent snapshot — a Safe can be recognized by the transfers
--- extraction moments before or after it lands in the wallets snapshot.
--- Dropping these rows (rather than guessing which side is the Safe) is
--- self-healing WITHIN the current month's reprocessing window (see
--- incremental_strategy above) — a Safe recognized a few seconds/minutes
--- late (the only case actually observed) is comfortably within that
--- window. A gap spanning a full calendar-month boundary would not
--- self-heal under insert_overwrite; this hasn't happened in practice and
--- is not expected to, since wallet recognition lag has only ever been
--- seconds, not weeks.
+-- classification time. transfers_native and int_celo_gpay_wallets now both
+-- derive from the SAME native registry within a single dbt build, so the
+-- cross-source race that motivated this drop on the old Dune pipeline is
+-- largely gone; the filter is kept as a cheap safety net and still self-heals
+-- within the current month's reprocessing window under insert_overwrite.
 SELECT
     tx_hash,
     block_time,

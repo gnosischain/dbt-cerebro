@@ -8,6 +8,9 @@
   )
 }}
 
+{% set settlement_bare = var('celo_gp_settlement_address') | replace('0x', '') %}
+{% set gp_start = var('celo_gp_start_date') %}
+
 -- GP-specific Zodiac Roles module proxies on Celo, discovered natively from
 -- celo_execution.logs (replaces the roles_with_bridge CTE of Dune query
 -- 7808895). Only GP card Safes wire the GP AggregateBridge into their Roles
@@ -30,6 +33,6 @@ SELECT
     min(block_timestamp)          AS first_seen_at
 FROM {{ source('celo_execution', 'logs') }}
 WHERE replaceAll(topic0, '0x', '') = 'ecdf3a3effea5783a3c4c2140e677577666428d44ed9d474a0b3a4c9943f8440'  -- EnabledModule
-  AND block_timestamp >= toDateTime('2026-01-01')
-  AND substring(replaceAll(data, '0x', ''), 25, 40) = 'c07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1'          -- AggregateBridge
+  AND block_timestamp >= toDateTime('{{ gp_start }}')
+  AND substring(replaceAll(data, '0x', ''), 25, 40) = '{{ settlement_bare }}'          -- AggregateBridge
 GROUP BY address

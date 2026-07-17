@@ -32,7 +32,7 @@ WITH decoded AS (
             abi_source_address   = '0x3e5c63644e683549055b9be8653de26e0b4cd36e',
             output_json_type     = true,
             incremental_column   = 'block_timestamp',
-            start_blocktime      = '2026-01-01',
+            start_blocktime      = var('celo_gp_start_date'),
             event_name_filter    = ['SafeSetup','AddedOwner','RemovedOwner'],
             chain                = 'celo'
         ) }}

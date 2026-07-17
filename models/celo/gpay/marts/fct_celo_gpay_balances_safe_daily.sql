@@ -53,8 +53,8 @@ daily_net AS (
         date,
         safe_address,
         token_symbol,
-        SUM(CASE WHEN action IN ('Top-up', 'Reversal') THEN amount     ELSE -amount     END) AS net_amount,
-        SUM(CASE WHEN action IN ('Top-up', 'Reversal') THEN amount_usd ELSE -amount_usd END) AS net_amount_usd
+        SUM(CASE WHEN action IN ('Top-up', 'Reversal', 'Cashback') THEN amount     ELSE -amount     END) AS net_amount,
+        SUM(CASE WHEN action IN ('Top-up', 'Reversal', 'Cashback') THEN amount_usd ELSE -amount_usd END) AS net_amount_usd
     FROM {{ ref('int_celo_gpay_activity_daily') }}
     GROUP BY date, safe_address, token_symbol
 ),

@@ -3,13 +3,13 @@ version: 2
 models:
 - name: int_celo_gpay_wallet_events
   description: |
-    Thin pass-through of the unified, append-only wallet-lifecycle event
-    log (issued_at + add_owner + remove_owner) — see sources.yml for the
-    full history of why this replaced two separate, mutable-row tables.
-    Full table rebuild (bounded by card count, not transaction volume —
-    same reasoning as int_celo_gpay_wallets, no incremental treatment
-    needed). Consumed by int_celo_gpay_wallets.sql (issued_at only) and
-    int_celo_gpay_safe_current_owners.sql (the full fold).
+    Unified, append-only wallet-lifecycle event log (issued_at + add_owner +
+    remove_owner) for GP card Safes, derived NATIVELY from celo_execution via
+    int_celo_gpay_safe_events_native, gated to int_celo_gpay_safe_registry.
+    Full table rebuild (bounded by card count, not transaction volume).
+    Consumed by int_celo_gpay_wallets.sql (issued_at only) and
+    int_celo_gpay_safe_current_owners.sql (the full fold). Replaces the old
+    Dune-fed crawlers_data.celo_gpay_wallet_events source (MVP, retired).
   columns:
   - name: safe_address
     description: The GP card Safe this event is about.
@@ -66,9 +66,9 @@ models:
     a per-safe snapshot table — see sources.yml for why the earlier
     mutable-row wallets table was replaced with an append-only event log.
     first_spend_at/is_activated are derived here directly from
-    crawlers_data.celo_gpay_transfers (not from an ingested event) — see
-    this model's own header comment for why that read goes straight to the
-    source rather than through int_celo_gpay_activity (would create a
+    int_celo_gpay_transfers_native (a transfer to the settlement bridge) — see
+    this model's own header comment for why that read goes straight to that
+    model rather than through int_celo_gpay_activity (would create a
     circular dbt ref) and why a full scan of the transfers table on every
     rebuild is acceptable (Gnosis Chain's own int_execution_gpay_wallets
     already does an equivalent full scan of the much larger execution.logs,
@@ -85,6 +85,9 @@ models:
   - name: safe_address
     description: GP card Safe address on Celo (0x-prefixed, lowercase). The fund holder.
     data_type: String
+    tests:
+      - unique
+      - not_null
   - name: owner_address
     description: >
       SafeSetup owner / signer key (first owner encountered). For MiniPay
@@ -153,6 +156,9 @@ models:
   - name: address
     description: GP card Safe address (0x-prefixed, lowercase).
     data_type: String
+    tests:
+      - unique
+      - not_null
   - name: contract_type
     description: Always 'SafeProxy'.
     data_type: String
@@ -198,31 +204,6 @@ models:
   - name: log_index
     description: Log index within the block.
     data_type: UInt64
-  meta:
-    owner: analytics_team
-    authoritative: false
-
-- name: int_celo_gpay_wallet_events_native
-  description: |
-    Native twin of crawlers_data.celo_gpay_wallet_events, derived entirely
-    from celo_execution (int_celo_gpay_safe_events_native gated by
-    int_celo_gpay_safe_registry). Same shape and action vocabulary as the
-    Dune-fed table so int_celo_gpay_wallets /
-    int_celo_gpay_safe_current_owners can be repointed with a one-line ref
-    swap once validated manually against the Dune-fed pipeline.
-  columns:
-  - name: safe_address
-    description: GP card Safe address.
-    data_type: String
-  - name: action
-    description: "issued_at | add_owner | remove_owner."
-    data_type: String
-  - name: action_value
-    description: The owner address involved.
-    data_type: String
-  - name: event_time
-    description: On-chain timestamp of the event.
-    data_type: DateTime
   meta:
     owner: analytics_team
     authoritative: false
@@ -278,29 +259,31 @@ models:
 - name: int_celo_gpay_activity
   description: |
     Per-transfer classified Celo GP activity. Classification happens HERE,
-    not upstream in Dune — Dune only supplies raw whitelisted-token transfers
-    touching a GP Safe (crawlers_data.celo_gpay_transfers: sender, receiver,
-    token, amount). This mirrors int_execution_gpay_activity on Gnosis Chain,
+    not upstream — int_celo_gpay_transfers_native supplies raw whitelisted-token
+    transfers touching a GP Safe (sender, receiver, token, amount), decoded from
+    celo_execution.logs. This mirrors int_execution_gpay_activity on Gnosis Chain,
     which also classifies from raw log data rather than a pre-classified
     source, so fixing/extending classification is a dbt edit + re-run here,
     not a Dune query edit + re-backfill.
     Actions: Payment (Safe -> AggregateBridge settlement), Withdrawal (Safe
     -> anything else, including hypothetically another GP Safe), Reversal
     (AggregateBridge -> Safe; a processor-side refund of a failed/disputed
-    charge), Top-up (anything else -> Safe, e.g. a MiniPay funding wallet).
-    No Cashback action exists; the GNO cashback program is Gnosis Chain only.
+    charge), Top-up (anything else -> Safe, e.g. a MiniPay funding wallet), and
+    Cashback (a configured rewards disburser -> Safe; the MiniPay Card's
+    XAUt0/USDT/USDC cashback). Cashback is COMPILED OUT until the var
+    celo_gp_cashback_sources is populated (disburser not yet identified on
+    chain), so reward inflows currently fall through to Top-up — a safe no-op.
     CASE ordering in the model checks sender-based branches (Payment/
     Withdrawal) before receiver-based branches (Reversal/Top-up) — required
     so a hypothetical Safe-to-Safe transfer classifies as a Withdrawal from
     the sending Safe, not a Top-up to the receiving Safe (safe_address always
     resolves to sender when sender is a Safe, so action must agree).
     Rows where neither sender nor receiver matches int_celo_gpay_wallets are
-    dropped, not guessed at — observed in practice (2026-07-02 test backfill,
-    3 rows) as a real race between crawlers_data.celo_gpay_transfers and
-    int_celo_gpay_wallets, which are each independently derived from the same
-    live, continuously-indexing Dune spine rather than one consistent
-    snapshot: a brand-new Safe's transfer can be extracted moments before
-    that same Safe lands in the wallets snapshot.
+    dropped, not guessed at. transfers_native and int_celo_gpay_wallets now both
+    derive from the SAME native int_celo_gpay_safe_registry within a single dbt
+    build, so the cross-source race that motivated this on the old Dune pipeline
+    is largely gone; the filter is kept as a cheap safety net that also self-heals
+    within the current month's reprocessing window under insert_overwrite.
     materialized='incremental' with incremental_strategy='insert_overwrite'
     and apply_monthly_incremental_filter (same macro/pattern already used by
     Gnosis Chain's int_execution_gpay_activity_daily and
@@ -327,8 +310,11 @@ models:
     description: The GP card Safe side of this transfer.
     data_type: String
   - name: action
-    description: "Payment | Withdrawal | Reversal | Top-up."
+    description: "Payment | Withdrawal | Reversal | Top-up | Cashback."
     data_type: String
+    tests:
+      - accepted_values:
+          values: ['Payment', 'Withdrawal', 'Reversal', 'Top-up', 'Cashback']
   - name: direction
     description: "'out' if the Safe is the sender, 'in' otherwise."
     data_type: String
@@ -401,6 +387,45 @@ models:
   - name: balance_usd
     description: Cumulative net USD balance as of this date.
     data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_safe_transfers_alltoken
+  description: |
+    Deterministic all-token ERC-20 Transfer activity touching a GP card Safe on
+    either side (int_celo_gpay_safe_registry) — NO token whitelist, NO
+    counterparty labeling. Base for the deterministic Tier-1 enrichment
+    (all-token balances, funding-relationship). `amount` (human units) is set
+    only for known-decimals tokens (celo_tokens_whitelist); `amount_raw` is
+    always the exact integer. No USD. A Safe-to-Safe transfer yields two rows
+    (one per Safe-side) by design. Incremental (insert_overwrite) — run with
+    --full-refresh while the backfill fills old months out of order; scans all
+    Celo Transfer logs filtered to registry Safes (heavy on full-refresh,
+    bounded per-month incrementally).
+  columns:
+  - name: block_date
+    data_type: Date
+  - name: safe_address
+    description: The GP card Safe side of this transfer (0x-prefixed, lowercase).
+    data_type: String
+  - name: direction
+    description: "'in' if the Safe received, 'out' if it sent."
+    data_type: String
+  - name: counterparty
+    description: The other side of the transfer — RAW address, deliberately unlabeled.
+    data_type: String
+  - name: token_address
+    data_type: String
+  - name: token_symbol
+    description: Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Exact integer transfer amount (unscaled). Always populated.
+    data_type: UInt256
+  - name: amount
+    description: Human-unit amount; NULL for unknown-decimals tokens (no guessing).
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false

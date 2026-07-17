@@ -10,11 +10,13 @@
   )
 }}
 
--- Native twin of crawlers_data.celo_gpay_transfers: whitelisted-token ERC-20
--- Transfer events touching a GP card Safe, decoded straight from
--- celo_execution.logs. Same column shape as the Dune-fed table (sender /
--- receiver / amount / amount_usd) so int_celo_gpay_activity can be repointed
--- with a ref swap after reconciliation.
+{% set gp_start = var('celo_gp_start_date') %}
+
+-- Whitelisted-token ERC-20 Transfer events touching a GP card Safe, decoded
+-- straight from celo_execution.logs (sender / receiver / amount / amount_usd).
+-- This is the CANONICAL transfer source for the Celo GP pipeline, consumed by
+-- int_celo_gpay_activity and int_celo_gpay_wallets. (It replaced the Dune-fed
+-- crawlers_data.celo_gpay_transfers MVP, now retired — the pipeline is native.)
 --
 -- Transfer is raw-sliced rather than run through decode_logs: the layout is
 -- fixed (from=topic1, to=topic2, value=data word 0), the token set is 4
@@ -62,7 +64,7 @@ transfer_logs AS (
         FROM {{ source('celo_execution', 'logs') }}
         WHERE replaceAll(topic0, '0x', '') = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'  -- Transfer
           AND lower(replaceAll(address, '0x', '')) IN (SELECT token_addr FROM whitelist)
-          AND block_timestamp >= toDateTime('2026-01-01')
+          AND block_timestamp >= toDateTime('{{ gp_start }}')
           -- On incremental runs, prune the log scan to the current month(s);
           -- emits nothing under --full-refresh (full rebuild). block_date is
           -- this model's own partition/date column.
