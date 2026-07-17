@@ -1,0 +1,59 @@
+version: 2
+
+models:
+- name: int_celo_sorted_oracles_rates
+  description: |
+    Tracked Mento SortedOracles rate feeds on Celo, raw-sliced from
+    celo_execution.logs (MedianUpdated events, values at Mento's 24-decimal
+    fixidity). Currently a single feed: the relayed CELO/XAUt rate
+    (CGP-0240 / MGP-17, daily heartbeat at 00:00 UTC since 2026-06-09) —
+    the only native on-chain gold price surface on Celo, since no direct
+    Chainlink XAU aggregator exists there (verified on-chain). Consumed by
+    int_celo_token_prices_daily to derive XAUt/USD.
+  columns:
+  - name: rate_feed_id
+    description: Mento rateFeedId (0x-prefixed, lowercase). 0xb1c7...b009 = CELO/XAUt.
+    data_type: String
+  - name: feed_label
+    description: Human-readable feed name ('CELO/XAUt').
+    data_type: String
+  - name: block_timestamp
+    description: On-chain timestamp of the median update.
+    data_type: DateTime
+  - name: block_number
+    description: Block number of the update.
+    data_type: UInt64
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  - name: rate
+    description: Median rate, fixidity-adjusted (value / 1e24). For CELO/XAUt this is XAUt per CELO (~1.7e-5).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_token_prices_daily
+  description: |
+    Celo daily price hub, native-first (same design as the Gnosis
+    int_execution_token_prices_daily). Priority 1: native on-chain — decoded
+    Chainlink AnswerUpdated (CELO/USDT/USDC/USDm + EUR/GBP FX) and the
+    derived XAUt/USD (Chainlink CELO/USD divided by SortedOracles CELO/XAUt).
+    Priority 2: Dune off-chain feed fallback (pre-backfill history, XAUt0
+    before 2026-06-09). Priority 3: $1 peg last-resort for the card
+    stablecoins. Daily price = last answer of the day. Forward-fill is
+    deliberately not applied while the celo_execution backfill is in
+    progress (would fabricate stale runs across the backfill frontier).
+  columns:
+  - name: date
+    description: Price date.
+    data_type: Date
+  - name: symbol
+    description: Token/FX symbol in whitelist display casing (USDm, XAUt0, CELO, ...).
+    data_type: String
+  - name: price
+    description: USD price (last observation of the day from the winning source).
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false

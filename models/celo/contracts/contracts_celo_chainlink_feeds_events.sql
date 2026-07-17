@@ -30,7 +30,8 @@
 -- Aggregator activity verified two ways: AnswerUpdated volumes + magnitudes in
 -- celo_execution.logs (backfill window) and on Dune celo.logs through the GP
 -- launch window (June-July 2026). No XAU/USD Chainlink feed exists on Celo;
--- XAUt0 pricing comes via the Dune price fallback in the price hub.
+-- XAUt0 pricing is derived from Mento's SortedOracles CELO/XAUt rate
+-- (int_celo_sorted_oracles_rates) with Dune as pre-2026-06-09 fallback.
 -- start_blocktime = Celo L2 migration (celo_execution history starts there).
 {{
     decode_logs(

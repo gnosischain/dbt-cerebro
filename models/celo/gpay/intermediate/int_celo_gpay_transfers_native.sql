@@ -21,9 +21,10 @@
 -- addresses, and skipping the ABI join keeps this — the highest-volume scan
 -- in the Celo pipeline — cheap.
 --
--- amount_usd prices at the transfer's DATE via the Celo price hub. XAUt0 has
--- no feed yet (no Chainlink XAU on Celo, not in the Dune price dump) so its
--- amount_usd is NULL, not 0 — visibly unpriced rather than silently zero.
+-- amount_usd prices at the transfer's DATE via the Celo price hub. XAUt0 is
+-- priced natively there from 2026-06-09 (SortedOracles CELO/XAUt derivation)
+-- and via the Dune fallback before that; a date with no price in either
+-- source yields NULL, not 0 — visibly unpriced rather than silently zero.
 --
 -- materialized='incremental' (insert_overwrite + apply_monthly_incremental_filter),
 -- the prod shape — mirrors int_celo_gpay_activity. This is the only native model
