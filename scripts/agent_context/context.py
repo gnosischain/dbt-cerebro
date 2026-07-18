@@ -19,6 +19,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from scripts.agent_context import build_agent_context as builder
+except ImportError:  # run as a script: this file's dir is sys.path[0]
+    import build_agent_context as builder
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 TASK_GUIDANCE = {
@@ -45,16 +50,87 @@ TASK_GUIDANCE = {
 }
 
 
-def ensure_artifact() -> dict:
+def artifact_is_stale(artifact_path: Path, input_paths) -> bool:
+    """True when any existing input file is newer than the artifact (mtime)."""
+    art_mtime = artifact_path.stat().st_mtime
+    return any(p.exists() and p.stat().st_mtime > art_mtime for p in input_paths)
+
+
+def ensure_artifact(force_rebuild: bool = False) -> dict:
     path = REPO_ROOT / "target" / "agent_context.json"
-    if not path.exists():
-        print("[info] agent_context.json missing — building from manifest...", file=sys.stderr)
-        rc = subprocess.call(
-            [sys.executable, str(REPO_ROOT / "scripts/agent_context/build_agent_context.py")]
-        )
-        if rc != 0:
-            raise SystemExit("ERROR: could not build agent context (is target/manifest.json present?)")
+    inputs = [REPO_ROOT / "target" / "manifest.json"]
+    inputs.extend(builder._fingerprint_paths(REPO_ROOT))
+
+    reason = None
+    if force_rebuild:
+        reason = "forced rebuild"
+    elif not path.exists():
+        reason = "missing"
+    elif artifact_is_stale(path, inputs):
+        reason = "stale (an input changed since the artifact was built)"
+    else:
+        data = json.loads(path.read_text())
+        if data.get("schema_version") != builder.SCHEMA_VERSION:
+            reason = (
+                f"schema_version {data.get('schema_version')} != {builder.SCHEMA_VERSION}"
+            )
+        else:
+            return data
+
+    print(f"[info] agent_context.json {reason} — building from manifest...", file=sys.stderr)
+    rc = subprocess.call(
+        [sys.executable, str(REPO_ROOT / "scripts/agent_context/build_agent_context.py")]
+    )
+    if rc != 0:
+        raise SystemExit("ERROR: could not build agent context (is target/manifest.json present?)")
     return json.loads(path.read_text())
+
+
+def degraded_packet(name: str, task: str, artifact: dict) -> int:
+    """Best-effort guidance for a model the artifact doesn't know (usually a
+    brand-new file that hasn't been through dbt parse yet). Never a hard error:
+    a new model is exactly when an agent needs the guardrails most."""
+    print(f"=== {name}  [{task}] — DEGRADED PACKET ===")
+    print("This model is not in the agent context (new model? not parsed yet).")
+    print("For the full packet: run `dbt parse` (make manifest), then re-run this command.\n")
+
+    candidates = [n for n in artifact.get("models", {}) if name in n][:8]
+    if candidates:
+        print("Similarly named existing models: " + ", ".join(candidates) + "\n")
+
+    matches = sorted((REPO_ROOT / "models").rglob(f"{name}.sql"))
+    guides: list[str] = []
+    if matches:
+        print(f"file: {matches[0].relative_to(REPO_ROOT)}")
+        current = matches[0].parent
+        while current != REPO_ROOT:
+            guide = current / "AGENTS.md"
+            if guide.exists():
+                guides.append(str(guide.relative_to(REPO_ROOT)))
+            current = current.parent
+    if (REPO_ROOT / "AGENTS.md").exists():
+        guides.append("AGENTS.md")
+    if guides:
+        print("Scoped guides (read before changing anything):")
+        for g in guides:
+            print(f"  - {g}")
+
+    try:
+        import yaml
+        spec = yaml.safe_load((REPO_ROOT / "agent_context" / "profiles.yml").read_text())
+        rules = (spec.get("global") or {}).get("rules") or []
+        if rules:
+            print("\nGLOBAL RULES:")
+            for r in rules:
+                text = r["text"] if isinstance(r, dict) else str(r)
+                print(f"  - {' '.join(text.split())}")
+    except Exception:
+        pass
+
+    print(f"\nTASK GUIDANCE ({task}):")
+    for g in TASK_GUIDANCE[task]:
+        print(f"  {g}")
+    return 0
 
 
 def main() -> int:
@@ -66,11 +142,11 @@ def main() -> int:
     artifact = ensure_artifact()
     model = artifact["models"].get(args.select)
     if model is None:
-        candidates = [n for n in artifact["models"] if args.select in n][:8]
-        print(f"ERROR: model '{args.select}' not found in agent context.")
-        if candidates:
-            print("  Did you mean: " + ", ".join(candidates))
-        return 1
+        # A fresh manifest may contain it — force one rebuild before degrading.
+        artifact = ensure_artifact(force_rebuild=True)
+        model = artifact["models"].get(args.select)
+    if model is None:
+        return degraded_packet(args.select, args.task, artifact)
 
     c = model["contract"]
     print(f"=== {model['name']}  [{args.task}] ===")
@@ -121,9 +197,14 @@ def main() -> int:
             lesson = f"  [{r['lesson']}]" if isinstance(r, dict) and r.get("lesson") else ""
             print(f"  - {' '.join(text.split())}{lesson}")
 
-    print(f"\nLINEAGE: {model['downstream_count']} downstream models"
-          + (f"; api marts affected: {', '.join(model['downstream_api_models'])}"
-             if model["downstream_api_models"] else ""))
+    api_models = model.get("downstream_api_models") or []
+    api_count = model.get("downstream_api_count", len(api_models))
+    lineage = (f"\nLINEAGE: {model['downstream_direct_count']} direct children, "
+               f"{model['downstream_transitive_count']} transitive downstream models")
+    if api_models:
+        more = f" (+{api_count - len(api_models)} more)" if api_count > len(api_models) else ""
+        lineage += f"; api marts affected (transitive): {', '.join(api_models)}{more}"
+    print(lineage)
 
     if c.get("reprocess_runbook"):
         print(f"\nREPROCESS: {c['reprocess_runbook']}")
@@ -137,8 +218,11 @@ def main() -> int:
     for g in TASK_GUIDANCE[args.task]:
         print(f"  {g}")
 
-    if c.get("agents_md"):
-        print(f"\nScoped guide: {c['agents_md']}")
+    guides = c.get("agents_md") or []
+    if isinstance(guides, str):
+        guides = [guides]
+    if guides:
+        print("\nScoped guides: " + ", ".join(guides))
     print(f"Resolved from profiles: {', '.join(c.get('profiles') or ['(global only)'])}")
     return 0
 

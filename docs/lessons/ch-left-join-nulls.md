@@ -1,7 +1,7 @@
 ---
 id: ch-left-join-nulls
 title: LEFT JOIN misses return defaults, not NULLs — set join_use_nulls in a pre_hook
-status: enforced
+status: remediated
 scope: any model whose logic depends on NULL for unmatched LEFT JOIN rows
   (coalesce fallbacks, "is missing" flags, countIf on absence)
 symptom: unmatched rows carry 0/''/epoch instead of NULL — absence checks silently
@@ -34,4 +34,7 @@ Unmatched-row spot check: LEFT JOIN a key you know is absent and inspect the joi
 columns.
 
 ## Enforcement
-Convention established across the models above; called out in AGENTS.md. No static gate.
+Convention established across the models above; called out in AGENTS.md. No static
+gate exists (whether a given LEFT JOIN *needs* NULLs is intent, not statically
+checkable), so this stays `remediated` — `enforced` is reserved for lessons a
+gate/test/code fix actually prevents.

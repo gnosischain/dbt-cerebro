@@ -9,10 +9,23 @@ trust numbers quoted in prose (including any doc in this repo).
 Scoped guides with domain-specific rules live next to the code:
 [models/contracts/AGENTS.md](models/contracts/AGENTS.md),
 [models/execution/AGENTS.md](models/execution/AGENTS.md),
+[models/execution/gnosis_app_gt/AGENTS.md](models/execution/gnosis_app_gt/AGENTS.md),
 [models/revenue/AGENTS.md](models/revenue/AGENTS.md),
+[models/consensus/AGENTS.md](models/consensus/AGENTS.md),
+[models/mixpanel_ga/AGENTS.md](models/mixpanel_ga/AGENTS.md),
+[models/quarterly_data/AGENTS.md](models/quarterly_data/AGENTS.md),
+[models/celo/AGENTS.md](models/celo/AGENTS.md),
+[models/bridges/AGENTS.md](models/bridges/AGENTS.md),
 [scripts/refresh/AGENTS.md](scripts/refresh/AGENTS.md),
 [scripts/full_refresh/AGENTS.md](scripts/full_refresh/AGENTS.md).
-Read the one covering the directory you are changing.
+Read the one covering the directory you are changing; domains without a guide
+follow the root rules here.
+
+Repeatable workflows (vendor-neutral; Claude slash commands are thin wrappers):
+[docs/workflows/new-model.md](docs/workflows/new-model.md),
+[docs/workflows/generate-schema.md](docs/workflows/generate-schema.md),
+[docs/workflows/refresh-advisor.md](docs/workflows/refresh-advisor.md),
+[docs/workflows/incident.md](docs/workflows/incident.md).
 
 ## Required workflow for any model change
 
@@ -25,10 +38,13 @@ Read the one covering the directory you are changing.
    `incremental_strategy`, `partition_by`, `meta.full_refresh` stages, and whether any
    downstream model reads `{{ this }}` (cumulative — backfill ordering matters).
 4. **Implement**, following the rules below and the scoped AGENTS.md.
-5. **Validate** — `make check-fast` always; `make check` before handing work back; plus
-   the model-specific selectors from the change packet.
+5. **Validate** — `python scripts/checks/run_all.py` is THE command (works from a
+   fresh checkout and inside the dbt container; `make check-fast` / `make check` are
+   thin aliases for its `--fast` / `--full` modes); plus the model-specific selectors
+   from the change packet.
 6. **Record new lessons** — if you diagnosed a new mistake class, add a record under
-   `docs/lessons/` (use the `/incident` command; every lesson needs evidence refs).
+   `docs/lessons/` (follow `docs/workflows/incident.md`; every lesson needs evidence
+   refs).
 
 ## Refresh levers — which tool, when
 
@@ -63,9 +79,13 @@ Footnotes that have burned hours:
 - **Hooks come in pairs.** Whatever a `pre_hook` turns on, a `post_hook` turns back off.
   Query-level knobs (`max_threads`, `max_memory_usage`, spill settings) go in
   `query_settings=`; `settings=` is storage/DDL only.
-- **Meta contract** — allowed model `meta` keys: `owner`, `authoritative`,
-  `full_refresh`, `inference_notes`, `agent` (see `agent_context/profiles.yml` for the
-  `agent` schema). Don't invent new keys.
+- **Meta contract** — model `meta` keys in active use (derive the census with
+  `python scripts/checks/check_meta_keys.py`): `owner`, `authoritative`,
+  `full_refresh`, `inference_notes`, `agent` (schema in `agent_context/profiles.yml`),
+  `api` (e.g. `api.exclude_from_api` for intentionally-internal `api_*` models),
+  `privacy_tier`, `expose_to_mcp` (MCP opt-out, direct or under `semantic`),
+  `grain`, `guard`. Don't invent new keys; generator bookkeeping
+  (`generated_by`, `_generated_at`, `_generated_fields`) is CI-banned.
 - **Tag contract** — `api:<endpoint>` models must carry `granularity:*` and a tier tag
   and a complete typed column schema. CI gate: `scripts/checks/check_api_tags.py`.
 - **A model is not just its SQL.** Adding, renaming, or retiring a model with metrics on

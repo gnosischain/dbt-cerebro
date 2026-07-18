@@ -8,6 +8,7 @@ anything you find here.
 | Doc | What it is |
 |---|---|
 | [lessons/](lessons/INDEX.md) | Mistake classes with status lifecycle + evidence. Check before diagnosing or refreshing. |
+| [workflows/](workflows/) | Vendor-neutral step-by-step workflows (new-model, generate-schema, refresh-advisor, incident). Claude slash commands are thin wrappers over these. |
 | [semantic-authoring.md](semantic-authoring.md) | Canonical semantic-layer authoring runbook. |
 | [economic_concepts.md](economic_concepts.md) | Cross-domain economic definitions (economically-active, in-app vs ecosystem scoping). |
 | `../AGENTS.md` (+ scoped copies) | Required workflow, refresh levers, non-negotiable rules. |

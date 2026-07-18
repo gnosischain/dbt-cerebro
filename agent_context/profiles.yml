@@ -14,8 +14,13 @@
 #   path_prefix          original_file_path starts with
 #   name_prefix          model name starts with
 #   materialized         config.materialized equals
-#   incremental_strategy config.incremental_strategy equals (parse-time default branch)
-#   strategy_expression  true = unrendered incremental_strategy is a jinja expression
+#   incremental_strategy config.incremental_strategy equals — only INCREMENTAL
+#                        models carry this fact (the project-wide default would
+#                        otherwise leak it onto every view/table); for expression
+#                        strategies this is the parse-time default branch
+#   strategy_expression  true = the RAW code assigns a computed strategy (resolved
+#                        and unrendered config both collapse config() expressions,
+#                        so detection reads raw_code — scripts/agent_context/strategy.py)
 #   has_meta_full_refresh true = model has meta.full_refresh (staged backfills)
 #   reads_this           true = raw SQL references {{ this }} (cumulative carry-forward)
 #   sql_contains         raw SQL contains this substring
@@ -193,3 +198,37 @@ profiles:
     match:
       path_prefix: models/quarterly_data/
     hazards: [stale-snapshot-caveat]
+    agents_md: models/quarterly_data/AGENTS.md
+
+  - name: consensus_models
+    description: Beacon-chain domain (mGNO/GNO units, income/APY chain, halt-prone source)
+    match:
+      path_prefix: models/consensus/
+    hazards: [stale-snapshot-caveat]
+    agents_md: models/consensus/AGENTS.md
+
+  - name: mixpanel_ga_models
+    description: Mixpanel product analytics — privacy-constrained tree
+    match:
+      path_prefix: models/mixpanel_ga/
+    agents_md: models/mixpanel_ga/AGENTS.md
+
+  - name: gnosis_app_gt_models
+    description: envio_ga-indexed Gnosis App tree (own source semantics + privacy tiers)
+    match:
+      path_prefix: models/execution/gnosis_app_gt/
+    agents_md: models/execution/gnosis_app_gt/AGENTS.md
+
+  - name: celo_models
+    description: Celo-chain gpay mirror (crawler-fed sources)
+    match:
+      path_prefix: models/celo/
+    hazards: [stale-snapshot-caveat]
+    agents_md: models/celo/AGENTS.md
+
+  - name: bridges_models
+    description: Bridge flow/netflow marts (pre-aggregated staging, signed direction)
+    match:
+      path_prefix: models/bridges/
+    hazards: [stale-snapshot-caveat]
+    agents_md: models/bridges/AGENTS.md

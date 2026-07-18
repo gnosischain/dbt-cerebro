@@ -16,6 +16,13 @@ Steps:
   4. Composes the static CI gates (no_delete_insert, check_api_tags,
      check_doc_coverage) so local == CI.
 
+Failure modes:
+  - A changed model file UNKNOWN to the artifact is BLOCKING (the artifact is
+    stale or the model was never parsed — either way its hazards are unknown;
+    run `dbt parse` + build_agent_context.py, then re-run).
+  - `--require-base` (CI): an unresolvable base ref is a hard error. Without
+    it (local), the diff falls back to the working tree with a warning.
+
 Exit code 0 = clean; 1 = blocking findings.
 """
 
@@ -54,6 +61,23 @@ def changed_model_files(base_ref: str) -> list[Path]:
     return [Path(f) for f in files if f.startswith("models/") and f.endswith(".sql")]
 
 
+def get_changed_models(base_ref: str, require_base: bool) -> list[Path]:
+    """Changed model files vs base_ref. With require_base (CI), an
+    unresolvable base fails CLOSED — an empty changed-set would silently skip
+    every per-model check and pass a broken branch."""
+    try:
+        return changed_model_files(base_ref)
+    except subprocess.CalledProcessError:
+        if require_base:
+            raise SystemExit(
+                f"ERROR: base ref '{base_ref}' could not be resolved. In CI the "
+                "base MUST be fetched and passed explicitly (fetch-depth: 0 or "
+                "an explicit fetch of the base SHA) — refusing to fail open."
+            )
+        print(f"[warn] git diff against '{base_ref}' failed; checking working tree only")
+        return []
+
+
 def load_artifact() -> dict:
     path = REPO_ROOT / "target" / "agent_context.json"
     if not path.exists():
@@ -81,6 +105,9 @@ def main() -> int:
                     help="Also fail on reported (non-changed) contract gaps.")
     ap.add_argument("--skip-static", action="store_true",
                     help="Skip the composed static gates (already run separately in CI).")
+    ap.add_argument("--require-base", action="store_true",
+                    help="Fail hard when the base ref cannot be resolved (CI). "
+                         "Without it, falls back to working-tree-only with a warning.")
     args = ap.parse_args()
 
     artifact = load_artifact()
@@ -88,11 +115,7 @@ def main() -> int:
     allow = load_allowlist()
     blocking: list[str] = []
 
-    try:
-        changed = changed_model_files(args.base_ref)
-    except subprocess.CalledProcessError:
-        print(f"[warn] git diff against '{args.base_ref}' failed; checking working tree only")
-        changed = []
+    changed = get_changed_models(args.base_ref, args.require_base)
 
     changed_names = [p.stem for p in changed]
     known = [n for n in changed_names if n in models]
@@ -100,17 +123,28 @@ def main() -> int:
 
     print(f"Changed model files vs {args.base_ref} (incl. working tree): {len(changed_names)}")
     if unknown:
-        print(f"  [warn] not in agent context (new model? rebuild after dbt parse): {', '.join(unknown)}")
+        blocking.append(
+            f"changed model(s) unknown to the agent context: {', '.join(unknown)} — "
+            "the artifact is stale or the model was never parsed, so its hazards "
+            "can't be checked. Run `dbt parse` (make manifest) + "
+            "`python scripts/agent_context/build_agent_context.py`, then re-run."
+        )
 
     validations: list[str] = []
     for name in known:
         m = models[name]
         c = m["contract"]
         hazard_ids = [h["id"] for h in c.get("hazards", [])]
+        api_count = m.get("downstream_api_count", 0)
+        api_list = m.get("downstream_api_models") or []
+        api_note = ""
+        if api_list:
+            more = f"(+{api_count - len(api_list)} more)" if api_count > len(api_list) else ""
+            api_note = f" api={','.join(api_list)}{more}"
         print(f"\n- {name}  ({m['path']})")
         print(f"    high_risk={m['high_risk']} explicit_contract={m['explicit_contract']}"
-              f" downstream={m['downstream_count']}"
-              + (f" api={','.join(m['downstream_api_models'])}" if m["downstream_api_models"] else ""))
+              f" downstream_direct={m['downstream_direct_count']}"
+              f" downstream_transitive={m['downstream_transitive_count']}" + api_note)
         if hazard_ids:
             print(f"    hazards: {', '.join(hazard_ids)}")
         for v in c.get("validation", []):

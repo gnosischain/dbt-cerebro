@@ -58,8 +58,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   (252), Cloud blocks raising it (452); never year-partition an insert_overwrite model.
 - [ch-alias-shadows-where](ch-alias-shadows-where.md) `remediated` — output aliases
   shadow source columns in same-level WHERE; isolate/relabel in another scope.
-- [ch-left-join-nulls](ch-left-join-nulls.md) `enforced` — LEFT JOIN misses return
-  defaults not NULLs; pre_hook SET join_use_nulls = 1.
+- [ch-left-join-nulls](ch-left-join-nulls.md) `remediated` — LEFT JOIN misses return
+  defaults not NULLs; pre_hook SET join_use_nulls = 1 (convention; intent isn't
+  statically gateable).
 - [decoder-watermark-literals](decoder-watermark-literals.md) `enforced` — scalar
   subquery watermarks can't prune partitions; the decode macros embed literals.
 

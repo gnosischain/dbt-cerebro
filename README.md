@@ -1192,6 +1192,18 @@ Deep dive: <https://docs.analytics.gnosis.io/data-pipeline/transformation/privac
 
 ## Observability and Testing
 
+### Policy gates — one command
+
+`python scripts/checks/run_all.py` is THE verification entry point (vendor-neutral;
+works from a fresh checkout and inside the dbt container — it bootstraps
+`target/manifest.json` via `dbt parse` when needed). Modes: `--fast` (static
+manifest gates), default (adds agent-context build/determinism/change-aware
+contract gate + pytest), `--full` (adds the catalog-dependent semantic
+registry/graph/entity gates). `make check-fast` / `make check` are thin aliases.
+CI runs the parse tier on every PR (`.github/workflows/pr-checks.yaml`) and the
+full tier on main BEFORE any Docker image is published
+(`build-and-release.yaml` job `validate`).
+
 ### Elementary OSS
 
 [Elementary](https://www.elementary-data.com/) is the primary data observability layer. It provides anomaly detection, schema change monitoring, freshness tracking, and an interactive HTML report.

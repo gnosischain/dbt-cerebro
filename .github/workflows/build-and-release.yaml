@@ -10,8 +10,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Full-tier validation gates image publication: every policy gate, the
+  # agent-context checks, pytest, AND the catalog-dependent semantic gates
+  # (registry/graph/entities — these need a credentialed `dbt docs generate`,
+  # which is why this tier runs here with secrets and not on PRs; PRs run the
+  # parse tier via pr-checks.yaml). Nothing is pushed until this passes.
+  validate:
+    name: Validate (full tier, before any image publish)
+    runs-on: ubuntu-latest
+
+    env:
+      CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
+      CLICKHOUSE_USER: ${{ secrets.CLICKHOUSE_USER }}
+      CLICKHOUSE_PASSWORD: ${{ secrets.CLICKHOUSE_PASSWORD }}
+      CLICKHOUSE_DATABASE: ${{ secrets.CLICKHOUSE_DATABASE }}
+      CLICKHOUSE_SCHEMA: ${{ secrets.CLICKHOUSE_SCHEMA }}
+      CLICKHOUSE_PORT: ${{ secrets.CLICKHOUSE_PORT }}
+      CLICKHOUSE_SECURE: ${{ secrets.CLICKHOUSE_SECURE }}
+      # Dummy salt — parse/docs-generate only, no hashes are materialized here.
+      CEREBRO_PII_SALT: "00"
+
+    steps:
+      - name: Checkout (with history for the change-aware gate)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dbt (ClickHouse adapter) + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.9.4 dbt-clickhouse==1.9.1 pytest
+
+      - name: Install dbt package dependencies
+        run: |
+          dbt deps
+
+      - name: Resolve base SHA (previous main state)
+        # github.event.before is the push event's prior SHA; it can be all
+        # zeros (branch creation) or unreachable (force push) — fall back to
+        # HEAD~1 so the change-aware gate always has a real base.
+        id: base
+        run: |
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          fi
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Run all gates (full tier)
+        # run_all.py --full --docs-generate: static policy gates, agent-context
+        # build + determinism + change-aware contract gate, pytest, then
+        # dbt docs generate + semantic registry/graph/entity gates.
+        run: |
+          dbt parse
+          python scripts/checks/run_all.py --ci --full --docs-generate --base-ref "${{ steps.base.outputs.sha }}"
+
   build:
     name: Build & Push Docker Images
+    needs: validate
     runs-on: ubuntu-latest
 
     steps:
@@ -88,57 +149,20 @@ jobs:
         run: |
           dbt deps
 
-      - name: Enforce incremental policy (no delete+insert / overlap-append)
-        # Bans ALTER-DELETE mutations and overlap-append duplicates at parse
-        # time. See scripts/checks/no_delete_insert.py.
-        run: |
-          dbt parse
-          python scripts/checks/no_delete_insert.py
+      # Every policy/contract GATE already ran (and passed) in the `validate`
+      # job before the image was even built — this job only PRODUCES the
+      # gh-pages artifacts: dbt docs, agent context, semantic registry/docs/
+      # graph data.
 
-      - name: Enforce API tag/schema convention
-        # api: endpoints must be grain/window-free (grain -> granularity:, window ->
-        # window:), carry granularity + tier, and have complete typed column schemas.
-        # See scripts/checks/check_api_tags.py (+ check_api_tags.allow for staged
-        # cleanup — the allowlist is shrink-only: entries that stop suppressing a
-        # violation fail the build until deleted).
-        run: |
-          dbt parse
-          python scripts/checks/check_api_tags.py
-
-      - name: Enforce doc-coverage floors
-        # Per-module description/ownership coverage can only ratchet UP. Floors
-        # live in scripts/checks/doc_coverage_floors.json; re-baseline after a
-        # docs wave with `python scripts/checks/check_doc_coverage.py --update-floors`.
-        run: |
-          python scripts/checks/check_doc_coverage.py
-
-      - name: Build + validate agent context
+      - name: Build agent context
         # Resolves agent_context/profiles.yml + docs/lessons/*.md + meta.agent
         # against the fresh manifest into target/agent_context{,.public}.json.
-        # Fails on: unknown lesson/hazard references, unknown meta.agent keys,
-        # unparseable lesson frontmatter. The public variant excludes privacy-
-        # tagged / non-MCP models and never contains raw SQL. Changed-model
-        # contract enforcement (ratchet) runs via scripts/agent_context/check.py
-        # locally; here we gate reference integrity + determinism so gh-pages
-        # always publishes a consistent artifact. See AGENTS.md.
+        # The public variant excludes privacy-tagged / non-MCP models and never
+        # contains raw SQL. Determinism + reference gates ran in `validate`;
+        # this build is what gh-pages publishes (after the scrub step below).
         run: |
+          dbt parse
           python scripts/agent_context/build_agent_context.py
-          python scripts/agent_context/build_agent_context.py --check
-
-      - name: Install test dependencies
-        # pytest is only needed for the semantic-registry guard tests below;
-        # not part of the production image so we install it inline here.
-        run: |
-          pip install pytest
-
-      - name: Run semantic-layer guard tests
-        # tests/test_semantic_registry.py validates that build_registry.py +
-        # build_semantic_docs.py + scaffold_candidates.py still produce a
-        # well-shaped registry for the canonical fixtures. A regression in
-        # the build pipeline is caught here before we ship a broken
-        # `semantic_registry.json` to gh-pages.
-        run: |
-          python -m pytest tests/test_semantic_registry.py -v
 
       - name: Generate dbt docs
         # Exclude dev-tagged models: prod builds only `tag:production`, so
@@ -169,25 +193,6 @@ jobs:
         # --validate` + target/semantic_validation_report.json.
         run: |
           python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0
-
-      - name: Graph metadata gate (blocking)
-        # Scoped gate for the knowledge-graph contract: fails the build on
-        # net-new `graph_meta_*` errors (unknown node kind, missing/unknown
-        # column, duplicate profile id, ...) relative to
-        # semantic/validation/baseline.json.
-        run: |
-          python scripts/semantic/graph_gate.py --target-dir target
-
-      - name: Entity overlay freshness gate (blocking)
-        # The generated entity files (semantic/authoring/generated/
-        # entities_generated.yml + semantic/relationships/
-        # entities_generated.yml) must match a fresh run of the generator
-        # against the current manifest/catalog and carry the do-not-edit
-        # header. Catches hand-edits to generated files and stale overlays
-        # after model/dictionary changes. Regenerate with
-        # `python scripts/semantic/generate_entities.py`.
-        run: |
-          python scripts/semantic/generate_entities.py --target-dir target --check
 
       - name: Surface validation report in build summary
         # Print the validation summary into the GitHub Actions step log so

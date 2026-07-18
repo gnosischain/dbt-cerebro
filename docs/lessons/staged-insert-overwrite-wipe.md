@@ -50,4 +50,9 @@ Partition-level row counts vs the upstream source for the affected window.
 ## Enforcement
 Macro branch-order fix (267e04bf, 641b5aae) + append-if-start_month strategy
 expressions across staged models (~16 models use the pattern). The wipe mechanism is
-documented in the macro header itself.
+documented in the macro header itself. STATIC GATE (2026-07):
+`scripts/checks/no_delete_insert.py` rules `staged_literal_overwrite` /
+`staged_scoped_branch` fail any meta.full_refresh model whose RAW strategy is a
+literal/inherited insert_overwrite or whose scoped branch is not append (raw code,
+not resolved config — the manifest collapses the expression to its default branch).
+Pre-existing violators are grandfathered shrink-only in no_delete_insert.allow.
