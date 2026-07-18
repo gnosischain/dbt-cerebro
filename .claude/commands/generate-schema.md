@@ -26,7 +26,10 @@ Target is a folder, model name(s), or omit to use current context.
    c. Search for downstream models that `ref()` this model
    d. Generate the entry following conventions below
 6. Merge into the directory's schema.yml — preserve untouched model entries
-   and all existing `meta:` blocks (especially `full_refresh`).
+   and all existing `meta:` blocks (especially `full_refresh` and `agent` —
+   `meta.agent` carries the model's engineering contract: grain, invariants,
+   hazards, ground_truth, validation, reprocess_runbook; see
+   `agent_context/profiles.yml` for the schema).
 
 ## Format
 
@@ -68,6 +71,8 @@ models:
   existing model-level owner if one is already present.
 - **No tests**: do not generate `tests:` blocks.
 - **No full_refresh**: do not generate — only preserve existing or add when user explicitly asks.
+- **No agent contracts**: do not generate `meta.agent` — only preserve existing blocks
+  verbatim. Contracts assert invariants; inventing one is worse than omitting it.
 - **Preserve**: keep untouched models' entries and all manually written meta intact. Never
   overwrite a non-empty human-written description.
 

@@ -112,6 +112,19 @@ jobs:
         run: |
           python scripts/checks/check_doc_coverage.py
 
+      - name: Build + validate agent context
+        # Resolves agent_context/profiles.yml + docs/lessons/*.md + meta.agent
+        # against the fresh manifest into target/agent_context{,.public}.json.
+        # Fails on: unknown lesson/hazard references, unknown meta.agent keys,
+        # unparseable lesson frontmatter. The public variant excludes privacy-
+        # tagged / non-MCP models and never contains raw SQL. Changed-model
+        # contract enforcement (ratchet) runs via scripts/agent_context/check.py
+        # locally; here we gate reference integrity + determinism so gh-pages
+        # always publishes a consistent artifact. See AGENTS.md.
+        run: |
+          python scripts/agent_context/build_agent_context.py
+          python scripts/agent_context/build_agent_context.py --check
+
       - name: Install test dependencies
         # pytest is only needed for the semantic-registry guard tests below;
         # not part of the production image so we install it inline here.
@@ -219,6 +232,14 @@ jobs:
           test -f target/graph_data.json
           test -f target/semantic_build_summary.json
           test -f target/semantic_build_metrics.prom
+
+      - name: Scrub non-public artifacts before publish
+        # gh-pages is world-readable. Only the privacy-filtered agent-context
+        # variant ships; the full artifact (includes privacy-tagged models) is
+        # local/CI-only. Verify the public one exists, then drop the full one.
+        run: |
+          test -f target/agent_context.public.json
+          rm -f target/agent_context.json
 
       - name: Deploy docs to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

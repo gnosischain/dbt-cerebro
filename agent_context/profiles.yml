@@ -1,0 +1,195 @@
+# Scope profiles for agent context resolution.
+#
+# Every first-party model gets a resolved contract: global rules -> matching
+# profiles (in file order) -> the model's own meta.agent (schema.yml). Lists
+# (rules, hazards, validation) merge with de-duplication; scalar fields
+# (semantics, grain, ground_truth, reprocess_runbook) are overridden by later
+# layers, with model meta.agent always winning.
+#
+# Profiles MATCH classes of models — they never enumerate model names or
+# counts; membership is resolved from target/manifest.json at build time by
+# scripts/agent_context/build_agent_context.py.
+#
+# Match keys (all optional, AND-ed):
+#   path_prefix          original_file_path starts with
+#   name_prefix          model name starts with
+#   materialized         config.materialized equals
+#   incremental_strategy config.incremental_strategy equals (parse-time default branch)
+#   strategy_expression  true = unrendered incremental_strategy is a jinja expression
+#   has_meta_full_refresh true = model has meta.full_refresh (staged backfills)
+#   reads_this           true = raw SQL references {{ this }} (cumulative carry-forward)
+#   sql_contains         raw SQL contains this substring
+#   tag                  model carries this tag
+#
+# `hazards` reference lesson ids in docs/lessons/ — the builder validates that
+# every referenced lesson exists and attaches its status/title.
+
+version: 1
+
+global:
+  rules:
+    - text: >-
+        Never a wide delete+insert — the background delete can complete after dbt
+        reports failure and silently wipe the window; reprocess per slice/partition.
+      lesson: wide-delete-insert-wipe
+    - text: >-
+        insert_overwrite REPLACEs whole partitions: partition grain must equal the
+        overwrite grain; never combine with unique_key, slice vars, or staged batches.
+      lesson: staged-insert-overwrite-wipe
+    - text: >-
+        Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before
+        diagnosing a data-quality symptom.
+  validation:
+    - "make check-fast"
+
+profiles:
+  - name: decode_models
+    description: Append decode wrappers over decode_logs()/decode_calls() (models/contracts)
+    match:
+      path_prefix: models/contracts/
+    semantics: event
+    rules:
+      - text: >-
+          No lookback: raw logs backfilled below the append watermark are dropped
+          forever by normal runs; recover known gap months with gap_window_refresh.py,
+          never the daily runner.
+        lesson: decode-watermark-late-logs
+      - text: >-
+          Watermarks are render-time literals (partition pruning); never revert to a
+          scalar-subquery bound.
+        lesson: decoder-watermark-literals
+      - text: >-
+          Seed a new decode model once with dbt run --full-refresh; an empty target has
+          no watermark and full-scans the raw source every run. New decode models crash
+          dbt docs generate until first built.
+    hazards: [decode-watermark-late-logs, decoder-watermark-literals]
+    ground_truth: "on-chain eth_getLogs over the contract + block range"
+    reprocess_runbook: "scripts/refresh/gap_window_refresh.py --months <gap months> --select <model>+"
+    validation:
+      - "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)"
+    agents_md: models/contracts/AGENTS.md
+
+  - name: incremental_models
+    description: All incremental materializations
+    match:
+      materialized: incremental
+    hazards: [never-seeded-incremental, ch-overcommit-victim]
+    rules:
+      - text: >-
+          After first build, verify the table is non-empty: a green daily run on an
+          empty incremental stays empty forever (bootstrap can't reach history).
+        lesson: never-seeded-incremental
+
+  - name: insert_overwrite_models
+    description: Models whose strategy resolves to insert_overwrite
+    match:
+      incremental_strategy: insert_overwrite
+    hazards: [staged-insert-overwrite-wipe, ch-partition-cap]
+
+  - name: strategy_expression_models
+    description: Models with a jinja incremental_strategy expression (windowed/staged writes)
+    match:
+      strategy_expression: true
+    hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates]
+    rules:
+      - text: >-
+          The strategy branches on run vars: scoped windows must take the append path
+          and append only into EMPTY months; verify which branch a given invocation
+          resolves to before running.
+        lesson: append-over-populated-duplicates
+
+  - name: staged_full_refresh
+    description: Models with meta.full_refresh stages (orchestrated backfills)
+    match:
+      has_meta_full_refresh: true
+    hazards: [staged-insert-overwrite-wipe, backfill-order-cumulative, late-start-mis-staging]
+    reprocess_runbook: "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)"
+    agents_md: scripts/full_refresh/AGENTS.md
+
+  - name: cumulative_self_referencing
+    description: Models reading {{ this }} — carry-forward/cumulative state
+    match:
+      reads_this: true
+    semantics: cumulative
+    hazards: [backfill-order-cumulative, duplicate-seed-drift, frontier-day-incomplete-inputs]
+    rules:
+      - text: >-
+          Cumulative: backfill history FIRST, chronologically. Forward runs never
+          repair a wrong initial condition; a duplicate seed row propagates forever.
+        lesson: backfill-order-cumulative
+      - text: >-
+          A frontier day built before its inputs settled stays frozen forever (the
+          incremental branch never revisits it) even after the upstream self-heals —
+          repair with the model's reprocess window, not the daily runner.
+        lesson: frontier-day-incomplete-inputs
+
+  - name: table_month_var_branch
+    description: Table materializations whose SQL branches on start_month/end_month
+    match:
+      materialized: table
+      sql_contains: start_month
+    hazards: [table-mat-batch-vars-truncation]
+    rules:
+      - text: >-
+          Never run through batched refresh.py (each batch replaces the whole table —
+          only the last batch survives); a plain dbt run self-heals.
+        lesson: table-mat-batch-vars-truncation
+
+  - name: revenue_models
+    description: Revenue domain — windowed union-of-slices models
+    match:
+      path_prefix: models/revenue/
+    hazards: [append-over-populated-duplicates, wide-delete-insert-wipe]
+    rules:
+      - text: >-
+          Scoped start_month append only into EMPTY months (populated months double);
+          reprocess with reprocess_overwrite one slice at a time.
+        lesson: append-over-populated-duplicates
+    agents_md: models/revenue/AGENTS.md
+
+  - name: execution_token_models
+    description: Token balances/transfers/prices chain
+    match:
+      path_prefix: models/execution/tokens/
+    hazards: [late-start-mis-staging, unpriced-wrapper-token, duplicate-seed-drift, raw-logs-ingestion-holes]
+    ground_truth: "on-chain balanceOf / eth_getBalance at the day's last block (see balance-diagnosis-playbook)"
+    agents_md: models/execution/AGENTS.md
+
+  - name: prices_models
+    description: Token price derivation
+    match:
+      path_prefix: models/execution/prices/
+    hazards: [unpriced-wrapper-token]
+    agents_md: models/execution/AGENTS.md
+
+  - name: pools_models
+    description: Pool balances/reserves — daily carry-forward spines
+    match:
+      path_prefix: models/execution/pools/
+    hazards: [global-frontier-carry-forward]
+    rules:
+      - text: >-
+          Anchor carry-forward at the per-entity frontier, never a global max(date) —
+          thin pools fall off a shared frontier and accrete permanent gaps.
+        lesson: global-frontier-carry-forward
+    agents_md: models/execution/AGENTS.md
+
+  - name: api_models
+    description: API marts served by Cerebro API/MCP and metrics-dashboard
+    match:
+      name_prefix: api_
+    rules:
+      - text: >-
+          The api:/granularity:/tier tag contract and typed column schema are
+          CI-enforced. Renaming/retiring requires updating semantic/authoring and
+          grepping the metrics-dashboard repo's SQL by FROM/JOIN.
+        lesson: semantic-retirement-gate
+    validation:
+      - "python scripts/checks/check_api_tags.py"
+      - "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+
+  - name: quarterly_snapshot_models
+    description: argMax snapshot marts (quarter-end / latest)
+    match:
+      path_prefix: models/quarterly_data/
+    hazards: [stale-snapshot-caveat]

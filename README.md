@@ -430,8 +430,15 @@ There are **three execution modes** for materializing dbt models in this project
 | Scenario | Mode | Command surface |
 |---|---|---|
 | Daily incremental catch-up (production cron path) | **Microbatch runner** | `scripts/refresh/dbt_incremental_runner.py` |
+| Raw source backfilled into an already-passed month (decode chains) | **Gap-window refresh** | `scripts/refresh/gap_window_refresh.py --months … --select <decode>+` |
 | Multi-month historical backfill of a large model | **Full-refresh orchestrator** | `scripts/full_refresh/refresh.py` |
 | One-off ad-hoc rebuild / quick smoke test of a single model | **Plain `dbt run`** | `dbt run --select <model>` |
+
+The gap-window mode exists because decode models have **no lookback**: their append
+watermark permanently skips logs backfilled below it, and the daily runner only advances
+the watermark. `gap_window_refresh.py` drops the affected month partition (lowering the
+watermark) and re-runs scoped — targeted and resumable, hours cheaper than a full-history
+rebuild. See `docs/lessons/decode-watermark-late-logs.md`.
 
 The runner and orchestrator wrap `dbt run` and add behaviour you almost always want for production-shaped workloads (per-day slicing, transient-error retry, atomic per-batch state). Reach for plain `dbt run` only when those guarantees are not needed.
 
@@ -442,7 +449,7 @@ The runner and orchestrator wrap `dbt run` and add behaviour you almost always w
 What the runner does for each selected model, in topological order:
 
 - **Plain (non-microbatch-annotated) models** — accumulated into a buffer and run as a single `dbt run --select <buffer>` call. The buffer is flushed at every microbatch boundary so dependencies between plain and microbatch models always run in the right order.
-- **Microbatch-annotated models** (those with `meta.full_refresh.incremental.enabled: true` in their schema.yml) — the runner reads `max(date_column)` from the target per stage, slices the catch-up window into per-day INSERTs (`incremental_strategy=append`, no `ALTER … DELETE` mutation), and runs each slice as its own `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'`. State is persisted to `target/incremental_microbatch_state.json` so `--resume` skips already-completed slices.
+- **Microbatch-annotated models** (those with `meta.full_refresh.incremental.enabled: true` in their schema.yml) — the runner reads `max(date_column)` from the target per stage, slices the catch-up window into per-day INSERTs (`incremental_strategy=append`, no `ALTER … DELETE` mutation), and runs each slice as its own `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'`. State is persisted to `target/refresh_state/microbatch_<id>.json` (identity-keyed by `--select`/`--stage`) so `--resume` with the same arguments skips already-completed slices; distinct selections never share state.
 
 **Safety guarantees:**
 
@@ -475,7 +482,7 @@ python /app/scripts/refresh/dbt_incremental_runner.py \
   --select tag:production --dry-run \
   --project-dir /app --profiles-dir /app
 
-# Resume an interrupted run (re-uses target/incremental_microbatch_state.json)
+# Resume an interrupted run (same --select/--stage; state is identity-keyed under target/refresh_state/)
 python /app/scripts/refresh/dbt_incremental_runner.py \
   --select tag:production --resume \
   --project-dir /app --profiles-dir /app
@@ -491,7 +498,7 @@ python /app/scripts/refresh/dbt_incremental_runner.py \
 | `--bootstrap-lookback-days N` | 7 | First-run bootstrap window for empty targets. |
 | `--max-slices-per-stage N` | 30 | Refusal cap. Set to `0` to disable (not recommended). |
 | `--stage <name>` | all stages | Restrict to one or more stage names; pass repeatedly. |
-| `--resume` | off | Continue from `target/incremental_microbatch_state.json`. |
+| `--resume` | off | Continue the pending run matching this selection (`target/refresh_state/microbatch_<id>.json`). |
 | `--dry-run` | off | Print plan, no DB writes. |
 | `--delay <sec>` | 0 | Sleep between slices, for cluster cooldown. |
 | `--threads N` | dbt profile default | Forward to `dbt run`. |
@@ -571,7 +578,7 @@ python /app/scripts/full_refresh/refresh.py \
 
 **Built-in resilience:**
 
-- `--resume` — picks up from `.refresh_state.json`. State is persisted after every successful batch.
+- `--resume` — picks up the pending run matching this exact selection (state is identity-keyed under `target/refresh_state/full_refresh_<id>.json`; persisted after every successful batch). Starting a run that overlaps a different pending run's models is refused — resume it with its original arguments or `--clear-state <id>`.
 - **Transient retry** — on ClickHouse codes 241 (memory), 159/209/210 (network/timeout), or any `MEMORY_LIMIT_EXCEEDED` / `OvercommitTracker` error, the orchestrator waits with exponential backoff (30 s → 60 s → 120 s → 240 s → 480 s, up to 5 retries) before giving up. This handles shared-cluster pressure without operator intervention.
 
 `--full-refresh` (default, no flag needed) drops the table on the first batch and rebuilds. `--incremental-only` skips the drop and appends — use it whenever you want to fill a gap without losing existing data.
