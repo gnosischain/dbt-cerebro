@@ -29,8 +29,10 @@ Daily slicing strategy (mutation-minimizing):
      The model's three-branch strategy expression resolves to `append`,
      producing rows whose `date` strictly exceeds anything already in the
      table → no duplicates, no mutations.
-  4. State is persisted under target/incremental_microbatch_state.json so
-     `--resume` can skip already-completed slices.
+  4. State is persisted under target/refresh_state/microbatch_<id>.json —
+     identity-keyed by (--select, --stage) so distinct runs never share a
+     state file — and `--resume` (same arguments) skips completed slices.
+     Cleared on clean completion. See docs/lessons/refresh-state-collision.md.
 
 Failure handling integrates with the existing `run_dbt_observability.sh`
 pipeline:
@@ -63,6 +65,7 @@ from dbt_run_batches import (  # noqa: E402  (intentional sibling import)
     selected_nodes,
     topo_sort,
 )
+import run_state  # noqa: E402  (sibling module: run-identity state files)
 
 
 MAX_DATE_RESULT_RE = re.compile(
@@ -1176,7 +1179,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--state-file",
         default=None,
-        help="Override path to the microbatch state file (default: <project>/target/incremental_microbatch_state.json).",
+        help="Override path to the microbatch state file. Default: an identity-"
+             "keyed file target/refresh_state/microbatch_<id>.json, where <id> "
+             "hashes (--select, --stage) — so distinct runs never share state.",
     )
     p.add_argument(
         "--stage",
@@ -1208,11 +1213,21 @@ def main(argv: list[str] | None = None) -> int:
 
     project_dir = Path(args.project_dir).resolve()
     profiles_dir = Path(args.profiles_dir).resolve()
-    state_path = (
-        Path(args.state_file).resolve()
-        if args.state_file
-        else project_dir / "target" / "incremental_microbatch_state.json"
-    )
+
+    # State is keyed by run identity (see run_state.py and
+    # docs/lessons/refresh-state-collision.md) so a manual run can never
+    # clobber the cron's pending state or vice versa. --state-file overrides
+    # the path entirely (caller takes responsibility for isolation).
+    identity_fields = {
+        "select": args.select,
+        "stage": sorted(args.stage) if args.stage else None,
+    }
+    run_id = run_state.run_identity("microbatch", identity_fields)
+    legacy_state_path = project_dir / "target" / "incremental_microbatch_state.json"
+    if args.state_file:
+        state_path = Path(args.state_file).resolve()
+    else:
+        state_path = run_state.state_path(project_dir, "microbatch", run_id)
 
     today = (
         dt.date.fromisoformat(args.max_end_date)
@@ -1240,7 +1255,49 @@ def main(argv: list[str] | None = None) -> int:
     ordered = topo_sort(model_names, manifest)
     entries = partition_selected(ordered, manifest)
 
-    state = load_state(state_path) if args.resume else {"completed": {}}
+    if args.resume:
+        state = load_state(state_path)
+        # Legacy migration: a pending pre-identity state file can still be
+        # resumed once — adopt its progress under the new identity path.
+        if state == {"completed": {}} and legacy_state_path.exists() and not args.state_file:
+            legacy = load_state(legacy_state_path)
+            if legacy.get("completed"):
+                print(
+                    f"[info] migrating legacy state {legacy_state_path} -> {state_path} "
+                    "(identity of the legacy run cannot be verified — check the plan "
+                    "output before letting it proceed)"
+                )
+                state = legacy
+                legacy_state_path.unlink()
+    else:
+        if state_path.exists() and not args.dry_run:
+            print(
+                f"[warn] replacing pending state for this selection (run {run_id}); "
+                "pass --resume to continue it instead",
+                file=sys.stderr,
+            )
+        state = {"completed": {}}
+    # Self-describing metadata: lets other invocations (and refresh.py's
+    # overlap guard) see what this pending run covers.
+    state.update(run_state.new_state("microbatch", run_id, identity_fields, model_names))
+
+    # Overlap advisory (never a hard block: the daily cron must stay able to
+    # self-heal even if a stray manual run left pending state behind; the
+    # runner's planning is watermark-driven, so a foreign pending run can't
+    # corrupt data through *this* run — but interleaving with a pending staged
+    # backfill is usually a mistake worth flagging).
+    if not args.dry_run:
+        conflicts = run_state.overlapping(
+            run_state.pending_states(project_dir), model_names, exclude_run_id=run_id
+        )
+        for _, st, shared in conflicts:
+            print(
+                f"[warn] pending {run_state.describe(st)} overlaps this selection "
+                f"({len(shared)} shared models, e.g. {', '.join(shared[:5])}). "
+                "If that run is a staged backfill, advancing these models now may "
+                "conflict with its plan — see docs/lessons/refresh-state-collision.md",
+                file=sys.stderr,
+            )
 
     # Unique-per-invocation suffix so plain-passthrough stash filenames don't
     # collide across multiple invocations (or across multiple flushes within
@@ -1375,7 +1432,16 @@ def main(argv: list[str] | None = None) -> int:
         print("[error] runner failures:", file=sys.stderr)
         for f in failures:
             print(f"  - {f[0]} stage={f[1]} end={f[2]}", file=sys.stderr)
+        print(
+            f"[info] state kept for resume: {state_path} "
+            f"(re-run with the same --select/--stage plus --resume)",
+            file=sys.stderr,
+        )
         return 2
+    # Clean completion: drop the state file so the identity no longer reads
+    # as a pending run to other invocations' overlap checks.
+    if not args.dry_run and state_path.exists():
+        state_path.unlink()
     return 0
 
 

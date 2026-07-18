@@ -143,6 +143,22 @@ models:
     Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: per-entity-density
+        text: Every (pool, token) pair must have a row for every calendar day from
+          its first event — density below 1.0 means the carry-forward dropped it.
+      - id: per-entity-frontier
+        text: The incremental window anchors at the earliest per-(pool, token)
+          frontier (min of per-pair max(date)), never a single global max(date).
+      hazards: [global-frontier-carry-forward]
+      validation:
+      - 'per-entity density: uniqExact(date) / span per (pool, token) ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_balancer_v3_daily
+        (non-incremental branch builds a per-pool dense calendar), then rebuild direct
+        downstream tables
     full_refresh:
       start_date: "2024-01-01"
       batch_months: 6

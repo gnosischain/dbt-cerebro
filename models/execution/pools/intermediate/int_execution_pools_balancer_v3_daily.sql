@@ -6,7 +6,7 @@
         order_by='(date, pool_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'pools', 'balances', 'intermediate'],
+        tags=['production', 'execution', 'pools', 'balances', 'intermediate', 'microbatch'],
         pre_hook=["SET join_use_nulls = 0"],
         post_hook=["SET join_use_nulls = 0"]
     )

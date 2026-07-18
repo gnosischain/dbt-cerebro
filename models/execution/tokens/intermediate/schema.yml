@@ -92,6 +92,32 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, token_address, address]
+      semantics: cumulative
+      invariants:
+      - id: non-negative-real-holder
+        text: A non-rebasing ERC-20 holder (excluding the zero-address sink) can
+          never be negative on-chain; a negative balance means a dropped inflow
+          upstream, not a display problem.
+      - id: seed-uniqueness
+        text: Exactly one row per (date, token_address, address) — a duplicate seed
+          row propagates a constant offset forward every day.
+      hazards: [duplicate-seed-drift, late-start-mis-staging, backfill-order-cumulative,
+                decode-watermark-late-logs, raw-logs-ingestion-holes,
+                frontier-day-incomplete-inputs, sparse-zero-row-stale-survival]
+      ground_truth: on-chain balanceOf (eth_getBalance for native xDAI 0xeeee...eeee)
+        at the day's last block; reconcile in Int256, never Float64
+      validation:
+      - negative real-holder balance check (tests/data_quality/)
+      - 'balance conservation: sum(balance_raw) over ALL addresses incl. 0x0 must be
+        exactly 0 per (symbol, date) — dq_daily_balance_conservation catches stale
+        positives that the negative test cannot see'
+      - duplicate-key excess by (date, token, address)
+      reprocess_runbook: 'corrupted/frozen month: dbt run with vars {start_month, end_month,
+        reprocess_overwrite: true} (model-documented; seeds from last good day before the
+        window). Full history: staged scripts/full_refresh/refresh.py — batch 1 recreates
+        (clears seed drift); per-token stages must have verified start_dates'
     full_refresh:
       batch_months: 1
       stages:

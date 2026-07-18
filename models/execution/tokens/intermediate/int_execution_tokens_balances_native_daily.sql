@@ -274,7 +274,20 @@ final AS (
       ON lower(t.address) = b.token_address
      AND b.date >= toDate(t.date_start)
      AND (t.date_end IS NULL OR b.date < toDate(t.date_end))
+    -- Sparse-table tombstone rule: zero-balance rows are normally dropped to
+    -- keep the table small, but on INCREMENTAL runs a key whose corrected
+    -- balance is 0 must still emit its zero row — delete+insert derives the
+    -- delete-set from the new rows, so "no row" can never overwrite a stale
+    -- one. Spend-to-zero addresses otherwise keep their previous (possibly
+    -- negative) balance forever (see docs/lessons/sparse-zero-row-stale-survival.md).
+    -- Scoped to keys with activity in the window, so the bloat is bounded to
+    -- the day's spent-to-zero addresses; they drop out on later days.
     WHERE b.balance_raw != 0
+    {% if is_incremental() %}
+       OR (b.token_address, b.address) IN (
+            SELECT DISTINCT token_address, address FROM deltas
+          )
+    {% endif %}
 )
 
 SELECT

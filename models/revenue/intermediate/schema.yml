@@ -327,6 +327,24 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [week, stream_type, symbol, user]
+      semantics: aggregate
+      invariants:
+      - id: no-duplicate-weeks
+        text: Exactly one row per (week, stream, symbol, user). Downstream cohort
+          marts read WITHOUT FINAL and aggregate with sum()/countIf(), so any
+          duplicate copy doubles fees and users one-for-one.
+      - id: rolling-window-integrity
+        text: annual_rolling_fees needs the full 52 weeks of history behind every
+          rewritten week; never write a week without its window_history_weeks feed.
+      hazards: [append-over-populated-duplicates, wide-delete-insert-wipe]
+      validation:
+      - 'duplicate-excess by month and stream: count() - uniqExact(week, stream_type,
+        symbol, user) must be 0'
+      reprocess_runbook: reprocess_overwrite=true ONE slice at a time (vars
+        slice=stream:SYMBOL); never whole-window (OOM + background-delete wipe),
+        never scoped append into populated months (exact 2x)
     full_refresh:
       start_date: "2023-10-01"
       batch_months: 3
