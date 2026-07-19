@@ -7,6 +7,7 @@ anything you find here.
 
 | Doc | What it is |
 |---|---|
+| [agents.md](agents.md) | Architecture of the agent knowledge system: file roles, artifact pipeline, contract resolution, gates/ratchets, CI tiers, typical flows (with diagrams). |
 | [lessons/](lessons/INDEX.md) | Mistake classes with status lifecycle + evidence. Check before diagnosing or refreshing. |
 | [workflows/](workflows/) | Vendor-neutral step-by-step workflows (new-model, generate-schema, refresh-advisor, incident). Claude slash commands are thin wrappers over these. |
 | [semantic-authoring.md](semantic-authoring.md) | Canonical semantic-layer authoring runbook. |

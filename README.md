@@ -7,10 +7,12 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 ## Table of Contents
 
 - [Overview](#overview)
+- [Documentation Map](#documentation-map)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Environment Setup](#environment-setup)
 - [Local Development](#local-development)
+- [Agent Workflow & Policy Gates](#agent-workflow--policy-gates)
 - [Semantic Layer Workflow](#semantic-layer-workflow)
 - [Docker Deployment](#docker-deployment)
 - [Data Modeling Conventions](#data-modeling-conventions)
@@ -38,6 +40,21 @@ Cerebro dbt transforms Gnosis Chain data across eight modules:
 | **probelab** | ProbeLab network measurements: client versions, cloud distribution, QUIC support | ~9 |
 
 All data is stored in **ClickHouse Cloud** and served via [Cerebro API](https://api.analytics.gnosis.io) and [Cerebro MCP](https://mcp.analytics.gnosis.io).
+
+## Documentation Map
+
+This README focuses on **commands, running models, and deployment**. Deeper
+reference material lives in dedicated docs:
+
+| Doc | What it covers |
+|---|---|
+| [AGENTS.md](AGENTS.md) | The operating guide for agents (and humans): required workflow, refresh-lever decision table, non-negotiable rules, ClickHouse gotchas. Scoped copies live next to the code (`models/<domain>/AGENTS.md`). |
+| [docs/agents.md](docs/agents.md) | **Architecture of the agent knowledge system** — file roles, artifact pipeline, contract resolution, policy gates/ratchets, CI tiers, typical flows, with diagrams. |
+| [docs/lessons/](docs/lessons/INDEX.md) | Mistake-class records with status lifecycle + evidence. Check before diagnosing any data-quality symptom. |
+| [docs/workflows/](docs/workflows/) | Vendor-neutral step-by-step workflows: new-model, generate-schema, refresh-advisor, incident. |
+| [docs/semantic-authoring.md](docs/semantic-authoring.md) + [semantic/README.md](semantic/README.md) | Semantic-layer authoring. |
+| [scripts/refresh/README.md](scripts/refresh/README.md), [scripts/full_refresh/README.md](scripts/full_refresh/README.md) | Refresh-runner internals. |
+| [docs/README.md](docs/README.md) | Which docs are durable references vs point-in-time snapshots. |
 
 ## Architecture
 
@@ -420,6 +437,42 @@ The cron pod mounts a `ReadWriteOnce` PVC (`dbt-cerebro-data`, 2 GiB) at `/data`
 #### Local log / permission caveat
 
 Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they don't depend on bind-mounted `./logs`. If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
+
+## Agent Workflow & Policy Gates
+
+Every model change — human or agent — follows the same loop: **get the change
+packet, respect it, verify with one command**. The full architecture (file
+roles, artifact pipeline, contract resolution, ratchets, diagrams) is in
+[docs/agents.md](docs/agents.md); the operating rules are in
+[AGENTS.md](AGENTS.md). The commands:
+
+```bash
+# 1. BEFORE touching a model: its resolved contract — grain, invariants,
+#    hazards (linked to docs/lessons/), lineage blast radius, reprocess runbook
+python scripts/agent_context/context.py --select <model> --task <build|fix|backfill|review>
+
+# 2. What did this branch change, and what could it break
+python scripts/agent_context/check.py --base-ref main        # or: make impact
+
+# 3. THE verification command — every policy gate, one exit code
+python scripts/checks/run_all.py            # parse tier (no warehouse needed)
+python scripts/checks/run_all.py --fast     # static gates only    (make check-fast)
+python scripts/checks/run_all.py --full     # + semantic gates     (make check)
+```
+
+`run_all.py` bootstraps `target/manifest.json` automatically (or prints the
+docker command), proves the context artifact is deterministic, and runs the
+gate suite: incremental policy (delete+insert ban, staged-strategy safety),
+api-tag/naming convention, meta-key noise, doc-coverage floors, envio_ga
+policy, semantic-authoring scaffold gate, change-aware contract gate, and the
+policy fixture tests. Exemptions live in per-gate `.allow` files that are
+**shrink-only** — backlogs can only go down.
+
+CI runs the same thing in two tiers: the parse tier on **every pull request**
+(no secrets — `dbt parse` needs no warehouse) and the full tier (plus
+`dbt docs generate` + semantic registry/graph/entity gates) on main in a
+`validate` job that **blocks the Docker image push**. Production runs the
+CI-built image, so nothing unvalidated can reach the cron.
 
 ## Running Models
 
@@ -1192,17 +1245,11 @@ Deep dive: <https://docs.analytics.gnosis.io/data-pipeline/transformation/privac
 
 ## Observability and Testing
 
-### Policy gates — one command
+### Policy gates
 
-`python scripts/checks/run_all.py` is THE verification entry point (vendor-neutral;
-works from a fresh checkout and inside the dbt container — it bootstraps
-`target/manifest.json` via `dbt parse` when needed). Modes: `--fast` (static
-manifest gates), default (adds agent-context build/determinism/change-aware
-contract gate + pytest), `--full` (adds the catalog-dependent semantic
-registry/graph/entity gates). `make check-fast` / `make check` are thin aliases.
-CI runs the parse tier on every PR (`.github/workflows/pr-checks.yaml`) and the
-full tier on main BEFORE any Docker image is published
-(`build-and-release.yaml` job `validate`).
+See [Agent Workflow & Policy Gates](#agent-workflow--policy-gates) —
+`python scripts/checks/run_all.py` runs every gate; architecture and gate table
+in [docs/agents.md](docs/agents.md).
 
 ### Elementary OSS
 

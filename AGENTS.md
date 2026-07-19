@@ -120,6 +120,9 @@ Footnotes that have burned hours:
 
 ## Where knowledge lives
 
+- `docs/agents.md` — architecture of this knowledge system itself (file roles,
+  artifact pipeline, gates/ratchets, CI tiers, diagrams) — read when changing
+  the system rather than using it.
 - `docs/lessons/INDEX.md` — mistake classes with status (`observed → remediated →
   enforced`) and evidence. **Check here before diagnosing a data-quality symptom.**
 - `docs/README.md` — which docs are durable references vs point-in-time snapshots
