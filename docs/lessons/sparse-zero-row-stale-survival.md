@@ -21,6 +21,7 @@ evidence:
   - 'why the fix read as "inert": it exists only in the UNCOMMITTED working tree — the production daily cron is a k8s CronJob running the CI-built image from merged main, so it re-arms the bug nightly; the sole local run containing the fix died pre-insert at a delete-mutation OOM. Status downgraded remediated -> observed accordingly: STATUS DESCRIBES THE DEPLOYED STATE, not the working tree'
   - 'detection now permanent: tests/data_quality/dq_daily_balance_conservation.sql (the identity check; catches stale positives the negative test cannot see)'
   - 'fix VERIFIED locally 2026-07-17 15:41 (GNO-only July reprocess with the tombstone branch): 9,252 tombstone rows emitted, 78/78 stale spend-to-zero addresses cleared, conservation exactly 0 every July day, model total 1,430,920.92 == on-chain totalSupply() to the cent. Correct and pending deploy only'
+  - '2026-07-18 NIGHTLY RE-ARM DEMONSTRATED (the deployment-gap prediction, now observed): GNO conservation residual was 0 on 2026-07-15 after the local fixed run, and NONZERO again on 2026-07-17 (5.43e21 raw) after production cron runs on the pre-fix image. The dq_daily_balance_conservation test warns on 15/15/19 symbols for 07-15/16/17 while the untouched days 07-08, 07-14 and 07-18 are clean — the class regenerates on whichever days the old-image cron builds. Confirms status must stay observed until the image deploys'
 ---
 
 ## Symptom

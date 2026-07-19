@@ -67,7 +67,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 ## Pipeline / sources
 
 - [raw-logs-ingestion-holes](raw-logs-ingestion-holes.md) `observed` — execution.logs
-  can have block holes below dbt; no dbt lever fixes them.
+  can have block holes below dbt; no dbt lever fixes them. May/June 2026 instances
+  recovered end-to-end; the 2026-07-08 instance is raw-backfilled but decode
+  recovery is pending (below-watermark — needs gap_window_refresh.py).
 - [unpriced-wrapper-token](unpriced-wrapper-token.md) `remediated` — every new
   wrapper/vault token needs a price path or it reads $0 everywhere.
 - [stale-snapshot-caveat](stale-snapshot-caveat.md) `observed` — argMax "latest" marts
