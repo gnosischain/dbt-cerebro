@@ -24,8 +24,8 @@
 --   USDC/USD : 0xa82b382154BF1e2819B8156326016537cdff9be6 (proxy 0xc7A353Ba...)
 --   USDm/USD : 0x2E5eddE44187c3099529eF63Ced87994F078FbdB (cUSD feed; USDm is the
 --              rebranded cUSD at 0x765d...282a — proxy 0xe38A27BE...)
---   EUR/USD  : 0x9F25Ac5A8Cea4661EdB13e4Dcc4E6D2f67F5a7Fe (proxy 0x3D207061...)
---   GBP/USD  : 0x618645D07D9ba975d976De787976F84f6c4114a7 (proxy 0xe76FE54d...)
+-- (EUR/GBP FX feeds intentionally excluded — no GP token is EUR/GBP-denominated
+--  on Celo; GP settles USDC/USDT. Keep this feed set GP-relevant only.)
 --
 -- Aggregator activity verified two ways: AnswerUpdated volumes + magnitudes in
 -- celo_execution.logs (backfill window) and on Dune celo.logs through the GP
@@ -40,9 +40,7 @@
             '0x5fb8bfaebe2dd6db2af308d293ea25e607d3a922',
             '0xed9183ddb0718c80488bdebdda15b14d3166053c',
             '0xa82b382154bf1e2819b8156326016537cdff9be6',
-            '0x2e5edde44187c3099529ef63ced87994f078fbdb',
-            '0x9f25ac5a8cea4661edb13e4dcc4e6d2f67f5a7fe',
-            '0x618645d07d9ba975d976de787976f84f6c4114a7'
+            '0x2e5edde44187c3099529ef63ced87994f078fbdb'
         ],
         output_json_type  = true,
         incremental_column= 'block_timestamp',
