@@ -8,18 +8,18 @@
   )
 }}
 
-{% set settlement = var('celo_gp_settlement_address') %}
+{% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge (settlement sink) #}
 
 -- Canonical Celo GP card Safe list, native-only. Issuance comes from the
 -- append-only int_celo_gpay_wallet_events log (action='issued_at'); each
 -- issued_at row is an immutable SafeSetup fact, written once, never revised.
 --
--- first_spend_at / is_activated are derived directly from
--- int_celo_gpay_transfers_native (a transfer to the settlement bridge — the
--- same activation signal the Dune spine used), NOT via int_celo_gpay_activity:
--- that model depends on THIS one for wallet-membership classification, so
--- reading it here would create a dbt cycle. transfers_native does not depend on
--- wallets, so reading it directly is cycle-free. The full-table GROUP BY on
+-- first_spend_at / is_activated are derived directly from the transfer base
+-- int_celo_gpay_safe_transfers_alltoken (a STABLECOIN transfer from the card to
+-- the settlement bridge — the same activation signal the Dune spine used), NOT
+-- via int_celo_gpay_activity: that model depends on THIS one for wallet-membership
+-- classification, so reading it here would create a dbt cycle. The base does not
+-- depend on wallets, so reading it directly is cycle-free. The full-table GROUP BY on
 -- every rebuild is acceptable at scale by precedent — Gnosis Chain's own
 -- int_execution_gpay_wallets does an equivalent full scan of the much larger
 -- execution.logs on every run, materialized='table', successfully.
@@ -42,12 +42,13 @@ WITH issued AS (
 
 activation AS (
     SELECT
-        sender          AS safe_address,
+        safe_address,
         min(block_date) AS first_spend_at
-    FROM {{ ref('int_celo_gpay_transfers_native') }}
-    FINAL
-    WHERE receiver = '{{ settlement }}'
-    GROUP BY sender
+    FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
+    WHERE direction    = 'out'
+      AND counterparty = '{{ settlement }}'
+      AND token_class  = 'STABLECOIN'
+    GROUP BY safe_address
 )
 
 SELECT

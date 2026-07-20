@@ -10,7 +10,9 @@
   )
 }}
 
-{% set gp_start = var('celo_gp_start_date') %}
+{% set gp_start = '2026-01-01' %}  {# GP era floor #}
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
 
 -- Deterministic all-token ERC-20 Transfer activity touching a GP card Safe on
 -- EITHER side (int_celo_gpay_safe_registry), with NO token whitelist and NO
@@ -19,22 +21,27 @@
 -- — everything downstream stays strictly within what is attributable to the
 -- card Safe itself; nothing here infers who the counterparty "is".
 --
--- Honesty about scale: `amount` (human units) is populated ONLY for tokens whose
--- decimals we actually know (celo_tokens_whitelist). For every other token we
--- keep amount_raw (the integer word) and leave amount/token_symbol NULL rather
--- than guessing a decimal scale. No USD here — pricing arbitrary tokens would
--- need a price source we don't have; USD stays in the whitelisted-token models.
+-- THE single transfer base for the Celo GP pipeline: int_celo_gpay_activity
+-- classifies its whitelisted subset (payments/top-ups/etc.), and the card_*
+-- marts use its full all-token footprint (holdings, funder fan-out).
+--
+-- Honesty about scale: `amount` (human units) + `amount_usd` are populated ONLY
+-- for whitelisted tokens (celo_tokens_whitelist — address-gated, so spoof tokens
+-- reusing "USDC"/"USD₮" symbols are excluded). For every other token we keep
+-- amount_raw (the integer word) and leave amount/amount_usd/token_symbol/
+-- token_class NULL rather than guessing. amount_usd prices at the transfer date
+-- via the Celo price hub; NULL when unpriced (visibly unpriced, never 0).
 --
 -- A Safe-to-Safe transfer legitimately produces TWO rows (an 'out' row for the
 -- sending Safe and an 'in' row for the receiving Safe) — each Safe's own
--- footprint should see its side. Do not dedupe across sides.
+-- footprint should see its side. Do not dedupe across sides here
+-- (int_celo_gpay_activity collapses to sender-side for its per-transfer grain).
 --
--- Cost note: this scans ALL Celo Transfer logs (no cheap token pre-filter is
--- possible for "all tokens") and keeps only rows where a registry Safe is on
--- one side. Heavy on a full-refresh, bounded per-month under incremental —
--- same insert_overwrite pattern as int_celo_gpay_transfers_native. While the
--- celo_execution backfill is still filling old months out of order, run with
--- --full-refresh (see int_celo_gpay_transfers_native header for the rationale).
+-- Cost note: scans ALL Celo Transfer logs (no cheap token pre-filter for "all
+-- tokens") and keeps only rows where a registry Safe is on one side. Heavy on a
+-- full-refresh, bounded per-month under incremental. While the celo_execution
+-- backfill is still filling old months out of order, run with --full-refresh;
+-- plain daily incremental is correct once the indexer follows head.
 
 WITH registry AS (
     SELECT lower(replaceAll(address, '0x', '')) AS addr
@@ -45,7 +52,8 @@ whitelist AS (
     SELECT
         lower(replaceAll(address, '0x', '')) AS token_addr,
         symbol,
-        decimals
+        decimals,
+        token_class
     FROM {{ ref('celo_tokens_whitelist') }}
 ),
 
@@ -60,6 +68,14 @@ transfer_logs AS (
         FROM {{ source('celo_execution', 'logs') }}
         WHERE replaceAll(topic0, '0x', '') = 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'  -- Transfer
           AND block_timestamp >= toDateTime('{{ gp_start }}')
+          -- Full-refresh batching: scripts/full_refresh/refresh.py passes
+          -- start_month/end_month per monthly batch (see meta.full_refresh) so
+          -- this all-Transfer scan is bounded to one month at a time and never
+          -- materialises the whole logs table in a single query (OOM).
+          {% if start_month is not none and end_month is not none %}
+          AND block_timestamp >= toDateTime('{{ start_month }}')
+          AND block_timestamp <  toDateTime('{{ end_month }}') + INTERVAL 1 MONTH
+          {% endif %}
           {{ apply_monthly_incremental_filter('block_timestamp', 'block_date', true) }}
     )
     WHERE _dedup_rn = 1
@@ -121,7 +137,12 @@ SELECT
     u.counterparty,
     concat('0x', u.token_addr)                                        AS token_address,
     w.symbol                                                          AS token_symbol,
+    w.token_class                                                     AS token_class,
     u.amount_raw,
-    if(w.decimals IS NULL, NULL, toFloat64(u.amount_raw) / pow(10, w.decimals)) AS amount
+    if(w.decimals IS NULL, NULL, toFloat64(u.amount_raw) / pow(10, w.decimals)) AS amount,
+    if(w.decimals IS NULL, NULL,
+       (toFloat64(u.amount_raw) / pow(10, w.decimals)) * nullIf(p.price, 0))    AS amount_usd
 FROM unioned u
 LEFT JOIN whitelist w ON u.token_addr = w.token_addr
+LEFT JOIN {{ ref('int_celo_token_prices_daily') }} p
+    ON p.date = u.block_date AND p.symbol = w.symbol

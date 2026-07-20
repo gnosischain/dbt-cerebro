@@ -93,6 +93,11 @@ dune AS (
         toFloat64(price) AS price
     FROM {{ ref('stg_crawlers_data__dune_prices') }}
     WHERE date < today()
+      -- GP-scope only: the Dune reference table carries the whole multi-chain
+      -- price universe (GNO/WETH/etc.). Restrict to the Celo GP tokens so this
+      -- hub stays Celo-GP-relevant (no non-GP noise) — matches celo_tokens_whitelist
+      -- symbols (upper-cased) plus CELO (needed to derive XAUt0).
+      AND upper(symbol) IN ('USDT', 'USDC', 'USDM', 'XAUT0', 'CELO')
 ),
 
 usd_pegs AS (

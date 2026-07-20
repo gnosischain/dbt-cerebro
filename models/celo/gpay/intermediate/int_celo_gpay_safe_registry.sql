@@ -8,8 +8,8 @@
   )
 }}
 
-{% set settlement_bare = var('celo_gp_settlement_address') | replace('0x', '') %}
-{% set gp_start = var('celo_gp_start_date') %}
+{% set settlement_bare = 'c07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge, no 0x prefix #}
+{% set gp_start = '2026-01-01' %}  {# GP era floor #}
 
 -- GP card Safes on Celo, discovered natively (replaces the fp CTE of Dune
 -- query 7808895): a Safe that emits EnabledModule(<GP Roles proxy>) has been

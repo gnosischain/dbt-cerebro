@@ -1,0 +1,39 @@
+version: 2
+
+models:
+- name: contracts_celo_chainlink_feeds_events
+  description: |
+    Chainlink price-feed AnswerUpdated events on Celo (the 6 aggregators in
+    seeds/celo_chainlink_feeds.csv), decoded from celo_execution.logs via the
+    multichain decode pipeline (chain='celo'). Feeds int_celo_token_prices_daily.
+    HEAVY: decodes AnswerUpdated across the full logs history, so it is
+    full-refreshed in MONTHLY BATCHES by scripts/full_refresh/refresh.py
+    (meta.full_refresh below; decode_logs honors the start_month/end_month vars
+    the runner passes). A plain `dbt run --full-refresh` scans the whole logs
+    table in a single query and OOMs (ClickHouse Code 241) — always rebuild via
+    refresh.py.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    full_refresh:
+      start_date: "2025-03-26"
+      batch_months: 3
+  columns:
+  - name: block_timestamp
+    description: On-chain timestamp of the AnswerUpdated event.
+    data_type: DateTime
+  - name: contract_address
+    description: Aggregator contract address (0x-prefixed, lowercase).
+    data_type: String
+  - name: event_name
+    description: Decoded event name (AnswerUpdated).
+    data_type: String
+  - name: decoded_params
+    description: JSON object of decoded event params (current, roundId, updatedAt).
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  - name: transaction_hash
+    description: Transaction hash (0x-prefixed).
+    data_type: String

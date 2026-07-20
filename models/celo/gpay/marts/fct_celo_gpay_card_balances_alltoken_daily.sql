@@ -11,7 +11,7 @@
 
 -- Deterministic all-token running balance per card Safe, from
 -- int_celo_gpay_safe_transfers_alltoken. Same net-flow-since-inception idiom as
--- int_celo_gpay_balances_daily (Celo Safes are born post-launch, no opening
+-- fct_celo_gpay_balances_safe_daily (Celo Safes are born post-launch, no opening
 -- balance, no snapshot source), but across EVERY token the Safe touches, not
 -- just the whitelist.
 --
