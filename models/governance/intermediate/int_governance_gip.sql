@@ -80,3 +80,6 @@ SELECT
 FROM universe u
 LEFT JOIN forum f ON u.gip_number = f.gip_number
 LEFT JOIN prop  p ON u.gip_number = p.gip_number
+-- Defensive: never emit a 0/NULL spine key (guards a ClickHouse UNION-over-
+-- Nullable quirk that can surface a NULL slot -> assumeNotNull -> 0).
+WHERE u.gip_number > 0

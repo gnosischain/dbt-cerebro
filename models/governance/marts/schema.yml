@@ -51,8 +51,9 @@ models:
 
   - name: api_governance_gip_funnel
     description: >
-      GIP lifecycle funnel — count of GIPs reaching each stage (forum discussion
-      -> phase-2 -> phase-3 -> Snapshot vote -> passed).
+      GIP conversion funnel — a true monotonic funnel: discussed on forum ->
+      reached a Snapshot vote -> passed or enacted (passed OR a selection
+      ballot that resolved, i.e. outcome in passed/decided).
     columns:
       - name: stage
         data_type: String
@@ -101,6 +102,49 @@ models:
       - name: value
         description: Summed voting power for the source that month.
         data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposal_choices
+    description: >
+      Per-choice vote breakdown, long format (one row per proposal x choice),
+      for the per-proposal For/Against/Abstain (or ranked-choice) bar with a
+      quorum reference line. Works for any ballot shape, not just binary.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: choice
+        description: Ballot option label.
+        data_type: String
+      - name: score
+        description: Voting power this choice received.
+        data_type: Float64
+      - name: pct
+        description: Share of scores_total this choice received. Null if scores_total is 0.
+        data_type: Nullable(Float64)
+      - name: is_winner
+        description: True for the row matching the proposal's winning_choice.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_top_proposers
+    description: >
+      Top 50 proposal authors by count, with outcome record. success_rate
+      excludes 'open' proposals from the denominator; 'decided' (selection
+      ballots) counts as enacted in the numerator without forcing a pass/fail
+      label onto proposals that were never binary.
+    columns:
+      - name: author
+        data_type: String
+        tests: [not_null]
+      - name: proposals_authored
+        data_type: UInt64
+      - name: success_rate
+        data_type: Nullable(Float64)
     meta:
       owner: analytics_team
       authoritative: false
