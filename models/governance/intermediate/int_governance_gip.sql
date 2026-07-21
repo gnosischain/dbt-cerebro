@@ -30,7 +30,7 @@ WITH forum AS (
         argMax(id, posts_count)     AS primary_topic_id,
         argMax(title, posts_count)  AS primary_topic_title
     FROM {{ ref('stg_governance__forum_topics') }}
-    WHERE gip_number IS NOT NULL
+    WHERE gip_number > 0
     GROUP BY gip_number
 ),
 prop AS (
@@ -45,7 +45,7 @@ prop AS (
         argMax(total_vp, created_at)      AS total_vp,
         argMax(scores_total, created_at)  AS scores_total
     FROM {{ ref('int_governance_proposals') }}
-    WHERE gip_number IS NOT NULL
+    WHERE gip_number > 0
     GROUP BY gip_number
 ),
 universe AS (
