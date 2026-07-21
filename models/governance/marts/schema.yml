@@ -1,0 +1,106 @@
+version: 2
+
+models:
+  - name: api_governance_kpis_latest
+    description: >
+      Single-row headline governance KPIs for number tiles: proposal/GIP/vote
+      counts, unique voters, followers, proposals passed, pass rate, and average
+      voters per closed proposal.
+    columns:
+      - name: total_proposals
+        data_type: UInt64
+      - name: unique_voters
+        data_type: UInt64
+      - name: pass_rate
+        description: passed / (passed + rejected + below_quorum).
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_activity_monthly
+    description: >
+      Monthly governance activity, long format (date, metric, value) for
+      proposals_created, votes_cast, unique_voters.
+    columns:
+      - name: date
+        data_type: Date
+      - name: metric
+        data_type: String
+      - name: value
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposals_latest
+    description: >
+      Proposal browse table (one row per Snapshot proposal) with outcome,
+      category, quorum, and vote aggregates. Filter is_gip = 1 for GIPs only.
+    columns:
+      - name: id
+        data_type: String
+        tests: [not_null, unique]
+      - name: outcome
+        data_type: String
+      - name: is_gip
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_gip_funnel
+    description: >
+      GIP lifecycle funnel — count of GIPs reaching each stage (forum discussion
+      -> phase-2 -> phase-3 -> Snapshot vote -> passed).
+    columns:
+      - name: stage
+        data_type: String
+      - name: gip_count
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_forum_activity_weekly
+    description: Weekly forum activity long format (date, metric, value).
+    columns:
+      - name: date
+        data_type: Date
+      - name: metric
+        description: topics_created | posts_created | active_users.
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_top_voters
+    description: >
+      Top 200 voters by proposals voted, with cumulative and average voting
+      power. total_vp_cast is participation-weighted, not a balance.
+    columns:
+      - name: voter
+        data_type: String
+        tests: [not_null]
+      - name: proposals_voted
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_power_source_monthly
+    description: >
+      Monthly voting power by source (Staked GNO / GNO holdings / Delegated),
+      long format (date, label, value). Empty until proposals carry `strategies`.
+    columns:
+      - name: date
+        data_type: Date
+      - name: label
+        description: Power source bucket.
+        data_type: String
+      - name: value
+        description: Summed voting power for the source that month.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false

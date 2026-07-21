@@ -1,0 +1,156 @@
+version: 2
+
+models:
+  - name: stg_governance__snapshot_space
+    description: >
+      Current GnosisDAO Snapshot space (gnosis.eth) metadata + voting-power
+      strategy set. Deduped to the latest ingest via FINAL. One row.
+    columns:
+      - name: space_id
+        description: Snapshot space id (gnosis.eth).
+        data_type: String
+        tests: [not_null, unique]
+      - name: followers_count
+        description: Authoritative current follower total (use this, not snapshot_follows, for the headline).
+        data_type: UInt32
+      - name: strategy_names
+        description: Space-level strategy names, ordered. Per-proposal strategy sets may differ.
+        data_type: Array(String)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_proposals
+    description: >
+      One row per Snapshot proposal (latest version via FINAL), with GIP number
+      parsed from the title and choices/scores arrays extracted from raw_json.
+    columns:
+      - name: id
+        description: Snapshot proposal id (0x hash or older IPFS CID).
+        data_type: String
+        tests: [not_null, unique]
+      - name: gip_number
+        description: GIP number parsed from the title; NULL for non-GIP proposals.
+        data_type: Nullable(UInt32)
+      - name: state
+        description: pending | active | closed.
+        data_type: String
+      - name: choices
+        description: Ballot choice labels, positionally aligned to `scores`.
+        data_type: Array(String)
+      - name: scores
+        description: Per-choice voting-power totals, aligned to `choices`.
+        data_type: Array(Float64)
+      - name: scores_state
+        description: pending | final (only 'final' scores are safe to report).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_votes
+    description: >
+      One latest vote per (proposal_id, voter). Raw may hold multiple vote ids
+      per voter (revotes on open proposals); this model keeps the most recent by
+      vote timestamp. vp_by_strategy is positional to the proposal's strategies.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [proposal_id, voter]
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id this vote belongs to.
+        data_type: String
+        tests: [not_null]
+      - name: voter
+        description: Voter address (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: vp
+        description: Total voting power of this vote.
+        data_type: Float64
+      - name: vp_by_strategy
+        description: Voting power split across the proposal's strategies (positional).
+        data_type: Array(Float64)
+      - name: reason
+        description: Free-text voter rationale (may be empty).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_follows
+    description: >
+      One row per follower observed (deduped via FINAL). Cannot detect
+      unfollows — use snapshot_space.followers_count for the current total.
+    columns:
+      - name: follower
+        description: Follower address (lowercased).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_categories
+    description: Discourse category tree (deduped via FINAL).
+    columns:
+      - name: id
+        description: Category id.
+        data_type: UInt32
+        tests: [not_null, unique]
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_topics
+    description: >
+      One row per Discourse topic (deduped via FINAL), with GIP number parsed
+      from the title and governance phase derived from the tags string.
+    columns:
+      - name: id
+        description: Topic id.
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: gip_number
+        description: GIP number parsed from the title; NULL for non-GIP topics.
+        data_type: Nullable(UInt32)
+      - name: phase
+        description: "phase-1 | phase-2 | phase-3 | none (from tags)."
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_posts
+    description: >
+      One row per Discourse post (every comment/reply), deduped via FINAL.
+      `cooked` is the rendered HTML body; snapshot_proposal_id links the
+      discussion to its Snapshot vote when a 0x link is present in the body.
+    columns:
+      - name: id
+        description: Global post id.
+        data_type: UInt64
+        tests: [not_null, unique]
+      - name: topic_id
+        description: Topic this post belongs to.
+        data_type: UInt32
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Snapshot proposal id (0x) extracted from the post body, else NULL.
+        data_type: Nullable(String)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_users
+    description: Public Discourse user directory (deduped via FINAL).
+    columns:
+      - name: id
+        description: User id.
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: username
+        description: Discourse username.
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false

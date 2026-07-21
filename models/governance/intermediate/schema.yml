@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: int_governance_proposals
+    description: >
+      One enriched row per Snapshot proposal: derived outcome
+      (passed/rejected/below_quorum/open), quorum_met, keyword category, winning
+      choice, and vote aggregates (unique_voters, total_vp). Vote aggregates are
+      pre-grouped then LEFT JOINed so no-vote proposals get 0, not an epoch.
+    columns:
+      - name: id
+        description: Snapshot proposal id.
+        data_type: String
+        tests: [not_null, unique]
+      - name: outcome
+        description: passed | rejected | below_quorum | open (heuristic from winning choice + quorum + finality).
+        data_type: String
+      - name: category
+        description: Keyword-derived category (Treasury & Funding, Technical & Protocol, ...).
+        data_type: String
+      - name: unique_voters
+        description: Distinct voters (deduped one-per-voter upstream).
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_gip
+    description: >
+      The GIP spine — one row per GIP number, unifying forum discussion
+      (topics/posts/views/phase flags) with the Snapshot vote (proposal, outcome,
+      voters, vp). GIP universe is the union of GIP numbers seen on either side.
+    columns:
+      - name: gip_number
+        description: GIP number (the spine key).
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: discussed_on_forum
+        description: True if at least one forum topic carries this GIP number.
+        data_type: Bool
+      - name: reached_vote
+        description: True if a Snapshot proposal with this GIP number exists.
+        data_type: Bool
+      - name: outcome
+        description: Snapshot outcome of the (latest) proposal for this GIP, if any.
+        data_type: Nullable(String)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_activity_weekly
+    description: >
+      Weekly forum activity in long format (date, metric, value) for
+      topics_created, posts_created, active_users.
+    columns:
+      - name: date
+        description: Week start (Monday, UTC).
+        data_type: Date
+      - name: metric
+        description: topics_created | posts_created | active_users.
+        data_type: String
+      - name: value
+        description: Metric value for the week.
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_vote_power_source
+    description: >
+      One row per (vote, strategy component): the voter's voting power split
+      across the proposal's own strategies, classified into a power source
+      (Staked GNO / GNO holdings / Delegated). Populated once proposals are
+      ingested with the `strategies` field.
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id.
+        data_type: String
+      - name: voter
+        description: Voter address (lowercased).
+        data_type: String
+      - name: power_source
+        description: Classified strategy bucket.
+        data_type: String
+      - name: strategy_vp
+        description: Voting power attributed to this strategy component.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false

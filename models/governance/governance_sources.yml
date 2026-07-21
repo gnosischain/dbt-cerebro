@@ -1,0 +1,61 @@
+version: 2
+
+sources:
+  # Off-chain governance + community data ingested by click-runner
+  # (ingestors/snapshot_ingestor.py + ingestors/forum_ingestor.py) into
+  # ReplacingMergeTree(ingested_at) tables. Staging dedupes via FINAL.
+  #
+  # Dedicated source block so the schema can be redirected to playground_max
+  # during dev/backfill validation (set DBT_GOVERNANCE_SCHEMA=playground_max)
+  # without touching dune_*/other crawlers_data tables. Defaults to
+  # crawlers_data in prod. Mirrors the crawlers_data_cow pattern.
+  - name: governance
+    schema: "{{ env_var('DBT_GOVERNANCE_SCHEMA', 'crawlers_data') }}"
+    freshness:
+      warn_after: {count: 36, period: hour}
+      error_after: {count: 72, period: hour}
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: snapshot_space
+        description: >
+          One row per ingest of the GnosisDAO Snapshot space (gnosis.eth):
+          proposal/vote/follower counts plus the space-level voting-power
+          strategy set (in raw_json.strategies).
+        loaded_at_field: ingested_at
+      - name: snapshot_proposals
+        description: >
+          One row per Snapshot proposal. Typed key columns + full API object in
+          raw_json (choices, scores, plugins). GIP number is parseable from the
+          title. ReplacingMergeTree(ingested_at) keyed by id.
+        loaded_at_field: ingested_at
+      - name: snapshot_votes
+        description: >
+          Raw votes as returned by the Snapshot API, one row per (proposal, vote
+          id). A voter re-voting on an open proposal can produce a new vote id,
+          so raw may hold >1 row per voter — stg_governance__snapshot_votes
+          dedupes to the latest vote per (proposal_id, voter).
+        loaded_at_field: ingested_at
+      - name: snapshot_follows
+        description: >
+          One row per follower observed. Cannot capture unfollows (stale rows
+          linger); use snapshot_space.followers_count for the authoritative
+          current total.
+        loaded_at_field: ingested_at
+      - name: forum_categories
+        description: Discourse category tree for forum.gnosis.io.
+        loaded_at_field: ingested_at
+      - name: forum_topics
+        description: >
+          One row per Discourse topic (discussion thread). GIP number parseable
+          from the title; governance phase (phase-1/2/3) from the tags string.
+        loaded_at_field: ingested_at
+      - name: forum_posts
+        description: >
+          One row per Discourse post — every comment/reply. `cooked` is the
+          rendered HTML body; a Snapshot proposal id is often linkable from it.
+        loaded_at_field: ingested_at
+      - name: forum_users
+        description: Public Discourse user directory (activity + like counts).
+        loaded_at_field: ingested_at
