@@ -5,11 +5,10 @@
   )
 }}
 
--- Proposer leaderboard: activity + outcome record. success_rate excludes
--- 'open' proposals from the denominator (nothing to judge yet) but keeps
--- 'decided' selection-ballot resolutions out of pass/fail scoring too --
--- it counts them as "enacted" in the numerator (an option was chosen and
--- took effect) without pretending every proposal is a binary pass/fail.
+-- Proposer leaderboard: activity + outcome record.
+-- enactment_rate = share of closed proposals that resolved productively
+-- (passed OR decided). Distinct from gip_pass_rate on KPIs, which is
+-- pass/fail only and excludes selection ballots (decided).
 SELECT
     author,
     count()                                    AS proposals_authored,
@@ -21,7 +20,7 @@ SELECT
     round(
         countIf(outcome IN ('passed', 'decided'))
         / nullIf(countIf(outcome != 'open'), 0), 3
-    )                                           AS success_rate,
+    )                                           AS enactment_rate,
     min(created_at)                             AS first_proposal_at,
     max(created_at)                             AS last_proposal_at
 FROM {{ ref('int_governance_proposals') }}

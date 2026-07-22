@@ -74,6 +74,47 @@ models:
       owner: analytics_team
       authoritative: false
 
+  - name: int_governance_forum_proposal_links
+    description: >
+      Cross-link from a forum post to a Snapshot proposal via a pasted
+      proposal/0x… URL. Not GIP identity — unmatched links keep
+      proposal_matched=false. Grain: one row per linking post.
+    columns:
+      - name: post_id
+        description: Forum post id.
+        data_type: UInt64
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Lowercased 0x proposal id extracted from the post body.
+        data_type: String
+        tests: [not_null]
+      - name: proposal_matched
+        description: True when snapshot_proposal_id exists in int_governance_proposals.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_topic_proposal_links
+    description: >
+      Topic-level rollup of Snapshot proposal links found in any post of the
+      thread. One row per (topic_id, snapshot_proposal_id).
+    columns:
+      - name: topic_id
+        description: Forum topic id.
+        data_type: UInt32
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Lowercased 0x proposal id linked from the topic.
+        data_type: String
+        tests: [not_null]
+      - name: linking_posts
+        description: Number of posts in the topic that pasted this proposal URL.
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
   - name: int_governance_forum_activity_weekly
     description: >
       Weekly forum activity in long format (date, metric, value) for
