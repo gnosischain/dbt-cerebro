@@ -22,5 +22,6 @@ SELECT
         countIf(is_gip AND outcome = 'passed')
         / nullIf(countIf(is_gip AND outcome IN ('passed','rejected','no_consensus','below_quorum')), 0), 3)
      FROM {{ ref('int_governance_proposals') }})                                                   AS gip_pass_rate,
+    -- Grain is closed GIP *proposals* (a GIP can have multiple Snapshot ballots).
     (SELECT round(avg(unique_voters), 1)
-     FROM {{ ref('int_governance_proposals') }} WHERE is_gip AND state = 'closed')                 AS avg_voters_per_gip
+     FROM {{ ref('int_governance_proposals') }} WHERE is_gip AND state = 'closed')                 AS avg_voters_per_gip_proposal

@@ -14,14 +14,13 @@
 --
 -- Outcome is derived from the WINNING choice, not a hard-coded For/Against:
 --   passed        - an affirmative option won (For/Yes/Approve/Enable/Extend/
---                   "Let's do this!"/... or, on a 2-option ballot, any non-
---                   negative winner)
+--                   "Let's do this!"/...)
 --   rejected      - a negative / status-quo option won (Against/No/"Make no
 --                   change"/"Don't ..."/...)
 --   no_consensus  - Abstain won
---   decided       - a specific option won on a multi-option SELECTION ballot
---                   (e.g. GIP-148 -> "Noctua (Noca)"); the real result is in
---                   winning_choice, so it is neither pass nor fail
+--   decided       - a specific option won but keywords did not classify it as
+--                   pass/reject (selection ballots, or unlabeled binary choices);
+--                   the real result is in winning_choice
 --   below_quorum  - closed & final but quorum not met (or zero votes)
 --   open          - not closed, or scores not yet final
 -- winning_choice always carries the actual winning option regardless of bucket.
@@ -72,7 +71,8 @@ SELECT
         match(lower(b.winning_choice), '^abstain'),         'no_consensus',
         match(lower(b.winning_choice), '(\\bagainst\\b|\\bno\\b|\\bnay\\b|reject|make no change|do not|\\bdon.?t\\b|do nothing|status quo|not now|\\bnone\\b)'), 'rejected',
         match(lower(b.winning_choice), '(\\bfor\\b|\\byes\\b|approve|adopt|enact|accept|in favou?r|\\baye\\b|agree|support|let.?s do|proceed|enable|extend|launch|activate|ratify)'), 'passed',
-        length(b.choices) <= 2,                             'passed',
+        -- Unclassified winners (incl. unlabeled binary ballots) stay 'decided'
+        -- — never assume pass just because there were only two choices.
         'decided'
     ) AS outcome,
     multiIf(
