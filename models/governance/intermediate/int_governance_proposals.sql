@@ -9,7 +9,8 @@
 
 -- One enriched row per Snapshot proposal: outcome, quorum, category, and vote
 -- aggregates. Vote counts are pre-aggregated in a CTE (one row per proposal)
--- then LEFT JOINed, so proposals with no votes get 0, never an epoch sentinel.
+-- then LEFT JOINed: missing votes coalesce to 0, and vote timestamps are
+-- nullIf'd off ClickHouse's 1970 DateTime default for unmatched LEFT JOIN.
 --
 -- Outcome is derived from the WINNING choice, not a hard-coded For/Against:
 --   passed        - an affirmative option won (For/Yes/Approve/Enable/Extend/
@@ -83,7 +84,7 @@ SELECT
     ) AS category,
     coalesce(va.unique_voters, 0)  AS unique_voters,
     coalesce(va.total_vp, 0.0)     AS total_vp,
-    va.first_vote_at,
-    va.last_vote_at
+    nullIf(va.first_vote_at, toDateTime('1970-01-01 00:00:00', 'UTC')) AS first_vote_at,
+    nullIf(va.last_vote_at,  toDateTime('1970-01-01 00:00:00', 'UTC')) AS last_vote_at
 FROM base AS b
 LEFT JOIN votes_agg AS va ON b.id = va.proposal_id
