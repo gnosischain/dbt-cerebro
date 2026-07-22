@@ -132,9 +132,14 @@ models:
 
   - name: api_governance_forum_topic_proposal_links
     description: >
-      Forum discussion <-> Snapshot vote cross-links, topic grain. Includes
-      topics where title-parsing found no GIP number but a pasted proposal
-      URL recovers the connection (recovered_via_link).
+      Forum discussion <-> Snapshot vote cross-links, topic grain. Unions two
+      independent signals -- a pasted proposal/0x URL in a post
+      (via_forum_post) and the proposal's own authored `discussion` field
+      (via_discussion) -- so a link found by only one method still gets its
+      own row (43 discussion-only rows verified; not merely a corroboration
+      decoration on the post-link source). Includes topics where
+      title-parsing found no GIP number but a linked proposal recovers the
+      connection (recovered_via_link).
     columns:
       - name: topic_id
         data_type: UInt32
@@ -144,6 +149,20 @@ models:
         data_type: Bool
       - name: recovered_via_link
         description: True when the topic's own title has no GIP number but a linked proposal does.
+        data_type: Bool
+      - name: via_forum_post
+        description: True when a post in this topic pastes this proposal's own 0x URL.
+        data_type: Bool
+      - name: via_discussion
+        description: True when this proposal's own authored `discussion` field points at this topic.
+        data_type: Bool
+      - name: corroborated_by_discussion
+        description: >
+          via_forum_post AND via_discussion -- both signals agree. False does
+          NOT mean disagreement; most false rows are one signal without the
+          other (see via_forum_post/via_discussion individually). A small
+          number of topics carry rows for two different proposals (typically
+          a multi-ballot GIP redo, e.g. GIP-134), each independently flagged.
         data_type: Bool
     meta:
       owner: analytics_team

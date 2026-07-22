@@ -15,6 +15,21 @@ SELECT
     state,
     type,
     lower(author)                                        AS author,
+    discussion,
+    -- Topic id parsed from the proposal-authored discussion URL (e.g.
+    -- .../t/gip-151-.../12337, sometimes with a trailing ?u=... suffix that
+    -- must be stripped before anchoring on the trailing numeric segment).
+    -- Cross-checked against the forum-post-link bridge (see
+    -- api_governance_forum_topic_proposal_links): of 89 that parse, 43 have
+    -- NO corroborating pasted-post link at all — a genuine additional
+    -- coverage source, not merely a corroboration signal on top of the
+    -- post-link bridge. NULL when discussion is empty, points elsewhere (e.g.
+    -- another proposal, an unrelated domain), or has no numeric topic segment
+    -- (a handful of forum links are slug-only).
+    CASE WHEN discussion LIKE '%forum.gnosis.io%'
+         THEN toUInt32OrNull(extract(splitByChar('?', discussion)[1], '/([0-9]+)/?$'))
+         ELSE NULL
+    END                                                   AS discussion_topic_id,
     created_at,
     start_at,
     end_at,
