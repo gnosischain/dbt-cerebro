@@ -133,6 +133,41 @@ models:
       owner: analytics_team
       authoritative: false
 
+  - name: int_governance_turnout
+    description: >
+      Per-GIP voting-power turnout (is_gip=1 only -- see below): total_vp cast
+      / eligible supply. Eligible supply is circulating GNO on both chains
+      (dune_gno_supply, excludes Non-Circ. Supply) plus staked GNO, with
+      staked GNO included only when THIS proposal's own strategy_names
+      contains 'beacon-chain' -- different eras used different strategy sets,
+      so eligibility is read per-proposal rather than assumed from a date
+      cutoff. Matched to supply by exact date (0 of 253 proposals miss a
+      match). Numerator is already delegation-aware (Snapshot resolves
+      delegated power into the delegate's cast vote), so turnout does not
+      depend on the delegate graph. Older 'gno'-strategy eras were not
+      independently audited the same way the current getGnoVotingPower
+      contract was -- treat pre-2022 turnout as directional.
+      Filtered to is_gip=1: non-GIP Snapshot activity (spam/phishing-style
+      announcement proposals) is 47% of all proposals but averages ~0.1%
+      turnout, which would roughly halve the blended average if included.
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id.
+        data_type: String
+        tests: [not_null, unique]
+      - name: includes_staked_gno
+        description: True when this proposal's strategy_names contains 'beacon-chain'.
+        data_type: Bool
+      - name: eligible_supply
+        description: eth_circ_supply + gnosis_circ_supply + staked_gno_component (conditional).
+        data_type: Float64
+      - name: turnout
+        description: total_vp / eligible_supply. NULL if eligible_supply is 0.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
   - name: int_governance_vote_power_source
     description: >
       One row per (vote, strategy component): the voter's voting power split

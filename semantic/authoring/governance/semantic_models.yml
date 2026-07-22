@@ -293,6 +293,78 @@ semantic_models:
         - voting power concentration
         - top voter share per proposal
 
+- name: governance_turnout_latest
+  model: ref('api_governance_turnout_latest')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  - name: includes_staked_gno
+    type: categorical
+    expr: includes_staked_gno
+  measures:
+  - name: governance_turnout_latest__turnout_value
+    agg: average
+    expr: turnout
+  - name: governance_turnout_latest__eligible_supply_value
+    agg: average
+    expr: eligible_supply
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - governance turnout
+        - voter turnout per proposal
+        - what share of gno voted
+
+- name: governance_turnout_monthly
+  model: ref('api_governance_turnout_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  measures:
+  - name: governance_turnout_monthly__avg_turnout_value
+    agg: average
+    expr: avg_turnout
+  - name: governance_turnout_monthly__proposals
+    agg: sum
+    expr: proposals
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - governance turnout trend
+        - turnout over time
+        - monthly voter turnout
+
 - name: governance_top_voters
   model: ref('api_governance_top_voters')
   entities:
@@ -571,3 +643,39 @@ metrics:
         question_synonyms:
         - top 10 voter concentration
         - voting power concentration
+
+- name: governance_turnout
+  label: Governance Turnout (per proposal)
+  description: Per-GIP voting-power turnout (is_gip=1 only -- excludes spam/announcement Snapshot activity, which is ~47% of all proposals but averages near-0% turnout and would otherwise dilute the signal) -- total_vp cast / eligible GNO supply (circulating on both chains, plus staked GNO when the proposal's own strategies include it as an eligible pool). Group by gip_number/category/outcome. Pre-2022 ('gno'-strategy era) figures are directional -- only the current getGnoVotingPower contract was independently audited to confirm it's a simple balance passthrough.
+  type: simple
+  type_params:
+    measure: governance_turnout_latest__turnout_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - governance turnout
+        - voter turnout percentage
+        - what share of gno supply voted
+
+- name: governance_turnout_monthly
+  label: Governance Turnout (monthly trend)
+  description: Monthly average of per-GIP turnout ratios (is_gip=1 only, not population-weighted by eligible supply) -- a directional trend of how GnosisDAO voter turnout has moved over time. Months with no real GIP have no row.
+  type: simple
+  type_params:
+    measure: governance_turnout_monthly__avg_turnout_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - turnout trend over time
+        - monthly governance turnout

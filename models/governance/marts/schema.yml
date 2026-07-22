@@ -203,3 +203,44 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: api_governance_turnout_latest
+    description: >
+      Per-GIP turnout browse table (is_gip=1 only): total_vp cast / eligible
+      GNO supply (circulating on both chains + staked, conditionally). See
+      int_governance_turnout for the full methodology, the GIP-only scoping
+      rationale, and its historical-precision caveat.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: includes_staked_gno
+        description: True when this proposal's own strategies included staked GNO in the eligible pool.
+        data_type: Bool
+      - name: eligible_supply
+        data_type: Float64
+      - name: turnout
+        description: total_vp / eligible_supply. NULL if eligible_supply is 0.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_turnout_monthly
+    description: >
+      Monthly turnout trend (is_gip=1 only): a simple average of per-GIP
+      turnout ratios, NOT population-weighted by eligible supply. Directional
+      trend only -- use api_governance_turnout_latest for exact per-proposal
+      figures. A month with no real GIP shows no row (rather than a
+      misleading 0%), since the underlying model excludes non-GIP proposals.
+    columns:
+      - name: date
+        description: Month start.
+        data_type: Date
+      - name: avg_turnout
+        data_type: Nullable(Float64)
+      - name: proposals
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
