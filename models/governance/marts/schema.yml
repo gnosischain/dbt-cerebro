@@ -130,6 +130,44 @@ models:
       owner: analytics_team
       authoritative: false
 
+  - name: api_governance_forum_topic_proposal_links
+    description: >
+      Forum discussion <-> Snapshot vote cross-links, topic grain. Includes
+      topics where title-parsing found no GIP number but a pasted proposal
+      URL recovers the connection (recovered_via_link).
+    columns:
+      - name: topic_id
+        data_type: UInt32
+        tests: [not_null]
+      - name: proposal_matched
+        description: True when the linked snapshot_proposal_id exists in int_governance_proposals.
+        data_type: Bool
+      - name: recovered_via_link
+        description: True when the topic's own title has no GIP number but a linked proposal does.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_whale_concentration
+    description: >
+      Per-proposal voting-power concentration: share of total vp cast by the
+      top 1 / 5 / 10 voters. Reveals whale-decided votes a raw voter count
+      would hide. NULL shares on zero-vote proposals.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: top1_share
+        description: Share of total_vp cast by the single largest voter.
+        data_type: Nullable(Float64)
+      - name: top10_share
+        description: Share of total_vp cast by the top 10 voters by vp.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
   - name: api_governance_top_proposers
     description: >
       Top 50 proposal authors by count, with outcome record. enactment_rate

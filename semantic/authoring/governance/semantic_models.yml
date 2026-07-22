@@ -217,6 +217,73 @@ semantic_models:
         - for against abstain votes
         - per-proposal vote results
 
+- name: governance_forum_proposal_links
+  model: ref('api_governance_forum_topic_proposal_links')
+  entities:
+  - name: topic
+    type: foreign
+    expr: topic_id
+  - name: proposal
+    type: foreign
+    expr: proposal_id
+  dimensions:
+  - name: topic_gip_number
+    type: categorical
+    expr: topic_gip_number
+  - name: recovered_via_link
+    type: categorical
+    expr: recovered_via_link
+  measures:
+  - name: governance_forum_proposal_links__linking_posts_value
+    agg: sum
+    expr: linking_posts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - forum discussion linked to snapshot vote
+        - which forum topics link to which proposals
+
+- name: governance_whale_concentration
+  model: ref('api_governance_whale_concentration')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_whale_concentration__top1_share_value
+    agg: average
+    expr: top1_share
+  - name: governance_whale_concentration__top10_share_value
+    agg: average
+    expr: top10_share
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - whale concentration
+        - voting power concentration
+        - top voter share per proposal
+
 - name: governance_top_voters
   model: ref('api_governance_top_voters')
   entities:
@@ -449,3 +516,49 @@ metrics:
         - votes by choice
         - for against abstain breakdown
         - per-choice voting power
+
+- name: governance_forum_proposal_linking_posts
+  label: Forum Posts Linking to a Snapshot Vote
+  description: Count of forum posts that paste a Snapshot proposal URL, by topic. Use recovered_via_link to find discussions with no GIP number in the title that still link to a real vote.
+  type: simple
+  type_params:
+    measure: governance_forum_proposal_links__linking_posts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - forum posts linking to snapshot votes
+        - discussions recovered via proposal link
+
+- name: governance_whale_top1_share
+  label: Whale Concentration (top 1 voter)
+  description: Average, across proposals, of the share of total voting power cast by the single largest voter. High values indicate whale-decided votes even on proposals with many voters.
+  type: simple
+  type_params:
+    measure: governance_whale_concentration__top1_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - whale concentration
+        - top voter share
+        - largest voter voting power share
+
+- name: governance_whale_top10_share
+  label: Whale Concentration (top 10 voters)
+  description: Average, across proposals, of the share of total voting power cast by the top 10 voters by vp.
+  type: simple
+  type_params:
+    measure: governance_whale_concentration__top10_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - top 10 voter concentration
+        - voting power concentration
