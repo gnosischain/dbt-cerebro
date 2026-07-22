@@ -38,8 +38,10 @@ models:
   - name: int_governance_gip
     description: >
       The GIP spine — one row per GIP number, unifying forum discussion
-      (topics/posts/views/phase flags) with the Snapshot vote (proposal, outcome,
-      voters, vp). GIP universe is the union of GIP numbers seen on either side.
+      (topics/posts/views/phase flags) with Snapshot proposal(s). Canonical
+      `outcome` is set only when unambiguous (single decisive result across
+      ballots); conflicting decisive outcomes set outcome NULL and
+      outcome_ambiguous. Full ballot history stays on int_governance_proposals.
     columns:
       - name: gip_number
         description: GIP number (the spine key).
@@ -49,10 +51,24 @@ models:
         description: True if at least one forum topic carries this GIP number.
         data_type: Bool
       - name: reached_vote
-        description: True if a Snapshot proposal with this GIP number exists.
+        description: True if at least one Snapshot proposal with this GIP number exists.
         data_type: Bool
+      - name: proposal_count
+        description: Number of Snapshot proposals tagged with this GIP number.
+        data_type: UInt64
       - name: outcome
-        description: Snapshot outcome of the (latest) proposal for this GIP, if any.
+        description: >
+          Canonical outcome when unambiguous; NULL if decisive ballots disagree
+          (outcome_ambiguous) or there is no Snapshot proposal.
+        data_type: Nullable(String)
+      - name: outcome_ambiguous
+        description: True when multiple decisive outcomes exist for this GIP number.
+        data_type: UInt8
+      - name: has_passed
+        description: True if any proposal for this GIP has outcome=passed.
+        data_type: UInt8
+      - name: latest_outcome
+        description: Outcome of the latest proposal by created_at (not canonical).
         data_type: Nullable(String)
     meta:
       owner: analytics_team
