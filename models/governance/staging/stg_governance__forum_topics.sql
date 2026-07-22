@@ -10,8 +10,9 @@ SELECT
     title,
     slug,
     category_id,
-    -- GIP number parsed from the topic title (links to snapshot_proposals).
-    toUInt32OrNull(extract(title, 'GIP[ -]?0*([0-9]+)')) AS gip_number,
+    -- GIP identity from a leading title match (links to snapshot_proposals).
+    -- Mentions mid-title ("report on GIP-18") stay NULL.
+    {{ parse_gip_number('title') }} AS gip_number,
     -- Governance lifecycle phase from the tags string (phase-1 discussion ->
     -- phase-2 temp check -> phase-3 Snapshot vote). 'none' when untagged.
     multiIf(

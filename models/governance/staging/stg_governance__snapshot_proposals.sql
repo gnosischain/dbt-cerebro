@@ -8,9 +8,9 @@
 SELECT
     id,
     space_id,
-    -- GIP number parsed from titles like "GIP-151: ...", "GIP 16 - ...".
-    -- NULL for non-GIP proposals (announcements, meta votes).
-    toUInt32OrNull(extract(title, 'GIP[ -]?0*([0-9]+)')) AS gip_number,
+    -- GIP identity from a leading title match ("GIP-151: ...", "[Redo] GIP-87").
+    -- NULL for non-GIP proposals and for titles that only mention a GIP.
+    {{ parse_gip_number('title') }} AS gip_number,
     title,
     state,
     type,
