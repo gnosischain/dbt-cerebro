@@ -1,0 +1,448 @@
+semantic_models:
+- name: governance_proposals_latest
+  model: ref('api_governance_proposals_latest')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_proposals_latest__unique_voters_value
+    agg: sum
+    expr: unique_voters
+  - name: governance_proposals_latest__total_vp_value
+    agg: sum
+    expr: total_vp
+  - name: governance_proposals_latest__proposal_count
+    agg: count
+    expr: id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - governance proposals
+        - gnosisdao proposals
+        - gip proposals list
+
+- name: governance_kpis_latest
+  model: ref('api_governance_kpis_latest')
+  measures:
+  - name: governance_kpis_latest__total_proposals_value
+    agg: sum
+    expr: total_proposals
+  - name: governance_kpis_latest__total_gips_value
+    agg: sum
+    expr: total_gips
+  - name: governance_kpis_latest__unique_voters_value
+    agg: sum
+    expr: unique_voters
+  - name: governance_kpis_latest__total_votes_cast_value
+    agg: sum
+    expr: total_votes_cast
+  - name: governance_kpis_latest__followers_value
+    agg: sum
+    expr: followers
+  - name: governance_kpis_latest__gip_proposals_passed_value
+    agg: sum
+    expr: gip_proposals_passed
+  - name: governance_kpis_latest__gip_pass_rate_value
+    agg: sum
+    expr: gip_pass_rate
+  - name: governance_kpis_latest__avg_voters_per_gip_value
+    agg: sum
+    expr: avg_voters_per_gip
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - governance headline kpis
+        - total gnosisdao proposals and voters
+        - governance summary numbers
+
+- name: governance_activity_monthly
+  model: ref('api_governance_activity_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: governance_activity_monthly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - governance activity over time
+        - proposals and votes per month
+        - monthly governance trend
+
+- name: governance_forum_activity_weekly
+  model: ref('api_governance_forum_activity_weekly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: week
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: governance_forum_activity_weekly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: week
+        question_synonyms:
+        - forum activity over time
+        - weekly forum posts and topics
+        - governance forum engagement trend
+
+- name: governance_power_source_monthly
+  model: ref('api_governance_power_source_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: governance_power_source_monthly__value
+    agg: sum
+    expr: value
+  - name: governance_power_source_monthly__voters
+    agg: sum
+    expr: voters
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - voting power by source
+        - staked gno vs delegated voting power
+        - governance voting power breakdown
+
+- name: governance_gip_funnel
+  model: ref('api_governance_gip_funnel')
+  dimensions:
+  - name: stage
+    type: categorical
+    expr: stage
+  measures:
+  - name: governance_gip_funnel__gip_count_value
+    agg: sum
+    expr: gip_count
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - gip conversion funnel
+        - governance proposal funnel
+        - how many gips passed
+
+- name: governance_proposal_choices
+  model: ref('api_governance_proposal_choices')
+  entities:
+  - name: proposal
+    type: foreign
+    expr: proposal_id
+  dimensions:
+  - name: choice
+    type: categorical
+    expr: choice
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_proposal_choices__score_value
+    agg: sum
+    expr: score
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - vote breakdown by choice
+        - for against abstain votes
+        - per-proposal vote results
+
+- name: governance_top_voters
+  model: ref('api_governance_top_voters')
+  entities:
+  - name: voter
+    type: primary
+    expr: voter
+  measures:
+  - name: governance_top_voters__proposals_voted_value
+    agg: sum
+    expr: proposals_voted
+  - name: governance_top_voters__total_vp_cast_value
+    agg: sum
+    expr: total_vp_cast
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        role: dimension
+        question_synonyms:
+        - top governance voters
+        - most active voters
+        - voter leaderboard
+
+- name: governance_top_proposers
+  model: ref('api_governance_top_proposers')
+  entities:
+  - name: author
+    type: primary
+    expr: author
+  measures:
+  - name: governance_top_proposers__proposals_authored_value
+    agg: sum
+    expr: proposals_authored
+  - name: governance_top_proposers__enacted_value
+    agg: sum
+    expr: enacted
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        role: dimension
+        question_synonyms:
+        - top gip proposers
+        - most active governance proposal authors
+        - proposer leaderboard
+
+metrics:
+- name: governance_proposal_count
+  label: Governance Proposals
+  description: Count of Snapshot governance proposals for GnosisDAO (gnosis.eth), including non-GIP announcement votes. Filter by is_gip or category for a narrower view.
+  type: simple
+  type_params:
+    measure: governance_proposals_latest__proposal_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - number of governance proposals
+        - how many gips
+        - gnosisdao proposal count
+
+- name: governance_unique_voters_per_proposal
+  label: Governance Unique Voters (per proposal)
+  description: Sum of unique voters across governance proposals. Group by gip_number/category/outcome for per-proposal or per-category breakdowns; this is a per-proposal count, not a distinct-across-all-history voter count (use governance_total_unique_voters for that).
+  type: simple
+  type_params:
+    measure: governance_proposals_latest__unique_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - voters per governance proposal
+        - proposal turnout
+
+- name: governance_total_proposals
+  label: Total Proposals (headline)
+  description: Headline total count of all Snapshot proposals for GnosisDAO, from the single-row KPI snapshot. Point-in-time total as of today.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__total_proposals_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total governance proposals
+        - how many proposals has gnosisdao had
+
+- name: governance_total_unique_voters
+  label: Total Unique Voters (headline)
+  description: Headline count of distinct addresses that have ever voted on a GnosisDAO Snapshot proposal. Point-in-time total as of today.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__unique_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total unique governance voters
+        - how many addresses have voted
+
+- name: governance_gip_pass_rate
+  label: GIP Pass Rate
+  description: Share of finalized (non-open) GIP proposals that passed -- passed / (passed + rejected + no_consensus + below_quorum). Excludes non-GIP announcement proposals and selection-ballot ('decided') outcomes.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__gip_pass_rate_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - gip pass rate
+        - governance proposal success rate
+        - how many gips pass
+
+- name: governance_activity_monthly
+  label: Governance Activity (monthly)
+  description: Monthly time series of governance activity. Group/filter by the `metric` dimension to select proposals_created, votes_cast, or unique_voters.
+  type: simple
+  type_params:
+    measure: governance_activity_monthly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - metric
+        - date
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - governance activity trend
+        - proposals and votes over time
+
+- name: governance_forum_activity_weekly
+  label: Forum Activity (weekly)
+  description: Weekly time series of Gnosis forum activity. Group/filter by the `metric` dimension to select topics_created, posts_created, or active_users.
+  type: simple
+  type_params:
+    measure: governance_forum_activity_weekly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - metric
+        - date
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        question_synonyms:
+        - forum activity trend
+        - community engagement over time
+
+- name: governance_power_source_monthly
+  label: Voting Power by Source (monthly)
+  description: Monthly voting power cast on GnosisDAO Snapshot proposals, broken down by source (Staked GNO via the Gnosis Beacon Chain, direct GNO holdings, or delegated voting power). Group/filter by the `label` dimension.
+  type: simple
+  type_params:
+    measure: governance_power_source_monthly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - label
+        - date
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - voting power by source
+        - staked gno vs delegated voting power
+        - gnosisdao voting power breakdown
+
+- name: governance_gip_funnel
+  label: GIP Conversion Funnel
+  description: Count of GIPs reaching each stage of the governance lifecycle -- discussed on the forum, reached a Snapshot vote, passed or enacted. A monotonic funnel (each stage <= the prior one).
+  type: simple
+  type_params:
+    measure: governance_gip_funnel__gip_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        allowed_dimensions:
+        - stage
+        question_synonyms:
+        - gip funnel
+        - governance conversion funnel
+        - how many gips get discussed vs voted vs passed
+
+- name: governance_proposal_choice_votes
+  label: Votes by Choice
+  description: Voting power received per ballot choice (e.g. For/Against/Abstain, or ranked-choice options) across GnosisDAO Snapshot proposals. Group by choice, gip_number, or outcome.
+  type: simple
+  type_params:
+    measure: governance_proposal_choices__score_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - votes by choice
+        - for against abstain breakdown
+        - per-choice voting power
