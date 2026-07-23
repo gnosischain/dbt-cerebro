@@ -18,6 +18,7 @@ evidence:
   - 'canary blind spot: Phase 1.5 scanned GNO supply +/-7d around --from-date (2026-07-13); the doubling sat at the month boundary and was uniform inside July -> no intra-window jump, canary passed'
   - 'sibling instance: the 2026-07-02 OC-sDAI backfill left Apr/May/Jun partitions of int_execution_tokens_balances_daily with every OC-sDAI row exactly twice (352/5,287/16,026 dup rows == 100% of those partitions'' dup_excess) and no OPTIMIZE — OC-sDAI supply read 2x native for its entire history'
   - 'fix: pass C/D re-ran the 7 aggregators alone against merged sources + OPTIMIZE; script rewritten to per-month "sources-then-OPTIMIZE-then-aggregators-then-OPTIMIZE" with a split-membership guard (scripts/maintenance/refill_after_price_gap.sh)'
+  - '2026-07-19 SIBLING VARIANT (killed-append-then-retry): during the sparse-zero-row re-clean, a Code 241 (server-saturation victim) killed an append to int_execution_tokens_balances_daily MID-INSERT, committing partial rows; a naive retry that appended the full month ON TOP produced identical RMT duplicates on 9/18 July days. Same failure family (append -> unmerged RMT dups double-counted by FINAL-less readers), different trigger (partial-insert survivorship, not same-invocation ordering). Recovery: DROP PARTITION (never append-on-top after a kill) -> single clean append -> OPTIMIZE ... PARTITION .. FINAL barrier -> re-run the aggregators. Rule: treat ANY killed append as leaving partial rows; drop before retrying'
 ---
 
 ## Symptom
