@@ -154,10 +154,17 @@ models:
     amounts using the end-of-day liquidityIndex. Scoped to reserves in
     lending_market_mapping.
 
-    Incremental seeding: on incremental runs the model carries forward the
-    previous max-date balances from {{ this }} as a synthetic delta on
-    max_date+1, so the cumulative running sum stays correct without rescanning
-    history. Full-refresh recomputes from the entire diffs history.
+    Incremental seeding (additive, not synthetic-delta): on incremental runs the
+    model builds a calendar of days after a watermark, left-joins new diffs, and
+    computes scaled = sum(diffs) OVER (calendar) + coalesce(prev_scaled, 0).
+    The seed day is deduped with GROUP BY any() so unmerged ReplacingMergeTree
+    parts cannot double the carry-forward (the failure mode behind the exact 2x
+    supply spikes on 2026-06-19 / 2026-06-21). Full-refresh recomputes from the
+    entire diffs history.
+
+    Overlapping month repair: pass reprocess_overwrite=true with start_month /
+    end_month to delete+insert the window, seeding from the last good day
+    BEFORE start_month (same contract as int_execution_tokens_balances_native_daily).
 
     scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
     (mirrors Aave's on-chain WadRayMath); a --full-refresh is required when
