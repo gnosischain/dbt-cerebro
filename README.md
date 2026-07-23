@@ -2,7 +2,7 @@
 
 ![Cerebro dbt](img/header-cerebro-dbt.png)
 
-A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across P2P networking, consensus mechanisms, execution layer activity, and environmental sustainability metrics.
+A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across execution-layer activity, consensus, P2P networking, cross-chain bridges, Gnosis Pay payments (on Gnosis and Celo), web analytics and attribution, protocol revenue, and environmental sustainability metrics.
 
 ## Table of Contents
 
@@ -26,18 +26,26 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 
 ## Overview
 
-Cerebro dbt transforms Gnosis Chain data across eight modules:
+Cerebro dbt transforms Gnosis Chain data across fourteen modules (~1,209 catalogued models):
 
 | Module | Description | Models |
 |--------|-------------|--------|
-| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics, **Safe wallet catalog, Gnosis Pay on-chain modules, Gnosis App heuristic sector** | ~225 |
-| **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~54 |
-| **contracts** | Decoded smart contract events and calls (BalancerV2/V3, UniswapV3, Aave, Swapr, etc.) | ~44 |
-| **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~27 |
-| **bridges** | Cross-chain bridge flows, token net flows, Sankey visualizations | ~18 |
-| **ESG** | Power consumption, carbon emissions, node classification, sustainability metrics | ~18 |
-| **crawlers_data** | External datasets: Dune labels, prices, GNO supply | ~9 |
-| **probelab** | ProbeLab network measurements: client versions, cloud distribution, QUIC support | ~9 |
+| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics, Safe wallet catalog, Gnosis Pay on-chain modules, Gnosis App heuristic sector | ~722 |
+| **contracts** | Decoded smart contract events and calls (BalancerV2/V3, UniswapV3, Aave, Swapr, CoW, etc.) | ~102 |
+| **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~88 |
+| **mixpanel_ga** | Web/app analytics: Mixpanel and Google Analytics sessions, funnels, campaign touchpoints | ~59 |
+| **revenue** | Protocol revenue and fee streams | ~50 |
+| **celo** | Gnosis Pay on Celo: decoded contract events, transactions, spend analytics | ~48 |
+| **mta** | Multi-touch attribution: Gnosis App journey spine, conversion coverage, first/last/linear/time-decay credit (lives under `models/execution/gnosis_app/`) | ~27 |
+| **quarterly_data** | Quarterly reporting aggregates | ~27 |
+| **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~25 |
+| **bridges** | Cross-chain bridge flows, token net flows, Sankey visualizations | ~17 |
+| **ESG** | Power consumption, carbon emissions, node classification, sustainability metrics | ~16 |
+| **crawlers_data** | External datasets: Dune labels, prices, GNO supply | ~16 |
+| **mmm** | Marketing Mix Modeling: weekly spine, media/adstock series, baseline and collinearity artifacts (lives under `models/execution/mmm/`) | ~7 |
+| **probelab** | ProbeLab network measurements: client versions, cloud distribution, QUIC support | ~5 |
+
+Counts are approximate catalogued models per thematic module — see the [dbt Model Catalog](https://docs.analytics.gnosis.io/models/) for the authoritative per-module breakdown.
 
 All data is stored in **ClickHouse Cloud** and served via [Cerebro API](https://api.analytics.gnosis.io) and [Cerebro MCP](https://mcp.analytics.gnosis.io).
 
@@ -1136,7 +1144,7 @@ A `pre_hook=["SET foo = bar"]` on a dbt model looks self-contained, but it isn't
 Concretely, the daily cron issues something like:
 
 ```
-dbt run --select tag:production   # ~400 models, one connection
+dbt run --select tag:production   # ~1,200 models, one connection
   ├─ model A  pre_hook: SET join_algorithm = 'grace_hash'     ← session now: grace_hash
   ├─ model B  (no pre_hook)                                   ← still grace_hash
   ├─ model C  (uses ASOF JOIN, no pre_hook)                   ← still grace_hash → fails
@@ -2076,18 +2084,24 @@ dbt-cerebro/
 ├── app/
 │   └── observability_server.py    # Health + metrics + static file server (k8s)
 ├── models/
-│   ├── consensus/                 # Consensus layer (54 models)
+│   ├── consensus/                 # Consensus layer (~88 models)
 │   │   ├── staging/               # stg_consensus__*
 │   │   ├── intermediate/          # int_consensus_*
 │   │   └── marts/                 # fct_consensus_*, api_consensus_*
-│   ├── execution/                 # Execution layer (~225 models)
+│   ├── execution/                 # Execution layer (~722 models)
 │   │   ├── blocks/
 │   │   ├── transactions/
 │   │   ├── tokens/
-│   │   ├── gpay/                  # Gnosis Pay: wallet owners, activity, (planned: modules, allowances, delegates, mixpanel bridge)
-│   │   ├── safe/                  # Generic Safe wallet catalog (creation, owner events, current owners; planned: module events)
-│   │   ├── zodiac/                # (planned) Zodiac ModuleProxyFactory discovery
-│   │   ├── gnosis_app/            # (planned) Gnosis App heuristic sector (Cometh + Circles V2 chokepoint)
+│   │   ├── gpay/                  # Gnosis Pay: wallet owners, activity, modules, allowances
+│   │   ├── safe/                  # Generic Safe wallet catalog (creation, owner events, current owners)
+│   │   ├── zodiac/                # Zodiac ModuleProxyFactory discovery
+│   │   ├── gnosis_app/            # Gnosis App heuristic sector + MTA attribution models
+│   │   ├── mmm/                   # Marketing Mix Modeling spine + artifacts
+│   │   ├── cow/                   # CoW Protocol
+│   │   ├── dao_treasury/
+│   │   ├── lending/
+│   │   ├── pools/
+│   │   ├── accounts/
 │   │   ├── state/
 │   │   ├── transfers/
 │   │   ├── prices/
@@ -2095,13 +2109,18 @@ dbt-cerebro/
 │   │   ├── rwa/
 │   │   ├── Circles/
 │   │   └── GBCDeposit/
-│   ├── contracts/                 # Decoded contracts (44 models)
+│   ├── contracts/                 # Decoded contracts (~102 models)
 │   │   └── {Protocol}/            # One folder per protocol
-│   ├── p2p/                       # P2P network (27 models)
-│   ├── bridges/                   # Bridge flows (18 models)
-│   ├── ESG/                       # Sustainability (18 models)
-│   ├── crawlers_data/             # External data (9 models)
-│   └── probelab/                  # ProbeLab (9 models)
+│   ├── mixpanel_ga/               # Web analytics: Mixpanel + Google Analytics (~59 models)
+│   ├── revenue/                   # Protocol revenue and fees (~50 models)
+│   ├── celo/                      # Gnosis Pay on Celo (~48 models)
+│   ├── quarterly_data/            # Quarterly reporting aggregates (~27 models)
+│   ├── p2p/                       # P2P network (~25 models)
+│   ├── bridges/                   # Bridge flows (~17 models)
+│   ├── ESG/                       # Sustainability (~16 models)
+│   ├── crawlers_data/             # External data (~16 models)
+│   ├── probelab/                  # ProbeLab (~5 models)
+│   └── shared/                    # Time spine + shared marts
 ├── macros/
 │   ├── db/                        # Database utilities (incremental filters, dedup_source)
 │   ├── decoding/                  # Contract decoding macros (decode_logs, decode_calls)
@@ -2169,7 +2188,7 @@ Tables with `freshness: null` in their source YAML are skipped. If a table unexp
 
 #### Full refresh model triggers false Elementary alerts
 
-All 59 `meta.full_refresh` models skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
+All `meta.full_refresh` models (~200 as of 2026-07) skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
 1. The model has `meta.full_refresh` in its `schema.yml`
 2. Check the model's `schema.yml` for correct test configuration
 

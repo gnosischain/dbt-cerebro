@@ -44,11 +44,12 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 - [refill-append-aggregator-inflation](refill-append-aggregator-inflation.md)
   `remediated` — an aggregator run in the same dbt invocation as its source's append
   reads 2x live RMT rows and bakes doubled values that row-level dup checks miss.
-- [sparse-zero-row-stale-survival](sparse-zero-row-stale-survival.md) `observed`
-  (fix pending deploy) — a sparse table that drops zero rows can never overwrite a
-  stale key with "zero"; spend-to-zero keys survive every reprocess and inflate
-  apparent supply (16 tokens affected). Tombstone fix in tree; production re-arms
-  nightly until merged. Detection: dq_daily_balance_conservation.
+- [sparse-zero-row-stale-survival](sparse-zero-row-stale-survival.md) `enforced`
+  — a sparse table that drops zero rows can never overwrite a stale key with "zero";
+  spend-to-zero keys survive every reprocess and inflate apparent supply. Tombstone
+  fix + dq_daily_balance_conservation DEPLOYED 2026-07-18 (image b930150); 19-token
+  pre-deploy backlog re-cleaned 2026-07-19 (conservation 0 all July days, dq suite
+  8 PASS/0 WARN). Detection: dq_daily_balance_conservation.
 
 ## ClickHouse platform
 
@@ -70,6 +71,10 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   can have block holes below dbt; no dbt lever fixes them. May/June 2026 instances
   recovered end-to-end; the 2026-07-08 instance is raw-backfilled but decode
   recovery is pending (below-watermark — needs gap_window_refresh.py).
+- [event-struct-array-decode-unreliable](event-struct-array-decode-unreliable.md)
+  `observed` — a decoded event `tuple[]` (Balancer V3 tokenConfig) mis-decodes inner
+  tokens to 0x0, emits bogus addresses, and misplaces real ones; derive positional
+  token maps from an independent source (address-sorted swap tokens == Vault order).
 - [unpriced-wrapper-token](unpriced-wrapper-token.md) `remediated` — every new
   wrapper/vault token needs a price path or it reads $0 everywhere.
 - [stale-snapshot-caveat](stale-snapshot-caveat.md) `observed` — argMax "latest" marts

@@ -47,7 +47,8 @@ models:
     Daily Uniswap V3 pool token balances with oracle price enrichment.
     Built from event deltas (Mint, Burn, Swap, Collect, Flash) with static fee rates
     from PoolCreated (fee_tier_ppm). Separates reserves from unclaimed fees:
-    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    reserve_amount is the physical pool token balance (equals token_amount, matches on-chain
+    balanceOf); swap fees are NOT subtracted (they stay in the pool until collected);
     fee_amount = swap fee income − collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
@@ -111,7 +112,8 @@ models:
     the pool's first observed fee for swaps before the first Fee event. Fees are
     applied in ppm (1e6 denominator) to split each swap_in delta into a reserve
     portion (delta - fee) and a fee portion. Separates reserves from unclaimed fees:
-    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    reserve_amount is the physical pool token balance (equals token_amount, matches on-chain
+    balanceOf); swap fees are NOT subtracted (they stay in the pool until collected);
     fee_amount = swap fee income - collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
@@ -137,11 +139,20 @@ models:
   description: |
     Daily Balancer V3 pool token balances with oracle price enrichment.
     Built from delta events (LiquidityAdded, LiquidityRemoved, Swap).
-    Token resolution uses PoolRegistered tokenConfig with sentinel-address inference
-    from Swap events. ERC4626 wrappers (waGno*) are resolved to underlying tokens
-    for symbol and price lookups. Fee separation uses event-level swapFeeAmountsRaw.
-    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
-    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+    Token-index resolution: LiquidityAdded/Removed carry only a positional token_index
+    into the Vault's address-sorted token order, but the decoded PoolRegistered
+    tokenConfig struct-array is unreliable (inner tokens decode to 0x0, and some entries
+    are bogus/misplaced addresses). So the index->address map is derived from the
+    address-sorted list of Swap tokens (arraySort == the Vault registration order,
+    verified on-chain against getPoolTokenCountAndIndexOfToken) whenever that list fully
+    covers the pool's registered token count; the tokenConfig sentinel-inference path
+    remains only as a fallback for pools whose tokens are not all traded. ERC4626
+    wrappers (waGno*) are resolved to underlying tokens for symbol and price lookups.
+    Reserve = physical pool token balance (cumulative sum of signed deltas; swap fees are
+    NOT subtracted -- they stay in the pool until withdrawn). Fee separation uses
+    event-level swapFeeAmountsRaw. Excludes BPT tokens (where token_address = pool_address)
+    and sentinel addresses. Includes oracle price (Dune ASOF join), TVL in USD, and
+    pool-implied token price.
   meta:
     agent:
       grain: [date, pool_address, token_address]

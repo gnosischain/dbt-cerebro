@@ -154,10 +154,17 @@ models:
     amounts using the end-of-day liquidityIndex. Scoped to reserves in
     lending_market_mapping.
 
-    Incremental seeding: on incremental runs the model carries forward the
-    previous max-date balances from {{ this }} as a synthetic delta on
-    max_date+1, so the cumulative running sum stays correct without rescanning
-    history. Full-refresh recomputes from the entire diffs history.
+    Incremental seeding (additive, not synthetic-delta): on incremental runs the
+    model builds a calendar of days after a watermark, left-joins new diffs, and
+    computes scaled = sum(diffs) OVER (calendar) + coalesce(prev_scaled, 0).
+    The seed day is deduped with GROUP BY any() so unmerged ReplacingMergeTree
+    parts cannot double the carry-forward (the failure mode behind the exact 2x
+    supply spikes on 2026-06-19 / 2026-06-21). Full-refresh recomputes from the
+    entire diffs history.
+
+    Overlapping month repair: pass reprocess_overwrite=true with start_month /
+    end_month to delete+insert the window, seeding from the last good day
+    BEFORE start_month (same contract as int_execution_tokens_balances_native_daily).
 
     scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
     (mirrors Aave's on-chain WadRayMath); a --full-refresh is required when
@@ -191,6 +198,41 @@ models:
     data_type: Float64
   meta:
     owner: analytics_team
+    agent:
+      grain: [date, protocol, reserve_address, user_address]
+      semantics: cumulative
+      invariants:
+      - id: seed-uniqueness
+        text: Exactly one row per (date, protocol, reserve_address, user_address).
+          Duplicate seed-day rows under ReplacingMergeTree (read without FINAL)
+          used to inject the prior scaled_balance twice into the carry-forward
+          and permanently double every holder's balance (exact 2x spikes on
+          2026-06-19 and 2026-06-21 across all reserves).
+      - id: additive-seed-not-synthetic-delta
+        text: Incremental carry-forward must add prev_scaled as a constant
+          (sum(diffs)+prev), never UNION ALL it into the event stream as a
+          synthetic delta — the latter double-counts when the seed day has
+          unmerged duplicate parts.
+      - id: idle-holder-continuity
+        text: A holder with zero diffs on day D must keep the prior day's
+          scaled_balance (index accrual only in underlying). A ~2.0 day-over-day
+          ratio on idle holders is a seed bug, not real supply.
+      hazards: [duplicate-seed-drift, append-over-populated-duplicates,
+                backfill-order-cumulative, late-start-mis-staging,
+                frontier-day-incomplete-inputs, sparse-zero-row-stale-survival,
+                refill-append-aggregator-inflation]
+      ground_truth: on-chain aToken scaledBalanceOf(user) at the day's last
+        block; reconcile in Int256 via scripts/data_checker/compare_aave_scaled_balances.py
+      validation:
+      - 'idle-holder DoD ratio: median scaled_balance(D)/scaled_balance(D-1) for
+        holders with no diffs on D should be ~1.0 (fail if in [1.9, 2.1])'
+      - duplicate-key excess by (date, protocol, reserve_address, user_address)
+      - 'compare_aave_scaled_balances.py vs RPC on spot dates'
+      reprocess_runbook: 'corrupted/frozen month: dbt run with vars {start_month,
+        end_month, reprocess_overwrite: true} — seeds from last good day BEFORE
+        the window (delete+insert). Full history: staged scripts/full_refresh/refresh.py
+        per reserve_symbol. Always rebuild cohorts AFTER balances, in a separate
+        invocation (never same append-mode run as the source).'
     full_refresh:
       start_date: "2023-10-04"
       batch_months: 1
@@ -256,6 +298,24 @@ models:
     data_type: Float64
   meta:
     owner: analytics_team
+    agent:
+      grain: [date, protocol, reserve_address, cohort_unit, balance_bucket]
+      semantics: aggregate
+      invariants:
+      - id: conserves-upstream-balances
+        text: For each (date, protocol, reserve, cohort_unit), sum(value_*_in_bucket)
+          must equal sum(balance[_usd]) from int_execution_lending_aave_user_balances_daily
+          for positive balances (excluding the zero address). A cohort/balance
+          ratio near 2/3/4 means leftover inflated cohort rows or an append
+          over a populated window.
+      hazards: [append-over-populated-duplicates, refill-append-aggregator-inflation]
+      validation:
+      - 'cohort vs balances reconciliation per (date, protocol, symbol)'
+      - duplicate-key excess by grain
+      reprocess_runbook: 'Rebuild ONLY after balances are clean, in a separate
+        invocation: dbt run -s int_execution_lending_aave_balance_cohorts_daily
+        --vars {start_month, end_month, reprocess_overwrite: true}. Never select
+        balances+cohorts together under append.'
     full_refresh:
       start_date: "2023-10-04"
       batch_months: 3
