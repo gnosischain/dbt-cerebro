@@ -52,6 +52,27 @@ models:
     fee_amount = swap fee income − collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: reserve-is-physical-balance
+        text: reserve_amount == token_amount == the physical pool token balance
+          (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash
+          contributes only the retained fee, Burn/removal-of-principal is clamped). A
+          negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction
+          drift was reintroduced.
+      - id: per-entity-density
+        text: Every (pool, token) pair should have a row for every calendar day from its
+          first event; a thin pool that skips a day can fall off the single global
+          max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps.
+      hazards: [global-frontier-carry-forward, duplicate-seed-drift]
+      validation:
+      - 'reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)'
+      - 'per (pool, token) density: uniqExact(date) / span ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_uniswap_v3_daily
+        (non-incremental branch rebuilds the per-pool dense calendar from inception, no
+        carry-forward seed), then rebuild the pools balances/TVL downstream tables
     full_refresh:
       start_date: "2022-04-22"
       batch_months: 6
@@ -117,6 +138,27 @@ models:
     fee_amount = swap fee income - collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: reserve-is-physical-balance
+        text: reserve_amount == token_amount == the physical pool token balance
+          (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash
+          contributes only the retained fee, Burn/removal-of-principal is clamped). A
+          negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction
+          drift was reintroduced.
+      - id: per-entity-density
+        text: Every (pool, token) pair should have a row for every calendar day from its
+          first event; a thin pool that skips a day can fall off the single global
+          max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps.
+      hazards: [global-frontier-carry-forward, duplicate-seed-drift]
+      validation:
+      - 'reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)'
+      - 'per (pool, token) density: uniqExact(date) / span ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_swapr_v3_daily
+        (non-incremental branch rebuilds the per-pool dense calendar from inception, no
+        carry-forward seed), then rebuild the pools balances/TVL downstream tables
     full_refresh:
       start_date: "2022-03-01"
       batch_months: 6
