@@ -168,6 +168,40 @@ models:
       owner: analytics_team
       authoritative: false
 
+  - name: stg_governance__snapshot_delegations
+    description: >
+      One row per DelegateRegistry event (tx_hash, log_index) for gnosis.eth
+      on Ethereum mainnet, deduped defensively via FINAL + row_number (each
+      on-chain event fires exactly once, so duplicates would only come from
+      accidental re-ingestion). Use int_governance_current_delegations to
+      resolve current delegation state -- this table is the raw event log.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [tx_hash, log_index]
+    columns:
+      - name: action
+        description: set | clear.
+        data_type: LowCardinality(String)
+        tests:
+          - accepted_values:
+              values: ['set', 'clear']
+      - name: delegator
+        description: Address delegating their voting power (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: delegate
+        description: Address receiving the delegation (lowercased). Present on both set and clear events.
+        data_type: String
+        tests: [not_null]
+      - name: block_number
+        data_type: UInt64
+      - name: log_index
+        description: Event log position; combined with block_number for ordering (block_time ties within a tx).
+        data_type: UInt32
+    meta:
+      owner: analytics_team
+      authoritative: false
+
   - name: stg_governance__forum_users
     description: Public Discourse user directory (deduped via FINAL).
     columns:

@@ -365,6 +365,67 @@ semantic_models:
         - turnout over time
         - monthly voter turnout
 
+- name: governance_delegates_latest
+  model: ref('api_governance_delegates_latest')
+  defaults:
+    agg_time_dimension: last_delegation_at
+  entities:
+  - name: delegate
+    type: primary
+    expr: delegate
+  dimensions:
+  - name: last_delegation_at
+    type: time
+    expr: last_delegation_at
+    type_params:
+      time_granularity: day
+  measures:
+  - name: governance_delegates_latest__delegator_count_value
+    agg: sum
+    expr: delegator_count
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - top governance delegates
+        - who has the most delegators
+        - delegate leaderboard
+
+- name: governance_delegation_graph
+  model: ref('api_governance_delegation_graph')
+  defaults:
+    agg_time_dimension: delegated_at
+  entities:
+  - name: delegator
+    type: primary
+    expr: delegator
+  - name: delegate
+    type: foreign
+    expr: delegate
+  dimensions:
+  - name: delegated_at
+    type: time
+    expr: delegated_at
+    type_params:
+      time_granularity: day
+  measures:
+  - name: governance_delegation_graph__delegation_count
+    agg: count
+    expr: delegator
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - who delegates to whom
+        - delegation graph
+        - current governance delegations
+
 - name: governance_top_voters
   model: ref('api_governance_top_voters')
   entities:
@@ -679,3 +740,34 @@ metrics:
         question_synonyms:
         - turnout trend over time
         - monthly governance turnout
+
+- name: governance_delegate_delegator_count
+  label: Delegators per Delegate
+  description: Count of gnosis.eth holders currently delegating their voting power to each delegate address (DelegateRegistry on Ethereum mainnet, not Gnosis Chain). Group by delegate for a leaderboard. Separate from vote-level power-source classification -- this is the underlying who-delegates-to-whom relationship.
+  type: simple
+  type_params:
+    measure: governance_delegates_latest__delegator_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - most delegators
+        - delegate leaderboard
+        - who do people delegate to
+
+- name: governance_delegation_count
+  label: Active Delegations
+  description: Count of currently-active delegator -> delegate relationships for gnosis.eth (DelegateRegistry on Ethereum mainnet). A delegator appears at most once, reflecting only their latest on-chain action.
+  type: simple
+  type_params:
+    measure: governance_delegation_graph__delegation_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total active delegations
+        - how many people delegate their votes
