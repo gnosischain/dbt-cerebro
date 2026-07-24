@@ -29,7 +29,7 @@ SELECT
     max(stream_type = 'gnosis_app')                     AS has_gnosis_app,
     uniqExact(stream_type)                              AS n_streams,
     -- Headline active-user flag — matches the Dune $6 / annual_rolling
-    -- threshold used by fct_revenue_active_users_totals_weekly.
+    -- threshold used by int_revenue_active_users_totals_weekly.
     sum(annual_rolling_fees) >= 6                       AS is_revenue_active
 FROM `dbt`.`int_revenue_fees_weekly_per_user`
 WHERE user IS NOT NULL

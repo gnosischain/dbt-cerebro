@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 7,
-    "high_risk": 301,
+    "explicit_contracts": 9,
+    "high_risk": 303,
     "models": 1161
   },
-  "inputs_fingerprint": "47183c4184d70a934d009b357410e92d4b15a709b2d56a9257132f14d0253ff4",
+  "inputs_fingerprint": "d960cb80155316c76e05c0fb314d96b22240ded20ec0f6b92feef45ed8cd9b66",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -275,6 +275,21 @@
       "status": "remediated",
       "symptom": "negative or short balances for holders whose inflows predate the configured start",
       "title": "Stage start_date later than real first activity silently truncates history"
+    },
+    "model-deletion-gate-false-block": {
+      "body": "## Symptom\nA branch that deletes or renames any model fails the full-tier `agent-context-check`\nwith `changed model(s) unknown to the agent context`. The message's remedy (\"run\ndbt parse + build_agent_context.py, then re-run\") never helps: the artifact is built\nfrom the manifest, and a deleted model is not in the manifest by definition.\n\n## Root cause\n`changed_model_files()` collects `git diff --name-only` output, which includes\n**deleted** paths. The unknown-model rule was written to fail closed on a *stale\nartifact* (a changed model whose hazards can't be looked up); a deletion\npattern-matches the same condition but has no hazards left to check.\n\n## Why it reached CI, not local validation\n`agent-context-check` runs only in the FULL check tier. Local validation with\n`run_all.py --fast` passes cleanly on a branch that full-tier CI then rejects.\nFor any model add/delete/rename, validate with\n`python scripts/checks/run_all.py --base-ref <CI base>` (full tier) before pushing.\n\n## Fix\n`partition_existing()` in check.py splits the changed set: deleted paths are\n*reported* but never block. Deletion risk is covered by the gates that actually\nsee it \u2014 `dbt parse` (dangling `ref()`) and the semantic-registry gate\n(orphaned metrics; see [semantic-retirement-gate](semantic-retirement-gate.md)).\n\n## Detection\nBLOCKING line names models whose `.sql` files do not exist in the working tree.",
+      "evidence": [
+        "CI run on commit 32d1b9e8 (\"promote fct_ revenue models to incremental int_\", 2026-07-24) \u2014 agent-context-check FAIL; fct_revenue_active_users_totals_weekly/_monthly deleted in that commit flagged as unknown",
+        "scripts/agent_context/check.py \u2014 changed_model_files() feeds `git diff --name-only` output (which lists deletions) straight into the unknown-model block",
+        "enforced by partition_existing() in check.py + tests/test_policy_gates.py::TestDeletedModelHandling (lands in the same commit as this lesson)"
+      ],
+      "id": "model-deletion-gate-false-block",
+      "last_verified": "2026-07-24",
+      "path": "docs/lessons/model-deletion-gate-false-block.md",
+      "scope": "scripts/agent_context/check.py (agent-context-check, full check tier only); any branch that deletes or renames a model .sql file",
+      "status": "enforced",
+      "symptom": "CI fails BLOCKING with \"changed model(s) unknown to the agent context: <deleted models>\" and the suggested fix (dbt parse + rebuild) cannot ever clear it \u2014 a deleted model is never in the manifest",
+      "title": "Deleting/renaming a model hard-blocked CI \u2014 check.py treated deleted files as \"unknown to the artifact\""
     },
     "never-seeded-incremental": {
       "body": "## Symptom\nAn incremental model sits permanently at 0 rows. Every scheduled run passes.\n\n## Root cause\nThe table was created empty (its join input didn't exist yet). Once empty, the daily\nmicrobatch runner keys off `max(date) FROM this` (epoch 1970) and bootstraps only a few\ndays back \u2014 it can't sanely seed history, and a forward incremental never reaches back.\nAnything downstream silently undercounts.\n\n## Forbidden action\nDon't trust \"the run is green\" as evidence a model has data; don't try to fix an empty\nincremental by re-running the daily runner harder.\n\n## Detection\nZero-row (or implausibly-low-row) check on incremental models vs their compiled SELECT;\nfreshness alone won't catch it (there's nothing to be stale).\n\n## Safe remediation\nOne-time `dbt run --full-refresh -s <model>`, then rebuild its direct downstream chain\n(`dbt run -s <model>+`) so the undercount clears.\n\n## Ground truth\nRun the model's compiled SELECT ad hoc and compare row counts to the table.\n\n## Enforcement\nNone automatic yet \u2014 creation-order is procedural: when adding a model, build its\ninputs first, then seed it with --full-refresh (see /new-model checklist).",
@@ -58073,142 +58088,6 @@
       ],
       "unique_key": null
     },
-    "fct_revenue_active_users_totals_monthly": {
-      "contract": {
-        "agents_md": [
-          "models/revenue/AGENTS.md"
-        ],
-        "hazards": [
-          {
-            "id": "append-over-populated-duplicates",
-            "status": "remediated",
-            "title": "Scoped append over already-populated months exactly doubles the data"
-          },
-          {
-            "id": "wide-delete-insert-wipe",
-            "status": "enforced",
-            "title": "Wide delete+insert OOMs, then the background delete silently wipes the window"
-          }
-        ],
-        "profiles": [
-          "revenue_models"
-        ],
-        "rules": [
-          {
-            "lesson": "wide-delete-insert-wipe",
-            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
-          },
-          {
-            "lesson": "staged-insert-overwrite-wipe",
-            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
-          },
-          {
-            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "append-over-populated-duplicates",
-            "text": "Scoped start_month append only into EMPTY months (populated months double); reprocess with reprocess_overwrite one slice at a time."
-          }
-        ],
-        "validation": [
-          "make check-fast"
-        ]
-      },
-      "description_present": true,
-      "downstream_api_count": 1,
-      "downstream_api_models": [
-        "api_revenue_active_users_totals_monthly"
-      ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 1,
-      "explicit_contract": false,
-      "full_refresh_stages": null,
-      "has_meta_full_refresh": false,
-      "high_risk": false,
-      "incremental_strategy": null,
-      "materialized": "view",
-      "name": "fct_revenue_active_users_totals_monthly",
-      "owner": "analytics_team",
-      "partition_by": null,
-      "path": "models/revenue/marts/fct_revenue_active_users_totals_monthly.sql",
-      "reads_this": false,
-      "strategy_expression": false,
-      "strategy_scoped_append": null,
-      "tags": [
-        "production",
-        "revenue",
-        "revenue_cross"
-      ],
-      "unique_key": null
-    },
-    "fct_revenue_active_users_totals_weekly": {
-      "contract": {
-        "agents_md": [
-          "models/revenue/AGENTS.md"
-        ],
-        "hazards": [
-          {
-            "id": "append-over-populated-duplicates",
-            "status": "remediated",
-            "title": "Scoped append over already-populated months exactly doubles the data"
-          },
-          {
-            "id": "wide-delete-insert-wipe",
-            "status": "enforced",
-            "title": "Wide delete+insert OOMs, then the background delete silently wipes the window"
-          }
-        ],
-        "profiles": [
-          "revenue_models"
-        ],
-        "rules": [
-          {
-            "lesson": "wide-delete-insert-wipe",
-            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
-          },
-          {
-            "lesson": "staged-insert-overwrite-wipe",
-            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
-          },
-          {
-            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "append-over-populated-duplicates",
-            "text": "Scoped start_month append only into EMPTY months (populated months double); reprocess with reprocess_overwrite one slice at a time."
-          }
-        ],
-        "validation": [
-          "make check-fast"
-        ]
-      },
-      "description_present": true,
-      "downstream_api_count": 1,
-      "downstream_api_models": [
-        "api_revenue_active_users_totals_weekly"
-      ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 1,
-      "explicit_contract": false,
-      "full_refresh_stages": null,
-      "has_meta_full_refresh": false,
-      "high_risk": false,
-      "incremental_strategy": null,
-      "materialized": "view",
-      "name": "fct_revenue_active_users_totals_weekly",
-      "owner": "analytics_team",
-      "partition_by": null,
-      "path": "models/revenue/marts/fct_revenue_active_users_totals_weekly.sql",
-      "reads_this": false,
-      "strategy_expression": false,
-      "strategy_scoped_append": null,
-      "tags": [
-        "production",
-        "revenue",
-        "revenue_cross"
-      ],
-      "unique_key": null
-    },
     "fct_revenue_gnosis_app_cohorts_monthly": {
       "contract": {
         "agents_md": [
@@ -78774,6 +78653,270 @@
       ],
       "unique_key": null
     },
+    "int_revenue_active_users_totals_monthly": {
+      "contract": {
+        "agents_md": [
+          "scripts/full_refresh/AGENTS.md",
+          "models/revenue/AGENTS.md"
+        ],
+        "grain": [
+          "month"
+        ],
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "wide-delete-insert-wipe",
+            "status": "enforced",
+            "title": "Wide delete+insert OOMs, then the background delete silently wipes the window"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-month",
+            "text": "Exactly one row per complete month (the open month is excluded upstream). The api_ view reads WITHOUT FINAL, so a duplicate month double-counts users and fees one-for-one."
+          },
+          {
+            "id": "complete-month-partitions",
+            "text": "Cron runs use insert_overwrite (partition = month = overwrite grain); a narrower write REPLACEs the partition down to that window. Staged runs (start_month set) resolve to append and may only write months that hold no rows."
+          },
+          {
+            "id": "upstream-restatement-coverage",
+            "text": "The 2-month incremental lookback mirrors the rewrite window of int_revenue_fees_monthly_per_user; months restated upstream beyond the lookback need a staged rebuild to heal here."
+          }
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "staged_full_refresh",
+          "revenue_models"
+        ],
+        "reprocess_runbook": "History rebuild via scripts/full_refresh/refresh.py (staged, non-overlapping 12-month append windows, batch 1 --full-refresh) or plain `dbt run --full-refresh` with NO vars when the server is idle (~33 partitions, spill hooks bound memory). Never hand-run overlapping start_month windows \u2014 scoped append into populated months doubles rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "Scoped start_month append only into EMPTY months (populated months double); reprocess with reprocess_overwrite one slice at a time."
+          }
+        ],
+        "semantics": "aggregate",
+        "validation": [
+          "make check-fast",
+          "ground truth: recompute the latest month from int_revenue_fees_monthly_per_user (sum month_fees per user, countIf >= 0.5) \u2014 must equal the stored row exactly",
+          "dbt test -s int_revenue_active_users_totals_monthly (unique + not_null month)"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_revenue_active_users_totals_monthly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_revenue_active_users_totals_monthly",
+      "owner": "analytics_team",
+      "partition_by": "month",
+      "path": "models/revenue/intermediate/int_revenue_active_users_totals_monthly.sql",
+      "reads_this": false,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
+      "tags": [
+        "production",
+        "revenue",
+        "revenue_cross"
+      ],
+      "unique_key": null
+    },
+    "int_revenue_active_users_totals_weekly": {
+      "contract": {
+        "agents_md": [
+          "scripts/full_refresh/AGENTS.md",
+          "models/revenue/AGENTS.md"
+        ],
+        "grain": [
+          "week"
+        ],
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "wide-delete-insert-wipe",
+            "status": "enforced",
+            "title": "Wide delete+insert OOMs, then the background delete silently wipes the window"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-week",
+            "text": "Exactly one row per week (complete weeks only; the open week is excluded upstream). The api_ view reads WITHOUT FINAL, so a duplicate week double-counts users and fees one-for-one."
+          },
+          {
+            "id": "complete-month-partitions",
+            "text": "Cron runs use insert_overwrite and must always SELECT complete month partitions (every week of every touched month) \u2014 a narrower window REPLACEs the partition down to that window. Staged runs (start_month set) resolve to append and may only write months that hold no rows."
+          },
+          {
+            "id": "upstream-restatement-coverage",
+            "text": "The 35-day incremental lookback must stay >= the upstream 4-week rewrite window of int_revenue_fees_weekly_per_user; weeks restated upstream beyond the lookback need a staged rebuild to heal here."
+          }
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "staged_full_refresh",
+          "revenue_models"
+        ],
+        "reprocess_runbook": "History rebuild via scripts/full_refresh/refresh.py (staged, non-overlapping 12-month append windows, batch 1 --full-refresh) or plain `dbt run --full-refresh` with NO vars when the server is idle (~34 partitions, spill hooks bound memory). Never hand-run overlapping start_month windows \u2014 scoped append into populated months doubles rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "Scoped start_month append only into EMPTY months (populated months double); reprocess with reprocess_overwrite one slice at a time."
+          }
+        ],
+        "semantics": "aggregate",
+        "validation": [
+          "make check-fast",
+          "ground truth: recompute the latest week from int_revenue_fees_weekly_per_user (sum annual_rolling_fees per user, countIf >= 6) \u2014 must equal the stored row exactly",
+          "dbt test -s int_revenue_active_users_totals_weekly (unique + not_null week)"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_revenue_active_users_totals_weekly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_revenue_active_users_totals_weekly",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(week)",
+      "path": "models/revenue/intermediate/int_revenue_active_users_totals_weekly.sql",
+      "reads_this": false,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
+      "tags": [
+        "production",
+        "revenue",
+        "revenue_cross"
+      ],
+      "unique_key": null
+    },
     "int_revenue_fees_monthly_per_user": {
       "contract": {
         "agents_md": [
@@ -84414,7 +84557,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "a7108bfdb539740b92a40bc5d25991e6b36afecc8d2d26ee2e4ab2469d7fab46",
+  "models_hash": "7a4a0f8aee173be3537221c82d32493ee8f4924fd09c0c6114d665090789af89",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
