@@ -108,13 +108,41 @@ pool_tokens AS (
    Delta events
    ======================================== */
 
+-- Aggregate (protocol + pool-creator) swap-fee % per pool over time. Balancer V3 skims this
+-- portion of every swap fee OUT of the pool's balancesRaw at swap time (the LP portion stays),
+-- so the reserve must subtract it or it accumulates a "ghost" balance (== all protocol fees ever
+-- skimmed) that dominates once a high-throughput pool drains. The % is time-varying
+-- (AggregateSwapFeePercentageChanged); a swap with no prior change event falls back to the 50%
+-- pre-2026-04 global default. CAVEAT: this recovers only the aggregate SWAP fee. Balancer also
+-- skims an aggregate YIELD fee on rate-bearing tokens (sDAI/GNO/wstETH...), which has NO
+-- per-accrual event and is not reconstructable here -- it remains a known positive residual vs
+-- on-chain balancesRaw for rate pools (full fix: periodic on-chain getTokenInfo reconciliation).
+agg_swap_fee AS (
+    SELECT
+        replaceAll(lower(decoded_params['pool']), '0x', '') AS pool_address,
+        block_timestamp AS ts,
+        toInt256OrNull(decoded_params['aggregateSwapFeePercentage']) AS agg_pct_raw
+    FROM `dbt`.`contracts_BalancerV3_Vault_events`
+    WHERE event_name = 'AggregateSwapFeePercentageChanged'
+      AND toInt256OrNull(decoded_params['aggregateSwapFeePercentage']) IS NOT NULL
+    UNION ALL
+    SELECT DISTINCT
+        pool_address,
+        toDateTime64('2020-01-01 00:00:00', 0, 'UTC') AS ts,
+        toInt256(500000000000000000) AS agg_pct_raw
+    FROM `dbt`.`stg_pools__balancer_v3_events`
+    WHERE event_type = 'Swap' AND pool_address IS NOT NULL
+),
+
 deltas_pool AS (
     SELECT
         e.block_timestamp AS block_timestamp,
         p.pool_address AS pool_address,
         p.token_address AS token_address,
         e.delta_amount_raw AS delta_amount_raw,
-        e.fee_amount_raw AS fee_amount_raw
+        e.fee_amount_raw AS fee_amount_raw,
+        -- liquidity add/remove carries no swap fee: reserve delta == physical delta
+        e.delta_amount_raw AS reserve_delta_raw
     FROM `dbt`.`stg_pools__balancer_v3_events` e
     INNER JOIN pool_tokens p
         ON e.pool_address = p.pool_address
@@ -130,8 +158,18 @@ deltas_swap AS (
         e.pool_address AS pool_address,
         lower(e.token_address) AS token_address,
         e.delta_amount_raw AS delta_amount_raw,
-        e.fee_amount_raw AS fee_amount_raw
+        e.fee_amount_raw AS fee_amount_raw,
+        -- net out the aggregate (protocol+creator) swap fee, which exits the pool's balancesRaw;
+        -- a.agg_pct_raw is the as-of aggregate % for this swap (ASOF, scaled 1e18). Integer math
+        -- keeps Int256 precision. coalesce->0 is a safe no-subtraction fallback (never hit: every
+        -- swap pool has a default 50% row in agg_swap_fee).
+        e.delta_amount_raw
+          - intDiv(e.fee_amount_raw * coalesce(a.agg_pct_raw, toInt256(0)), toInt256(1000000000000000000))
+          AS reserve_delta_raw
     FROM `dbt`.`stg_pools__balancer_v3_events` e
+    ASOF LEFT JOIN agg_swap_fee a
+        ON a.pool_address = e.pool_address
+       AND a.ts <= e.block_timestamp
     WHERE e.event_type = 'Swap'
       AND e.delta_amount_raw IS NOT NULL
       AND e.token_address IS NOT NULL
@@ -149,11 +187,15 @@ daily_deltas AS (
         toDate(toStartOfDay(block_timestamp)) AS date,
         concat('0x', pool_address) AS pool_address,
         token_address,
-        sum(delta_amount_raw) AS daily_delta_raw,
-        -- reserve = physical pool token balance (== daily_delta_raw). Do NOT subtract the
-        -- swap fee: it stays in the pool until withdrawn, so subtracting it drifts the reserve
-        -- below the true balance and eventually negative. Fees live in int_execution_pools_fees_daily.
-        sum(delta_amount_raw) AS daily_reserve_delta_raw,
+        -- Both balance and reserve use reserve_delta_raw (== delta minus the aggregate swap fee
+        -- that exits balancesRaw). The gross sum(delta_amount_raw) is NOT the pool balance: the
+        -- skimmed aggregate fees are never returned via Swap/Liquidity events (they leave on a
+        -- separate protocol-fee-collection call we don't track), so the gross sum accumulates a
+        -- ghost. reserve == token_amount == on-chain balancesRaw (net of aggregate SWAP fee; the
+        -- aggregate YIELD fee on rate tokens is a known un-subtracted residual). Gross swap fees
+        -- stay in int_execution_pools_fees_daily.
+        sum(reserve_delta_raw) AS daily_delta_raw,
+        sum(reserve_delta_raw) AS daily_reserve_delta_raw,
         sum(fee_amount_raw) AS daily_fee_delta_raw
     FROM all_deltas
     WHERE block_timestamp < today()
