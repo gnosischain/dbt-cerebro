@@ -442,6 +442,34 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [week]
+      semantics: aggregate
+      invariants:
+      - id: one-row-per-week
+        text: Exactly one row per week (complete weeks only; the open week is
+          excluded upstream). The api_ view reads WITHOUT FINAL, so a duplicate
+          week double-counts users and fees one-for-one.
+      - id: complete-month-partitions
+        text: Cron runs use insert_overwrite and must always SELECT complete
+          month partitions (every week of every touched month) — a narrower
+          window REPLACEs the partition down to that window. Staged runs
+          (start_month set) resolve to append and may only write months that
+          hold no rows.
+      - id: upstream-restatement-coverage
+        text: The 35-day incremental lookback must stay >= the upstream 4-week
+          rewrite window of int_revenue_fees_weekly_per_user; weeks restated
+          upstream beyond the lookback need a staged rebuild to heal here.
+      hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates]
+      validation:
+      - 'ground truth: recompute the latest week from int_revenue_fees_weekly_per_user
+        (sum annual_rolling_fees per user, countIf >= 6) — must equal the stored row exactly'
+      - 'dbt test -s int_revenue_active_users_totals_weekly (unique + not_null week)'
+      reprocess_runbook: History rebuild via scripts/full_refresh/refresh.py
+        (staged, non-overlapping 12-month append windows, batch 1 --full-refresh)
+        or plain `dbt run --full-refresh` with NO vars when the server is idle
+        (~34 partitions, spill hooks bound memory). Never hand-run overlapping
+        start_month windows — scoped append into populated months doubles rows.
     full_refresh:
       start_date: "2023-10-01"
       batch_months: 12
@@ -463,6 +491,33 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [month]
+      semantics: aggregate
+      invariants:
+      - id: one-row-per-month
+        text: Exactly one row per complete month (the open month is excluded
+          upstream). The api_ view reads WITHOUT FINAL, so a duplicate month
+          double-counts users and fees one-for-one.
+      - id: complete-month-partitions
+        text: Cron runs use insert_overwrite (partition = month = overwrite
+          grain); a narrower write REPLACEs the partition down to that window.
+          Staged runs (start_month set) resolve to append and may only write
+          months that hold no rows.
+      - id: upstream-restatement-coverage
+        text: The 2-month incremental lookback mirrors the rewrite window of
+          int_revenue_fees_monthly_per_user; months restated upstream beyond
+          the lookback need a staged rebuild to heal here.
+      hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates]
+      validation:
+      - 'ground truth: recompute the latest month from int_revenue_fees_monthly_per_user
+        (sum month_fees per user, countIf >= 0.5) — must equal the stored row exactly'
+      - 'dbt test -s int_revenue_active_users_totals_monthly (unique + not_null month)'
+      reprocess_runbook: History rebuild via scripts/full_refresh/refresh.py
+        (staged, non-overlapping 12-month append windows, batch 1 --full-refresh)
+        or plain `dbt run --full-refresh` with NO vars when the server is idle
+        (~33 partitions, spill hooks bound memory). Never hand-run overlapping
+        start_month windows — scoped append into populated months doubles rows.
     full_refresh:
       start_date: "2023-10-01"
       batch_months: 12

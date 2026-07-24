@@ -86,6 +86,10 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 
 - [semantic-retirement-gate](semantic-retirement-gate.md) `enforced` — retiring/renaming
   a model with metrics on it breaks the strict CI registry gate; grep semantic/ first.
+- [model-deletion-gate-false-block](model-deletion-gate-false-block.md) `enforced` —
+  deleting/renaming a model tripped agent-context-check's unknown-model block (deleted
+  files aren't in the manifest); deletions now report, never block. Full tier only —
+  validate model add/delete/rename with `run_all.py --base-ref <CI base>`, not `--fast`.
 - [docs-catalog-zero-nodes](docs-catalog-zero-nodes.md) `observed` — catalog.json has 0
   model nodes on dbt-clickhouse; expected, don't chase.
 

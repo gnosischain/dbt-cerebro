@@ -16,6 +16,7 @@ Run with `python -m pytest tests/test_policy_gates.py` from the repo root
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -505,6 +506,30 @@ class TestBaseRefHandling:
             raise subprocess.CalledProcessError(128, ["git", "diff"])
         monkeypatch.setattr(impact_check, "changed_model_files", boom)
         assert impact_check.get_changed_models("bogus-ref", require_base=False) == []
+
+
+# ---------------------------------------------------------------------------
+# check.py — deleted model files must not trip the unknown-model block
+# ---------------------------------------------------------------------------
+
+class TestDeletedModelHandling:
+    def test_deleted_paths_are_partitioned_out(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(impact_check, "REPO_ROOT", tmp_path)
+        kept = Path("models/revenue/marts/kept_model.sql")
+        gone = Path("models/revenue/marts/deleted_model.sql")
+        (tmp_path / kept).parent.mkdir(parents=True)
+        (tmp_path / kept).write_text("select 1")
+        present, deleted = impact_check.partition_existing([kept, gone])
+        assert present == [kept]
+        assert deleted == [gone]
+
+    def test_all_present_when_nothing_deleted(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(impact_check, "REPO_ROOT", tmp_path)
+        kept = Path("models/a.sql")
+        (tmp_path / kept).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / kept).write_text("select 1")
+        present, deleted = impact_check.partition_existing([kept])
+        assert present == [kept] and deleted == []
 
 
 # ---------------------------------------------------------------------------

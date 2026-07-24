@@ -152,7 +152,7 @@ remaining exemption count (no silent caps).
 | `check_doc_coverage.py` | per-module description/ownership coverage regressions (floors only ratchet up) | `doc_coverage_floors.json` |
 | `envio_ga_policy.py` | envio_ga models: incremental without `partition_by`; stretch-table readers without the `stretch` tag | `envio_ga_policy.allow` |
 | `scaffold_candidates.py --gate` | tracked `api_/fct_/int_` models with no semantic authoring | `semantic/authoring/scaffold_gate.allow` |
-| `check.py` | changed high-risk models without contracts; **changed models unknown to the artifact** (stale artifact or never parsed — fail closed, hazards can't be checked) | `contract_ratchet.allow` |
+| `check.py` | changed high-risk models without contracts; **changed models unknown to the artifact** (stale artifact or never parsed — fail closed, hazards can't be checked). Deleted model files are reported but never block — nothing is left to hazard-check, and dangling refs/metrics are caught by dbt parse and the semantic-registry gate | `contract_ratchet.allow` |
 | `build_agent_context.py` | unknown lesson/hazard references, unknown `meta.agent` keys, unparseable lesson frontmatter, non-deterministic output | — |
 | `tests/test_policy_gates.py` | any drift in the gate contracts themselves — including the four canonical violations: a new delete+insert incremental, an untagged `api_` model, an unauthored tracked mart, a staged literal `insert_overwrite` | — |
 

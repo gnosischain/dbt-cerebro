@@ -20,6 +20,10 @@ Failure modes:
   - A changed model file UNKNOWN to the artifact is BLOCKING (the artifact is
     stale or the model was never parsed — either way its hazards are unknown;
     run `dbt parse` + build_agent_context.py, then re-run).
+  - DELETED model files are reported but never block: a removed model has no
+    hazards left to check, and the breakage a deletion can cause (dangling
+    ref(), orphaned semantic metrics) is caught by dbt parse and the
+    semantic-registry gate.
   - `--require-base` (CI): an unresolvable base ref is a hard error. Without
     it (local), the diff falls back to the working tree with a warning.
 
@@ -78,6 +82,17 @@ def get_changed_models(base_ref: str, require_base: bool) -> list[Path]:
         return []
 
 
+def partition_existing(paths: list[Path]) -> tuple[list[Path], list[Path]]:
+    """Split changed paths into (present, deleted). git diff lists deleted
+    files too; a deleted model can never be in the manifest-derived artifact,
+    so treating it as 'unknown' would hard-block every model removal/rename.
+    Its hazards are moot, and dangling refs are caught by dbt parse and the
+    semantic-registry gate."""
+    present = [p for p in paths if (REPO_ROOT / p).exists()]
+    deleted = [p for p in paths if not (REPO_ROOT / p).exists()]
+    return present, deleted
+
+
 def load_artifact() -> dict:
     path = REPO_ROOT / "target" / "agent_context.json"
     if not path.exists():
@@ -116,12 +131,17 @@ def main() -> int:
     blocking: list[str] = []
 
     changed = get_changed_models(args.base_ref, args.require_base)
+    changed, deleted = partition_existing(changed)
 
     changed_names = [p.stem for p in changed]
     known = [n for n in changed_names if n in models]
     unknown = [n for n in changed_names if n not in models]
 
     print(f"Changed model files vs {args.base_ref} (incl. working tree): {len(changed_names)}")
+    if deleted:
+        print(f"Deleted model file(s), skipped — nothing left to hazard-check; "
+              f"ref/metric breakage is covered by dbt parse and the semantic-registry gate: "
+              f"{', '.join(sorted(p.stem for p in deleted))}")
     if unknown:
         blocking.append(
             f"changed model(s) unknown to the agent context: {', '.join(unknown)} — "
