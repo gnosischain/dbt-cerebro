@@ -190,11 +190,18 @@ models:
     covers the pool's registered token count; the tokenConfig sentinel-inference path
     remains only as a fallback for pools whose tokens are not all traded. ERC4626
     wrappers (waGno*) are resolved to underlying tokens for symbol and price lookups.
-    Reserve = physical pool token balance (cumulative sum of signed deltas; swap fees are
-    NOT subtracted -- they stay in the pool until withdrawn). Fee separation uses
-    event-level swapFeeAmountsRaw. Excludes BPT tokens (where token_address = pool_address)
-    and sentinel addresses. Includes oracle price (Dune ASOF join), TVL in USD, and
-    pool-implied token price.
+    Reserve = the pool's on-chain balancesRaw: cumulative signed deltas MINUS the aggregate
+    (protocol + pool-creator) swap fee that Balancer V3 skims out of balancesRaw at each swap
+    (the LP fee portion stays in the pool). Not subtracting it accumulated a "ghost" balance
+    (== all protocol fees ever skimmed) that dominated once a high-throughput pool drained. The
+    aggregate % is time-varying (AggregateSwapFeePercentageChanged), with a 50% pre-2026-04
+    global default for swaps predating a pool's first change event. KNOWN RESIDUAL: aggregate
+    YIELD fees on rate-bearing tokens (sDAI/GNO/wstETH...) have no per-accrual event and are NOT
+    subtracted, so rate pools still read somewhat above on-chain balancesRaw (and the 50% default
+    can leave sub-unit dust negatives on a few thin pools) -- the full fix is a periodic on-chain
+    getTokenInfo().balancesRaw reconciliation. Fee separation uses event-level swapFeeAmountsRaw.
+    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses. Includes
+    oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
     agent:
       grain: [date, pool_address, token_address]
