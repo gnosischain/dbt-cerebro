@@ -1,8 +1,10 @@
 
+
 -- depends_on: `dbt`.`int_execution_lending_aave_diffs_daily`
 -- NOTE: scaled_balance and balance_raw are UInt256/Int256 for exact aToken math
 -- (mirrors Aave's on-chain WadRayMath). Run with --full-refresh when migrating from
 -- the previous Float64 schema so the column types are recreated.
+
 
 
 
@@ -98,112 +100,129 @@ overall_max_date AS (
     SELECT
         least(
             
-                today(),
+                yesterday(),
             
             yesterday()
         ) AS max_date
 ),
 
 
+-- Append path (start_month / incremental_end_date): strict max(date) watermark
+-- so the calendar only emits dates that are not already in the table.
+-- Daily delete+insert path: lag one day (date < yesterday) so yesterday can be
+-- recomputed when late diffs arrive.
 current_partition AS (
     SELECT
         max(date) AS max_date
     FROM `dbt`.`int_execution_lending_aave_user_balances_daily`
-    WHERE date < yesterday()
-      AND (protocol, reserve_address) IN (SELECT protocol, reserve_address FROM reserve_map)
+    WHERE (protocol, reserve_address) IN (SELECT protocol, reserve_address FROM reserve_map)
+      
+      AND date < yesterday()
+      
 ),
 
 prev_balances AS (
+    -- Dedup the seed day with partition-pruned GROUP BY any() instead of FINAL.
+    -- Unmerged ReplacingMergeTree parts on the seed day were what turned one
+    -- carry-forward into two seeds and permanently doubled every holder's balance.
     SELECT
-        t1.protocol        AS protocol,
-        t1.user_address    AS user_address,
-        t1.reserve_address AS reserve_address,
-        t1.scaled_balance  AS scaled_balance
-    FROM `dbt`.`int_execution_lending_aave_user_balances_daily` t1
-    CROSS JOIN current_partition t2
-    WHERE t1.date = t2.max_date
-      AND (t1.protocol, t1.reserve_address) IN (SELECT protocol, reserve_address FROM reserve_map)
-),
-
-seeded_events AS (
-    SELECT
-        addDays(cp.max_date, 1) AS date,
-        p.protocol              AS protocol,
-        p.user_address          AS user_address,
-        p.reserve_address       AS reserve_address,
-        p.scaled_balance        AS diff_scaled
-    FROM prev_balances p
-    CROSS JOIN current_partition cp
-    UNION ALL
-    SELECT
-        d.date,
-        d.protocol,
-        d.user_address,
-        d.reserve_address,
-        d.diff_scaled
-    FROM deltas d
-),
-
-
-
-cumulative_at_events AS (
-    SELECT
-        date,
         protocol,
         user_address,
         reserve_address,
-        sum(diff_scaled) OVER (
-            PARTITION BY protocol, user_address, reserve_address
-            ORDER BY date
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS scaled_balance
-    FROM seeded_events
+        any(scaled_balance) AS scaled_balance
+    FROM `dbt`.`int_execution_lending_aave_user_balances_daily`
+    WHERE date = (SELECT max_date FROM current_partition)
+      AND (protocol, reserve_address) IN (SELECT protocol, reserve_address FROM reserve_map)
+    GROUP BY protocol, user_address, reserve_address
 ),
 
-with_next_event AS (
-    SELECT
-        date,
+seed_date AS (
+    SELECT max_date FROM current_partition
+),
+
+
+
+
+keys AS (
+    SELECT DISTINCT
         protocol,
         user_address,
-        reserve_address,
-        scaled_balance,
-        leadInFrame(date, 1, toDate('2099-01-01')) OVER (
-            PARTITION BY protocol, user_address, reserve_address
-            ORDER BY date
-            ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
-        ) AS next_event_date
-    FROM cumulative_at_events
+        reserve_address
+    FROM (
+        SELECT protocol, user_address, reserve_address FROM prev_balances
+        UNION ALL
+        SELECT protocol, user_address, reserve_address FROM deltas
+    )
 ),
+
+calendar AS (
+    SELECT
+        k.protocol        AS protocol,
+        k.user_address    AS user_address,
+        k.reserve_address AS reserve_address,
+        addDays(sd.max_date, offset + 1) AS date
+    FROM keys k
+    CROSS JOIN seed_date sd
+    CROSS JOIN overall_max_date omd
+    ARRAY JOIN range(toUInt64(greatest(
+        dateDiff('day', sd.max_date, omd.max_date),
+        0
+    ))) AS offset
+),
+
+
 
 daily_balances AS (
     SELECT
-        addDays(w.date, number) AS date,
-        w.protocol              AS protocol,
-        w.user_address          AS user_address,
-        w.reserve_address       AS reserve_address,
-        w.scaled_balance        AS scaled_balance
-    FROM with_next_event w
-    CROSS JOIN overall_max_date omd
-    ARRAY JOIN range(toUInt64(greatest(
-        dateDiff('day', w.date, least(w.next_event_date, addDays(omd.max_date, 1))),
-        0
-    ))) AS number
+        c.date            AS date,
+        c.protocol        AS protocol,
+        c.user_address    AS user_address,
+        c.reserve_address AS reserve_address,
+        sum(coalesce(d.diff_scaled, toInt256(0))) OVER (
+            PARTITION BY c.protocol, c.user_address, c.reserve_address
+            ORDER BY c.date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )
+        
+            + coalesce(p.scaled_balance, toInt256(0))
+        
+        AS scaled_balance
+    FROM calendar c
+    LEFT JOIN deltas d
+      ON  d.date            = c.date
+     AND  d.protocol        = c.protocol
+     AND  d.user_address    = c.user_address
+     AND  d.reserve_address = c.reserve_address
+    
+    LEFT JOIN prev_balances p
+      ON  p.protocol        = c.protocol
+     AND  p.user_address    = c.user_address
+     AND  p.reserve_address = c.reserve_address
+    
 ),
 
 balances_with_index AS (
     SELECT
-        b.date               AS date,
-        b.protocol           AS protocol,
-        b.user_address       AS user_address,
-        b.reserve_address    AS reserve_address,
-        b.scaled_balance     AS scaled_balance,
+        b.date                AS date,
+        b.protocol            AS protocol,
+        b.user_address        AS user_address,
+        b.reserve_address     AS reserve_address,
+        b.scaled_balance      AS scaled_balance,
         i.liquidity_index_eod AS liquidity_index_eod
     FROM daily_balances b
     ASOF LEFT JOIN daily_index i
         ON  i.protocol        = b.protocol
         AND i.reserve_address = b.reserve_address
         AND b.date >= i.date
+    -- Sparse-table rule: drop zero balances, but on incremental runs still emit
+    -- a zero row for keys that had activity in the window so delete+insert can
+    -- overwrite a stale positive balance after a full withdraw.
     WHERE b.scaled_balance != toInt256(0)
+    
+       OR (b.protocol, b.user_address, b.reserve_address) IN (
+            SELECT DISTINCT protocol, user_address, reserve_address FROM deltas
+          )
+    
 ),
 
 balances_with_underlying AS (
@@ -242,3 +261,5 @@ FROM balances_with_underlying b
 LEFT JOIN `dbt`.`int_execution_token_prices_daily` p
     ON p.date = b.date
    AND p.symbol = b.symbol
+WHERE b.date < today()
+  

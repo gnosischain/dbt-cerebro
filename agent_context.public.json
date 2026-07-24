@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 3,
+    "explicit_contracts": 7,
     "high_risk": 301,
     "models": 1161
   },
-  "inputs_fingerprint": "ff83feb051f440cc2186bda39e1aa0be4d640f9d6572d3d63ae08b22ddc7f7c7",
+  "inputs_fingerprint": "85f5f37b79e8d688f91dcd5fce71adfd258cdc92884e48130a1196f9ee103a83",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -214,6 +214,22 @@
       "symptom": "every dbt invocation pays a 35-68s flat tax; slice-heavy cron runs dominated by artifact uploads",
       "title": "Elementary re-uploaded the full artifact catalog on every dbt invocation"
     },
+    "event-struct-array-decode-unreliable": {
+      "body": "## Symptom\nA pool's per-token reserves are misattributed **across its own tokens**: one leg goes\nnegative while another is inflated by the missing amount, even though the pool-total\nreserve and the swap-side (token-address-keyed) numbers look right. On Balancer V3 the\nsDAI leg of pool `0x5a15b1e1` read \u2212540 while an unlabeled leg read +5,292; the true\nsplit was sDAI +37.75 and that leg +30.67.\n\n## Root cause\nLiquidity events (`LiquidityAdded`/`LiquidityRemoved`) carry only a **positional\n`token_index`** into the Vault's address-sorted token order; they do not carry the token\naddress. The model resolved that index \u2192 address from the **decoded `PoolRegistered.tokenConfig`\nstruct-array** (`tuple[]`). The log decoder does not decode nested `tuple[]` params\nfaithfully: inner tokens decode to `0x0`, some entries are **bogus addresses that were\nnever registered** (verified: `getPoolTokenCountAndIndexOfToken` reverts for them), and\n**real tokens are placed at the wrong index** (wstETH decoded at index 4 but is actually\nindex 1). So `amountsAddedRaw[i]` was attributed to the wrong token; the LP-add of one\ntoken landed on another leg, driving the true leg negative.\n\nThe swap side was always correct because Swap events carry the token **address** directly,\nso only the index-keyed liquidity deltas were mis-mapped.\n\n## Forbidden action\nDo not trust a decoded `tuple[]`/struct-array param positionally. Do not use its element\naddresses, its element order, or infer \"sentinels\" from it, when an independent\nauthoritative ordering exists.\n\n## Detection\n`tests/data_quality/dq_daily_pools_reserve_physical_balance.sql` (severity=warn) \u2014 a\nphysical reserve must be `>= 0` and equal `token_amount`; a negative leg is the signature.\nCross-check offline: for each pool where `length(arraySort(swap tokens)) == tokenConfig\nlength`, assert the swap-sorted address at each reliably-decoded (non-sentinel) index\nequals the tokenConfig address \u2014 disagreements are decode failures, not fix regressions.\n\n## Safe remediation\nDerive the `token_index \u2192 address` map from an **independent authoritative source**. For\nBalancer V3 the Vault registers tokens **address-sorted**, and that order indexes the\npositional `amountsAddedRaw`/`amountsRemovedRaw` arrays \u2014 so `arraySort(groupUniqArray(Swap\ntoken_address))` reproduces it exactly (confirmed on-chain via\n`getPoolTokenCountAndIndexOfToken`). Use the swap-sorted list whenever it fully covers the\npool's registered token count (`n_swap == token_cnt`); keep the old tokenConfig path only\nas a fallback for pools whose tokens are not all traded. Then **full-refresh** the model\n(cumulative \u2014 the non-incremental branch rebuilds the whole per-pool calendar with no\n`{{ this }}` seed) and rebuild the downstream balances/TVL closure.\n\n## Ground truth\nBalancer V3 Vault (core, not the delegated extension) `getPoolTokenCountAndIndexOfToken(pool,\ntoken)` returns `(count, index)` and reverts (`0xddef98d7`) for an unregistered token \u2014 the\nauthoritative index map, one RPC call per (pool, token).\n\n## Enforcement\nDetection is the reserve physical-balance DQ test above. NOTE: the code fix (the\nswap-sorted `pool_tokens` mapping) is in the working tree only; production runs the merged\nimage, so the nightly incremental re-arms the mis-mapping for **new** days until merged \u2014\nthe warehouse history is corrected, the code is not yet deployed.",
+      "evidence": [
+        "models/execution/pools/intermediate/int_execution_pools_balancer_v3_daily.sql (pool_tokens CTE; tokenconfig_raw parses decoded_params['tokenConfig'] tuple[])",
+        "on-chain Vault 0xba1333333333a1ba1108e8412f11850a5c319ba9 getPoolTokenCountAndIndexOfToken: pool 0x5a15b1e1 -> wstETH=0, 0x7ef5=1, WBTC=2, GNO=3, sDAI=4 (address-sorted); matched arraySort(swap tokens), NOT the tokenConfig decode",
+        "7 disagreement (pool,index) cases: mapped_addr (swap-sorted) sat at the disputed index on-chain in all 7; reliable_addr (tokenConfig) either reverted (0x09f9611f/0x89c80a45 not registered) or was misplaced (wstETH decoded at idx4, actually idx1)",
+        "census: Balancer V3 pool-token pairs ever negative 142 -> 0 after the swap-sorted rebuild; combined labeled pools negatives ~163 -> 1 (a -$0.05 BalV2 dust, 2026-05-17)"
+      ],
+      "id": "event-struct-array-decode-unreliable",
+      "last_verified": "2026-07-24",
+      "path": "docs/lessons/event-struct-array-decode-unreliable.md",
+      "scope": "models that read a Solidity struct-array (`tuple[]`) event param and use its positional index to attribute per-token amounts \u2014 Balancer V3 PoolRegistered.tokenConfig in int_execution_pools_balancer_v3_daily; any decode chain over ABI tuple[] params",
+      "status": "observed",
+      "symptom": "per-token reserves/balances misattributed across a pool's own tokens (one leg negative, another inflated) even though pool-total and swap-side numbers look fine",
+      "title": "A decoded event struct-array (tuple[]) is unreliable \u2014 derive positional token maps from an independent source"
+    },
     "frontier-day-incomplete-inputs": {
       "body": "## Symptom\nA one-day burst of impossible values at (or near) the frontier: negative real-holder\nbalances, or a day where a joined attribute (USD price) is NULL/default for ~100% of\nrows. Days on either side look normal. By the time you investigate, the upstream\nmodels look complete \u2014 they healed on a later run.\n\n## Root cause\nThe cron builds the cumulative model's day-(D) slice on the morning of D+1. If the\ninputs for D (decoded transfers/diffs, or the price feed) had not fully landed at\nbuild time \u2014 raw ingestion lag, an upstream batch failing in a *separate* dbt\ninvocation (batch isolation breaks DAG failure propagation), or a source that\npublishes late \u2014 the slice integrates a partial (or empty) day.\n\nThe asymmetry is the trap: upstreams that recompute their latest month\n(insert_overwrite) self-heal on the next run, but a cumulative carry-forward only\ngenerates dates after its own `max(date)` \u2014 the frozen day is never revisited, and\nevery subsequent day inherits the deficit.\n\n## Forbidden action\nDon't \"fix\" the negative rows in place, and don't assume the upstream was at fault \u2014\nby inspection time the upstream is usually correct; the cumulative layer holds the\nstale integration. Don't re-run the daily runner harder (it only appends forward).\n\n## Detection\ndq_daily_negative_real_holder_balances (tests/data_quality/) catches the cumulative\ncase; a per-day activity comparison localizes the frozen day: addresses with\ntransfers vs addresses whose balance changed, per (symbol, date) \u2014 the frozen day\nshows a collapse in the ratio. For join-layers: % NULL of the joined column per day.\n\n## Safe remediation\n- Native cumulative chain: the model's own documented reprocess window \u2014\n  `dbt run -s int_execution_tokens_balances_native_daily --vars '{start_month: <month>,\n  end_month: <month>, reprocess_overwrite: true}'` (delete+insert atomically replaces\n  the month partitions; the seed reads the last good day BEFORE the window).\n  Verify `dup_excess = 0` on the partition before and after.\n- Price-join layer: `scripts/maintenance/refill_after_price_gap.sh --from-date <gap\n  start>` (two-pass append + OPTIMIZE DEDUPLICATE per month, then rebuilds the\n  downstream fct_*/api_* \u2014 do NOT use bare start_month vars: append without OPTIMIZE\n  duplicates).\n- Always fix the native layer BEFORE re-pricing the USD layer, or the refill bakes\n  wrong native balances into USD.\n\n## Ground truth\nRaw `execution.logs` Int256 per-address reconstruction for the frozen day; on-chain\nbalanceOf at the day's last block.\n\n## Enforcement\nDetection is wired (daily data-quality tests). Recompute remains manual. Durable-fix\ncandidates (proposed): make the balances incremental branch re-integrate a trailing\nN-day window each run (needs dup-safety analysis under delete+insert), or gate the\ncron's balances batch on an input-completeness check (diffs row count for D within\ntolerance of the trailing average).",
       "evidence": [
@@ -298,7 +314,8 @@
         "mechanism: within one dbt invocation, DAG order runs the source append (int_execution_tokens_balances_daily gains a second live July copy) BEFORE the aggregators compute \u2014 OPTIMIZE only runs after the invocation, so aggregators bake sum(2x rows); their doubled row then survives every merge as the latest version per key. The script's old pass-B re-appended sources again, recreating the same 2x state it was designed to clear",
         "canary blind spot: Phase 1.5 scanned GNO supply +/-7d around --from-date (2026-07-13); the doubling sat at the month boundary and was uniform inside July -> no intra-window jump, canary passed",
         "sibling instance: the 2026-07-02 OC-sDAI backfill left Apr/May/Jun partitions of int_execution_tokens_balances_daily with every OC-sDAI row exactly twice (352/5,287/16,026 dup rows == 100% of those partitions' dup_excess) and no OPTIMIZE \u2014 OC-sDAI supply read 2x native for its entire history",
-        "fix: pass C/D re-ran the 7 aggregators alone against merged sources + OPTIMIZE; script rewritten to per-month \"sources-then-OPTIMIZE-then-aggregators-then-OPTIMIZE\" with a split-membership guard (scripts/maintenance/refill_after_price_gap.sh)"
+        "fix: pass C/D re-ran the 7 aggregators alone against merged sources + OPTIMIZE; script rewritten to per-month \"sources-then-OPTIMIZE-then-aggregators-then-OPTIMIZE\" with a split-membership guard (scripts/maintenance/refill_after_price_gap.sh)",
+        "2026-07-19 SIBLING VARIANT (killed-append-then-retry): during the sparse-zero-row re-clean, a Code 241 (server-saturation victim) killed an append to int_execution_tokens_balances_daily MID-INSERT, committing partial rows; a naive retry that appended the full month ON TOP produced identical RMT duplicates on 9/18 July days. Same failure family (append -> unmerged RMT dups double-counted by FINAL-less readers), different trigger (partial-insert survivorship, not same-invocation ordering). Recovery: DROP PARTITION (never append-on-top after a kill) -> single clean append -> OPTIMIZE ... PARTITION .. FINAL barrier -> re-run the aggregators. Rule: treat ANY killed append as leaving partial rows; drop before retrying"
       ],
       "id": "refill-append-aggregator-inflation",
       "last_verified": "2026-07-17",
@@ -339,23 +356,26 @@
       "title": "Retiring/renaming a model with semantic authoring breaks the CI registry gate"
     },
     "sparse-zero-row-stale-survival": {
-      "body": "## Symptom\nA reprocess that demonstrably works (fixes hundreds of rows) leaves a stubborn few\nuntouched, run after run. The stuck keys share one property: their correct current\nvalue is zero/none.\n\n## Root cause\nTwo individually-reasonable choices compose into a trap:\n1. Sparse storage: rows with zero state are filtered out to keep the table small.\n2. delete+insert scoped to the new batch's keys: only keys present in the new rows\n   get their old rows deleted.\nA correction whose result is \"this key now has NO row\" produces nothing to insert \u2014\nso nothing gets deleted, and the stale row (a negative balance, an outdated state)\nsurvives every rebuild. Worse, the cumulative chain seeds the next day from the\nstale row, propagating it forward.\n\n## Forbidden action\nDon't \"fix\" the stuck rows with a manual ALTER DELETE and move on \u2014 the next\nspend-to-zero recreates the class. Don't widen the delete-set to the whole\npartition either (that's insert_overwrite semantics; use that strategy explicitly\nif you want it).\n\n## Detection\nRows that survive N reprocesses unchanged; classify by recomputing the corrected\nvalue from the source \u2014 corrected == 0 with a persistent nonzero row is this bug.\nThe negative-balance data-quality test surfaces the visible subset (negatives);\nspend-to-zero keys stuck at a stale POSITIVE value are invisible to it.\n\n## Safe remediation\nEmit tombstone/zero rows on incremental runs for keys with activity in the window\n(bounded: only that window's spent-to-zero keys; they naturally drop out of later\ndays). The zero row enters the insert batch, lands in the delete-set, and\noverwrites the stale key via the RMT latest-version semantics downstream too.\n\n## Ground truth\nOn-chain balanceOf for the stuck address.\n\n## Enforcement\nNOT YET DEPLOYED. The tombstone fix (zero-row retention for window-active keys on\nincremental branches) sits in the working tree of\nint_execution_tokens_balances_native_daily; production runs the pre-fix image and\nre-creates stale rows nightly. Ladder: `remediated` when the fix is merged and the\nCI image is live on the cron; `enforced` when dq_daily_balance_conservation is green\nin a production run and the 16-token July re-clean has landed (re-clean BEFORE deploy\nwould be undone the next night). Other sparse delete+insert models should be audited\nfor the same compose (grep: \"!= 0\" filters in incremental models with unique_key\ndelete-sets).",
+      "body": "## Symptom\nA reprocess that demonstrably works (fixes hundreds of rows) leaves a stubborn few\nuntouched, run after run. The stuck keys share one property: their correct current\nvalue is zero/none.\n\n## Root cause\nTwo individually-reasonable choices compose into a trap:\n1. Sparse storage: rows with zero state are filtered out to keep the table small.\n2. delete+insert scoped to the new batch's keys: only keys present in the new rows\n   get their old rows deleted.\nA correction whose result is \"this key now has NO row\" produces nothing to insert \u2014\nso nothing gets deleted, and the stale row (a negative balance, an outdated state)\nsurvives every rebuild. Worse, the cumulative chain seeds the next day from the\nstale row, propagating it forward.\n\n## Forbidden action\nDon't \"fix\" the stuck rows with a manual ALTER DELETE and move on \u2014 the next\nspend-to-zero recreates the class. Don't widen the delete-set to the whole\npartition either (that's insert_overwrite semantics; use that strategy explicitly\nif you want it).\n\n## Detection\nRows that survive N reprocesses unchanged; classify by recomputing the corrected\nvalue from the source \u2014 corrected == 0 with a persistent nonzero row is this bug.\nThe negative-balance data-quality test surfaces the visible subset (negatives);\nspend-to-zero keys stuck at a stale POSITIVE value are invisible to it.\n\n## Safe remediation\nEmit tombstone/zero rows on incremental runs for keys with activity in the window\n(bounded: only that window's spent-to-zero keys; they naturally drop out of later\ndays). The zero row enters the insert batch, lands in the delete-set, and\noverwrites the stale key via the RMT latest-version semantics downstream too.\n\n## Ground truth\nOn-chain balanceOf for the stuck address.\n\n## Enforcement\nENFORCED (2026-07-19). Three layers, all in place:\n1. PREVENTION \u2014 the tombstone fix (zero-row retention for window-active keys on\n   incremental branches) is live on the production cron since image b930150\n   (commit a96374d3, 2026-07-18). Demonstrated forward: 07-18 (first post-deploy\n   day) added no new stale rows.\n2. DETECTION \u2014 dq_daily_balance_conservation (tag data_quality_daily) ships in the\n   same image and runs every cron; it PASSES post-reclean (was WARN on 49 rows).\n3. BACKLOG CLEARED \u2014 the pre-deploy stale-positive rows (19 tokens, residuals\n   2026-07-15..18, carried forward by the cumulative chain) were reprocessed\n   2026-07-19: per-symbol native July reprocess (reprocess_overwrite=true) +\n   downstream cascade (USD balances_daily, by_sector, cohorts, supply_holders,\n   tokens fct tables). Native conservation 0 on every July day; full\n   data_quality_daily suite 8 PASS/0 WARN.\n\nRe-clean protocol (for the next occurrence): reprocess per-symbol smallest->largest,\nmutation-guarded (kill only FAILED mutations); a Code 241 that kills an append\nmid-insert can leave partial rows \u2014 DROP the partition before retrying, never\nappend-on-top, and OPTIMIZE ... FINAL the partition as a dedup barrier before\nreading downstream (SharedReplacingMergeTree dups are invisible to row counts and\ndouble-counted by FINAL-less readers). Other sparse delete+insert models should be\naudited for the same compose (grep: \"!= 0\" filters in incremental models with\nunique_key delete-sets).",
       "evidence": [
         "2026-07-17: all 11 residual negative balances that survived TWO clean July reprocesses classified as this bug \u2014 every one had corrected cumulative balance exactly 0 (windowed diffs cum = 0, e.g. ZCHF EOA 0x9a76 spent 10,010 to zero; on-chain balanceOf confirmed ~0/75) while the stale negative row persisted",
         "mechanism: the final WHERE balance_raw != 0 keeps the table sparse, but delete+insert deletes keys IN (SELECT ... FROM new data) \u2014 a key whose corrected state is \"no row\" is absent from new data, so its stale row is never deleted. The daily frontier-recompute path has the same hole for spend-to-zero addresses",
         "fix: emit zero rows for keys active in the run window (bounded tombstones; they drop out on later days) \u2014 int_execution_tokens_balances_native_daily.sql final CTE, is_incremental branch",
         "2026-07-17 cleanup: the tombstone-fixed window reprocess kept losing to OvercommitTracker (Code 341 on the delete-set even per-symbol-group under afternoon load), so the 11 stale rows were removed surgically (bounded 11-key ALTER DELETE on native + USD layers, mutation completion verified) \u2014 valid here because corrected-state-0 means \"no row\" IS the correct sparse state; negatives 11 -> 0. The model fix stays for future runs",
         "2026-07-17 scale + status correction (second-agent audit via the MCP knowledge tools): the stale-POSITIVE class is far larger than the 11 negatives \u2014 accounting-identity residuals (sum of balance_raw over all addresses incl. 0x0 must be 0) on 16 tokens starting exactly 2026-07-15: EURe +24,514.81, svZCHF +8,928.54, sDAI +4,961.30, GNO +3,115.80 (78/78 spend-to-zero addresses stale, chain-verified: model 1,434,027.75 vs totalSupply() 1,430,920.92), WxDAI, SAFE, COW, ZCHF, BRZ, WETH, wstETH, bCSPX, USDC.e, USDC, USDT, WBTC",
-        "why the fix read as \"inert\": it exists only in the UNCOMMITTED working tree \u2014 the production daily cron is a k8s CronJob running the CI-built image from merged main, so it re-arms the bug nightly; the sole local run containing the fix died pre-insert at a delete-mutation OOM. Status downgraded remediated -> observed accordingly: STATUS DESCRIBES THE DEPLOYED STATE, not the working tree",
-        "detection now permanent: tests/data_quality/dq_daily_balance_conservation.sql (the identity check; catches stale positives the negative test cannot see)",
-        "fix VERIFIED locally 2026-07-17 15:41 (GNO-only July reprocess with the tombstone branch): 9,252 tombstone rows emitted, 78/78 stale spend-to-zero addresses cleared, conservation exactly 0 every July day, model total 1,430,920.92 == on-chain totalSupply() to the cent. Correct and pending deploy only",
-        "2026-07-18 NIGHTLY RE-ARM DEMONSTRATED (the deployment-gap prediction, now observed): GNO conservation residual was 0 on 2026-07-15 after the local fixed run, and NONZERO again on 2026-07-17 (5.43e21 raw) after production cron runs on the pre-fix image. The dq_daily_balance_conservation test warns on 15/15/19 symbols for 07-15/16/17 while the untouched days 07-08, 07-14 and 07-18 are clean \u2014 the class regenerates on whichever days the old-image cron builds. Confirms status must stay observed until the image deploys"
+        "while the fix was working-tree-only it read as \"inert\" \u2014 the production cron is a k8s CronJob running the CI-built image from merged main, so days built before deploy re-armed the bug nightly. STATUS DESCRIBES THE DEPLOYED STATE, not the working tree",
+        "detection now permanent: tests/data_quality/dq_daily_balance_conservation.sql (the identity check; catches stale positives the negative test cannot see) \u2014 deployed in the same image",
+        "fix VERIFIED locally 2026-07-17 15:41 (GNO-only July reprocess with the tombstone branch): 9,252 tombstone rows emitted, 78/78 stale spend-to-zero addresses cleared, conservation exactly 0 every July day, model total 1,430,920.92 == on-chain totalSupply() to the cent",
+        "DEPLOYED 2026-07-18: the tombstone fix + conservation test + whitelist seed correction landed in commit a96374d3 (committed 2026-07-18 17:46) and shipped in the production image b930150 (2026-07-18 17:49). Verified in git: a96374d3 is an ancestor of b930150; the deployed model SQL carries the tombstone rule. Status observed -> remediated accordingly",
+        "2026-07-19 forward-fix HOLDING, backlog PERSISTS (as designed): conservation residuals per day \u2014 07-15 15 symbols, 07-16 15, 07-17 19 (worst 7.3e24), 07-18 19 (IDENTICAL to 07-17). The 15->19 / 300x jump is between 07-16 and 07-17, both PRE-deploy; 07-18 (first post-deploy day) added NO new stale rows, only carried 07-17 forward. So the forward-only fix prevents new spend-to-zero staleness but does not retro-clean the pre-deploy backlog \u2014 the cumulative chain carries it forward every day until the one-time re-clean reprocesses those token-months",
+        "2026-07-19 RE-CLEAN COMPLETE: per-symbol July reprocess (reprocess_overwrite=true) of the native model for all 19 affected tokens (BRZ..USDC, smallest->largest, mutation-guarded) -> native conservation 0 on every July day. Cascaded: balances_daily (USD) drop+append, then by_sector/cohorts/supply_holders drop+reprocess, then the tokens fct tables rebuilt. dq_daily_balance_conservation now PASSES (was WARN on 49 rows); full data_quality_daily suite 8 PASS/0 WARN; GNO supply 07-16 back to 1,430,920.92 == on-chain totalSupply(). Status remediated -> enforced: prevention deployed + detection deployed & green + backlog cleared",
+        "CAUTION recorded during the re-clean: a Code 241 (server-saturation victim) that KILLS an append mid-insert can leave PARTIAL rows; a naive retry that appends on top produces identical RMT duplicates (SharedReplacingMergeTree) that FINAL-less downstreams double-count (9/18 July days hit this on balances_daily). Safe protocol: after a killed append, DROP the partition before retrying (never append-on-top), and use OPTIMIZE ... PARTITION .. FINAL as a dedup barrier before reading downstream. See refill-append-aggregator-inflation"
       ],
       "id": "sparse-zero-row-stale-survival",
-      "last_verified": "2026-07-17",
+      "last_verified": "2026-07-19",
       "path": "docs/lessons/sparse-zero-row-stale-survival.md",
       "scope": "incremental models that (a) filter out zero/empty state rows to stay sparse and (b) use delete+insert whose delete-set derives from the new rows (canonical: int_execution_tokens_balances_native_daily WHERE balance_raw != 0); any tombstone-less sparse state table",
-      "status": "observed",
+      "status": "enforced",
       "symptom": "a handful of rows survive every reprocess unchanged \u2014 always keys whose CORRECTED value is exactly zero (e.g. addresses that spent their full balance); rebuilds fix everything else and reliably skip these",
       "title": "A sparse table that drops zero rows can never overwrite a stale key with \"zero\""
     },
@@ -72122,6 +72142,13 @@
         "agents_md": [
           "scripts/full_refresh/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "protocol",
+          "reserve_address",
+          "cohort_unit",
+          "balance_bucket"
+        ],
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -72152,6 +72179,17 @@
             "id": "late-start-mis-staging",
             "status": "remediated",
             "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "refill-append-aggregator-inflation",
+            "status": "remediated",
+            "title": "An aggregator run in the same dbt invocation as its source's append reads 2x rows"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "conserves-upstream-balances",
+            "text": "For each (date, protocol, reserve, cohort_unit), sum(value_*_in_bucket) must equal sum(balance[_usd]) from int_execution_lending_aave_user_balances_daily for positive balances (excluding the zero address). A cohort/balance ratio near 2/3/4 means leftover inflated cohort rows or an append over a populated window."
           }
         ],
         "profiles": [
@@ -72159,7 +72197,7 @@
           "strategy_expression_models",
           "staged_full_refresh"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "Rebuild ONLY after balances are clean, in a separate invocation: dbt run -s int_execution_lending_aave_balance_cohorts_daily --vars {start_month, end_month, reprocess_overwrite: true}. Never select balances+cohorts together under append.",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -72181,8 +72219,11 @@
             "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
           }
         ],
+        "semantics": "aggregate",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "cohort vs balances reconciliation per (date, protocol, symbol)",
+          "duplicate-key excess by grain"
         ]
       },
       "description_present": true,
@@ -72193,7 +72234,7 @@
       ],
       "downstream_direct_count": 2,
       "downstream_transitive_count": 2,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -72205,7 +72246,7 @@
       "path": "models/execution/lending/intermediate/int_execution_lending_aave_balance_cohorts_daily.sql",
       "reads_this": false,
       "strategy_expression": true,
-      "strategy_scoped_append": true,
+      "strategy_scoped_append": false,
       "tags": [
         "aave",
         "balance_cohorts_daily",
@@ -72450,6 +72491,13 @@
         "agents_md": [
           "scripts/full_refresh/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "protocol",
+          "reserve_address",
+          "user_address"
+        ],
+        "ground_truth": "on-chain aToken scaledBalanceOf(user) at the day's last block; reconcile in Int256 via scripts/data_checker/compare_aave_scaled_balances.py",
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -72490,6 +72538,30 @@
             "id": "frontier-day-incomplete-inputs",
             "status": "remediated",
             "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "sparse-zero-row-stale-survival",
+            "status": "enforced",
+            "title": "A sparse table that drops zero rows can never overwrite a stale key with \"zero\""
+          },
+          {
+            "id": "refill-append-aggregator-inflation",
+            "status": "remediated",
+            "title": "An aggregator run in the same dbt invocation as its source's append reads 2x rows"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "seed-uniqueness",
+            "text": "Exactly one row per (date, protocol, reserve_address, user_address). Duplicate seed-day rows under ReplacingMergeTree (read without FINAL) used to inject the prior scaled_balance twice into the carry-forward and permanently double every holder's balance (exact 2x spikes on 2026-06-19 and 2026-06-21 across all reserves)."
+          },
+          {
+            "id": "additive-seed-not-synthetic-delta",
+            "text": "Incremental carry-forward must add prev_scaled as a constant (sum(diffs)+prev), never UNION ALL it into the event stream as a synthetic delta \u2014 the latter double-counts when the seed day has unmerged duplicate parts."
+          },
+          {
+            "id": "idle-holder-continuity",
+            "text": "A holder with zero diffs on day D must keep the prior day's scaled_balance (index accrual only in underlying). A ~2.0 day-over-day ratio on idle holders is a seed bug, not real supply."
           }
         ],
         "profiles": [
@@ -72498,7 +72570,7 @@
           "staged_full_refresh",
           "cumulative_self_referencing"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "corrupted/frozen month: dbt run with vars {start_month, end_month, reprocess_overwrite: true} \u2014 seeds from last good day BEFORE the window (delete+insert). Full history: staged scripts/full_refresh/refresh.py per reserve_symbol. Always rebuild cohorts AFTER balances, in a separate invocation (never same append-mode run as the source).",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -72530,7 +72602,10 @@
         ],
         "semantics": "cumulative",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "idle-holder DoD ratio: median scaled_balance(D)/scaled_balance(D-1) for holders with no diffs on D should be ~1.0 (fail if in [1.9, 2.1])",
+          "duplicate-key excess by (date, protocol, reserve_address, user_address)",
+          "compare_aave_scaled_balances.py vs RPC on spot dates"
         ]
       },
       "description_present": true,
@@ -72559,7 +72634,7 @@
       ],
       "downstream_direct_count": 16,
       "downstream_transitive_count": 94,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": [
         "WxDAI",
         "EURe",
@@ -72578,7 +72653,7 @@
       "path": "models/execution/lending/intermediate/int_execution_lending_aave_user_balances_daily.sql",
       "reads_this": true,
       "strategy_expression": true,
-      "strategy_scoped_append": true,
+      "strategy_scoped_append": false,
       "tags": [
         "aave",
         "execution",
@@ -73092,11 +73167,6 @@
             "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
           },
           {
-            "id": "ch-partition-cap",
-            "status": "remediated",
-            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
-          },
-          {
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
@@ -73139,7 +73209,6 @@
         ],
         "profiles": [
           "incremental_models",
-          "insert_overwrite_models",
           "strategy_expression_models",
           "staged_full_refresh",
           "cumulative_self_referencing",
@@ -73215,7 +73284,7 @@
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
-      "incremental_strategy": "insert_overwrite",
+      "incremental_strategy": "delete+insert",
       "materialized": "incremental",
       "name": "int_execution_pools_balancer_v3_daily",
       "owner": "analytics_team",
@@ -73232,7 +73301,7 @@
         "pools",
         "production"
       ],
-      "unique_key": null
+      "unique_key": "(date, pool_address, token_address)"
     },
     "int_execution_pools_balances_daily": {
       "contract": {
@@ -74187,6 +74256,11 @@
           "scripts/full_refresh/AGENTS.md",
           "models/execution/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "pool_address",
+          "token_address"
+        ],
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -74234,6 +74308,16 @@
             "title": "Global-frontier carry-forward silently drops thin series"
           }
         ],
+        "invariants": [
+          {
+            "id": "reserve-is-physical-balance",
+            "text": "reserve_amount == token_amount == the physical pool token balance (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash contributes only the retained fee, Burn/removal-of-principal is clamped). A negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction drift was reintroduced."
+          },
+          {
+            "id": "per-entity-density",
+            "text": "Every (pool, token) pair should have a row for every calendar day from its first event; a thin pool that skips a day can fall off the single global max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps."
+          }
+        ],
         "profiles": [
           "incremental_models",
           "strategy_expression_models",
@@ -74241,7 +74325,7 @@
           "cumulative_self_referencing",
           "pools_models"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "dbt run --full-refresh -s int_execution_pools_swapr_v3_daily (non-incremental branch rebuilds the per-pool dense calendar from inception, no carry-forward seed), then rebuild the pools balances/TVL downstream tables",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -74277,7 +74361,9 @@
         ],
         "semantics": "cumulative",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)",
+          "per (pool, token) density: uniqExact(date) / span ~= 1.0"
         ]
       },
       "description_present": true,
@@ -74306,7 +74392,7 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 46,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -74334,6 +74420,11 @@
           "scripts/full_refresh/AGENTS.md",
           "models/execution/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "pool_address",
+          "token_address"
+        ],
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -74381,6 +74472,16 @@
             "title": "Global-frontier carry-forward silently drops thin series"
           }
         ],
+        "invariants": [
+          {
+            "id": "reserve-is-physical-balance",
+            "text": "reserve_amount == token_amount == the physical pool token balance (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash contributes only the retained fee, Burn/removal-of-principal is clamped). A negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction drift was reintroduced."
+          },
+          {
+            "id": "per-entity-density",
+            "text": "Every (pool, token) pair should have a row for every calendar day from its first event; a thin pool that skips a day can fall off the single global max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps."
+          }
+        ],
         "profiles": [
           "incremental_models",
           "strategy_expression_models",
@@ -74388,7 +74489,7 @@
           "cumulative_self_referencing",
           "pools_models"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "dbt run --full-refresh -s int_execution_pools_uniswap_v3_daily (non-incremental branch rebuilds the per-pool dense calendar from inception, no carry-forward seed), then rebuild the pools balances/TVL downstream tables",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -74424,7 +74525,9 @@
         ],
         "semantics": "cumulative",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)",
+          "per (pool, token) density: uniqExact(date) / span ~= 1.0"
         ]
       },
       "description_present": true,
@@ -74453,7 +74556,7 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 46,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -76109,7 +76212,7 @@
           },
           {
             "id": "sparse-zero-row-stale-survival",
-            "status": "observed",
+            "status": "enforced",
             "title": "A sparse table that drops zero rows can never overwrite a stale key with \"zero\""
           }
         ],
@@ -84311,7 +84414,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "c95238c093065977d4bd6d10af20b70bafa9f10cf949a4428cdd21c49d83a957",
+  "models_hash": "99fe08552ef0a6e175c12f6323e7df6abbb5132265e5a1a7ea45bfbd545807d0",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

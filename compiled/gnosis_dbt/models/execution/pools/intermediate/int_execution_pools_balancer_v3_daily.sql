@@ -63,6 +63,7 @@ tokenconfig AS (
 tokenconfig_stats AS (
     SELECT
         pool_address,
+        count() AS token_cnt,
         countIf(not is_sentinel) AS valid_cnt,
         anyIf(token_address, not is_sentinel) AS any_valid_token
     FROM tokenconfig
@@ -79,6 +80,13 @@ pool_tokens AS (
             c.pool_address AS pool_address,
             c.token_index AS token_index,
             multiIf(
+                -- PRIMARY: the address-sorted swap-token list (arraySort of Swap tokenIn/tokenOut)
+                -- fully covers the pool -> use it. Balancer V3 registers tokens address-sorted, so
+                -- this equals the Vault order that indexes the positional amountsAddedRaw/RemovedRaw
+                -- arrays in Liquidity events. The decoded PoolRegistered tokenConfig struct-array is
+                -- unreliable (inner tokens of multi-token pools decode to 0x0), so it is only a fallback.
+                length(ifNull(s.swap_tokens, [])) = st.token_cnt,
+                s.swap_tokens[toInt32(c.token_index) + 1],
                 not c.is_sentinel,
                 c.token_address,
                 length(ifNull(s.swap_tokens, [])) = 2 AND st.valid_cnt = 1,
@@ -142,7 +150,10 @@ daily_deltas AS (
         concat('0x', pool_address) AS pool_address,
         token_address,
         sum(delta_amount_raw) AS daily_delta_raw,
-        sum(delta_amount_raw - fee_amount_raw) AS daily_reserve_delta_raw,
+        -- reserve = physical pool token balance (== daily_delta_raw). Do NOT subtract the
+        -- swap fee: it stays in the pool until withdrawn, so subtracting it drifts the reserve
+        -- below the true balance and eventually negative. Fees live in int_execution_pools_fees_daily.
+        sum(delta_amount_raw) AS daily_reserve_delta_raw,
         sum(fee_amount_raw) AS daily_fee_delta_raw
     FROM all_deltas
     WHERE block_timestamp < today()
@@ -169,7 +180,15 @@ daily_deltas AS (
         FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x1
         WHERE 1=1 
       )
-      
+      AND toDate(block_timestamp) >= (
+        SELECT
+          
+            addDays(max(toDate(x2.date)), -0)
+          
+
+        FROM `dbt`.`int_execution_pools_balancer_v3_daily` AS x2
+        WHERE 1=1 
+      )
     
   
 
@@ -204,8 +223,12 @@ current_partition AS (
     -- Anchoring the window at the earliest per-pool frontier regenerates EVERY pool
     -- densely from a date they all share, so behind pools are re-densified together
     -- with the rest and none can drop. In steady state all pools share one frontier,
-    -- so this stays a 1-day window; insert_overwrite is safe because every touched
-    -- partition is rebuilt with all pools present (no partition-replace wipe).
+    -- so this stays a 1-day window. Strategy is delete+insert (not insert_overwrite):
+    -- the frontier calendar emits only the new day(s), and delete+insert removes just
+    -- those (date,pool,token) unique_key rows before re-inserting -- so the rest of the
+    -- month partition is untouched. insert_overwrite would REPLACE the whole month
+    -- partition with only the emitted day(s) and wipe the earlier days (the frontier
+    -- calendar does not regenerate a full month), so it must NOT be used on this model.
     -- Deep historical gaps: rebuild with --full-refresh (per-pool non-incremental
     -- calendar below).
     SELECT min(pool_max) AS max_date
