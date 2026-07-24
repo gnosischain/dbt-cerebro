@@ -17,4 +17,4 @@
 }}
 
 SELECT month, users_cnt, fees_total
-FROM {{ ref('fct_revenue_active_users_totals_monthly') }}
+FROM {{ ref('int_revenue_active_users_totals_monthly') }}

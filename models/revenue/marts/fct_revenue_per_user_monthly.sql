@@ -15,7 +15,7 @@
 --
 -- Used by the semantic layer for monthly cross-sector user-overlap
 -- analysis. The $0.50 / month active-user threshold mirrors the
--- annual $6 from fct_revenue_active_users_totals_weekly (month-scaled).
+-- annual $6 from int_revenue_active_users_totals_weekly (month-scaled).
 
 SELECT
     month,

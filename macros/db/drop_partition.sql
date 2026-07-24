@@ -36,3 +36,24 @@
   {% do run_query(sql) %}
   {% do log("DROP PARTITION '" ~ partition ~ "' on " ~ database ~ "." ~ table_name ~ " completed", info=True) %}
 {% endmacro %}
+
+{% macro drop_view(database, view_name) %}
+  {# Drop a stale VIEW left behind after a model rename/retire (dbt does not
+     drop removed models). Guarded: refuses anything that is not engine=View,
+     so a mistyped name can never drop a physical table. #}
+  {% set check_sql %}
+    SELECT engine FROM system.tables
+    WHERE database = '{{ database }}' AND name = '{{ view_name }}'
+  {% endset %}
+  {% if execute %}
+    {% set rows = run_query(check_sql).rows %}
+    {% if rows | length == 0 %}
+      {% do log(database ~ "." ~ view_name ~ " does not exist — nothing to drop", info=True) %}
+    {% elif rows[0][0] != 'View' %}
+      {% do exceptions.raise_compiler_error(database ~ "." ~ view_name ~ " is engine=" ~ rows[0][0] ~ ", not a View — refusing to drop") %}
+    {% else %}
+      {% do run_query("DROP VIEW " ~ database ~ ".`" ~ view_name ~ "`") %}
+      {% do log("Dropped view " ~ database ~ "." ~ view_name, info=True) %}
+    {% endif %}
+  {% endif %}
+{% endmacro %}
