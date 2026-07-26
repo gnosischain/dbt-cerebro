@@ -41,6 +41,10 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 - [frontier-day-incomplete-inputs](frontier-day-incomplete-inputs.md) `remediated` — a
   cumulative chain that builds the frontier day before its inputs settle freezes the
   hole; upstreams self-heal, the cumulative layer never revisits the day.
+- [microbatch-state-skips-data-holes](microbatch-state-skips-data-holes.md) `observed` —
+  a microbatch slice that "completes" without landing rows is skipped forever by the
+  state watermark; partial band coverage then biases every downstream aggregate
+  (negative network APY). Coverage parity test + runner heal-lookback pending deploy.
 - [refill-append-aggregator-inflation](refill-append-aggregator-inflation.md)
   `remediated` — an aggregator run in the same dbt invocation as its source's append
   reads 2x live RMT rows and bakes doubled values that row-level dup checks miss.

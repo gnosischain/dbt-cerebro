@@ -1023,6 +1023,7 @@ def plan_for_model(
     dry_run: bool,
     stage_filter: list[str] | None = None,
     max_slices_per_stage: int = 30,
+    heal_lookback_days: int = 3,
 ) -> list[tuple[dict, list[dt.date]]]:
     """Compute (stage, [slice_end_dates]) list for a single microbatch model.
 
@@ -1105,7 +1106,30 @@ def plan_for_model(
         last_done = dt.date.fromisoformat(last_done_iso) if last_done_iso else None
         floor = max_t + dt.timedelta(days=1)
         if last_done is not None:
-            floor = max(floor, last_done + dt.timedelta(days=1))
+            state_floor = last_done + dt.timedelta(days=1)
+            if state_floor > floor:
+                # State claims completion past the data watermark. A slice can
+                # "succeed" without landing rows (source not yet ingested at
+                # run time, silent insert failure), and trusting state alone
+                # skips such holes forever (July 2026: income bands frozen at
+                # 1-of-6 coverage for weeks). But sparse stages have
+                # legitimately-empty days, so blanket-trusting the data
+                # watermark would re-run their whole empty tail nightly and
+                # eventually trip max_slices_per_stage. Compromise: re-check
+                # the last heal_lookback_days of state-claimed days; holes
+                # older than that need a manual backfill and get a warning.
+                gap_days = (state_floor - floor).days
+                if gap_days > heal_lookback_days:
+                    print(
+                        f"[warn] {name} stage={stage['name']}: state watermark "
+                        f"{last_done} is {gap_days} day(s) ahead of the data "
+                        f"watermark {max_t}; re-checking only the last "
+                        f"{heal_lookback_days} day(s). If this is a data hole "
+                        f"(not a sparse source), backfill it manually — see "
+                        f"docs/lessons/microbatch-state-skips-data-holes.md.",
+                        file=sys.stderr,
+                    )
+                floor = max(floor, state_floor - dt.timedelta(days=heal_lookback_days))
         if floor > today:
             plan.append((stage, []))
             continue
@@ -1203,6 +1227,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "multi-month historical backfill belongs to "
             "scripts/full_refresh/refresh.py. Default 30 (≈ one month). "
             "Set to 0 to disable the cap (not recommended on the cron path)."
+        ),
+    )
+    p.add_argument(
+        "--heal-lookback-days",
+        type=int,
+        default=3,
+        help=(
+            "When saved state claims completion ahead of a stage's actual "
+            "data watermark, re-check up to N of those state-claimed days "
+            "so a slice that succeeded without landing rows self-heals. "
+            "Holes older than N days are warned about and need a manual "
+            "backfill. Set to 0 to fully trust state (pre-2026-07 behavior)."
         ),
     )
     return p.parse_args(argv)
@@ -1375,6 +1411,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.dry_run,
                 stage_filter=args.stage,
                 max_slices_per_stage=args.max_slices_per_stage,
+                heal_lookback_days=args.heal_lookback_days,
             )
         except Exception as exc:
             print(f"[error] planning {name} failed: {exc}", file=sys.stderr)

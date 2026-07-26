@@ -450,7 +450,10 @@ def test_plan_for_model_starts_after_max_date(tmp_path):
     ]
 
 
-def test_plan_for_model_respects_state(tmp_path):
+def test_plan_for_model_state_ahead_of_data_heals_within_lookback(tmp_path):
+    # State claims 04-20/04-21 done but the target's data watermark is 04-19:
+    # those days ran without landing rows. Within heal_lookback_days the
+    # runner must re-check them instead of skipping the hole forever.
     meta = {
         "date_column": "date",
         "batch_days": 1,
@@ -475,6 +478,81 @@ def test_plan_for_model_respects_state(tmp_path):
             batch_days_override=None,
             bootstrap_lookback_days=7,
             dry_run=False,
+        )
+    _, slices = plan[0]
+    assert slices == [
+        dt.date(2026, 4, 20),
+        dt.date(2026, 4, 21),
+        dt.date(2026, 4, 22),
+    ]
+
+
+def test_plan_for_model_state_far_ahead_heals_only_lookback_window(tmp_path):
+    # State is 10 days ahead of data (sparse stage, or an old silent hole):
+    # only the trailing heal_lookback_days are re-checked, the rest is left
+    # to a manual backfill (warned on stderr).
+    meta = {
+        "date_column": "date",
+        "batch_days": 1,
+        "stages": [{"name": "stage_a", "vars": {}}],
+    }
+    today = dt.date(2026, 4, 22)
+    state = {
+        "completed": {
+            "int_x::stage_a": {"last_completed_end_date": "2026-04-21"},
+        }
+    }
+    with mock.patch.object(
+        runner, "fetch_max_date", return_value=dt.date(2026, 4, 11)
+    ):
+        plan = runner.plan_for_model(
+            "int_x",
+            meta,
+            today,
+            state,
+            tmp_path,
+            tmp_path,
+            batch_days_override=None,
+            bootstrap_lookback_days=7,
+            dry_run=False,
+            heal_lookback_days=3,
+        )
+    _, slices = plan[0]
+    assert slices == [
+        dt.date(2026, 4, 19),
+        dt.date(2026, 4, 20),
+        dt.date(2026, 4, 21),
+        dt.date(2026, 4, 22),
+    ]
+
+
+def test_plan_for_model_heal_disabled_trusts_state(tmp_path):
+    # heal_lookback_days=0 restores the pre-2026-07 behavior: state wins.
+    meta = {
+        "date_column": "date",
+        "batch_days": 1,
+        "stages": [{"name": "stage_a", "vars": {}}],
+    }
+    today = dt.date(2026, 4, 22)
+    state = {
+        "completed": {
+            "int_x::stage_a": {"last_completed_end_date": "2026-04-21"},
+        }
+    }
+    with mock.patch.object(
+        runner, "fetch_max_date", return_value=dt.date(2026, 4, 19)
+    ):
+        plan = runner.plan_for_model(
+            "int_x",
+            meta,
+            today,
+            state,
+            tmp_path,
+            tmp_path,
+            batch_days_override=None,
+            bootstrap_lookback_days=7,
+            dry_run=False,
+            heal_lookback_days=0,
         )
     _, slices = plan[0]
     assert slices == [dt.date(2026, 4, 22)]
@@ -1189,6 +1267,7 @@ def test_plan_for_model_per_stage_state_independent(tmp_path):
             batch_days_override=None,
             bootstrap_lookback_days=7,
             dry_run=False,
+            heal_lookback_days=0,
         )
     by_stage = {stage["name"]: slices for stage, slices in plan}
     assert by_stage["a"] == []   # caught up via state
