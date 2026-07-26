@@ -4,7 +4,7 @@
     "high_risk": 303,
     "models": 1161
   },
-  "inputs_fingerprint": "d960cb80155316c76e05c0fb314d96b22240ded20ec0f6b92feef45ed8cd9b66",
+  "inputs_fingerprint": "b54cc7c181135f987d477dd53b43a772c8b90923725cdbdd3e8fde609f1db5b8",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -275,6 +275,23 @@
       "status": "remediated",
       "symptom": "negative or short balances for holders whose inflows predate the configured start",
       "title": "Stage start_date later than real first activity silently truncates history"
+    },
+    "microbatch-state-skips-data-holes": {
+      "body": "## Symptom\n\nA consensus mart that aggregates per-validator rows goes insane while every\nvalue-level test stays green: network avg APY turns negative (\u22120.91 on\n2026-07-25), or a whole day pins at the spec-cap APY (~35.7 on 2026-07-20).\nPer-day `count()` on `int_consensus_validators_income_daily` shows ~100k rows\n(one validator band) instead of ~558k, or a different single band on each\nrecent day.\n\n## Root cause\n\nTwo stacked failures:\n\n1. **Band slices stop landing rows** (nightly, from 2026-07-08): the exact\n   nightly failure mode is still unconfirmed (production scheduler logs\n   needed \u2014 local `dbt` container only serves docs; ClickHouse Cloud\n   `query_log` retains ~1 day), but the observable result is that most\n   `(day \u00d7 validator_index band)` slices of the income model produced no rows\n   while the day advanced.\n2. **The runner's state watermark makes the hole permanent**: `plan_for_model`\n   takes `floor = max(data_watermark + 1, last_completed_end_date + 1)`. State\n   can only move the floor FORWARD, so once a slice is marked completed the\n   runner never looks at that day again, even when the target table\n   demonstrably has no rows for it. Coverage froze at 1-of-6 bands for 12\n   consecutive days.\n\nThe corruption then compounds: a later catch-up rebuild of 07-20..22 found no\n07-19 rows for bands \u2265100k, so `balance_prev` fell back to 0, the\neffective-credit formula absorbed each validator's entire balance as a phantom\ndeposit, income pinned at the spec cap for 56k validators, and every\n`cumulative_*` column restarted from zero (prev_state JOIN missed).\n\nDownstream amplification: `int_consensus_validators_per_index_apy_daily` is an\nINNER JOIN of snapshots \u00d7 income, and `int_consensus_validators_dists_daily`\naverages whatever rows exist with only an upper outlier cut (`apy < 200`). A\nsurviving band that happens to be a mostly-exited cohort (its stragglers bleed\nannualized inactivity penalties, APY down to \u221269) drags the day's mean\nnegative. `fct_consensus_info_latest` then serves that day as \"the\" APY.\n\n## Forbidden action\n\n- Do not treat a green nightly runner log as proof a microbatch day is\n  complete \u2014 completion state and landed rows are different facts.\n- Do not \"fix\" a partial day by re-running only the newest slices; the\n  income model is cumulative (`{{ this }}` prev_state), so holes must be\n  rebuilt chronologically per band from the last clean partition boundary.\n- Do not diagnose the negative/pinned APY as a formula bug \u2014 the spec-cap and\n  ledger-identity tests pass on corrupted days; check population coverage\n  first.\n\n## Detection\n\n- `tests/consensus_income_daily_coverage.sql` \u2014 per-day\n  `uniqExact(validator_index)` parity between income and snapshots (fails on\n  any day below 99% coverage in the test lookback window).\n- Ad hoc: `SELECT date, count(), min(validator_index), max(validator_index)\n  FROM dbt.int_consensus_validators_income_daily GROUP BY date` \u2014 a\n  min/max span of exactly one band is the signature.\n- The runner (fixed version) prints a `[warn] \u2026 state watermark \u2026 ahead of\n  the data watermark` line when state claims days the target does not hold.\n\n## Safe remediation\n\nDamage is contained in whole monthly partitions (partition_by =\n`toStartOfMonth(date)`), and the income model's prev_state chains from the\nprior partition boundary, so:\n\n1. `dbt run-operation drop_partition` for the affected month on\n   `int_consensus_validators_income_daily` AND\n   `int_consensus_validators_per_index_apy_daily` (verify the partition value\n   with `list_partitions` first).\n2. Rebuild chronologically per band with the microbatch runner (income first,\n   then per_index \u2014 per_index INNER JOINs income, so a per_index slice run\n   before its income slice lands nothing):\n   `python scripts/refresh/dbt_incremental_runner.py --select\n   int_consensus_validators_income_daily \u2026` capped with `--max-end-date` at\n   yesterday so an empty today-slice never poisons the state watermark.\n3. Rebuild downstream: monthly `insert_overwrite` models\n   (`int_consensus_validators_dists_daily`,\n   `int_consensus_validators_apy_dist_income_daily`,\n   `fct_consensus_validators_explorer_daily`) self-heal the whole month on a\n   plain run; `int_consensus_validators_explorer_apy_dist_daily` needs its\n   month partition dropped + a `start_month`/`end_month` run; tables/views\n   (`fct_consensus_validators_apy_mean_daily`, `fct_consensus_info_latest`,\n   api marts) rebuild plain.\n\n## Ground truth\n\n- Income grain is one row per (date, validator_index) for EVERY validator in\n  the day's snapshot (including exited/zero-balance): daily row count must\n  match `int_consensus_validators_snapshots_daily` near-exactly (~558k).\n- The negative-APY tail on complete days (q05 \u2248 \u22126) is REAL (offline\n  validators, annualized penalties); with full population the daily mean sits\n  at ~+8. A negative MEAN is always a population artifact.\n\n## Enforcement\n\n- `tests/consensus_income_daily_coverage.sql` (pending deploy) catches any\n  partial day within the test lookback window.\n- Runner `--heal-lookback-days` (default 3, pending deploy): when state is\n  ahead of the data watermark, the trailing N state-claimed days are\n  re-planned so a silently-empty slice self-heals within N days; older holes\n  warn and need a manual backfill. Unit tests:\n  `tests/test_dbt_incremental_runner.py::test_plan_for_model_state_ahead_of_data_heals_within_lookback`\n  and siblings.",
+      "evidence": [
+        "dbt.int_consensus_validators_income_daily coverage by day: full 558k rows through 2026-07-07; band 0-100k only 2026-07-08..19; full 07-20..22; single (different) band each on 07-23/24/25 (4,118-row day drove avg_apy to -0.91 in int_consensus_validators_dists_daily on 2026-07-25)",
+        "2026-07-20 pinned at spec cap: 56,340 of 56,564 validators (index >= 100000, balance > 0) at apy ~ 35.7 after balance_prev fell back to 0 across the hole; validator 150000 cumulative_withdrawals_gno reset 0.247 -> 0 the same day",
+        "scripts/refresh/dbt_incremental_runner.py plan_for_model: floor = max(data_watermark+1, state.last_completed_end_date+1) \u2014 state can only advance the floor, so a slice that succeeded without landing rows is never re-planned (fix in tree: heal_lookback_days, pending deploy)",
+        "tests/consensus_income_daily_coverage.sql failed with 4 offending days against the pre-fix state on 2026-07-26 (new test, pending deploy)",
+        "docs/model_review/ + memory: consensus.validators crawler halted 2026-06-07 before; ingestion-time races leave a nightly slice reading a partially-crawled day"
+      ],
+      "id": "microbatch-state-skips-data-holes",
+      "last_verified": "2026-07-26",
+      "path": "docs/lessons/microbatch-state-skips-data-holes.md",
+      "scope": "meta.full_refresh staged microbatch models run by scripts/refresh/dbt_incremental_runner.py \u2014 especially multi-band models (validator_index ranges) whose consumers aggregate whatever rows exist (int_consensus_validators_income_daily -> per_index_apy -> dists_daily -> fct/api_consensus_info marts)",
+      "status": "observed",
+      "symptom": "A latest-day mart serves a wildly wrong aggregate (negative network APY, spec-cap-pinned APY ~35.7) while all value-level tests pass; per-day row counts show one 100k validator band instead of ~558k rows",
+      "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
     },
     "model-deletion-gate-false-block": {
       "body": "## Symptom\nA branch that deletes or renames any model fails the full-tier `agent-context-check`\nwith `changed model(s) unknown to the agent context`. The message's remedy (\"run\ndbt parse + build_agent_context.py, then re-run\") never helps: the artifact is built\nfrom the manifest, and a deleted model is not in the manifest by definition.\n\n## Root cause\n`changed_model_files()` collects `git diff --name-only` output, which includes\n**deleted** paths. The unknown-model rule was written to fail closed on a *stale\nartifact* (a changed model whose hazards can't be looked up); a deletion\npattern-matches the same condition but has no hazards left to check.\n\n## Why it reached CI, not local validation\n`agent-context-check` runs only in the FULL check tier. Local validation with\n`run_all.py --fast` passes cleanly on a branch that full-tier CI then rejects.\nFor any model add/delete/rename, validate with\n`python scripts/checks/run_all.py --base-ref <CI base>` (full tier) before pushing.\n\n## Fix\n`partition_existing()` in check.py splits the changed set: deleted paths are\n*reported* but never block. Deletion risk is covered by the gates that actually\nsee it \u2014 `dbt parse` (dangling `ref()`) and the semantic-registry gate\n(orphaned metrics; see [semantic-retirement-gate](semantic-retirement-gate.md)).\n\n## Detection\nBLOCKING line names models whose `.sql` files do not exist in the working tree.",
@@ -3494,6 +3511,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3560,6 +3582,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3626,6 +3653,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3692,6 +3724,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3758,6 +3795,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3824,6 +3866,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3890,6 +3937,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -3956,6 +4008,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4022,6 +4079,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4088,6 +4150,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4154,6 +4221,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4220,6 +4292,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4286,6 +4363,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4352,6 +4434,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4418,6 +4505,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4484,6 +4576,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4550,6 +4647,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4616,6 +4718,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4682,6 +4789,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4748,6 +4860,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4814,6 +4931,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4880,6 +5002,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -4946,6 +5073,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5012,6 +5144,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5078,6 +5215,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5144,6 +5286,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5210,6 +5357,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5276,6 +5428,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5342,6 +5499,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5408,6 +5570,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5474,6 +5641,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5540,6 +5712,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5606,6 +5783,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5672,6 +5854,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5738,6 +5925,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5804,6 +5996,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5870,6 +6067,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -5936,6 +6138,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -6002,6 +6209,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -6068,6 +6280,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47136,6 +47353,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47203,6 +47425,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47263,6 +47490,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47322,6 +47554,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47381,6 +47618,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47444,6 +47686,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47504,6 +47751,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47595,6 +47847,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47663,6 +47920,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47723,6 +47985,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47785,6 +48052,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47845,6 +48117,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47923,6 +48200,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -47981,6 +48263,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -59938,6 +60225,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60024,6 +60316,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60107,6 +60404,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60205,6 +60507,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60293,6 +60600,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60384,6 +60696,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60469,6 +60786,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60566,6 +60888,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60664,6 +60991,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60750,6 +61082,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60828,6 +61165,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -60937,6 +61279,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61039,6 +61386,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61145,6 +61497,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61247,6 +61604,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61359,6 +61721,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61467,6 +61834,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61555,6 +61927,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61678,6 +62055,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61801,6 +62183,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -61931,6 +62318,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -62005,6 +62397,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -62098,6 +62495,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -62228,6 +62630,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -80816,6 +81223,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -80876,6 +81288,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -80933,6 +81350,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -80996,6 +81418,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81074,6 +81501,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81152,6 +81584,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81218,6 +81655,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81277,6 +81719,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81344,6 +81791,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81422,6 +81874,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -81500,6 +81957,11 @@
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "microbatch-state-skips-data-holes",
+            "status": "observed",
+            "title": "Microbatch stages that \"complete\" without landing rows are skipped forever by the state watermark, freezing partial-band coverage that biases every downstream aggregate"
           }
         ],
         "profiles": [
@@ -84557,7 +85019,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "7a4a0f8aee173be3537221c82d32493ee8f4924fd09c0c6114d665090789af89",
+  "models_hash": "2821d0bd112fda689d65f4e8162e160893fb63394efe09aac45b41e92450c1bf",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
