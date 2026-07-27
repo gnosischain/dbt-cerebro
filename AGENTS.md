@@ -41,7 +41,10 @@ Repeatable workflows (vendor-neutral; Claude slash commands are thin wrappers):
 5. **Validate** — `python scripts/checks/run_all.py` is THE command (works from a
    fresh checkout and inside the dbt container; `make check-fast` / `make check` are
    thin aliases for its `--fast` / `--full` modes); plus the model-specific selectors
-   from the change packet.
+   from the change packet. `--fast` is for iteration only: before declaring work
+   done or giving any green light, run the FULL mode and confirm every step passes —
+   CI blocks on steps fast skips (e.g. `agent-context-check` requires a `meta.agent`
+   contract on any changed high-risk model).
 6. **Record new lessons** — if you diagnosed a new mistake class, add a record under
    `docs/lessons/` (follow `docs/workflows/incident.md`; every lesson needs evidence
    refs).
