@@ -9,8 +9,8 @@
 }}
 
 -- Canonical resolution for the June 2026 post-exploit Safe migration
--- (gp_migrated_safes seed). One row per OLD Safe pointing to its NEW
--- (canonical) Safe. The seed has no chained migrations (a new Safe never
+-- (crawlers_data.gp_migrated_safes). One row per OLD Safe pointing to its NEW
+-- (canonical) Safe. The source has no chained migrations (a new Safe never
 -- appears as an old Safe), so a single hop resolves fully. The GROUP BY
 -- absorbs the one exact-duplicate row present in the source export.
 

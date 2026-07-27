@@ -3,15 +3,12 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='address',
-    unique_key='address',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','gpay']
   )
 }}
 
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
 {% set spender     = '0x4822521e6135cd2599199c83ea35179229a172ee' %}
 
 WITH operational AS (
@@ -26,17 +23,8 @@ activated_wallets AS (
     FROM {{ ref('int_execution_transfers_whitelisted_daily') }}
     WHERE "to" = '{{ spender }}'
       AND date >= toDate('2023-12-01')
-      {% if start_month and end_month %}
-      AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-      {% else %}
-      {{ apply_monthly_incremental_filter('date', 'activation_date', add_and=True) }}
-      {% endif %}
     GROUP BY "from"
     HAVING pay_wallet NOT IN (SELECT address FROM operational)
-    {% if is_incremental() %}
-      AND pay_wallet NOT IN (SELECT address FROM {{ this }})
-    {% endif %}
 ),
 
 safe_setup AS (

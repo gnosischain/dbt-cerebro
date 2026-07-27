@@ -7,11 +7,12 @@ models:
     has emitted SafeSetup (so it exists on-chain) AND has ever sent a
     whitelisted ERC-20 transfer to the Gnosis Pay spender
     0x4822521E6135CD2599199c83Ea35179229A172EE, excluding addresses in the
-    gpay_operational_wallets seed. Replaces the crawler-sourced
-    stg_gpay__wallets model. Additionally includes NEW Safes from the
-    June 2026 post-exploit migration (gp_migrated_safes seed) whose OLD
-    Safe qualified: they inherit the old Safe's activation_date so cohort
-    dates do not reset, with creation_time = migration completion.
+    crawlers_data.gpay_operational_wallets source. Replaces the
+    crawler-sourced stg_gpay__wallets model. Additionally includes NEW
+    Safes from the June 2026 post-exploit migration
+    (crawlers_data.gp_migrated_safes source) whose OLD Safe qualified:
+    they inherit the old Safe's activation_date so cohort dates do not
+    reset, with creation_time = migration completion.
   columns:
   - name: address
     description: Gnosis Pay Safe address (0x-prefixed, lowercase).
@@ -25,6 +26,27 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [address]
+      invariants:
+      - id: payment-gated-membership
+        text: Membership is payment-gated — a Safe qualifies only if it emitted
+          SafeSetup AND ever sent a whitelisted ERC-20 transfer to the GPay
+          spender 0x4822521e6135cd2599199c83ea35179229a172ee. This is NOT the
+          deployed-account universe; use int_execution_gpay_accounts_deployed
+          for accounts that were deployed but never spent.
+      - id: migrated-safe-inherits-activation-date
+        text: June 2026 post-exploit migrated NEW Safes inherit the OLD Safe's
+          activation_date (creation_time = migration completedAt) so cohort and
+          retention dates do not reset. A NEW Safe whose OLD Safe never
+          activated must stay out — the registry stays payment-gated.
+      - id: one-row-per-address
+        text: Exactly one row per address (ReplacingMergeTree ordered by
+          address; the outer GROUP BY collapses the base vs migrated_in
+          overlap). Duplicate rows in the crawlers_data reference tables must
+          not survive into this model.
+      validation:
+      - 'uniqueness: count() == uniqExact(address)'
 
 - name: int_execution_gpay_accounts_deployed
   description: |
@@ -1368,10 +1390,10 @@ models:
 - name: int_execution_gpay_safe_canonical
   description: |
     Canonical resolution for the June 2026 post-exploit Safe migration
-    (gp_migrated_safes seed). One row per OLD Safe with its NEW
-    (canonical) Safe. No chained migrations exist in the seed, so a
-    single hop resolves fully. Use this to canonicalize any user/wallet
-    column across the migration boundary.
+    (crawlers_data.gp_migrated_safes source). One row per OLD Safe with
+    its NEW (canonical) Safe. No chained migrations exist in the source,
+    so a single hop resolves fully. Use this to canonicalize any
+    user/wallet column across the migration boundary.
   columns:
   - name: address
     description: Migrated OLD Safe address (lowercase).
