@@ -3,7 +3,6 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='date',
-    unique_key='(date)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','circles_v2','groups','daily']
@@ -21,8 +20,6 @@
 --     registration stream.
 --   * int_execution_circles_v2_group_collateral_diffs for treasury events.
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
 
 WITH new_groups AS (
     SELECT
@@ -31,15 +28,6 @@ WITH new_groups AS (
     FROM {{ ref('int_execution_circles_v2_avatars') }}
     WHERE avatar_type = 'Group'
       AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter(
-              source_field='block_timestamp',
-              destination_field='date',
-              add_and=True) }}
-      {% endif %}
     GROUP BY date
 ),
 
@@ -50,15 +38,6 @@ collateral AS (
         uniqExact(group_address) AS n_distinct_groups_acting
     FROM {{ ref('int_execution_circles_v2_group_collateral_diffs') }}
     WHERE block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter(
-              source_field='block_timestamp',
-              destination_field='date',
-              add_and=True) }}
-      {% endif %}
     GROUP BY date
 ),
 

@@ -3,7 +3,6 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(date, offer_address)',
-    unique_key='(date, offer_address)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','gnosis_app','token_offer_funnel','daily']
@@ -18,8 +17,6 @@
 -- proxy explicitly here so it's not mistaken for a strict eligibility
 -- denominator.
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
 
 WITH active_pool_daily AS (
     -- Rolling 30-day active users as the eligible-pool proxy.
@@ -34,16 +31,6 @@ WITH active_pool_daily AS (
             SELECT DISTINCT date
             FROM {{ ref('int_execution_gnosis_app_user_activity_daily') }}
             WHERE date < today()
-              {% if start_month and end_month %}
-                AND toStartOfMonth(date) >= toDate('{{ start_month }}')
-                AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-              {% else %}
-                {{ apply_monthly_incremental_filter(
-                      source_field='date',
-                      destination_field='date',
-                      add_and=True,
-                      lookback_days=1) }}
-              {% endif %}
         ) d
         INNER JOIN {{ ref('int_execution_gnosis_app_user_activity_daily') }} ua
             ON ua.date >  d.date - 30
@@ -62,15 +49,6 @@ claims_daily AS (
         sum(toFloat64OrNull(toString(amount_received_usd))) AS amount_received_usd
     FROM {{ ref('int_execution_gnosis_app_token_offer_claims') }}
     WHERE block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter(
-              source_field='block_timestamp',
-              destination_field='date',
-              add_and=True) }}
-      {% endif %}
     GROUP BY date, offer_address
 )
 
