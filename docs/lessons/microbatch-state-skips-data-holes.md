@@ -18,6 +18,7 @@ symptom: >-
 last_verified: "2026-07-26"
 evidence:
   - "dbt.int_consensus_validators_income_daily coverage by day: full 558k rows through 2026-07-07; band 0-100k only 2026-07-08..19; full 07-20..22; single (different) band each on 07-23/24/25 (4,118-row day drove avg_apy to -0.91 in int_consensus_validators_dists_daily on 2026-07-25)"
+  - "Reproduction 2026-07-26/27: recovery run of 150 slices reported all-success but landed band-0 rows only; identical band-1 slice (incremental_end_date 2026-07-01, validator_index 100000-200000) inserted 0 rows before and 100,000 rows after adding filters_sql=range_sql to the network_state CTE (models/consensus/intermediate/int_consensus_validators_income_daily.sql)"
   - "2026-07-20 pinned at spec cap: 56,340 of 56,564 validators (index >= 100000, balance > 0) at apy ~ 35.7 after balance_prev fell back to 0 across the hole; validator 150000 cumulative_withdrawals_gno reset 0.247 -> 0 the same day"
   - "scripts/refresh/dbt_incremental_runner.py plan_for_model: floor = max(data_watermark+1, state.last_completed_end_date+1) — state can only advance the floor, so a slice that succeeded without landing rows is never re-planned (fix in tree: heal_lookback_days, pending deploy)"
   - "tests/consensus_income_daily_coverage.sql failed with 4 offending days against the pre-fix state on 2026-07-26 (new test, pending deploy)"
@@ -35,14 +36,24 @@ recent day.
 
 ## Root cause
 
-Two stacked failures:
+Two stacked failures (both CONFIRMED during the 2026-07-26 recovery, which
+reproduced the exact production symptom: 150/150 slices "successful", band 0
+rows only):
 
-1. **Band slices stop landing rows** (nightly, from 2026-07-08): the exact
-   nightly failure mode is still unconfirmed (production scheduler logs
-   needed — local `dbt` container only serves docs; ClickHouse Cloud
-   `query_log` retains ~1 day), but the observable result is that most
-   `(day × validator_index band)` slices of the income model produced no rows
-   while the day advanced.
+1. **An unscoped watermark CTE turns later-band slices into silent no-ops.**
+   The income model's `network_state` CTE called
+   `apply_monthly_incremental_filter` WITHOUT `filters_sql=range_sql`. The
+   macro's watermark subquery runs against `{{ this }}`, so it read the
+   GLOBAL `max(date)` of the income table. On the microbatch path the first
+   band stage to insert day D advances that global max to D; every later
+   band's slice then compiles `network_state` to `date > D AND date <= D` →
+   empty → the INNER JOIN wipes the whole insert → 0 rows, dbt reports
+   success. Reproduced: a band-1 slice inserted 0 rows pre-fix and 100,000
+   rows post-fix with the identical command. The bug was latent since the
+   microbatch tag landed (2026-04-28, cb23208c) but masked while the cron
+   also ran a plain delete+insert pass (its 3-day lookback refilled all
+   bands nightly); it went live when the cron moved to runner-only slicing
+   around 2026-07-08.
 2. **The runner's state watermark makes the hole permanent**: `plan_for_model`
    takes `floor = max(data_watermark + 1, last_completed_end_date + 1)`. State
    can only move the floor FORWARD, so once a slice is marked completed the
@@ -67,6 +78,11 @@ negative. `fct_consensus_info_latest` then serves that day as "the" APY.
 
 - Do not treat a green nightly runner log as proof a microbatch day is
   complete — completion state and landed rows are different facts.
+- In a range-sliced microbatch model, never call
+  `apply_monthly_incremental_filter` without `filters_sql=range_sql` — even in
+  a CTE whose SOURCE has no range column. The range scope applies to the
+  `{{ this }}` watermark subquery; without it the CTE watermarks off the
+  global frontier and later-band slices go empty.
 - Do not "fix" a partial day by re-running only the newest slices; the
   income model is cumulative (`{{ this }}` prev_state), so holes must be
   rebuilt chronologically per band from the last clean partition boundary.
@@ -121,6 +137,9 @@ prior partition boundary, so:
 
 ## Enforcement
 
+- Model fix (pending deploy): `filters_sql=range_sql` on the income model's
+  `network_state` CTE — all other range-sliced consensus models were audited
+  and already scope every filter call.
 - `tests/consensus_income_daily_coverage.sql` (pending deploy) catches any
   partial day within the test lookback window.
 - Runner `--heal-lookback-days` (default 3, pending deploy): when state is
