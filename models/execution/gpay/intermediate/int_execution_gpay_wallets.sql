@@ -16,7 +16,7 @@
 
 WITH operational AS (
     SELECT lower(address) AS address
-    FROM {{ ref('gpay_operational_wallets') }}
+    FROM {{ source('crawlers_data', 'gpay_operational_wallets') }}
 ),
 
 activated_wallets AS (
@@ -68,7 +68,7 @@ migrated_in AS (
         lower(m.new_safe_address)                                 AS address,
         b.activation_date                                         AS activation_date,
         toDateTime64(parseDateTimeBestEffort(m.completedAt), 0, 'UTC') AS creation_time
-    FROM {{ ref('gp_migrated_safes') }} m
+    FROM {{ source('crawlers_data', 'gp_migrated_safes') }} m
     INNER JOIN base b
         ON b.address = lower(m.old_safe_address)
 )

@@ -68,5 +68,5 @@ FROM (
 
     UNION ALL
 
-    SELECT lower(address) AS address FROM {{ ref('gpay_operational_wallets') }}
+    SELECT lower(address) AS address FROM {{ source('crawlers_data', 'gpay_operational_wallets') }}
 )

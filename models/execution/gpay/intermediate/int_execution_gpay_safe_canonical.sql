@@ -18,5 +18,5 @@ SELECT
     lower(old_safe_address)                                AS address,
     lower(any(new_safe_address))                           AS canonical_address,
     min(toDateTime(parseDateTimeBestEffort(completedAt)))  AS migrated_at
-FROM {{ ref('gp_migrated_safes') }}
+FROM {{ source('crawlers_data', 'gp_migrated_safes') }}
 GROUP BY lower(old_safe_address)
