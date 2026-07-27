@@ -44,7 +44,7 @@ WITH base AS (
     SELECT *
     FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
     WHERE token_symbol IS NOT NULL
-    {{ apply_monthly_incremental_filter('block_date', 'date', false) }}
+    {{ apply_monthly_incremental_filter('block_date', 'date', true) }}
 ),
 
 one_per_transfer AS (
