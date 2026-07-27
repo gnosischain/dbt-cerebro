@@ -319,6 +319,14 @@ consol_flags AS (
 -- formula). int_consensus_validators_balances_daily stores effective_balance already
 -- summed across all validators, in REAL GNO. The spec formula operates in gwei, so
 -- the √ below re-inflates by ×32 (GNO -> mGNO) ×1e9 (mGNO -> gwei).
+--
+-- filters_sql=range_sql is LOAD-BEARING here even though this CTE has no
+-- validator_index: the macro's watermark subquery runs against `dbt`.`int_consensus_validators_income_daily`, and
+-- without the range scope it reads the GLOBAL max(date). On the microbatch path
+-- the first validator band to insert a day advances that global max, which
+-- compiles every later band's filter to `date > <new day>` -> empty
+-- network_state -> the INNER JOIN below inserts 0 rows while dbt reports
+-- success (docs/lessons/microbatch-state-skips-data-holes.md).
 network_state AS (
     SELECT
         toStartOfDay(date) AS date
@@ -342,6 +350,8 @@ network_state AS (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -2))
         FROM `dbt`.`int_consensus_validators_income_daily` AS x1
         WHERE 1=1 
+  
+
       )
       AND toDate(date) >= (
         SELECT
@@ -351,6 +361,8 @@ network_state AS (
 
         FROM `dbt`.`int_consensus_validators_income_daily` AS x2
         WHERE 1=1 
+  
+
       )
     
   
