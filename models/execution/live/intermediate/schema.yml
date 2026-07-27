@@ -52,3 +52,46 @@ models:
       Conservative USD notional. When both sides priced: least(bought_usd, sold_usd).
       When only one side priced: that side's USD. When neither priced: NULL.
   tests: []
+
+- name: int_live__gpay_activity_raw
+  description: >
+    Cached, rolling 48h window of Gnosis Pay Payments and Fiat Top Ups decoded
+    from `execution_live.logs` Transfer events. Classification mirrors
+    `int_execution_gpay_activity` (Payment = Safe → merchant; Fiat Top Up =
+    zero-address mint → Safe for EURe/GBPe). Wallet membership comes from the
+    production batch table `dbt.int_execution_gpay_wallets` via
+    `source('dbt_live_refs')` (daily refresh; works from playground_max).
+    USD via ASOF join to production daily token prices (latest on/before
+    event date) so same-day live rows are still priced.
+
+    MATERIALIZATION: incremental ReplacingMergeTree, refreshed by the live
+    loop (`dbt run --select tag:live` every ~45s). First run backfills the
+    last 48h (source TTL). Subsequent runs re-append the last
+    `live_gpay_overlap_minutes` (default 15) to self-heal out-of-order
+    cryo-live inserts. 48h TTL on `block_timestamp`. Source scan is pre-filtered
+    to merchant-bound Transfers and zero-address mints before the wallet join.
+  columns:
+  - name: block_number
+    tests: [not_null]
+  - name: block_timestamp
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: log_index
+    tests: [not_null]
+  - name: wallet_address
+    description: GP Safe that paid (Payment) or received the mint (Fiat Top Up).
+    tests: [not_null]
+  - name: action
+    description: "'Payment' or 'Fiat Top Up'."
+    tests: [not_null]
+  - name: symbol
+  - name: token_address
+  - name: sender
+  - name: receiver
+  - name: value_raw
+  - name: amount
+    description: Decimal-normalized token amount.
+  - name: amount_usd
+    description: USD notional from daily prices; NULL when price missing or zero.
+  tests: []
