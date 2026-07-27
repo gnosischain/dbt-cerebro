@@ -14,6 +14,6 @@ SELECT
     min(t.date)                     AS refund_date,
     sum(toFloat64(t.amount_raw))    AS refund_amount_raw
 FROM `dbt`.`int_execution_transfers_whitelisted_daily` t
-WHERE t."to" IN (SELECT lower(new_safe_address) FROM `dbt`.`gp_migrated_safes`)
+WHERE t."to" IN (SELECT lower(new_safe_address) FROM `crawlers_data`.`gp_migrated_safes`)
   AND t."from" IN (SELECT lower(address) FROM `dbt`.`gpay_refund_distributors`)
 GROUP BY t."to", t.symbol

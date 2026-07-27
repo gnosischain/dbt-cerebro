@@ -1,7 +1,5 @@
 
 
-
-
 WITH onboard_rows AS (
     -- One onboarding row per user on their first-seen date. Needed so the
     -- "new user" cohort_month can be computed without looking at the event
@@ -14,11 +12,6 @@ WITH onboard_rows AS (
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM `dbt`.`int_execution_gnosis_app_users_current`
     WHERE first_seen_at IS NOT NULL
-    
-      
-  
-
-    
 ),
 
 heuristic_rows AS (
@@ -31,11 +24,6 @@ heuristic_rows AS (
     FROM `dbt`.`int_execution_gnosis_app_user_events`
     WHERE block_timestamp IS NOT NULL
       AND block_timestamp < today()
-    
-      
-  
-
-    
     GROUP BY toDate(block_timestamp), address, heuristic_kind
 ),
 
@@ -47,12 +35,7 @@ swap_signed_rows AS (
         count(*)                 AS n_events,
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM `dbt`.`int_execution_gnosis_app_swaps`
-    
     WHERE block_timestamp < today()
-    
-  
-
-    
     GROUP BY toDate(block_timestamp), taker
 ),
 
@@ -71,11 +54,6 @@ swap_filled_rows AS (
     WHERE was_filled = 1
       AND first_fill_at IS NOT NULL
       AND first_fill_at < today()
-    
-      
-  
-
-    
     GROUP BY toDate(assumeNotNull(first_fill_at)), taker
 ),
 
@@ -87,11 +65,7 @@ topup_rows AS (
         count(*)                 AS n_events,
         sum(toFloat64OrNull(toString(amount_usd))) AS amount_usd
     FROM `dbt`.`int_execution_gnosis_app_gpay_topups`
-    
-    WHERE 1=1 
-  
-
-    
+    WHERE 1=1
     GROUP BY toDate(block_timestamp), ga_user
 ),
 
@@ -103,12 +77,7 @@ marketplace_rows AS (
         count(*)                 AS n_events,
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM `dbt`.`int_execution_gnosis_app_marketplace_payments`
-    
     WHERE block_timestamp < today()
-    
-  
-
-    
     GROUP BY toDate(block_timestamp), payer
 ),
 
@@ -120,12 +89,7 @@ token_offer_claim_rows AS (
         count(*)                 AS n_events,
         sum(toFloat64OrNull(toString(amount_received_usd))) AS amount_usd
     FROM `dbt`.`int_execution_gnosis_app_token_offer_claims`
-    
     WHERE block_timestamp < today()
-    
-  
-
-    
     GROUP BY toDate(block_timestamp), ga_user
 )
 

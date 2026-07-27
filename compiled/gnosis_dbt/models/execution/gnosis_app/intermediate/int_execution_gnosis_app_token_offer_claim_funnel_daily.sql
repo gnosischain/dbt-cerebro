@@ -9,8 +9,6 @@
 -- denominator.
 
 
-
-
 WITH active_pool_daily AS (
     -- Rolling 30-day active users as the eligible-pool proxy.
     SELECT
@@ -24,11 +22,6 @@ WITH active_pool_daily AS (
             SELECT DISTINCT date
             FROM `dbt`.`int_execution_gnosis_app_user_activity_daily`
             WHERE date < today()
-              
-                
-  
-
-              
         ) d
         INNER JOIN `dbt`.`int_execution_gnosis_app_user_activity_daily` ua
             ON ua.date >  d.date - 30
@@ -47,11 +40,6 @@ claims_daily AS (
         sum(toFloat64OrNull(toString(amount_received_usd))) AS amount_received_usd
     FROM `dbt`.`int_execution_gnosis_app_token_offer_claims`
     WHERE block_timestamp < today()
-      
-        
-  
-
-      
     GROUP BY date, offer_address
 )
 

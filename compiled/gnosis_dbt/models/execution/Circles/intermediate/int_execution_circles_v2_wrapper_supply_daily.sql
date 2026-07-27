@@ -11,8 +11,6 @@
 -- supply is the prefix sum (computed downstream in the api_ view).
 
 
-
-
 SELECT
     toDate(block_timestamp)                                                  AS date,
     token_address                                                            AS wrapper_address,
@@ -26,9 +24,4 @@ SELECT
             to_address   = '0x0000000000000000000000000000000000000000')     AS supply_delta
 FROM `dbt`.`int_execution_circles_v2_wrapper_transfers`
 WHERE block_timestamp < today()
-  
-    
-  
-
-  
 GROUP BY date, wrapper_address

@@ -12,8 +12,6 @@
 --   * int_execution_circles_v2_group_collateral_diffs for treasury events.
 
 
-
-
 WITH new_groups AS (
     SELECT
         toDate(block_timestamp) AS date,
@@ -21,11 +19,6 @@ WITH new_groups AS (
     FROM `dbt`.`int_execution_circles_v2_avatars`
     WHERE avatar_type = 'Group'
       AND block_timestamp < today()
-      
-        
-  
-
-      
     GROUP BY date
 ),
 
@@ -36,11 +29,6 @@ collateral AS (
         uniqExact(group_address) AS n_distinct_groups_acting
     FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs`
     WHERE block_timestamp < today()
-      
-        
-  
-
-      
     GROUP BY date
 ),
 

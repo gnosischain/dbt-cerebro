@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 10,
-    "high_risk": 303,
+    "explicit_contracts": 11,
+    "high_risk": 301,
     "models": 1161
   },
-  "inputs_fingerprint": "17889bbb59e970e8e246eafe6630e395e694f47b88d665ccb496121bdcc3c093",
+  "inputs_fingerprint": "64bb70bb1a5923efab4d8f71e76e024af10fcb3da2d6ef2e70b20fb63c5028cc",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -66134,32 +66134,8 @@
     },
     "int_execution_circles_v2_group_collateral_balances_daily": {
       "contract": {
-        "hazards": [
-          {
-            "id": "backfill-order-cumulative",
-            "status": "observed",
-            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
-          },
-          {
-            "id": "duplicate-seed-drift",
-            "status": "remediated",
-            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
-          },
-          {
-            "id": "frontier-day-incomplete-inputs",
-            "status": "remediated",
-            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
-          },
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "cumulative_self_referencing",
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -66171,21 +66147,8 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "backfill-order-cumulative",
-            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
-          },
-          {
-            "lesson": "frontier-day-incomplete-inputs",
-            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
-        "semantics": "cumulative",
         "validation": [
           "make check-fast"
         ]
@@ -66201,14 +66164,14 @@
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": true,
+      "high_risk": false,
       "incremental_strategy": null,
       "materialized": "table",
       "name": "int_execution_circles_v2_group_collateral_balances_daily",
       "owner": "analytics_team",
       "partition_by": "toStartOfMonth(date)",
       "path": "models/execution/Circles/intermediate/int_execution_circles_v2_group_collateral_balances_daily.sql",
-      "reads_this": true,
+      "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
@@ -66217,7 +66180,7 @@
         "groups",
         "production"
       ],
-      "unique_key": "(date, group_address, token_id)"
+      "unique_key": null
     },
     "int_execution_circles_v2_group_collateral_diffs": {
       "contract": {
@@ -66459,16 +66422,8 @@
     },
     "int_execution_circles_v2_groups_overview_daily": {
       "contract": {
-        "hazards": [
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -66480,10 +66435,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
         "validation": [
@@ -66518,7 +66469,7 @@
         "groups",
         "production"
       ],
-      "unique_key": "(date)"
+      "unique_key": null
     },
     "int_execution_circles_v2_hub_events_daily": {
       "contract": {
@@ -66711,16 +66662,8 @@
     },
     "int_execution_circles_v2_invite_funnel": {
       "contract": {
-        "hazards": [
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -66732,10 +66675,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
         "validation": [
@@ -66768,7 +66707,7 @@
         "invite_funnel",
         "production"
       ],
-      "unique_key": "(avatar)"
+      "unique_key": null
     },
     "int_execution_circles_v2_inviter_canonical": {
       "contract": {
@@ -68124,16 +68063,8 @@
     },
     "int_execution_circles_v2_wrapper_supply_daily": {
       "contract": {
-        "hazards": [
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -68145,10 +68076,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
         "validation": [
@@ -68183,7 +68110,7 @@
         "supply",
         "wrappers"
       ],
-      "unique_key": "(date, wrapper_address)"
+      "unique_key": null
     },
     "int_execution_circles_v2_wrapper_tokens": {
       "contract": {
@@ -69939,16 +69866,8 @@
     },
     "int_execution_gnosis_app_token_offer_claim_funnel_daily": {
       "contract": {
-        "hazards": [
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -69960,10 +69879,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
         "validation": [
@@ -69997,7 +69912,7 @@
         "production",
         "token_offer_funnel"
       ],
-      "unique_key": "(date, offer_address)"
+      "unique_key": null
     },
     "int_execution_gnosis_app_token_offer_claims": {
       "contract": {
@@ -70181,16 +70096,8 @@
     },
     "int_execution_gnosis_app_user_activity_daily": {
       "contract": {
-        "hazards": [
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
-          }
-        ],
-        "profiles": [
-          "table_month_var_branch"
-        ],
+        "hazards": [],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -70202,10 +70109,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
         "validation": [
@@ -70257,7 +70160,7 @@
         "gnosis_app",
         "production"
       ],
-      "unique_key": "(date, address, activity_kind)"
+      "unique_key": null
     },
     "int_execution_gnosis_app_user_activity_daily_incl_gpay": {
       "contract": {
@@ -72347,32 +72250,25 @@
     },
     "int_execution_gpay_wallets": {
       "contract": {
-        "hazards": [
+        "grain": [
+          "address"
+        ],
+        "hazards": [],
+        "invariants": [
           {
-            "id": "backfill-order-cumulative",
-            "status": "observed",
-            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+            "id": "payment-gated-membership",
+            "text": "Membership is payment-gated \u2014 a Safe qualifies only if it emitted SafeSetup AND ever sent a whitelisted ERC-20 transfer to the GPay spender 0x4822521e6135cd2599199c83ea35179229a172ee. This is NOT the deployed-account universe; use int_execution_gpay_accounts_deployed for accounts that were deployed but never spent."
           },
           {
-            "id": "duplicate-seed-drift",
-            "status": "remediated",
-            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+            "id": "migrated-safe-inherits-activation-date",
+            "text": "June 2026 post-exploit migrated NEW Safes inherit the OLD Safe's activation_date (creation_time = migration completedAt) so cohort and retention dates do not reset. A NEW Safe whose OLD Safe never activated must stay out \u2014 the registry stays payment-gated."
           },
           {
-            "id": "frontier-day-incomplete-inputs",
-            "status": "remediated",
-            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
-          },
-          {
-            "id": "table-mat-batch-vars-truncation",
-            "status": "observed",
-            "title": "Table-materialized models with month-var branches get truncated to the last batch"
+            "id": "one-row-per-address",
+            "text": "Exactly one row per address (ReplacingMergeTree ordered by address; the outer GROUP BY collapses the base vs migrated_in overlap). Duplicate rows in the crawlers_data reference tables must not survive into this model."
           }
         ],
-        "profiles": [
-          "cumulative_self_referencing",
-          "table_month_var_branch"
-        ],
+        "profiles": [],
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -72384,23 +72280,11 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "backfill-order-cumulative",
-            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
-          },
-          {
-            "lesson": "frontier-day-incomplete-inputs",
-            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
-          },
-          {
-            "lesson": "table-mat-batch-vars-truncation",
-            "text": "Never run through batched refresh.py (each batch replaces the whole table \u2014 only the last batch survives); a plain dbt run self-heals."
           }
         ],
-        "semantics": "cumulative",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "uniqueness: count() == uniqExact(address)"
         ]
       },
       "description_present": true,
@@ -72429,17 +72313,17 @@
       ],
       "downstream_direct_count": 12,
       "downstream_transitive_count": 252,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": true,
+      "high_risk": false,
       "incremental_strategy": null,
       "materialized": "table",
       "name": "int_execution_gpay_wallets",
       "owner": "analytics_team",
       "partition_by": null,
       "path": "models/execution/gpay/intermediate/int_execution_gpay_wallets.sql",
-      "reads_this": true,
+      "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
@@ -72447,7 +72331,7 @@
         "gpay",
         "production"
       ],
-      "unique_key": "address"
+      "unique_key": null
     },
     "int_execution_lending_aave_balance_cohorts_daily": {
       "contract": {
@@ -85045,7 +84929,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "f882071e0aba474be084a086c81905be2835f4a12d0d07f9197c62cee9686a3f",
+  "models_hash": "a87dfadb35518f2e72bfc1ace94c74aa5c74921813501e1316526d6353af5918",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

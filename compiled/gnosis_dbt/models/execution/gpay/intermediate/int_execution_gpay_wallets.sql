@@ -3,11 +3,9 @@
 
 
 
-
-
 WITH operational AS (
     SELECT lower(address) AS address
-    FROM `dbt`.`gpay_operational_wallets`
+    FROM `crawlers_data`.`gpay_operational_wallets`
 ),
 
 activated_wallets AS (
@@ -17,14 +15,8 @@ activated_wallets AS (
     FROM `dbt`.`int_execution_transfers_whitelisted_daily`
     WHERE "to" = '0x4822521e6135cd2599199c83ea35179229a172ee'
       AND date >= toDate('2023-12-01')
-      
-      
-  
-
-      
     GROUP BY "from"
     HAVING pay_wallet NOT IN (SELECT address FROM operational)
-    
 ),
 
 safe_setup AS (
@@ -56,7 +48,7 @@ migrated_in AS (
         lower(m.new_safe_address)                                 AS address,
         b.activation_date                                         AS activation_date,
         toDateTime64(parseDateTimeBestEffort(m.completedAt), 0, 'UTC') AS creation_time
-    FROM `dbt`.`gp_migrated_safes` m
+    FROM `crawlers_data`.`gp_migrated_safes` m
     INNER JOIN base b
         ON b.address = lower(m.old_safe_address)
 )

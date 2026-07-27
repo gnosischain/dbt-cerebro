@@ -1,7 +1,5 @@
 
 
-
-
 WITH deltas AS (
     SELECT
         toDate(block_timestamp) AS date,
@@ -10,14 +8,8 @@ WITH deltas AS (
         sum(delta_raw) AS net_delta_raw
     FROM `dbt`.`int_execution_circles_v2_group_collateral_diffs`
     WHERE toDate(block_timestamp) < today()
-    
-      
-  
-
-    
     GROUP BY 1, 2, 3
 ),
-
 with_running_totals AS (
     SELECT
         d.date,
@@ -27,10 +19,8 @@ with_running_totals AS (
         sum(d.net_delta_raw) OVER (
             PARTITION BY d.group_address, d.token_id
             ORDER BY d.date
-        )
-         AS balance_raw
+        ) AS balance_raw
     FROM deltas d
-    
 )
 
 SELECT

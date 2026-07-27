@@ -14,7 +14,7 @@ WITH pairs AS (
         lower(old_safe_address)                                AS old_safe,
         lower(any(new_safe_address))                           AS new_safe,
         min(toDateTime64(parseDateTimeBestEffort(completedAt), 0, 'UTC')) AS completed_at
-    FROM `dbt`.`gp_migrated_safes`
+    FROM `crawlers_data`.`gp_migrated_safes`
     GROUP BY lower(old_safe_address)
 ),
 

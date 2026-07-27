@@ -22,8 +22,6 @@
 --                             Minter definition). NULL if never reached.
 
 
-
-
 WITH invitees AS (
     SELECT
         avatar,
@@ -34,11 +32,6 @@ WITH invitees AS (
       AND invited_by IS NOT NULL
       AND invited_by != '0x0000000000000000000000000000000000000000'
       AND block_timestamp < today()
-      
-        
-  
-
-      
 ),
 
 -- Per-avatar mint events for the avatars in this batch. Restricting by the

@@ -61,5 +61,5 @@ FROM (
 
     UNION ALL
 
-    SELECT lower(address) AS address FROM `dbt`.`gpay_operational_wallets`
+    SELECT lower(address) AS address FROM `crawlers_data`.`gpay_operational_wallets`
 )
