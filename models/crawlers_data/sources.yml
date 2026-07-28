@@ -31,6 +31,7 @@ sources:
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
+
       - name: dune_bridge_flows
         description: >
           Cross-chain bridge transfers crawled from Dune with bridge,
@@ -194,3 +195,60 @@ sources:
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
+
+  # External price standbein (DefiLlama + CoinGecko). Schema redirectable for
+  # Max-dev (playground_max) via DBT_EXTERNAL_PRICES_SCHEMA; prod = crawlers_data.
+  - name: crawlers_data_external_prices
+    schema: "{{ env_var('DBT_EXTERNAL_PRICES_SCHEMA', 'crawlers_data') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: defillama_prices
+        description: >
+          External USD prices from DefiLlama coins API (gnosis:{address}).
+          Ingested by click-runner external-prices ingestor (daily spot batch +
+          optional ~365d chart backfill). Phase 1 standbein — not wired into
+          int_execution_token_prices_daily until validated. Staging
+          (stg_crawlers_data__defillama_prices) dedupes by date x symbol.
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: block_date
+            description: Calendar date of the price observation (UTC).
+          - name: chain
+            description: DefiLlama chain key (always gnosis for this ingest).
+          - name: token_address
+            description: Lowercase token contract address (or 0xeee… for native xDAI).
+          - name: symbol
+            description: Allowlist symbol from click-runner config.
+          - name: price
+            description: USD price from DefiLlama.
+          - name: confidence
+            description: DefiLlama confidence score in 0–1 (nullable metadata).
+          - name: ingested_at
+            description: Wall-clock timestamp of the insert.
+
+      - name: coingecko_prices
+        description: >
+          External USD prices from the CoinGecko public/Demo API (by coin id).
+          Ingested by click-runner external-prices ingestor. Phase 1 standbein —
+          not wired into the price hub until validated. Staging
+          (stg_crawlers_data__coingecko_prices) dedupes by date x symbol.
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: {count: 36, period: hour}
+          error_after: {count: 48, period: hour}
+        columns:
+          - name: block_date
+            description: Calendar date of the price observation (UTC).
+          - name: coingecko_id
+            description: CoinGecko coin id (e.g. gnosis, savings-xdai).
+          - name: symbol
+            description: Allowlist symbol from click-runner config.
+          - name: price
+            description: USD price from CoinGecko.
+          - name: ingested_at
+            description: Wall-clock timestamp of the insert.

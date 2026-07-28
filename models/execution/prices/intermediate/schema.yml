@@ -2,7 +2,10 @@ version: 2
 models:
 
 - name: int_execution_token_prices_daily
-  description: The `int_execution_token_prices_daily` view consolidates daily price data for various tokens and stablecoins used in execution and trading activities, facilitating analysis of price trends and stability over time.
+  description: >
+    Hybrid daily USD price hub. Priority: fresh native (1) > backedfi RWA /
+    aToken wrappers (2) > off-chain pick DefiLlama(confidence>=0.9) >
+    CoinGecko > Dune (3) > $1 pegs (4) > stale native (5).
   columns:
 
   - name: date
@@ -216,7 +219,7 @@ models:
       Date of the last REAL (non-forward-filled) observation backing this row's price.
       On a day with a fresh observation this equals `date`; on a forward-filled day it is
       the most recent real-observation date. The hub uses `date - last_obs_date` to demote
-      a stale native price below the Dune fallback (see int_execution_token_prices_daily).
+      a stale native price below the off-chain fallback (see int_execution_token_prices_daily).
     data_type: Date
   meta:
     owner: analytics_team
@@ -256,6 +259,99 @@ models:
       severity: warn
       tags:
       - elementary
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_token_prices_external_daily
+  description: >
+    Long-form external USD prices (DefiLlama + CoinGecko) for allowlisted tokens.
+    Fed into int_execution_token_prices_daily off-chain pick (priority 3) when
+    confidence gates pass; also used by int_execution_token_prices_compare for QA.
+  columns:
+  - name: date
+    description: Calendar date of the price observation (UTC).
+    data_type: Date
+  - name: symbol
+    description: Token symbol (whitelist display casing when available).
+    data_type: String
+  - name: source
+    description: External provider — `defillama` or `coingecko`.
+    data_type: String
+  - name: price
+    description: USD price from the external provider.
+    data_type: Float64
+  - name: confidence
+    description: DefiLlama confidence (0–1); null for CoinGecko.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      - source
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_execution_token_prices_compare
+  description: >
+    Side-by-side daily prices from native, hub, Dune, DefiLlama, and CoinGecko
+    with pairwise absolute percentage diffs. Validation / QA only. After Phase 2a,
+    hub already prefers high-confidence Llama over Dune at priority 3 — large
+    hub-vs-Llama gaps on RWAs are expected (backedfi stays priority 2).
+  columns:
+  - name: date
+    description: Calendar date.
+    data_type: Date
+  - name: symbol
+    description: Token symbol (whitelist display casing when available).
+    data_type: String
+  - name: price_native
+    description: Price from int_execution_prices_native_daily.
+    data_type: Nullable(Float64)
+  - name: price_hub
+    description: Price from int_execution_token_prices_daily (official series).
+    data_type: Nullable(Float64)
+  - name: price_dune
+    description: Price from stg_crawlers_data__dune_prices.
+    data_type: Nullable(Float64)
+  - name: price_defillama
+    description: Price from DefiLlama external ingest.
+    data_type: Nullable(Float64)
+  - name: price_coingecko
+    description: Price from CoinGecko external ingest.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_native_defillama
+    description: abs(native - defillama) / native when both present.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_native_coingecko
+    description: abs(native - coingecko) / native when both present.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_dune_defillama
+    description: abs(dune - defillama) / dune when both present.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_dune_coingecko
+    description: abs(dune - coingecko) / dune when both present.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_defillama_coingecko
+    description: abs(defillama - coingecko) / defillama when both present.
+    data_type: Nullable(Float64)
+  - name: abs_pct_diff_hub_defillama
+    description: abs(hub - defillama) / hub when both present.
+    data_type: Nullable(Float64)
+  - name: source_count
+    description: Count of non-null among native, dune, defillama, coingecko.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns:
       - date
