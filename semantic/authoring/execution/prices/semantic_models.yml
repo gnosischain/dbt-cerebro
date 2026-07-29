@@ -108,6 +108,69 @@ semantic_models:
   - name: execution_prices_oracle_daily__price_value
     agg: average
     expr: price
+- name: execution_token_prices_external_daily
+  model: ref('int_execution_token_prices_external_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: symbol
+    type: categorical
+    expr: symbol
+  - name: source
+    type: categorical
+    expr: source
+  measures:
+  - name: execution_token_prices_external_daily__price_value
+    agg: average
+    expr: price
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - external token price
+        - defillama coingecko prices
+        - offchain price standbein
+        grain: day
+- name: execution_token_prices_compare
+  model: ref('int_execution_token_prices_compare')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: symbol
+    type: categorical
+    expr: symbol
+  measures:
+  - name: execution_token_prices_compare__hub_price
+    agg: average
+    expr: price_hub
+  - name: execution_token_prices_compare__defillama_price
+    agg: average
+    expr: price_defillama
+  - name: execution_token_prices_compare__coingecko_price
+    agg: average
+    expr: price_coingecko
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - price compare
+        - hub vs defillama
+        - price feed divergence
+        grain: day
 metrics:
 - name: execution_token_prices_daily__price_value
   label: Token Price (USD)
@@ -239,3 +302,55 @@ metrics:
         - oracle price value
         - chainlink derived quote
         - oracle feed usd price
+- name: execution_token_prices_external_daily__price_value
+  label: External Token Price (USD)
+  description: daily USD price from DefiLlama or CoinGecko standbein (average). Read this as an average over the grain; do NOT
+    sum it across rows or periods.
+  type: simple
+  type_params:
+    measure: execution_token_prices_external_daily__price_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - symbol
+        - source
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - defillama token price
+        - coingecko token price
+        - external usd quote
+- name: execution_token_prices_compare__hub_price
+  label: Hub Token Price (Compare)
+  description: hub USD price on the side-by-side compare model (average). Diagnostic metric; prefer
+    execution_token_prices_daily__price_value for product queries.
+  type: simple
+  type_params:
+    measure: execution_token_prices_compare__hub_price
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        grain: day
+        allowed_dimensions:
+        - date
+        - symbol
+        supported_time_grains:
+        - day
+        - week
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - hub vs external price compare
+        - price feed divergence
