@@ -5,15 +5,25 @@
   )
 }}
 
--- Deduped DefiLlama external prices. Append-only raw table; anyLast wins for
--- re-runs on the same (date, symbol) grain (allowlist is one address per symbol).
+-- Deduped DefiLlama external prices. Raw table is chain-aware; hub grain stays
+-- (date, symbol). Prefer gnosis when the same symbol is ingested on multiple
+-- chains; otherwise latest ingest wins.
 
 SELECT
-    toDate(block_date)                    AS date,
-    upper(symbol)                         AS symbol,
-    anyLast(lower(token_address))         AS token_address,
-    anyLast(toFloat64(price))             AS price,
-    anyLast(confidence)                   AS confidence
+    toDate(block_date) AS date,
+    upper(symbol) AS symbol,
+    argMax(
+        lower(token_address),
+        (if(lower(chain) = 'gnosis', 1, 0), ingested_at)
+    ) AS token_address,
+    argMax(
+        toFloat64(price),
+        (if(lower(chain) = 'gnosis', 1, 0), ingested_at)
+    ) AS price,
+    argMax(
+        confidence,
+        (if(lower(chain) = 'gnosis', 1, 0), ingested_at)
+    ) AS confidence
 FROM {{ source('crawlers_data_external_prices', 'defillama_prices') }}
 GROUP BY date, symbol
 ORDER BY date, symbol
