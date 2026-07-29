@@ -41,6 +41,9 @@ models:
       - name: id
         data_type: String
         tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
       - name: outcome
         data_type: String
       - name: is_gip
@@ -144,6 +147,19 @@ models:
       - name: topic_id
         data_type: UInt32
         tests: [not_null]
+      # proposal_id / snapshot_proposal_id are both real columns of this model but were
+      # never declared here. The semantic layer declares an entity `proposal` with
+      # expr: proposal_id, and the registry validator resolves entity exprs against
+      # DECLARED columns -- so the omission surfaced as a hard
+      # entity_expr_unknown_column error rather than a doc gap. Declared 2026-07-28.
+      - name: proposal_id
+        description: >
+          Snapshot proposal id this topic links to. Same value as
+          snapshot_proposal_id; kept as the semantic layer's `proposal` entity key.
+        data_type: String
+      - name: snapshot_proposal_id
+        description: Snapshot proposal id (0x form) resolved from either link signal.
+        data_type: String
       - name: proposal_matched
         description: True when the linked snapshot_proposal_id exists in int_governance_proposals.
         data_type: Bool
@@ -177,6 +193,9 @@ models:
       - name: proposal_id
         data_type: String
         tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
       - name: top1_share
         description: Share of total_vp cast by the single largest voter.
         data_type: Nullable(Float64)
@@ -214,6 +233,9 @@ models:
       - name: proposal_id
         data_type: String
         tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
       - name: includes_staked_gno
         description: True when this proposal's own strategies included staked GNO in the eligible pool.
         data_type: Bool
@@ -282,6 +304,105 @@ models:
         data_type: Nullable(Float64)
       - name: proposals
         data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposal_direction
+    description: >
+      Per-proposal voting direction measured twice -- once by headcount, once by
+      voting power -- plus the gap between them. Powers the "whales versus
+      everyone else" view. Shares are over DECISIVE votes (for + against),
+      excluding abstain so an abstain-heavy ballot never reads as consensus;
+      abstain is exposed separately. Only choice_kind='single' (96.8% of
+      proposals) is directional -- ranked-choice rows appear with NULL shares
+      and directional = 0. Filter voters >= 30 before ranking (a divergence over
+      a handful of voters is noise) and is_gip = 1 for any aggregate (119 of 253
+      proposals are non-GIP spam).
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: directional
+        description: False for ranked-choice and for proposals with no decodable decisive votes.
+        data_type: Bool
+      - name: against_share_by_head
+        description: against_voters / decisive_voters. NULL when there are no decisive votes.
+        data_type: Nullable(Float64)
+      - name: against_share_by_vp
+        description: against_vp / decisive_vp. NULL when there is no decisive voting power.
+        data_type: Nullable(Float64)
+      - name: head_minus_weight_against
+        description: >
+          against_share_by_head minus against_share_by_vp. POSITIVE = small
+          holders were more opposed than capital; NEGATIVE = capital was more
+          opposed than the crowd. The sharpest available read on whether a
+          decision had broad consent or merely sufficient weight.
+        data_type: Nullable(Float64)
+      - name: margin_by_vp
+        description: abs(for_vp - against_vp) / decisive_vp. 0 = dead heat, 1 = unanimous.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_electorate_monthly
+    description: >
+      Electorate size per month measured two ways at once: how many PEOPLE voted
+      and how much CAPITAL voted. The divergence between the two lines is the
+      finding -- raw vote counts fell ~98.7% from 2022 to 2026, but median voting
+      power per GIP is HIGHER now (137k vs 102k) and median voters per GIP (68)
+      is back at the pre-airdrop baseline (79 in 2020). 2022 was an
+      airdrop-farming bubble, not a healthy norm. Never publish the raw
+      vote-count decline alone. GIP-only; months with no GIP are absent rather
+      than zero. Medians, not means -- per-proposal participation is heavily
+      skewed (max 1,196 voters).
+    columns:
+      - name: date
+        description: Month start. Months without a GIP proposal are absent.
+        data_type: Date
+        tests: [not_null, unique]
+      - name: median_voters_per_proposal
+        data_type: UInt64
+      - name: median_vp_per_proposal
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_vote_trajectory
+    description: >
+      How opinion FORMED across a voting window: one row per (proposal, hour
+      since voting opened) with cumulative against-share by headcount and by
+      voting power. Viable because the median proposal spreads 100 votes over 50
+      distinct active hours in a 168h window. Intended use is to overlay forum
+      post timestamps and find where the against-share inflects -- a COINCIDENCE
+      DETECTOR, not a causal claim; label any UI "posts near an inflection",
+      never "posts that caused". Both curves are exposed because a jump in
+      voting power without a jump in headcount means one whale moved. Hours with
+      no votes are absent, not zero -- do not read a gap as flat support. Filter
+      on proposal_total_votes before drawing.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: hour_offset
+        description: Hours since start_at, floored at 0 so clock-skewed votes land in hour 0.
+        data_type: UInt32
+      - name: turnout_progress
+        description: Share of the proposal's eventual turnout that had arrived by this hour.
+        data_type: Nullable(Float64)
+      - name: cum_against_share_by_vp
+        data_type: Nullable(Float64)
+      - name: delta_against_share_by_vp
+        description: >
+          Hour-over-hour movement in the voting-power against-share. Large
+          absolute values are the inflection candidates. NULL in a proposal's
+          first bucket.
+        data_type: Nullable(Float64)
     meta:
       owner: analytics_team
       authoritative: false

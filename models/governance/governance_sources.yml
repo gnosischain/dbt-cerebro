@@ -5,12 +5,26 @@ sources:
   # (ingestors/snapshot_ingestor.py + ingestors/forum_ingestor.py) into
   # ReplacingMergeTree(ingested_at) tables. Staging dedupes via FINAL.
   #
-  # Dedicated source block so the schema can be redirected to playground_max
-  # during dev/backfill validation (set DBT_GOVERNANCE_SCHEMA=playground_max)
-  # without touching dune_*/other crawlers_data tables. Defaults to
-  # crawlers_data in prod. Mirrors the crawlers_data_cow pattern.
+  # Dedicated source block so the schema can be redirected during dev/backfill
+  # validation without touching other databases. Mirrors the crawlers_data_cow
+  # pattern.
+  #
+  #   DEV : set DBT_GOVERNANCE_SCHEMA=playground_max   <-- REQUIRED, every session
+  #   PROD: leave unset -> governance_db
+  #
+  # The default was `crawlers_data` until 2026-07-28. That was stale and wrong:
+  # crawlers_data contains ZERO governance tables (verified), so any run without
+  # the env var died with UNKNOWN_TABLE on all nine staging models. click-runner's
+  # own ingestors default to GOVERNANCE_DATABASE=governance_db, which is where the
+  # data actually lands, so that is the correct prod default. Safe to change --
+  # no governance model is deployed to the prod `dbt` database, so nothing
+  # scheduled depends on the old value.
+  #
+  # Forgetting the env var in dev now fails with a permissions error on
+  # governance_db rather than a missing-table error. Both are loud; neither
+  # silently reads the wrong data.
   - name: governance
-    schema: "{{ env_var('DBT_GOVERNANCE_SCHEMA', 'crawlers_data') }}"
+    schema: "{{ env_var('DBT_GOVERNANCE_SCHEMA', 'governance_db') }}"
     freshness:
       warn_after: {count: 36, period: hour}
       error_after: {count: 72, period: hour}

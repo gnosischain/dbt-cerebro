@@ -220,3 +220,68 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: int_governance_vote_choices
+    description: >
+      One row per (proposal, voter, selected choice): Snapshot's polymorphic raw
+      `choice` resolved to a label and a For/Against/Abstain direction. The
+      foundation for every direction and contestation metric -- nothing
+      downstream should parse choice_raw again. basic/single-choice yield one
+      row per voter; ranked-choice yields one row per preference with vp only on
+      rank 1. Unsupported ballot types (approval/weighted/quadratic, none
+      currently used) yield NO rows by design -- guarded by
+      governance_vote_choices_no_dropped_voters so a new type fails loudly.
+      The 1-based positional mapping into choices[] is proven, not assumed:
+      governance_vote_choices_reconstruct_scores reconciles summed vp_effective
+      against Snapshot's own reported scores[].
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: voter
+        description: Lowercased voter address.
+        data_type: String
+        tests: [not_null]
+      - name: choice_kind
+        description: >
+          single (basic/single-choice, one row per voter) | ranked
+          (ranked-choice, one row per preference) | unsupported (emits no rows).
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['single', 'ranked']
+      - name: preference_rank
+        description: 1 for single-choice; ranked ballots count up in preference order.
+        data_type: UInt32
+      - name: choice_index
+        description: 1-based index into the proposal's choices[] as cast by the voter.
+        data_type: UInt32
+      - name: choice_index_valid
+        description: >
+          False when the index falls outside choices[]. Such rows keep an empty
+          label and polarity 'unknown' rather than being mapped to a neighbour.
+        data_type: Bool
+      - name: choice_label
+        description: The option text the voter selected. Empty when the index is invalid.
+        data_type: String
+      - name: polarity
+        description: >
+          Direction of the selected option, from the shared
+          classify_choice_polarity macro -- the SAME vocabulary
+          int_governance_proposals uses for outcome, so a per-voter direction can
+          never contradict the proposal-level result. 'other' is a real
+          selection ballot outcome, not a failure.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['for', 'against', 'abstain', 'other', 'unknown']
+      - name: vp_effective
+        description: >
+          Voting power attributable to THIS row. Equals vp for single-choice;
+          for ranked ballots only rank 1 carries vp (Snapshot resolves ranked by
+          instant-runoff, not by splitting weight), so summing never
+          double-counts a ranked voter.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false

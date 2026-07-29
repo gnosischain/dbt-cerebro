@@ -477,6 +477,112 @@ semantic_models:
         - most active governance proposal authors
         - proposer leaderboard
 
+- name: governance_proposal_direction
+  model: ref('api_governance_proposal_direction')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  - name: ballot_type
+    type: categorical
+    expr: ballot_type
+  - name: directional
+    type: categorical
+    expr: directional
+  measures:
+  - name: governance_proposal_direction__against_share_by_head_value
+    agg: average
+    expr: against_share_by_head
+  - name: governance_proposal_direction__against_share_by_vp_value
+    agg: average
+    expr: against_share_by_vp
+  - name: governance_proposal_direction__head_minus_weight_value
+    agg: average
+    expr: head_minus_weight_against
+  - name: governance_proposal_direction__margin_by_vp_value
+    agg: average
+    expr: margin_by_vp
+  - name: governance_proposal_direction__abstain_share_by_head_value
+    agg: average
+    expr: abstain_share_by_head
+  - name: governance_proposal_direction__voters_value
+    agg: sum
+    expr: voters
+  - name: governance_proposal_direction__proposal_count
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - how divided was the vote
+        - voting direction by proposal
+        - whales versus small holders
+        - contested governance proposals
+
+- name: governance_electorate_monthly
+  model: ref('api_governance_electorate_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  measures:
+  - name: governance_electorate_monthly__median_voters_value
+    agg: average
+    expr: median_voters_per_proposal
+  - name: governance_electorate_monthly__median_vp_value
+    agg: average
+    expr: median_vp_per_proposal
+  - name: governance_electorate_monthly__gip_proposals
+    agg: sum
+    expr: gip_proposals
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - how many people vote in governance
+        - is governance participation declining
+        - electorate size over time
+        - voters versus voting power
+
+# NOT registered here, deliberately: api_governance_vote_trajectory.
+# It is a per-proposal drill-down (one row per proposal x hour-since-open), and its
+# cumulative-share columns are only meaningful for a SINGLE proposal. Any aggregate the
+# semantic layer would compute across proposals and hour buckets -- an average
+# cumulative against-share -- is a number with no interpretation. Registering it would
+# put a misleading aggregate in the Metric Lab picker. Consume it via SQL or a dedicated
+# per-proposal chart instead.
+
 metrics:
 - name: governance_proposal_count
   label: Governance Proposals
@@ -771,3 +877,124 @@ metrics:
         question_synonyms:
         - total active delegations
         - how many people delegate their votes
+
+- name: governance_head_vs_weight_divergence
+  label: Head-vs-Weight Divergence (per proposal)
+  description: >
+    Against-share by voter COUNT minus against-share by voting POWER, for one proposal.
+    Positive means small holders were more opposed than capital; negative means capital
+    was more opposed than the crowd. The sharpest read on whether a decision had broad
+    consent or merely sufficient weight. READ IT PER PROPOSAL -- group by gip_number.
+    Averaging it across proposals is not a defined population statistic (each proposal
+    has a different electorate), which is why this is candidate rather than approved.
+    Filter voters >= 30 and is_gip = 1; a divergence over a handful of voters is noise
+    and 119 of 253 proposals are non-GIP spam. Only meaningful where directional = true
+    (basic and single-choice ballots, 96.8% of proposals) -- ranked-choice is NULL.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__head_minus_weight_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - whales versus community
+        - did small holders disagree with large holders
+        - head versus weight divergence
+
+- name: governance_against_share_by_vp
+  label: Against Share (by voting power)
+  description: >
+    Share of DECISIVE voting power (for + against, excluding abstain) cast against, per
+    proposal. Excluding abstain is deliberate -- an abstain-heavy ballot must not read as
+    consensus. Group by gip_number for per-proposal values; filter is_gip = 1 for aggregates.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__against_share_by_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - opposition share
+        - how much voting power voted against
+        - dissent by voting power
+
+- name: governance_against_share_by_head
+  label: Against Share (by voter count)
+  description: >
+    Share of DECISIVE voters (for + against, excluding abstain) who voted against, per
+    proposal. Pair with governance_against_share_by_vp -- the gap between the two is the
+    interesting quantity. One address is one voter here; this is not sybil-resistant.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__against_share_by_head_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how many voters voted against
+        - dissent by headcount
+
+- name: governance_vote_margin
+  label: Vote Margin (by voting power)
+  description: >
+    abs(for - against) / decisive voting power. 0 is a dead heat, 1 is unanimous. Low
+    values flag genuinely close decisions. Group by gip_number; filter is_gip = 1.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__margin_by_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how close was the vote
+        - narrow governance decisions
+        - vote margin
+
+- name: governance_median_voters_per_proposal
+  label: Median Voters per GIP (monthly)
+  description: >
+    Median number of distinct addresses voting on a GIP, by month. Median rather than
+    mean because per-proposal participation is heavily skewed by airdrop-era ballots (max
+    1,196 voters). ALWAYS read alongside governance_median_vp_per_proposal: headcount fell
+    from 581/GIP in 2022 to 68 in 2026 while voting power per GIP ROSE, so the headcount
+    series alone reads as collapse when it is really an airdrop bubble deflating back to
+    the 2020-21 baseline. Months with no GIP are absent, not zero.
+  type: simple
+  type_params:
+    measure: governance_electorate_monthly__median_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how many people vote per proposal
+        - is governance participation declining
+        - voters per gip over time
+
+- name: governance_median_vp_per_proposal
+  label: Median Voting Power per GIP (monthly)
+  description: >
+    Median voting power cast on a GIP, by month. The capital-side counterpart to
+    governance_median_voters_per_proposal -- plot both on one chart, the divergence
+    between the lines is the finding. Denominated in GNO-equivalent voting power, not USD.
+  type: simple
+  type_params:
+    measure: governance_electorate_monthly__median_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - voting power per proposal
+        - how much capital votes
+        - is capital still participating
