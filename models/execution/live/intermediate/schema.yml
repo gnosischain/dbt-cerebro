@@ -95,3 +95,35 @@ models:
   - name: amount_usd
     description: USD notional from daily prices; NULL when price missing or zero.
   tests: []
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: rolling-48h-window-only
+        text: This is a 48h cache, not a history. The 48h TTL on block_timestamp matches
+          the execution_live.logs source retention, so any total computed here is a
+          window total — never compare it against the batch pipeline's lifetime figures.
+          Historical GP activity lives in int_execution_gpay_activity.
+      - id: overlap-append-needs-final
+        text: Every live-loop run re-appends the last live_gpay_overlap_minutes to
+          self-heal out-of-order cryo-live inserts, so the table legitimately holds
+          duplicate grain rows between merges. Readers MUST use FINAL (as
+          api_execution_live_gpay_activity and _minute_2h do); a new reader that omits
+          it will double-count the overlap window.
+      - id: wallet-set-lags-by-design
+        text: Wallet membership is read from the daily-refreshed batch table
+          dbt.int_execution_gpay_wallets via source('dbt_live_refs'), so a Safe created
+          today can be absent until the next batch run. Missing brand-new Safes is
+          expected lag, not a decode bug.
+      hazards: [append-over-populated-duplicates, stale-snapshot-caveat]
+      validation:
+      - 'window bound: max(block_timestamp) - min(block_timestamp) <= 48 hours'
+      - 'reader parity: SELECT count() FROM model FINAL equals uniqExact((block_timestamp, transaction_hash, log_index))'
+      reprocess_runbook: >-
+        Nothing to backfill — the 48h TTL means a full rebuild is just the next live-loop
+        run. If the table is wrong, `dbt run --full-refresh -s int_live__gpay_activity_raw`
+        re-reads the whole 48h source window; the live loop
+        (`dbt run --select tag:live`) then resumes appending overlap windows.

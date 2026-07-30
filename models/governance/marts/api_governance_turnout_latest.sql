@@ -1,12 +1,14 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_turnout','granularity:latest']
+    tags=['production','governance','tier2','api:governance_turnout','granularity:latest']
   )
 }}
 
 -- Per-proposal turnout browse table. See int_governance_turnout for the full
 -- eligible-supply methodology and its historical-precision caveat.
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_turnout') }}) AS as_of_date
+FROM (
 SELECT
     proposal_id,
     gip_number,
@@ -25,3 +27,4 @@ SELECT
     turnout
 FROM {{ ref('int_governance_turnout') }}
 ORDER BY created_at DESC
+) AS sub

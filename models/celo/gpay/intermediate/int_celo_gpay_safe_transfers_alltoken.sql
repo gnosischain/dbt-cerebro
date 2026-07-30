@@ -1,7 +1,10 @@
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 {{
   config(
     materialized='incremental',
-    incremental_strategy='insert_overwrite',
+    incremental_strategy=('append' if start_month else 'insert_overwrite'),
     engine='ReplacingMergeTree()',
     order_by='(safe_address, block_time, tx_hash, log_index)',
     partition_by='toStartOfMonth(block_date)',
@@ -11,8 +14,6 @@
 }}
 
 {% set gp_start = '2026-01-01' %}  {# GP era floor #}
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
 
 -- Deterministic all-token ERC-20 Transfer activity touching a GP card Safe on
 -- EITHER side (int_celo_gpay_safe_registry), with NO token whitelist and NO
@@ -42,6 +43,16 @@
 -- full-refresh, bounded per-month under incremental. While the celo_execution
 -- backfill is still filling old months out of order, run with --full-refresh;
 -- plain daily incremental is correct once the indexer follows head.
+--
+-- incremental_strategy resolves to `append` when start_month is set: refresh.py
+-- drives the staged monthly backfill, and a staged window narrower than the month
+-- partition would make insert_overwrite's REPLACE PARTITION discard the rest of
+-- that month (docs/lessons/staged-insert-overwrite-wipe.md).
+-- The scoped-append path is a backfill-into-EMPTY-months tool only: re-running it
+-- over a month that already holds rows appends a second copy, and marts read this
+-- table without FINAL (docs/lessons/append-over-populated-duplicates.md). To
+-- reprocess an existing month, drop its partition first (macros/db/drop_partition)
+-- and then re-run scoped.
 
 WITH registry AS (
     SELECT lower(replaceAll(address, '0x', '')) AS addr

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_forum_proposal_links','granularity:latest']
+    tags=['production','governance','tier2','api:governance_forum_proposal_links','granularity:latest']
   )
 }}
 
@@ -23,6 +23,8 @@
 --
 -- recovered_via_link: the topic's own title has no GIP number but a linked
 -- proposal does (post-link driven; 88 verified cases).
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('stg_governance__forum_topics') }}) AS as_of_date
+FROM (
 WITH post_derived AS (
     SELECT
         l.topic_id,
@@ -95,3 +97,4 @@ SELECT
 FROM combined c
 LEFT JOIN {{ ref('stg_governance__forum_topics') }} t ON c.topic_id = t.id
 LEFT JOIN {{ ref('stg_governance__snapshot_proposals') }} sp ON c.proposal_id = sp.id
+) AS sub

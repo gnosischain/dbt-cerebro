@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_proposal_choices','granularity:latest']
+    tags=['production','governance','tier2','api:governance_proposal_choices','granularity:latest']
   )
 }}
 
@@ -11,6 +11,8 @@
 -- against real data: 253 proposals with choices -> 253 distinct winner rows,
 -- i.e. exactly one is_winner=1 per proposal. Powers the per-proposal
 -- For/Against/Abstain (or ranked-choice) bar with a quorum reference line.
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_proposals') }}) AS as_of_date
+FROM (
 SELECT
     id AS proposal_id,
     gip_number,
@@ -26,3 +28,4 @@ SELECT
 FROM {{ ref('int_governance_proposals') }}
 ARRAY JOIN choices AS choice, scores AS score
 WHERE length(choices) > 0
+) AS sub

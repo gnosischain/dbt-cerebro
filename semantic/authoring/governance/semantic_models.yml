@@ -575,6 +575,246 @@ semantic_models:
         - electorate size over time
         - voters versus voting power
 
+# --- Intermediates -----------------------------------------------------------
+# Registered at `candidate` tier for coverage and docs, not for public metric
+# routing: the api_ endpoints above are the supported read path. Dimensions and
+# measures reference only columns DECLARED in models/governance/**/schema.yml,
+# since the registry validator resolves exprs against declared columns.
+# Two names keep their int_ prefix because the stripped name is already taken by
+# the api_ endpoint block above.
+
+- name: governance_proposals
+  model: ref('int_governance_proposals')
+  dimensions:
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: winning_choice
+    type: categorical
+    expr: winning_choice
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_proposals__unique_voters
+    agg: sum
+    expr: unique_voters
+  - name: governance_proposals__proposal_count
+    agg: count
+    expr: id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - governance proposals enriched
+        - snapshot proposals with outcome
+
+- name: governance_gip
+  model: ref('int_governance_gip')
+  dimensions:
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: discussed_on_forum
+    type: categorical
+    expr: discussed_on_forum
+  - name: reached_vote
+    type: categorical
+    expr: reached_vote
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: latest_outcome
+    type: categorical
+    expr: latest_outcome
+  measures:
+  - name: governance_gip__proposal_count
+    agg: sum
+    expr: proposal_count
+  - name: governance_gip__gip_count
+    agg: count
+    expr: gip_number
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gip spine
+        - one row per gip number
+
+- name: int_governance_forum_proposal_links
+  model: ref('int_governance_forum_proposal_links')
+  dimensions:
+  - name: snapshot_proposal_id
+    type: categorical
+    expr: snapshot_proposal_id
+  - name: proposal_matched
+    type: categorical
+    expr: proposal_matched
+  measures:
+  - name: int_governance_forum_proposal_links__post_count
+    agg: count
+    expr: post_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum posts pasting a proposal url
+        - post level proposal links
+
+- name: governance_forum_topic_proposal_links
+  model: ref('int_governance_forum_topic_proposal_links')
+  dimensions:
+  - name: snapshot_proposal_id
+    type: categorical
+    expr: snapshot_proposal_id
+  measures:
+  - name: governance_forum_topic_proposal_links__linking_posts
+    agg: sum
+    expr: linking_posts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - topic level proposal links
+        - forum topic to snapshot proposal rollup
+
+- name: int_governance_forum_activity_weekly
+  model: ref('int_governance_forum_activity_weekly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: week
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: int_governance_forum_activity_weekly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - weekly forum activity source
+        - forum topics posts and active users per week
+
+- name: governance_turnout
+  model: ref('int_governance_turnout')
+  dimensions:
+  - name: includes_staked_gno
+    type: categorical
+    expr: includes_staked_gno
+  measures:
+  - name: governance_turnout__turnout
+    agg: average
+    expr: turnout
+  - name: governance_turnout__eligible_supply
+    agg: average
+    expr: eligible_supply
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - per gip turnout source
+        - eligible gno supply per proposal
+
+- name: governance_current_delegations
+  model: ref('int_governance_current_delegations')
+  defaults:
+    agg_time_dimension: delegated_at
+  dimensions:
+  - name: delegated_at
+    type: time
+    expr: delegated_at
+    type_params:
+      time_granularity: day
+  - name: delegate
+    type: categorical
+    expr: delegate
+  measures:
+  - name: governance_current_delegations__delegation_count
+    agg: count
+    expr: delegator
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - current delegation state
+        - active delegator to delegate rows
+
+- name: governance_vote_power_source
+  model: ref('int_governance_vote_power_source')
+  dimensions:
+  - name: power_source
+    type: categorical
+    expr: power_source
+  measures:
+  - name: governance_vote_power_source__strategy_vp
+    agg: sum
+    expr: strategy_vp
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - voting power split by strategy
+        - staked gno versus holdings versus delegated
+
+- name: governance_vote_choices
+  model: ref('int_governance_vote_choices')
+  dimensions:
+  - name: ballot_type
+    type: categorical
+    expr: ballot_type
+  - name: choice_kind
+    type: categorical
+    expr: choice_kind
+  - name: polarity
+    type: categorical
+    expr: polarity
+  - name: choice_label
+    type: categorical
+    expr: choice_label
+  - name: choice_index_valid
+    type: categorical
+    expr: choice_index_valid
+  measures:
+  - name: governance_vote_choices__vp_effective
+    agg: sum
+    expr: vp_effective
+  - name: governance_vote_choices__vote_count
+    agg: count
+    expr: voter
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - per voter choice and direction
+        - for against abstain per voter
+
 # NOT registered here, deliberately: api_governance_vote_trajectory.
 # It is a per-proposal drill-down (one row per proposal x hour-since-open), and its
 # cumulative-share columns are only meaningful for a SINGLE proposal. Any aggregate the

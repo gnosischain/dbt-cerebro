@@ -1,0 +1,299 @@
+semantic_models:
+# Celo GP pipeline, registered at `candidate` tier for coverage and docs rather
+# than public metric routing. Dimensions and measures reference only columns
+# DECLARED in models/celo/**/schema.yml, since the registry validator resolves
+# exprs against declared columns.
+#
+# No measure is registered on any *_raw integer column (amount_raw, balance_raw,
+# total_amount_raw). Those are exact unscaled token words, so summing them across
+# tokens with different decimals produces a number with no unit. The human-unit
+# siblings (amount, balance, total_amount) carry the aggregatable value and are
+# deliberately NULL for unknown-decimals tokens rather than guessed.
+
+- name: celo_gpay_safe_registry
+  model: ref('int_celo_gpay_safe_registry')
+  defaults:
+    agg_time_dimension: module_enabled_at
+  dimensions:
+  - name: module_enabled_at
+    type: time
+    expr: module_enabled_at
+    type_params:
+      time_granularity: day
+  - name: contract_type
+    type: categorical
+    expr: contract_type
+  measures:
+  - name: celo_gpay_safe_registry__card_count
+    agg: count
+    expr: address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card safes
+        - provisioned celo gnosis pay cards
+
+- name: celo_gpay_roles_modules
+  model: ref('int_celo_gpay_roles_modules')
+  defaults:
+    agg_time_dimension: first_seen_at
+  dimensions:
+  - name: first_seen_at
+    type: time
+    expr: first_seen_at
+    type_params:
+      time_granularity: day
+  - name: contract_type
+    type: categorical
+    expr: contract_type
+  measures:
+  - name: celo_gpay_roles_modules__module_count
+    agg: count
+    expr: address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp roles module proxies
+        - zodiac roles modules on celo
+
+- name: celo_gpay_module_mastercopies
+  model: ref('int_celo_gpay_module_mastercopies')
+  defaults:
+    agg_time_dimension: created_at
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: module_type
+    type: categorical
+    expr: module_type
+  measures:
+  - name: celo_gpay_module_mastercopies__proxy_count
+    agg: count
+    expr: proxy_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp module mastercopy proxies
+        - roles and delay proxy cross-check
+
+- name: celo_gpay_safe_events_native
+  model: ref('int_celo_gpay_safe_events_native')
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: event_kind
+    type: categorical
+    expr: event_kind
+  measures:
+  - name: celo_gpay_safe_events_native__event_count
+    agg: count
+    expr: safe_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp safe owner changes
+        - safe setup and owner events on celo
+
+- name: celo_gpay_safe_transfers_alltoken
+  model: ref('int_celo_gpay_safe_transfers_alltoken')
+  defaults:
+    agg_time_dimension: block_date
+  dimensions:
+  - name: block_date
+    type: time
+    expr: block_date
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_safe_transfers_alltoken__amount
+    agg: sum
+    expr: amount
+  - name: celo_gpay_safe_transfers_alltoken__amount_usd
+    agg: sum
+    expr: amount_usd
+  - name: celo_gpay_safe_transfers_alltoken__transfer_rows
+    agg: count
+    expr: safe_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card all-token transfers
+        - every token a celo gp card touched
+
+- name: celo_gpay_card_balances_alltoken_daily
+  model: ref('fct_celo_gpay_card_balances_alltoken_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  measures:
+  - name: celo_gpay_card_balances_alltoken_daily__balance
+    agg: sum
+    expr: balance
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card all-token balances
+        - what tokens celo gp cards hold
+
+- name: celo_gpay_card_funding
+  model: ref('fct_celo_gpay_card_funding')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: last_funded_at
+    type: time
+    expr: last_funded_at
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: funder
+    type: categorical
+    expr: funder
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  # funder_n_cards_funded / funder_n_funding_transfers are per-FUNDER attributes
+  # repeated on every (safe, funder, token) row, so they are exposed as reportable
+  # facts rather than measures — summing them across rows multiplies one funder's
+  # fan-out by their row count.
+  measures:
+  - name: celo_gpay_card_funding__total_amount
+    agg: sum
+    expr: total_amount
+  - name: celo_gpay_card_funding__n_transfers
+    agg: sum
+    expr: n_transfers
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - who funds celo gp cards
+        - celo gp card funding relationships
+
+- name: celo_sorted_oracles_rates
+  model: ref('int_celo_sorted_oracles_rates')
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: rate_feed_id
+    type: categorical
+    expr: rate_feed_id
+  - name: feed_label
+    type: categorical
+    expr: feed_label
+  measures:
+  - name: celo_sorted_oracles_rates__rate
+    agg: average
+    expr: rate
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - mento sorted oracles rate
+        - celo xaut rate feed
+
+- name: celo_token_prices_daily
+  model: ref('int_celo_token_prices_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: symbol
+    type: categorical
+    expr: symbol
+  measures:
+  - name: celo_token_prices_daily__price
+    agg: average
+    expr: price
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo token price
+        - usd price of a celo token

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_funnel','granularity:latest']
+    tags=['production','governance','tier2','api:governance_funnel','granularity:latest']
   )
 }}
 
@@ -13,6 +13,8 @@
 -- passed/decided, without requiring a non-null canonical outcome (ambiguous
 -- number-reuse cases can still be enacted via has_passed).
 -- phase-1/2/3 tags are NOT funnel stages (see has_phase* on int_governance_gip).
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_proposals') }}) AS as_of_date
+FROM (
 SELECT stage_order, stage, gip_count
 FROM (
     SELECT
@@ -38,3 +40,4 @@ FROM (
     FROM {{ ref('int_governance_gip') }}
 )
 ORDER BY stage_order
+) AS sub

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_whale_concentration','granularity:latest']
+    tags=['production','governance','tier2','api:governance_whale_concentration','granularity:latest']
   )
 }}
 
@@ -9,6 +9,8 @@
 -- top 1 / 5 / 10 voters. Reveals whale-decided votes that a raw voter count
 -- hides -- e.g. GIP-71 has 1,196 voters yet one address holds ~93% of the
 -- cast vp (verified). NULL shares on zero-vote proposals (total_vp = 0).
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('stg_governance__snapshot_votes') }}) AS as_of_date
+FROM (
 WITH ranked AS (
     SELECT
         proposal_id,
@@ -43,3 +45,4 @@ SELECT
     round(a.top10_vp / nullIf(p.total_vp, 0), 4)  AS top10_share
 FROM {{ ref('int_governance_proposals') }} p
 LEFT JOIN agg a ON p.id = a.proposal_id
+) AS sub

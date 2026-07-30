@@ -264,6 +264,10 @@ models:
   - name: token_symbol
     description: USDT or USDC.
     data_type: String
+  - name: token_address
+    description: Transferred token contract address (0x-prefixed, lowercase). Part of the
+      grain, so it disambiguates two different tokens moving between the same pair in one tx.
+    data_type: String
   - name: counterparty
     description: The non-Safe side of the transfer (settlement contract, funding wallet, another Safe, etc).
     data_type: String
@@ -276,6 +280,39 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [safe_address, block_time, tx_hash, token_address, counterparty, action]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-transfer-sender-side
+        text: One row per classified transfer. The upstream base carries both Safe sides
+          of a Safe-to-Safe transfer; this model keeps the sender ('out') side so each
+          transfer is a single row (a Withdrawal). The grain omits log_index, so two
+          transfers of the same token to the same counterparty in one tx collapse under
+          ReplacingMergeTree — acceptable only while no such pattern exists on Celo GP.
+      - id: whitelisted-subset-only
+        text: Restricted to whitelisted tokens via token_symbol IS NOT NULL, which drops
+          CELO gas dust and spoof tokens. Anything unpriced or unknown-decimals belongs
+          upstream in int_celo_gpay_safe_transfers_alltoken, never here.
+      - id: payment-requires-stablecoin
+        text: Payment is card -> settlement contract in a STABLECOIN. The same flow in a
+          non-stablecoin whitelisted token is 'Other' and must stay out of payment
+          metrics. Cashback is compiled out until the model's cashback_sources list is
+          populated, so reward inflows currently classify as Top-up.
+      - id: current-month-reclassified
+        text: insert_overwrite plus apply_monthly_incremental_filter recomputes the whole
+          current calendar-month partition each run, so a Safe recognised late in the
+          month is reclassified within that month. Earlier months are not revisited.
+      hazards: [ch-overcommit-victim, stale-snapshot-caveat, ch-partition-cap]
+      validation:
+      - 'no unwhitelisted rows: countIf(token_symbol IS NULL) == 0'
+      - "action distribution is stable month over month (a Payment -> Top-up shift means the settlement address or whitelist changed)"
+      reprocess_runbook: >-
+        Rebuild the upstream base for the affected months first
+        (int_celo_gpay_safe_transfers_alltoken — see its runbook), then re-run this
+        model scoped to those months; insert_overwrite replaces each month partition,
+        so no partition drop is needed here. Finally rebuild
+        int_celo_gpay_activity_daily and the api_celo_gpay_* marts.
 
 - name: int_celo_gpay_activity_daily
   description: |
@@ -354,13 +391,45 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [safe_address, block_time, tx_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: two-rows-per-safe-to-safe
+        text: One row per (transfer, Safe-side). A transfer between two registry Safes
+          yields exactly two rows ('out' for the sender, 'in' for the receiver); a
+          transfer with one registry side yields one. Deduping across sides here would
+          erase a Safe's own footprint — int_celo_gpay_activity collapses to the sender
+          side for its per-transfer grain instead.
+      - id: raw-amount-always-exact
+        text: amount_raw is the exact unscaled integer for EVERY token. amount,
+          amount_usd, token_symbol and token_class are populated ONLY for
+          address-gated celo_tokens_whitelist tokens and are NULL otherwise — NULL
+          means "unknown decimals / unpriced", never zero. A spoof token reusing a
+          whitelisted symbol must stay NULL because the whitelist keys on address.
+      - id: scoped-append-into-empty-months-only
+        text: With start_month set the strategy is append, which is correct only into
+          empty months (refresh.py writes non-overlapping monthly batches). Re-running
+          a scoped window over a populated month appends a second copy and marts read
+          this table without FINAL, so count() - uniqExact(grain) per month must stay 0.
+      hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates, ch-overcommit-victim, late-start-mis-staging]
+      validation:
+      - 'duplicate excess per month: count() - uniqExact((safe_address, block_time, tx_hash, log_index)) == 0'
+      - 'every row has amount_raw; amount IS NULL exactly when token_symbol IS NULL'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` directly (single-query OOM on the all-Transfer
+        scan). To rebuild a month, first drop that month's partition with the
+        drop_partition macro (macros/db/drop_partition.sql) because the scoped path
+        appends, then re-run scoped via scripts/full_refresh/refresh.py so
+        start_month/end_month bound the scan to one month. Then rebuild
+        int_celo_gpay_activity and the card_* marts downstream.
     # HEAVY: scans ALL Celo Transfer logs. Full-refresh in monthly batches via
     # scripts/full_refresh/refresh.py (passes start_month/end_month, honored in
     # the model). Never `dbt run --full-refresh` this directly (single-query OOM).
     # batch_months=1: one month of ALL Celo Transfers is already large once the
     # backfill lands, so keep batches at 1 month to bound memory (drop to
-    # day-level only if a single month ever OOMs). incremental insert_overwrite
-    # accumulates across batches (each replaces only its own month partition).
+    # day-level only if a single month ever OOMs). Batches APPEND (start_month is
+    # set), so each batch must target a month that is empty or freshly dropped.
     full_refresh:
       start_date: "2026-01-01"
       batch_months: 1

@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_top_proposers','granularity:latest']
+    tags=['production','governance','tier2','api:governance_top_proposers','granularity:latest']
   )
 }}
 
@@ -9,6 +9,8 @@
 -- enactment_rate = share of closed proposals that resolved productively
 -- (passed OR decided). Distinct from gip_pass_rate on KPIs, which is
 -- pass/fail only and excludes selection ballots (decided).
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_proposals') }}) AS as_of_date
+FROM (
 SELECT
     author,
     count()                                    AS proposals_authored,
@@ -27,3 +29,4 @@ FROM {{ ref('int_governance_proposals') }}
 GROUP BY author
 ORDER BY proposals_authored DESC
 LIMIT 50
+) AS sub

@@ -1,12 +1,14 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_proposals','granularity:latest']
+    tags=['production','governance','tier2','api:governance_proposals','granularity:latest']
   )
 }}
 
 -- Proposal browse table for the dashboard. Filter is_gip = 1 to exclude
 -- non-GIP announcement proposals.
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_proposals') }}) AS as_of_date
+FROM (
 SELECT
     id,
     gip_number,
@@ -29,3 +31,4 @@ SELECT
     total_vp
 FROM {{ ref('int_governance_proposals') }}
 ORDER BY created_at DESC
+) AS sub

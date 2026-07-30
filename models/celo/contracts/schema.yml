@@ -15,6 +15,38 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [block_timestamp, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-answerupdated-log
+        text: One row per AnswerUpdated log emitted by the four GP-relevant aggregators.
+          (block_timestamp, log_index) is the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, log_index)) must be 0.
+      - id: aggregator-set-matches-seed
+        text: The decoded contract_address list must stay in sync with
+          seeds/celo_chainlink_feeds.csv, which maps each aggregator to its proxy and
+          symbol pair for int_celo_token_prices_daily. Adding a feed to the seed without
+          adding its aggregator here silently yields a price series with no source rows.
+          EUR/GBP FX feeds are deliberately excluded (no EUR/GBP-denominated GP token on
+          Celo), and no XAU/USD Chainlink feed exists on Celo — XAUt0 comes from Mento
+          SortedOracles instead.
+      - id: watermark-skips-late-logs
+        text: The decode is append-only off a block_timestamp watermark, so logs that land
+          in celo_execution.logs below the current high-water mark are never decoded.
+          A backfill or gap-repair of the raw logs requires re-decoding the affected
+          months explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, log_index)) == 0'
+      - 'every aggregator in seeds/celo_chainlink_feeds.csv has rows: uniqExact(contract_address) == 4'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` this directly — the single-query scan of the whole
+        logs table OOMs (ClickHouse Code 241). Rebuild via scripts/full_refresh/refresh.py
+        in the 3-month batches declared below; decode_logs honors the start_month/end_month
+        vars the runner passes. Because the strategy is append, drop the target partitions
+        first (macros/db/drop_partition.sql) if they already hold rows, then rebuild
+        int_celo_token_prices_daily downstream.
     full_refresh:
       start_date: "2025-03-26"
       batch_months: 3

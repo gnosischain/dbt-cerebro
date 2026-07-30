@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_forum_activity','granularity:weekly']
+    tags=['production','governance','tier2','api:governance_forum_activity','granularity:weekly']
   )
 }}
 

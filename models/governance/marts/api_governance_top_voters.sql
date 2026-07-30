@@ -1,13 +1,15 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_top_voters','granularity:latest']
+    tags=['production','governance','tier2','api:governance_top_voters','granularity:latest']
   )
 }}
 
 -- Voter leaderboard: participation + voting power. vp is per-proposal voting
 -- power, so total_vp_cast is the sum across all a voter's votes (a cumulative
 -- participation-weighted measure, not a point-in-time balance).
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('stg_governance__snapshot_votes') }}) AS as_of_date
+FROM (
 SELECT
     voter,
     count()               AS proposals_voted,
@@ -20,3 +22,4 @@ FROM {{ ref('stg_governance__snapshot_votes') }}
 GROUP BY voter
 ORDER BY proposals_voted DESC, total_vp_cast DESC
 LIMIT 200
+) AS sub

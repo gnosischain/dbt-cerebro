@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','governance','api:governance_kpis','granularity:latest']
+    tags=['production','governance','tier2','api:governance_kpis','granularity:latest']
   )
 }}
 
@@ -10,6 +10,8 @@
 -- (blended pass rate is misleading; real GIP pass rate is ~80%). Selection
 -- ballots (outcome='decided') are excluded from the pass-rate denominator since
 -- they are not pass/fail.
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('stg_governance__snapshot_votes') }}) AS as_of_date
+FROM (
 SELECT
     (SELECT count() FROM {{ ref('int_governance_proposals') }})                                    AS total_proposals,
     (SELECT countIf(is_gip) FROM {{ ref('int_governance_proposals') }})                            AS total_gip_proposals,
@@ -25,3 +27,4 @@ SELECT
     -- Grain is closed GIP *proposals* (a GIP can have multiple Snapshot ballots).
     (SELECT round(avg(unique_voters), 1)
      FROM {{ ref('int_governance_proposals') }} WHERE is_gip AND state = 'closed')                 AS avg_voters_per_gip_proposal
+) AS sub

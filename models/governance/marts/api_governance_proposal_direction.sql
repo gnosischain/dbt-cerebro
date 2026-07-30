@@ -29,6 +29,8 @@
 -- ranking -- 30 is a reasonable floor. Non-GIP proposals include spam/phishing ballots
 -- (119 of 253); filter `is_gip = 1` for any aggregate.
 
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM {{ ref('int_governance_proposals') }}) AS as_of_date
+FROM (
 WITH agg AS (
     SELECT
         proposal_id,
@@ -100,3 +102,4 @@ SELECT
 
 FROM {{ ref('int_governance_proposals') }} AS p
 LEFT JOIN agg AS a ON a.proposal_id = p.id
+) AS sub
