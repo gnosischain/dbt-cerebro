@@ -62,10 +62,16 @@ daily_deltas AS (
                 toInt256(0),
             delta_amount_raw
         )) AS daily_delta_raw,
+        -- reserve = physical pool token balance (identical to daily_delta_raw). Rules:
+        --  * Burn moves principal to tokensOwed without transferring tokens out -> clamp to 0.
+        --  * every other event at face value (signed +in / -out): Mint in, Collect out, swap
+        --    in/out, and Flash (delta_category='flash_fee') which is the fee KEPT by the pool --
+        --    a small net inflow; the borrowed amount nets to zero (see stg_pools__swapr_v3_events).
+        --  * do NOT subtract the swap fee -- it stays in the pool until collected, so subtracting
+        --    it drifts the reserve below the true balance and eventually negative.
+        -- Canonical fee/APR analytics live in int_execution_pools_fees_daily. Matches balanceOf.
         sum(multiIf(
-            delta_category = 'swap_in',
-                delta_amount_raw - intDiv(delta_amount_raw * toInt256(effective_fee_ppm), toInt256(1000000)),
-            delta_category IN ('fee_collection', 'flash_fee'),
+            delta_category = 'liquidity' AND delta_amount_raw < toInt256(0),
                 toInt256(0),
             delta_amount_raw
         )) AS daily_reserve_delta_raw,

@@ -53,7 +53,7 @@ version: 2
 # active. If no single sector reaches the threshold but the combined
 # total does, they are still active. The threshold is applied AFTER
 # summing across streams per user, so cross-sector double-counting is
-# impossible. See `fct_revenue_active_users_totals_*` for the headline
+# impossible. See `int_revenue_active_users_totals_*` for the headline
 # totals and `fct_revenue_active_users_cohorts_*` for the same logic
 # split by $-bucket.
 #
@@ -383,7 +383,7 @@ models:
 # never appear here: the pseudonymize_address macro is applied at the
 # mart boundary and the original `user` column is dropped.
 #
-# Threshold convention matches fct_revenue_active_users_totals_*: $6 over
+# Threshold convention matches int_revenue_active_users_totals_*: $6 over
 # the trailing 52 weeks (weekly variant) or $0.50 in the calendar month
 # (monthly variant). The `is_revenue_active` flag pre-computes that test.
 
@@ -692,39 +692,8 @@ models:
 
 # ---------- Cross-stream totals ----------
 
-- name: fct_revenue_active_users_totals_weekly
-  description: |
-    Weekly cross-stream active-user totals (no cohort split).
-    A user is counted once per week if their trailing-52w fees summed across
-    all streams (holdings + sDAI + GPay) is >= $6 — the "meaningfully active
-    revenue-generating user" threshold from the Dune methodology.
-  columns:
-  - name: week
-    description: Week start.
-    data_type: Date
-    tests:
-    - not_null
-    - unique
-  - {name: users_cnt,                 description: Unique users above the $6/year threshold.,             data_type: UInt64}
-  - {name: annual_rolling_fees_total, description: Sum of rolling-52w fees from qualifying users.,       data_type: Float64}
-
-- name: fct_revenue_active_users_totals_monthly
-  description: |
-    Monthly cross-stream active-user totals (no cohort split).
-    Threshold is $0.50/month — the month-scaled equivalent of the yearly $6
-    threshold (6 ÷ 12 ≈ 0.5).
-  columns:
-  - name: month
-    description: First day of the month.
-    data_type: Date
-    tests:
-    - not_null
-    - unique
-  - {name: users_cnt,  description: Unique users above the $0.50/month threshold., data_type: UInt64}
-  - {name: fees_total, description: Sum of monthly fees from qualifying users., data_type: Float64}
-
 - name: api_revenue_active_users_totals_weekly
-  description: API view over fct_revenue_active_users_totals_weekly.
+  description: API view over int_revenue_active_users_totals_weekly.
   columns:
   - name: week
     description: "Week start."
@@ -736,7 +705,7 @@ models:
     description: "Sum of rolling-52w fees from qualifying users."
     data_type: Float64
 - name: api_revenue_active_users_totals_monthly
-  description: API view over fct_revenue_active_users_totals_monthly.
+  description: API view over int_revenue_active_users_totals_monthly.
   columns:
   - name: month
     description: "First day of the month."

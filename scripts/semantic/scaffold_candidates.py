@@ -40,6 +40,9 @@ STRING_MARKERS = ("string", "lowcardinality", "enum", "fixedstring")
 NUMERIC_MARKERS = ("int", "float", "decimal")
 
 
+GATE_ALLOW = REPO_ROOT / "semantic" / "authoring" / "scaffold_gate.allow"
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", default="target")
@@ -49,7 +52,77 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Comma-separated module filter. Default: all modules.",
     )
     parser.add_argument("--write", action="store_true", help="Write scaffold files in place.")
+    parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="Gate mode: fail (exit 1) when a tracked api_/fct_/int_ model has no "
+             "semantic authoring and is not in semantic/authoring/scaffold_gate.allow. "
+             "The allow file is shrink-only (stale entries also fail).",
+    )
     return parser.parse_args(argv)
+
+
+def find_missing(manifest: dict, authored_models: dict, modules_filter=frozenset()) -> list:
+    """Tracked (api_/fct_/int_) first-party model nodes with no semantic authoring."""
+    missing = []
+    for _unique_id, node in sorted(manifest.get("nodes", {}).items()):
+        if node.get("resource_type") != "model" or node.get("package_name") != PROJECT_NAME:
+            continue
+        model_name = node["name"]
+        module = node.get("fqn", ["", "unknown"])[1]
+        if modules_filter and module not in modules_filter:
+            continue
+        if not model_name.startswith(("api_", "fct_", "int_")):
+            continue
+        if model_name in authored_models:
+            continue
+        missing.append(node)
+    return missing
+
+
+def gate_violations(missing: set, allow: set):
+    """(new, stale): unauthored models not in the ratchet file; ratchet entries
+    whose model is now authored (or gone) — both fail, so the backlog only shrinks."""
+    return missing - allow, allow - missing
+
+
+def load_gate_allow() -> set:
+    if not GATE_ALLOW.exists():
+        return set()
+    out = set()
+    for line in GATE_ALLOW.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            out.add(line)
+    return out
+
+
+def run_gate(manifest: dict, authored_models: dict) -> int:
+    missing_names = {node["name"] for node in find_missing(manifest, authored_models)}
+    allow = load_gate_allow()
+    new, stale = gate_violations(missing_names, allow)
+
+    backlog = missing_names & allow
+    print(f"Semantic authoring gate: {len(missing_names)} tracked model(s) without "
+          f"authoring ({len(backlog)} grandfathered in {GATE_ALLOW.name}, shrink-only).")
+
+    rc = 0
+    if new:
+        print(f"\n{len(new)} NEW tracked model(s) missing semantic authoring "
+              "(author them — scaffold with this script — or, exceptionally, add to "
+              f"{GATE_ALLOW.relative_to(REPO_ROOT)}):")
+        for name in sorted(new):
+            print(f"  {name}")
+        rc = 1
+    if stale:
+        print(f"\n{len(stale)} STALE ratchet entr(ies) — now authored or retired; "
+              f"delete these lines from {GATE_ALLOW.relative_to(REPO_ROOT)}:")
+        for name in sorted(stale):
+            print(f"  {name}")
+        rc = 1
+    if rc == 0:
+        print("Semantic authoring gate OK: no new unauthored tracked models.")
+    return rc
 
 
 def _humanize_model_name(model_name: str) -> str:
@@ -338,6 +411,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     }
     manifest, _ = load_json(manifest_path)
     authored_models, _metrics = load_semantic_authoring(*semantic_authoring_roots(REPO_ROOT))
+
+    if args.gate:
+        return run_gate(manifest, authored_models)
+
     used_semantic_names = {
         authored.get("name")
         for authored in authored_models.values()
@@ -345,18 +422,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     }
     grouped_updates: dict[Path, list[dict[str, Any]]] = {}
 
-    for unique_id, node in sorted(manifest.get("nodes", {}).items()):
-        if node.get("resource_type") != "model" or node.get("package_name") != PROJECT_NAME:
-            continue
-        model_name = node["name"]
-        module = node.get("fqn", ["", "unknown"])[1]
-        if modules_filter and module not in modules_filter:
-            continue
-        if not model_name.startswith(("api_", "fct_", "int_")):
-            continue
-        if model_name in authored_models:
-            continue
-        semantic_name = _unique_semantic_name(model_name, used_semantic_names)
+    for node in find_missing(manifest, authored_models, modules_filter):
+        semantic_name = _unique_semantic_name(node["name"], used_semantic_names)
         grouped_updates.setdefault(_output_file(node), []).append(
             _candidate_model(node, semantic_name=semantic_name)
         )

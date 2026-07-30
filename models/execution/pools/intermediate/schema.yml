@@ -47,10 +47,32 @@ models:
     Daily Uniswap V3 pool token balances with oracle price enrichment.
     Built from event deltas (Mint, Burn, Swap, Collect, Flash) with static fee rates
     from PoolCreated (fee_tier_ppm). Separates reserves from unclaimed fees:
-    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    reserve_amount is the physical pool token balance (equals token_amount, matches on-chain
+    balanceOf); swap fees are NOT subtracted (they stay in the pool until collected);
     fee_amount = swap fee income − collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: reserve-is-physical-balance
+        text: reserve_amount == token_amount == the physical pool token balance
+          (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash
+          contributes only the retained fee, Burn/removal-of-principal is clamped). A
+          negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction
+          drift was reintroduced.
+      - id: per-entity-density
+        text: Every (pool, token) pair should have a row for every calendar day from its
+          first event; a thin pool that skips a day can fall off the single global
+          max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps.
+      hazards: [global-frontier-carry-forward, duplicate-seed-drift]
+      validation:
+      - 'reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)'
+      - 'per (pool, token) density: uniqExact(date) / span ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_uniswap_v3_daily
+        (non-incremental branch rebuilds the per-pool dense calendar from inception, no
+        carry-forward seed), then rebuild the pools balances/TVL downstream tables
     full_refresh:
       start_date: "2022-04-22"
       batch_months: 6
@@ -111,10 +133,32 @@ models:
     the pool's first observed fee for swaps before the first Fee event. Fees are
     applied in ppm (1e6 denominator) to split each swap_in delta into a reserve
     portion (delta - fee) and a fee portion. Separates reserves from unclaimed fees:
-    reserve_amount = Mint/Burn liquidity + swap deltas net of fees;
+    reserve_amount is the physical pool token balance (equals token_amount, matches on-chain
+    balanceOf); swap fees are NOT subtracted (they stay in the pool until collected);
     fee_amount = swap fee income - collected fees + flash loan fees.
     Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: reserve-is-physical-balance
+        text: reserve_amount == token_amount == the physical pool token balance
+          (cumulative sum of signed event deltas; swap fees are NOT subtracted, Flash
+          contributes only the retained fee, Burn/removal-of-principal is clamped). A
+          negative reserve, or reserve_amount != token_amount, means swap-fee-subtraction
+          drift was reintroduced.
+      - id: per-entity-density
+        text: Every (pool, token) pair should have a row for every calendar day from its
+          first event; a thin pool that skips a day can fall off the single global
+          max(date) carry-forward frontier (global-frontier-carry-forward) and accrete gaps.
+      hazards: [global-frontier-carry-forward, duplicate-seed-drift]
+      validation:
+      - 'reserve_amount >= 0 AND reserve_amount == token_amount (dq_daily_pools_reserve_physical_balance)'
+      - 'per (pool, token) density: uniqExact(date) / span ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_swapr_v3_daily
+        (non-incremental branch rebuilds the per-pool dense calendar from inception, no
+        carry-forward seed), then rebuild the pools balances/TVL downstream tables
     full_refresh:
       start_date: "2022-03-01"
       batch_months: 6
@@ -137,12 +181,44 @@ models:
   description: |
     Daily Balancer V3 pool token balances with oracle price enrichment.
     Built from delta events (LiquidityAdded, LiquidityRemoved, Swap).
-    Token resolution uses PoolRegistered tokenConfig with sentinel-address inference
-    from Swap events. ERC4626 wrappers (waGno*) are resolved to underlying tokens
-    for symbol and price lookups. Fee separation uses event-level swapFeeAmountsRaw.
-    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses.
-    Includes oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
+    Token-index resolution: LiquidityAdded/Removed carry only a positional token_index
+    into the Vault's address-sorted token order, but the decoded PoolRegistered
+    tokenConfig struct-array is unreliable (inner tokens decode to 0x0, and some entries
+    are bogus/misplaced addresses). So the index->address map is derived from the
+    address-sorted list of Swap tokens (arraySort == the Vault registration order,
+    verified on-chain against getPoolTokenCountAndIndexOfToken) whenever that list fully
+    covers the pool's registered token count; the tokenConfig sentinel-inference path
+    remains only as a fallback for pools whose tokens are not all traded. ERC4626
+    wrappers (waGno*) are resolved to underlying tokens for symbol and price lookups.
+    Reserve = the pool's on-chain balancesRaw: cumulative signed deltas MINUS the aggregate
+    (protocol + pool-creator) swap fee that Balancer V3 skims out of balancesRaw at each swap
+    (the LP fee portion stays in the pool). Not subtracting it accumulated a "ghost" balance
+    (== all protocol fees ever skimmed) that dominated once a high-throughput pool drained. The
+    aggregate % is time-varying (AggregateSwapFeePercentageChanged), with a 50% pre-2026-04
+    global default for swaps predating a pool's first change event. KNOWN RESIDUAL: aggregate
+    YIELD fees on rate-bearing tokens (sDAI/GNO/wstETH...) have no per-accrual event and are NOT
+    subtracted, so rate pools still read somewhat above on-chain balancesRaw (and the 50% default
+    can leave sub-unit dust negatives on a few thin pools) -- the full fix is a periodic on-chain
+    getTokenInfo().balancesRaw reconciliation. Fee separation uses event-level swapFeeAmountsRaw.
+    Excludes BPT tokens (where token_address = pool_address) and sentinel addresses. Includes
+    oracle price (Dune ASOF join), TVL in USD, and pool-implied token price.
   meta:
+    agent:
+      grain: [date, pool_address, token_address]
+      semantics: cumulative
+      invariants:
+      - id: per-entity-density
+        text: Every (pool, token) pair must have a row for every calendar day from
+          its first event — density below 1.0 means the carry-forward dropped it.
+      - id: per-entity-frontier
+        text: The incremental window anchors at the earliest per-(pool, token)
+          frontier (min of per-pair max(date)), never a single global max(date).
+      hazards: [global-frontier-carry-forward]
+      validation:
+      - 'per-entity density: uniqExact(date) / span per (pool, token) ~= 1.0'
+      reprocess_runbook: dbt run --full-refresh -s int_execution_pools_balancer_v3_daily
+        (non-incremental branch builds a per-pool dense calendar), then rebuild direct
+        downstream tables
     full_refresh:
       start_date: "2024-01-01"
       batch_months: 6

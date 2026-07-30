@@ -3,7 +3,6 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(date, address, activity_kind)',
-    unique_key='(date, address, activity_kind)',
     partition_by='toStartOfMonth(date)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','gnosis_app','activity_daily'],
@@ -11,8 +10,6 @@
     post_hook=["SET join_algorithm = 'default'"]
   )
 }}
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
 
 WITH onboard_rows AS (
     -- One onboarding row per user on their first-seen date. Needed so the
@@ -26,12 +23,6 @@ WITH onboard_rows AS (
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_users_current') }}
     WHERE first_seen_at IS NOT NULL
-    {% if start_month and end_month %}
-      AND toStartOfMonth(first_seen_at) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(first_seen_at) <= toDate('{{ end_month }}')
-    {% else %}
-      {{ apply_monthly_incremental_filter('first_seen_at', 'date', add_and=True) }}
-    {% endif %}
 ),
 
 heuristic_rows AS (
@@ -44,12 +35,6 @@ heuristic_rows AS (
     FROM {{ ref('int_execution_gnosis_app_user_events') }}
     WHERE block_timestamp IS NOT NULL
       AND block_timestamp < today()
-    {% if start_month and end_month %}
-      AND toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
-      {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
-    {% endif %}
     GROUP BY toDate(block_timestamp), address, heuristic_kind
 ),
 
@@ -61,13 +46,7 @@ swap_signed_rows AS (
         count(*)                 AS n_events,
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_swaps') }}
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
     WHERE block_timestamp < today()
-    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
-    {% endif %}
     GROUP BY toDate(block_timestamp), taker
 ),
 
@@ -86,12 +65,6 @@ swap_filled_rows AS (
     WHERE was_filled = 1
       AND first_fill_at IS NOT NULL
       AND first_fill_at < today()
-    {% if start_month and end_month %}
-      AND toStartOfMonth(first_fill_at) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(first_fill_at) <= toDate('{{ end_month }}')
-    {% else %}
-      {{ apply_monthly_incremental_filter('first_fill_at', 'date', add_and=True) }}
-    {% endif %}
     GROUP BY toDate(assumeNotNull(first_fill_at)), taker
 ),
 
@@ -103,12 +76,7 @@ topup_rows AS (
         count(*)                 AS n_events,
         sum(toFloat64OrNull(toString(amount_usd))) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_gpay_topups') }}
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
-    WHERE 1=1 {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
-    {% endif %}
+    WHERE 1=1
     GROUP BY toDate(block_timestamp), ga_user
 ),
 
@@ -120,13 +88,7 @@ marketplace_rows AS (
         count(*)                 AS n_events,
         CAST(NULL AS Nullable(Float64)) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_marketplace_payments') }}
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
     WHERE block_timestamp < today()
-    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
-    {% endif %}
     GROUP BY toDate(block_timestamp), payer
 ),
 
@@ -138,13 +100,7 @@ token_offer_claim_rows AS (
         count(*)                 AS n_events,
         sum(toFloat64OrNull(toString(amount_received_usd))) AS amount_usd
     FROM {{ ref('int_execution_gnosis_app_token_offer_claims') }}
-    {% if start_month and end_month %}
-    WHERE toStartOfMonth(block_timestamp) >= toDate('{{ start_month }}')
-      AND toStartOfMonth(block_timestamp) <= toDate('{{ end_month }}')
-    {% else %}
     WHERE block_timestamp < today()
-    {{ apply_monthly_incremental_filter('block_timestamp', 'date', add_and=True) }}
-    {% endif %}
     GROUP BY toDate(block_timestamp), ga_user
 )
 

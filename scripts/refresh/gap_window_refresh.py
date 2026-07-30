@@ -8,6 +8,13 @@ Unlike scripts/full_refresh/refresh.py (which rebuilds FULL history from each
 model's configured start_date — thousands of batches), this targets ONLY the
 given gap months, so a 14-minute source backfill costs ~1-2h, not days.
 
+CUMULATIVE downstreams ({{ this }} readers) are wrong from the gap DAY forward,
+not just inside the gap window — pass --months spanning gap month THROUGH THE
+CURRENT MONTH for them, chronologically, or their later frozen days keep the
+pre-recovery state (docs/lessons/backfill-order-cumulative.md, gap-recovery
+corollary). Gap-month-only is correct only while the gap month IS the current
+month. Run in a quiet window: there is no lock against the production cron.
+
 RESUMABLE: completed models are recorded in a JSON state file; re-run with the
 same --state and it skips them and continues where it failed.
 

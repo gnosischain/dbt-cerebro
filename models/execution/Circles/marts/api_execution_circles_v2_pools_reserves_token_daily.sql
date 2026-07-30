@@ -7,10 +7,13 @@
 
 -- Daily per-(pool, token) reserve + USD value for the main Circles DEX pools.
 -- Base model behind the TVL rollup, the Reserves-over-time chart and the reserves card.
---   * Uniswap V3 pools: reserves = cumulative net token flow from event deltas
---     (stg_pools__uniswap_v3_events, fresh view; matches on-chain balanceOf within a few %).
---     The shared balances model is NOT used for UV3 here because it mis-handles Burn events
---     for some of these pools (e.g. 0x0967 computes a negative balance).
+--   * Uniswap V3 pools: reserves = cumulative physical token balance from event deltas
+--     (stg_pools__uniswap_v3_events, fresh view; matches on-chain balanceOf). Computed here
+--     rather than read from the shared balances model because that model's CRC-wrapper legs
+--     (unlabeled tokens) are what these Circles pools need. Uses the SAME physical-balance rule
+--     as the shared model: clamp Burn to 0 (principal -> tokensOwed, no transfer), everything
+--     else at face incl. Flash = fee (paid). (The shared model's old Burn/negative-balance bug
+--     is fixed; this branch stays only because the shared model does not expose CRC-leg symbols.)
 --   * Balancer V3 pool: reserves from the shared vault-tracked balances (accurate).
 -- Prices via daily ASOF carry-forward: CRC legs (s-gCRC/s-CBG) from the crc20 price model,
 -- stable legs (sDAI/EURe) from the oracle. Current incomplete day excluded.
@@ -29,7 +32,13 @@ uv3_delta AS (
         toDate(e.block_timestamp)                                     AS date,
         lower(concat('0x', e.pool_address))                           AS pool_address,
         multiIf(e.token_position = 'token0', reg.token0, reg.token1)  AS token_address,
-        sum(toFloat64(e.delta_amount_raw)) / 1e18                     AS delta
+        -- physical balance: clamp Burn (liquidity, negative) to 0 -- it moves principal to
+        -- tokensOwed without transferring tokens out; everything else at face (Mint, swaps,
+        -- Collect, Flash fee). Matches int_execution_pools_uniswap_v3_daily's reserve rule.
+        sum(toFloat64(multiIf(
+            e.delta_category = 'liquidity' AND e.delta_amount_raw < toInt256(0), toInt256(0),
+            e.delta_amount_raw
+        ))) / 1e18                                                    AS delta
     FROM {{ ref('stg_pools__uniswap_v3_events') }} e
     INNER JOIN reg ON reg.pool_address_no0x = e.pool_address
     WHERE lower(concat('0x', e.pool_address)) IN (SELECT pool_address FROM seed WHERE protocol = 'Uniswap V3')

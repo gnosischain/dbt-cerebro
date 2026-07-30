@@ -482,3 +482,31 @@ models:
       - card
       - ga_account
       - source
+
+- name: int_execution_gnosis_app_gp_card_ga_link
+  description: |
+    Authoritative, MODULE-AGNOSTIC Gnosis Pay card -> Gnosis App LINK, one row per CANONICAL card.
+    Union of the Mixpanel `pay`-profile bridge (int_mixpanel_ga_gpay_pay_bridge, app-truth) and the
+    three on-chain signals in int_execution_gnosis_app_gt_card_owner (delay_module / topup_funder /
+    cashback), collapsed to the June-2026 canonical Safe (int_execution_gpay_safe_canonical) BEFORE
+    de-dup so migrated cards reachable via multiple edges count once. Replaces the DelayModule-only
+    onboarding heuristic that broke in the RolesModule migration. This is a LINK (a GA account
+    controls/funds the card), NOT the onboarded_via_ga-vs-imported CLASS — which is on-chain
+    unrecoverable post-migration (0/68,680 Role owners and 0/34,340 Safe-setup owners are GA users).
+    INTERNAL (raw card + pseudonym); only the aggregate ..._gp_card_ga_link_daily views are exposed.
+  columns:
+  - name: card
+    description: Canonical Gnosis Pay card Safe address (lowercase, June-2026 migration-collapsed).
+  - name: is_ga_linked
+    description: Always 1 (the model holds only linked cards); kept for explicit downstream filtering.
+  - name: link_source
+    description: Highest-precedence link signal — 'mixpanel_pay' > 'delay_module' > 'topup_funder' > 'cashback'.
+  - name: first_linked_at
+    description: |
+      Earliest GA-link evidence date across {legacy first_ga_owner_at, cashback minted_at, Safe
+      safe_setup}. Nullable if no date source resolves (rare). Migrated cards keep their pre-June
+      legacy date to avoid a false June migration spike.
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - card

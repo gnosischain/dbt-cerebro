@@ -1,7 +1,12 @@
+{#
+  Pass reprocess_overwrite=true with start_month/end_month to safely rebuild an
+  overlapping window via delete+insert (avoids append duplicates that would
+  double cohort totals even when upstream balances are correct).
+#}
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert'),
+    incremental_strategy=('delete+insert' if var('reprocess_overwrite', false) else ('append' if (var('start_month', none) or var('incremental_end_date', none)) else 'delete+insert')),
     engine='ReplacingMergeTree()',
     order_by='(date, protocol, reserve_address, cohort_unit, balance_bucket)',
     partition_by='toStartOfMonth(date)',

@@ -188,6 +188,81 @@ models:
       tags:
       - elementary
 
+- name: fct_execution_gnosis_app_gp_card_ga_link_daily
+  description: |
+    Daily + cumulative count of Gnosis Pay cards LINKED to a Gnosis App account,
+    split by link_source. Backing fact for api_execution_gnosis_app_gp_card_ga_link_daily.
+
+    Module-agnostic recovery series that resumes past the June-2026 plateau of the
+    DelayModule-only fct_execution_gnosis_app_gpay_wallets_daily. Each card carries
+    exactly one (highest-precedence) link_source upstream, so summing across sources
+    equals total distinct GA-linked cards. This is a LINK (a GA account controls/funds
+    the card), NOT the onboarded_via_ga-vs-imported class (unrecoverable post-migration).
+    Aggregate counts only — no address/pseudonym.
+  columns:
+  - name: date
+    description: Calendar date (UTC) of the card's earliest GA-link evidence.
+    data_type: Date
+  - name: link_source
+    description: "Highest-precedence link signal: 'mixpanel_pay' | 'delay_module' | 'topup_funder' | 'cashback'."
+    data_type: String
+  - name: n_cards_new
+    description: GP cards first evidenced as GA-linked on this date, within link_source.
+    data_type: UInt64
+  - name: n_cards_cumulative
+    description: Running total of GA-linked GP cards within link_source up to and including this date.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: fct_execution_gnosis_app_gp_card_ga_volume_daily
+  description: |
+    GA-LINKED Gnosis Pay funding & spend volume, daily, split by link_source. Module-agnostic,
+    correctly-timed successor to fct_execution_gnosis_app_gpay_volume_daily: card set from the
+    all-architectures link, activity canonicalized (old→new Safe) so migrated cards' new-Safe
+    volume attributes correctly, and attribution gated on
+    ga_control_start_at = coalesce(first_ga_owner_at, first_card_activity_at). Aggregate sums/counts
+    only — no address/pseudonym. Backing fact for api_execution_gnosis_app_gp_card_ga_volume_daily.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: link_source
+    description: "'mixpanel_pay' | 'delay_module' | 'topup_funder' | 'cashback'."
+    data_type: String
+  - name: funded_volume_usd
+    description: USD inflows (Fiat Top Up + Crypto Deposit) on GA-linked cards on this date, within link_source.
+    data_type: Float64
+  - name: spend_usd
+    description: USD card payments (action='Payment') on GA-linked cards on this date, within link_source.
+    data_type: Float64
+  - name: spend_count
+    description: Number of card Payment transactions on this date.
+    data_type: UInt64
+  - name: spending_cards
+    description: Distinct GA-linked cards that made a card payment on this date.
+    data_type: UInt64
+  - name: funded_volume_cumulative_usd
+    description: Running total of funded_volume_usd within link_source up to and including this date.
+    data_type: Float64
+  - name: spend_cumulative_usd
+    description: Running total of spend_usd within link_source up to and including this date.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
 # ---------- API views (thin, exposed to FastAPI via meta.api) ----------
 
 - name: api_execution_gnosis_app_gpay_wallets_daily
@@ -210,6 +285,78 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: api_execution_gnosis_app_gp_card_ga_link_daily
+  description: |
+    Dashboard view of fct_execution_gnosis_app_gp_card_ga_link_daily: daily + cumulative
+    count of GA-linked Gnosis Pay cards by link_source. Aggregate counts only. DELIBERATELY
+    NOT exposed to cerebro-api (api.exclude_from_api=true, no `api:` tag) because the series
+    is partly Mixpanel-derived — served only via the metrics-dashboard x-api-key SQL layer.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: link_source
+    description: "'mixpanel_pay' | 'delay_module' | 'topup_funder' | 'cashback'."
+    data_type: String
+  - name: n_cards_new
+    description: GP cards first evidenced as GA-linked on this date, within link_source.
+    data_type: UInt64
+  - name: n_cards_cumulative
+    description: Running total of GA-linked GP cards within link_source.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    api:
+      exclude_from_api: true
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+- name: api_execution_gnosis_app_gp_card_ga_volume_daily
+  description: |
+    Dashboard view of fct_execution_gnosis_app_gp_card_ga_volume_daily: GA-linked GP-card funding &
+    spend per day by link_source, with cumulative series. Aggregate only. DELIBERATELY NOT exposed to
+    cerebro-api (api.exclude_from_api=true, no `api:` tag) because it is partly Mixpanel-derived —
+    served only via the metrics-dashboard x-api-key SQL layer.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: link_source
+    description: "'mixpanel_pay' | 'delay_module' | 'topup_funder' | 'cashback'."
+    data_type: String
+  - name: funded_volume_usd
+    description: USD inflows (Fiat Top Up + Crypto Deposit) on this date, within link_source.
+    data_type: Float64
+  - name: spend_usd
+    description: USD card payments on this date, within link_source.
+    data_type: Float64
+  - name: spend_count
+    description: Number of card Payment transactions on this date.
+    data_type: UInt64
+  - name: spending_cards
+    description: Distinct GA-linked cards that paid on this date.
+    data_type: UInt64
+  - name: funded_volume_cumulative_usd
+    description: Running total of funded_volume_usd within link_source.
+    data_type: Float64
+  - name: spend_cumulative_usd
+    description: Running total of spend_usd within link_source.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    api:
+      exclude_from_api: true
   tests:
   - elementary.schema_changes:
       severity: warn
@@ -2834,6 +2981,139 @@ models:
     data_type: UInt64
   - name: reactivated_users
     description: Active this week, not active in the prior 4 weeks, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: fct_execution_gnosis_app_users_daily_incl_gpay
+  description: |
+    "Incl. Gnosis Pay" twin of fct_execution_gnosis_app_users_daily: identical New / Returning /
+    Reactivated / Active logic over int_execution_gnosis_app_user_activity_daily_incl_gpay, which
+    also counts any user-initiated Gnosis Pay card-wallet transaction (via the safe's GA owner).
+    returning_users = active today AND active in the prior 7 days; reactivated_users = active today,
+    inactive for prior 30 days, but active before that. Dense calendar spine keeps cumulative_users
+    continuous. Kept separate so the current DAU/WAU/MAU lineage stays unchanged for comparison.
+  columns:
+  - name: date
+    description: Calendar date (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this period.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this period.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this period (incl. Gnosis Pay).
+    data_type: UInt64
+  - name: returning_users
+    description: Active this period and also active in the immediately prior period.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this period after a dormancy gap, having been active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+- name: fct_execution_gnosis_app_users_monthly_incl_gpay
+  description: |
+    "Incl. Gnosis Pay" twin of fct_execution_gnosis_app_users_monthly: identical New / Returning /
+    Reactivated / Active logic over int_execution_gnosis_app_user_activity_daily_incl_gpay, which
+    also counts any user-initiated Gnosis Pay card-wallet transaction (via the safe's GA owner).
+    returning_users = active this month AND previous month; reactivated_users = active this month,
+    inactive for prior 2 months, but active before that. Kept separate so the current DAU/WAU/MAU
+    lineage stays unchanged for comparison.
+  columns:
+  - name: month
+    description: First day of the month (UTC).
+    data_type: Date
+  - name: new_users
+    description: Distinct addresses whose first-ever activity was in this period.
+    data_type: UInt64
+  - name: cumulative_users
+    description: Running total of distinct users up to and including this period.
+    data_type: UInt64
+  - name: active_users
+    description: Distinct addresses with any non-onboard activity in this period (incl. Gnosis Pay).
+    data_type: UInt64
+  - name: returning_users
+    description: Active this period and also active in the immediately prior period.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this period after a dormancy gap, having been active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+- name: api_execution_gnosis_app_active_users_incl_gpay_daily
+  description: "Gnosis App Daily Active Users (DAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_daily_incl_gpay. Daily-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete day (today) excluded."
+  columns:
+  - name: date
+    description: Calendar date (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users on this date, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was on this date.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this date AND active in the prior 7 days.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this date, not active in the prior 30 days, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: api_execution_gnosis_app_active_users_incl_gpay_weekly
+  description: "Gnosis App Weekly Active Users (WAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_weekly_incl_gpay. Resolution-suffixed twin of api_execution_gnosis_app_weekly_active_users_incl_gpay; weekly-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete week excluded."
+  columns:
+  - name: week
+    description: Monday-aligned start of the week (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users in the week, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was this week.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this week AND active the previous week.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this week, not active in the prior 4 weeks, but active earlier.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: api_execution_gnosis_app_active_users_incl_gpay_monthly
+  description: "Gnosis App Monthly Active Users (MAU), Gnosis-Pay-inclusive variant over fct_execution_gnosis_app_users_monthly_incl_gpay. Monthly-grain member of the active-users-incl-gpay resolution triplet. Latest incomplete month excluded."
+  columns:
+  - name: month
+    description: First day of the month (UTC). Time-series grain.
+    data_type: Date
+  - name: active_users
+    description: Distinct active Gnosis App users in the month, additionally including GA owners whose only activity was a Gnosis Pay card-wallet transaction.
+    data_type: UInt64
+  - name: new_users
+    description: Users whose first-ever activity (onboarding) was this month.
+    data_type: UInt64
+  - name: returning_users
+    description: Active this month AND active the previous month.
+    data_type: UInt64
+  - name: reactivated_users
+    description: Active this month, not active in the prior 2 months, but active earlier.
     data_type: UInt64
   meta:
     owner: analytics_team

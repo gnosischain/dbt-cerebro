@@ -2,15 +2,17 @@
 
 ![Cerebro dbt](img/header-cerebro-dbt.png)
 
-A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across P2P networking, consensus mechanisms, execution layer activity, and environmental sustainability metrics.
+A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across execution-layer activity, consensus, P2P networking, cross-chain bridges, Gnosis Pay payments (on Gnosis and Celo), web analytics and attribution, protocol revenue, and environmental sustainability metrics.
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Documentation Map](#documentation-map)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Environment Setup](#environment-setup)
 - [Local Development](#local-development)
+- [Agent Workflow & Policy Gates](#agent-workflow--policy-gates)
 - [Semantic Layer Workflow](#semantic-layer-workflow)
 - [Docker Deployment](#docker-deployment)
 - [Data Modeling Conventions](#data-modeling-conventions)
@@ -24,20 +26,43 @@ A comprehensive [dbt](https://www.getdbt.com/) project for transforming and anal
 
 ## Overview
 
-Cerebro dbt transforms Gnosis Chain data across eight modules:
+Cerebro dbt transforms Gnosis Chain data across fourteen modules (~1,209 catalogued models):
 
 | Module | Description | Models |
 |--------|-------------|--------|
-| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics, **Safe wallet catalog, Gnosis Pay on-chain modules, Gnosis App heuristic sector** | ~225 |
-| **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~54 |
-| **contracts** | Decoded smart contract events and calls (BalancerV2/V3, UniswapV3, Aave, Swapr, etc.) | ~44 |
-| **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~27 |
-| **bridges** | Cross-chain bridge flows, token net flows, Sankey visualizations | ~18 |
-| **ESG** | Power consumption, carbon emissions, node classification, sustainability metrics | ~18 |
-| **crawlers_data** | External datasets: Dune labels, prices, GNO supply | ~9 |
-| **probelab** | ProbeLab network measurements: client versions, cloud distribution, QUIC support | ~9 |
+| **execution** | Transaction analysis, token tracking, gas metrics, DeFi protocols, GPay wallet analytics, Safe wallet catalog, Gnosis Pay on-chain modules, Gnosis App heuristic sector | ~722 |
+| **contracts** | Decoded smart contract events and calls (BalancerV2/V3, UniswapV3, Aave, Swapr, CoW, etc.) | ~102 |
+| **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~88 |
+| **mixpanel_ga** | Web/app analytics: Mixpanel and Google Analytics sessions, funnels, campaign touchpoints | ~59 |
+| **revenue** | Protocol revenue and fee streams | ~50 |
+| **celo** | Gnosis Pay on Celo: decoded contract events, transactions, spend analytics | ~48 |
+| **mta** | Multi-touch attribution: Gnosis App journey spine, conversion coverage, first/last/linear/time-decay credit (lives under `models/execution/gnosis_app/`) | ~27 |
+| **quarterly_data** | Quarterly reporting aggregates | ~27 |
+| **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~25 |
+| **bridges** | Cross-chain bridge flows, token net flows, Sankey visualizations | ~17 |
+| **ESG** | Power consumption, carbon emissions, node classification, sustainability metrics | ~16 |
+| **crawlers_data** | External datasets: Dune labels, prices, GNO supply | ~16 |
+| **mmm** | Marketing Mix Modeling: weekly spine, media/adstock series, baseline and collinearity artifacts (lives under `models/execution/mmm/`) | ~7 |
+| **probelab** | ProbeLab network measurements: client versions, cloud distribution, QUIC support | ~5 |
+
+Counts are approximate catalogued models per thematic module — see the [dbt Model Catalog](https://docs.analytics.gnosis.io/models/) for the authoritative per-module breakdown.
 
 All data is stored in **ClickHouse Cloud** and served via [Cerebro API](https://api.analytics.gnosis.io) and [Cerebro MCP](https://mcp.analytics.gnosis.io).
+
+## Documentation Map
+
+This README focuses on **commands, running models, and deployment**. Deeper
+reference material lives in dedicated docs:
+
+| Doc | What it covers |
+|---|---|
+| [AGENTS.md](AGENTS.md) | The operating guide for agents (and humans): required workflow, refresh-lever decision table, non-negotiable rules, ClickHouse gotchas. Scoped copies live next to the code (`models/<domain>/AGENTS.md`). |
+| [docs/agents.md](docs/agents.md) | **Architecture of the agent knowledge system** — file roles, artifact pipeline, contract resolution, policy gates/ratchets, CI tiers, typical flows, with diagrams. |
+| [docs/lessons/](docs/lessons/INDEX.md) | Mistake-class records with status lifecycle + evidence. Check before diagnosing any data-quality symptom. |
+| [docs/workflows/](docs/workflows/) | Vendor-neutral step-by-step workflows: new-model, generate-schema, refresh-advisor, incident. |
+| [docs/semantic-authoring.md](docs/semantic-authoring.md) + [semantic/README.md](semantic/README.md) | Semantic-layer authoring. |
+| [scripts/refresh/README.md](scripts/refresh/README.md), [scripts/full_refresh/README.md](scripts/full_refresh/README.md) | Refresh-runner internals. |
+| [docs/README.md](docs/README.md) | Which docs are durable references vs point-in-time snapshots. |
 
 ## Architecture
 
@@ -421,6 +446,42 @@ The cron pod mounts a `ReadWriteOnce` PVC (`dbt-cerebro-data`, 2 GiB) at `/data`
 
 Cron/orchestrator runs force dbt logs into `${RUNTIME_DATA_DIR:-/data}/logs` so they don't depend on bind-mounted `./logs`. If you previously ran Docker with a mismatched UID/GID and hit `PermissionError` on `logs/dbt.log*`, remove those files or repair ownership once on the host before retrying.
 
+## Agent Workflow & Policy Gates
+
+Every model change — human or agent — follows the same loop: **get the change
+packet, respect it, verify with one command**. The full architecture (file
+roles, artifact pipeline, contract resolution, ratchets, diagrams) is in
+[docs/agents.md](docs/agents.md); the operating rules are in
+[AGENTS.md](AGENTS.md). The commands:
+
+```bash
+# 1. BEFORE touching a model: its resolved contract — grain, invariants,
+#    hazards (linked to docs/lessons/), lineage blast radius, reprocess runbook
+python scripts/agent_context/context.py --select <model> --task <build|fix|backfill|review>
+
+# 2. What did this branch change, and what could it break
+python scripts/agent_context/check.py --base-ref main        # or: make impact
+
+# 3. THE verification command — every policy gate, one exit code
+python scripts/checks/run_all.py            # parse tier (no warehouse needed)
+python scripts/checks/run_all.py --fast     # static gates only    (make check-fast)
+python scripts/checks/run_all.py --full     # + semantic gates     (make check)
+```
+
+`run_all.py` bootstraps `target/manifest.json` automatically (or prints the
+docker command), proves the context artifact is deterministic, and runs the
+gate suite: incremental policy (delete+insert ban, staged-strategy safety),
+api-tag/naming convention, meta-key noise, doc-coverage floors, envio_ga
+policy, semantic-authoring scaffold gate, change-aware contract gate, and the
+policy fixture tests. Exemptions live in per-gate `.allow` files that are
+**shrink-only** — backlogs can only go down.
+
+CI runs the same thing in two tiers: the parse tier on **every pull request**
+(no secrets — `dbt parse` needs no warehouse) and the full tier (plus
+`dbt docs generate` + semantic registry/graph/entity gates) on main in a
+`validate` job that **blocks the Docker image push**. Production runs the
+CI-built image, so nothing unvalidated can reach the cron.
+
 ## Running Models
 
 There are **three execution modes** for materializing dbt models in this project, each suited to a different operational scenario. The cron pipeline (`run_dbt_observability.sh`) automates mode selection, but operators frequently need to invoke them manually.
@@ -430,8 +491,15 @@ There are **three execution modes** for materializing dbt models in this project
 | Scenario | Mode | Command surface |
 |---|---|---|
 | Daily incremental catch-up (production cron path) | **Microbatch runner** | `scripts/refresh/dbt_incremental_runner.py` |
+| Raw source backfilled into an already-passed month (decode chains) | **Gap-window refresh** | `scripts/refresh/gap_window_refresh.py --months … --select <decode>+` |
 | Multi-month historical backfill of a large model | **Full-refresh orchestrator** | `scripts/full_refresh/refresh.py` |
 | One-off ad-hoc rebuild / quick smoke test of a single model | **Plain `dbt run`** | `dbt run --select <model>` |
+
+The gap-window mode exists because decode models have **no lookback**: their append
+watermark permanently skips logs backfilled below it, and the daily runner only advances
+the watermark. `gap_window_refresh.py` drops the affected month partition (lowering the
+watermark) and re-runs scoped — targeted and resumable, hours cheaper than a full-history
+rebuild. See `docs/lessons/decode-watermark-late-logs.md`.
 
 The runner and orchestrator wrap `dbt run` and add behaviour you almost always want for production-shaped workloads (per-day slicing, transient-error retry, atomic per-batch state). Reach for plain `dbt run` only when those guarantees are not needed.
 
@@ -442,7 +510,7 @@ The runner and orchestrator wrap `dbt run` and add behaviour you almost always w
 What the runner does for each selected model, in topological order:
 
 - **Plain (non-microbatch-annotated) models** — accumulated into a buffer and run as a single `dbt run --select <buffer>` call. The buffer is flushed at every microbatch boundary so dependencies between plain and microbatch models always run in the right order.
-- **Microbatch-annotated models** (those with `meta.full_refresh.incremental.enabled: true` in their schema.yml) — the runner reads `max(date_column)` from the target per stage, slices the catch-up window into per-day INSERTs (`incremental_strategy=append`, no `ALTER … DELETE` mutation), and runs each slice as its own `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'`. State is persisted to `target/incremental_microbatch_state.json` so `--resume` skips already-completed slices.
+- **Microbatch-annotated models** (those with `meta.full_refresh.incremental.enabled: true` in their schema.yml) — the runner reads `max(date_column)` from the target per stage, slices the catch-up window into per-day INSERTs (`incremental_strategy=append`, no `ALTER … DELETE` mutation), and runs each slice as its own `dbt run --vars '{"incremental_end_date":"YYYY-MM-DD", ...}'`. State is persisted to `target/refresh_state/microbatch_<id>.json` (identity-keyed by `--select`/`--stage`) so `--resume` with the same arguments skips already-completed slices; distinct selections never share state.
 
 **Safety guarantees:**
 
@@ -475,7 +543,7 @@ python /app/scripts/refresh/dbt_incremental_runner.py \
   --select tag:production --dry-run \
   --project-dir /app --profiles-dir /app
 
-# Resume an interrupted run (re-uses target/incremental_microbatch_state.json)
+# Resume an interrupted run (same --select/--stage; state is identity-keyed under target/refresh_state/)
 python /app/scripts/refresh/dbt_incremental_runner.py \
   --select tag:production --resume \
   --project-dir /app --profiles-dir /app
@@ -491,7 +559,7 @@ python /app/scripts/refresh/dbt_incremental_runner.py \
 | `--bootstrap-lookback-days N` | 7 | First-run bootstrap window for empty targets. |
 | `--max-slices-per-stage N` | 30 | Refusal cap. Set to `0` to disable (not recommended). |
 | `--stage <name>` | all stages | Restrict to one or more stage names; pass repeatedly. |
-| `--resume` | off | Continue from `target/incremental_microbatch_state.json`. |
+| `--resume` | off | Continue the pending run matching this selection (`target/refresh_state/microbatch_<id>.json`). |
 | `--dry-run` | off | Print plan, no DB writes. |
 | `--delay <sec>` | 0 | Sleep between slices, for cluster cooldown. |
 | `--threads N` | dbt profile default | Forward to `dbt run`. |
@@ -571,7 +639,7 @@ python /app/scripts/full_refresh/refresh.py \
 
 **Built-in resilience:**
 
-- `--resume` — picks up from `.refresh_state.json`. State is persisted after every successful batch.
+- `--resume` — picks up the pending run matching this exact selection (state is identity-keyed under `target/refresh_state/full_refresh_<id>.json`; persisted after every successful batch). Starting a run that overlaps a different pending run's models is refused — resume it with its original arguments or `--clear-state <id>`.
 - **Transient retry** — on ClickHouse codes 241 (memory), 159/209/210 (network/timeout), or any `MEMORY_LIMIT_EXCEEDED` / `OvercommitTracker` error, the orchestrator waits with exponential backoff (30 s → 60 s → 120 s → 240 s → 480 s, up to 5 retries) before giving up. This handles shared-cluster pressure without operator intervention.
 
 `--full-refresh` (default, no flag needed) drops the table on the first batch and rebuilds. `--incremental-only` skips the drop and appends — use it whenever you want to fill a gap without losing existing data.
@@ -1076,7 +1144,7 @@ A `pre_hook=["SET foo = bar"]` on a dbt model looks self-contained, but it isn't
 Concretely, the daily cron issues something like:
 
 ```
-dbt run --select tag:production   # ~400 models, one connection
+dbt run --select tag:production   # ~1,200 models, one connection
   ├─ model A  pre_hook: SET join_algorithm = 'grace_hash'     ← session now: grace_hash
   ├─ model B  (no pre_hook)                                   ← still grace_hash
   ├─ model C  (uses ASOF JOIN, no pre_hook)                   ← still grace_hash → fails
@@ -1184,6 +1252,12 @@ The first production users of this pattern are:
 Deep dive: <https://docs.analytics.gnosis.io/data-pipeline/transformation/privacy-pseudonyms/>
 
 ## Observability and Testing
+
+### Policy gates
+
+See [Agent Workflow & Policy Gates](#agent-workflow--policy-gates) —
+`python scripts/checks/run_all.py` runs every gate; architecture and gate table
+in [docs/agents.md](docs/agents.md).
 
 ### Elementary OSS
 
@@ -2010,18 +2084,24 @@ dbt-cerebro/
 ├── app/
 │   └── observability_server.py    # Health + metrics + static file server (k8s)
 ├── models/
-│   ├── consensus/                 # Consensus layer (54 models)
+│   ├── consensus/                 # Consensus layer (~88 models)
 │   │   ├── staging/               # stg_consensus__*
 │   │   ├── intermediate/          # int_consensus_*
 │   │   └── marts/                 # fct_consensus_*, api_consensus_*
-│   ├── execution/                 # Execution layer (~225 models)
+│   ├── execution/                 # Execution layer (~722 models)
 │   │   ├── blocks/
 │   │   ├── transactions/
 │   │   ├── tokens/
-│   │   ├── gpay/                  # Gnosis Pay: wallet owners, activity, (planned: modules, allowances, delegates, mixpanel bridge)
-│   │   ├── safe/                  # Generic Safe wallet catalog (creation, owner events, current owners; planned: module events)
-│   │   ├── zodiac/                # (planned) Zodiac ModuleProxyFactory discovery
-│   │   ├── gnosis_app/            # (planned) Gnosis App heuristic sector (Cometh + Circles V2 chokepoint)
+│   │   ├── gpay/                  # Gnosis Pay: wallet owners, activity, modules, allowances
+│   │   ├── safe/                  # Generic Safe wallet catalog (creation, owner events, current owners)
+│   │   ├── zodiac/                # Zodiac ModuleProxyFactory discovery
+│   │   ├── gnosis_app/            # Gnosis App heuristic sector + MTA attribution models
+│   │   ├── mmm/                   # Marketing Mix Modeling spine + artifacts
+│   │   ├── cow/                   # CoW Protocol
+│   │   ├── dao_treasury/
+│   │   ├── lending/
+│   │   ├── pools/
+│   │   ├── accounts/
 │   │   ├── state/
 │   │   ├── transfers/
 │   │   ├── prices/
@@ -2029,13 +2109,18 @@ dbt-cerebro/
 │   │   ├── rwa/
 │   │   ├── Circles/
 │   │   └── GBCDeposit/
-│   ├── contracts/                 # Decoded contracts (44 models)
+│   ├── contracts/                 # Decoded contracts (~102 models)
 │   │   └── {Protocol}/            # One folder per protocol
-│   ├── p2p/                       # P2P network (27 models)
-│   ├── bridges/                   # Bridge flows (18 models)
-│   ├── ESG/                       # Sustainability (18 models)
-│   ├── crawlers_data/             # External data (9 models)
-│   └── probelab/                  # ProbeLab (9 models)
+│   ├── mixpanel_ga/               # Web analytics: Mixpanel + Google Analytics (~59 models)
+│   ├── revenue/                   # Protocol revenue and fees (~50 models)
+│   ├── celo/                      # Gnosis Pay on Celo (~48 models)
+│   ├── quarterly_data/            # Quarterly reporting aggregates (~27 models)
+│   ├── p2p/                       # P2P network (~25 models)
+│   ├── bridges/                   # Bridge flows (~17 models)
+│   ├── ESG/                       # Sustainability (~16 models)
+│   ├── crawlers_data/             # External data (~16 models)
+│   ├── probelab/                  # ProbeLab (~5 models)
+│   └── shared/                    # Time spine + shared marts
 ├── macros/
 │   ├── db/                        # Database utilities (incremental filters, dedup_source)
 │   ├── decoding/                  # Contract decoding macros (decode_logs, decode_calls)
@@ -2103,7 +2188,7 @@ Tables with `freshness: null` in their source YAML are skipped. If a table unexp
 
 #### Full refresh model triggers false Elementary alerts
 
-All 59 `meta.full_refresh` models skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
+All `meta.full_refresh` models (~200 as of 2026-07) skip `volume_anomalies` and `freshness_anomalies` by design. If you see false alerts, verify:
 1. The model has `meta.full_refresh` in its `schema.yml`
 2. Check the model's `schema.yml` for correct test configuration
 

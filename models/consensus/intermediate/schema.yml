@@ -1725,6 +1725,49 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, validator_index]
+      semantics: cumulative
+      invariants:
+      - id: full-population-coverage
+        text: One row per (date, validator_index) for EVERY validator in that
+          day's int_consensus_validators_snapshots_daily, including exited and
+          zero-balance (~558k/day). A day holding fewer rows means one or more
+          validator_index band slices silently inserted nothing; downstream
+          per_index/dists marts then aggregate a biased cohort (2026-07 served
+          a NEGATIVE network APY off one mostly-exited band).
+      - id: chronological-per-band-build
+        text: balance_prev_gno and every cumulative_* column chain from the
+          previous day via lagInFrame + prev_state from the target table. Never
+          build a day before its predecessor exists for that band — a missing
+          prior day makes balance_prev fall back to 0, the effective-credit
+          formula absorbs the whole balance, and income pins at the spec cap
+          (~35.7 APY for 56k validators on 2026-07-20) while cumulatives reset
+          to zero.
+      - id: range-scoped-watermarks
+        text: Every apply_monthly_incremental_filter call in this model MUST
+          pass filters_sql=range_sql — including CTEs whose source has no
+          validator_index (network_state). The range scope applies to the
+          target-table watermark subquery; without it the CTE watermarks off
+          the global frontier and later-band slices compile to an empty window,
+          inserting 0 rows while dbt reports success.
+      - id: spec-bounded-income
+        text: consensus_income_amount_gno <= expected_reward_cap_gno except for
+          real slashing losses; never re-derive income from balance deltas plus
+          reported deposits alone (post-Pectra queue-drain days break it).
+      hazards: [microbatch-state-skips-data-holes, frontier-day-incomplete-inputs,
+                backfill-order-cumulative, ch-overcommit-victim]
+      validation:
+      - 'coverage parity: tests/consensus_income_daily_coverage.sql (rows per day
+        vs snapshots, >=99%)'
+      - 'spec cap: tests/consensus_income_within_spec_cap.sql'
+      - 'ledger identity: tests/consensus_income_effective_ledger_identity.sql'
+      reprocess_runbook: Damage is month-partition-contained. Drop the affected
+        month partition on THIS model AND int_consensus_validators_per_index_apy_daily
+        (drop_partition macro), then rebuild chronologically per band with
+        scripts/refresh/dbt_incremental_runner.py (--max-end-date yesterday),
+        income before per_index, then cascade the downstream marts — full
+        runbook in docs/lessons/microbatch-state-skips-data-holes.md.
     full_refresh:
       start_date: "2021-12-01"
       batch_months: 1

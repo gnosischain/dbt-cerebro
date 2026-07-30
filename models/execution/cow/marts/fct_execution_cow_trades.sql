@@ -13,7 +13,7 @@
         order_by='(block_timestamp, transaction_hash, log_index)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'trades']
+        tags=['production', 'execution', 'cow', 'trades', 'microbatch']
     )
 }}
 

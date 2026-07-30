@@ -1,5 +1,9 @@
 # dbt-cerebro Model Review: Executive Report
 
+> **HISTORICAL SNAPSHOT (2026-06-11).** Findings below may already be remediated — see
+> [README.md](README.md) and [docs/lessons/INDEX.md](../lessons/INDEX.md). Re-verify
+> before acting on anything here.
+
 **Review date:** 2026-06-11  
 **Scope:** 37 sector reports covering all models in the dbt-cerebro project  
 **Methodology:** Three-agent review (Inspector + Context + Arbiter) per sector; warehouse queries run in each round; findings graded by severity  

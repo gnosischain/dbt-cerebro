@@ -421,6 +421,22 @@ else
   echo "[$(date -u)] Failed: dbt-test:plan (exit $plan_rc)"
 fi
 
+# Standalone data-quality tests (tests/data_quality/*.sql) are NOT covered by
+# the path:models/... batches above — they detect the failure classes in
+# docs/lessons/ (dropped decoded logs, raw block holes, duplicate windows,
+# sparse carry-forward series). Daily set every run; the heavier weekly set
+# (raw-vs-decoded parity, density sweeps) rides the TEST_MODE=full run.
+run_step "dbt-test:data-quality-daily" \
+  dbt test --select tag:data_quality_daily --exclude tag:data_quality_weekly \
+  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+  || true
+if [ "$TEST_MODE" = "full" ]; then
+  run_step "dbt-test:data-quality-weekly" \
+    dbt test --select tag:data_quality_weekly \
+    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+    || true
+fi
+
 # ── 4. Semantic docs and registry artifacts ──────────────────────────────
 # Exclude dev-tagged models: prod builds only tag:production, so dev/WIP
 # models are never materialised and a bare docs generate aborts on their

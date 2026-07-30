@@ -154,7 +154,10 @@ FROM (
         log_index,
         'Flash' AS event_type,
         'token0' AS token_position,
-        toInt256OrNull(decoded_params['paid0']) - toInt256OrNull(decoded_params['amount0']) AS delta_amount_raw
+        -- Flash paid0/paid1 is the fee the pool KEEPS (balanceAfter - balanceBefore), i.e. a net
+        -- token inflow. The borrowed amount0/amount1 is sent out and repaid in the SAME tx (net
+        -- zero on the pool), so do NOT subtract it -- the balance delta is just the fee (paid).
+        toInt256OrNull(decoded_params['paid0']) AS delta_amount_raw
     FROM pool_events
     WHERE event_name = 'Flash'
       AND decoded_params['paid0'] IS NOT NULL
@@ -169,7 +172,7 @@ FROM (
         log_index,
         'Flash' AS event_type,
         'token1' AS token_position,
-        toInt256OrNull(decoded_params['paid1']) - toInt256OrNull(decoded_params['amount1']) AS delta_amount_raw
+        toInt256OrNull(decoded_params['paid1']) AS delta_amount_raw
     FROM pool_events
     WHERE event_name = 'Flash'
       AND decoded_params['paid1'] IS NOT NULL

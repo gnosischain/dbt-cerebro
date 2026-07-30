@@ -31,7 +31,8 @@ python scripts/full_refresh/refresh.py --select tag:production --resume
 3. **Execute**: For each model:
    - If it has `full_refresh` config: runs batched (by time and/or stages)
    - Otherwise: runs normally with `--full-refresh` flag
-4. **Track Progress**: Saves state to `.refresh_state.json` for resume capability
+4. **Track Progress**: Saves state to `target/refresh_state/full_refresh_<id>.json`
+   (identity-keyed by select/exclude/stage/incremental-only) for resume capability
 
 ## Configuration
 
@@ -443,24 +444,35 @@ WHERE date < today()
 
 ## State File
 
-Progress is tracked in `.refresh_state.json`:
+Progress is tracked in `target/refresh_state/full_refresh_<id>.json`, where `<id>`
+hashes the run identity (`--select`, `--exclude`, `--stage`, `--incremental-only`) —
+so two different runs never share a state file, and starting a run whose models
+overlap another pending run is **refused** (finish it with `--resume` using its
+original arguments, or discard it with `--clear-state <id>`). See
+`docs/lessons/refresh-state-collision.md`.
 
 ```json
 {
+  "run_id": "a1b2c3d4e5f6",
+  "tool": "full_refresh",
+  "identity": {"select": ["tag:tokens"], "exclude": null, "stage": null, "incremental_only": false},
+  "models": ["int_execution_transfers_whitelisted_daily", "..."],
   "completed_models": [
     "int_execution_transfers_whitelisted_daily",
     "int_execution_tokens_address_diffs_daily"
   ],
   "current_model": "int_execution_tokens_balances_daily",
-  "current_batch": 47
+  "current_batch": 47,
+  "created_at": "2026-07-17T09:00:00+00:00",
+  "updated_at": "2026-07-17T11:32:10+00:00"
 }
 ```
 
 This file is automatically:
-- Created during execution
-- Updated after each successful batch
+- Created at run start (records the resolved model list for overlap checks)
+- Updated after each successful batch (atomic write)
 - Deleted on successful completion
-- Should be added to `.gitignore`
+- Already covered by `.gitignore` via `target/`
 
 ## Troubleshooting
 

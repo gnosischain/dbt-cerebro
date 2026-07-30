@@ -90,6 +90,52 @@ sources:
           - name: SAFE_createdAt
             data_type: DateTime
 
+      - name: gpay_operational_wallets
+        freshness: null
+        description: >
+          Gnosis Pay company-operated wallet addresses (treasury, relayers,
+          settlement). Used purely as an EXCLUSION list so company wallets are
+          not counted as users. These belong to a legal person, not a natural
+          person, so they are out of GDPR scope - do NOT pseudonymize them:
+          both call sites join against plaintext on-chain addresses, so hashing
+          would break the exclusion for no privacy gain.
+
+          Changes to this list silently move user counts. Treat edits as
+          reviewable changes, not routine data updates.
+        columns:
+          - name: address
+            data_type: String
+            description: Company-operated wallet address (lowercase, 0x-prefixed).
+
+      - name: gp_migrated_safes
+        freshness: null
+        description: >
+          OLD -> NEW Safe mapping for the June 2026 post-exploit Gnosis Pay
+          migration. One row per migrated Safe; a NEW Safe never appears as an
+          OLD Safe, so a single hop resolves fully. Static dataset - the
+          migration completed 2026-06-08 and no further rows are expected.
+
+          Holds GnosisPay customer Safe addresses and is therefore SENSITIVE:
+          it was previously a repo seed and must NOT be returned to one. This
+          repo is public; the mapping is not derivable from public chain state
+          (old and new Safes share no user-level owner by design, since the
+          migration issued new signers), so publishing it would be a genuine
+          disclosure rather than a convenience. See
+          cerebro-mcp/docs/compliance/gdpr-audit-2026-07.md section 7.
+        columns:
+          - name: old_safe_address
+            data_type: String
+            description: Pre-migration Safe address.
+          - name: new_safe_address
+            data_type: String
+            description: Post-migration (canonical) Safe address.
+          - name: startedAt
+            data_type: String
+            description: Migration start timestamp (ISO-8601 string, as exported).
+          - name: completedAt
+            data_type: String
+            description: Migration completion timestamp (ISO-8601 string, as exported).
+
       - name: ipinfo
         freshness: null
         description: "IP intelligence enrichment from ipinfo.io lookups."

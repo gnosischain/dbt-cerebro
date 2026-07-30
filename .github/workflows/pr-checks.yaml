@@ -1,0 +1,61 @@
+name: PR Checks
+
+# Parse-tier validation on every pull request — no warehouse, no secrets.
+# `dbt parse` renders profiles.yml but never connects, so dummy connection env
+# is sufficient; every static gate + the agent-context and change-aware
+# contract checks run against the parsed manifest. The catalog-dependent
+# semantic gates (registry/graph/entities need target/catalog.json from a
+# credentialed `dbt docs generate`) run in the full tier on main —
+# see build-and-release.yaml's validate job, which also gates image publish.
+
+on:
+  pull_request:
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate (parse tier)
+    runs-on: ubuntu-latest
+
+    env:
+      # Dummies: parse-time profile rendering only, no connection is opened.
+      CLICKHOUSE_URL: localhost
+      CLICKHOUSE_USER: ci-parse-only
+      CLICKHOUSE_PASSWORD: ci-parse-only
+      CLICKHOUSE_DATABASE: dbt
+      CLICKHOUSE_SCHEMA: dbt
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_SECURE: "False"
+      # Dummy salt for parse only — no hashes are materialized here.
+      CEREBRO_PII_SALT: "00"
+
+    steps:
+      - name: Checkout (with base history)
+        uses: actions/checkout@v4
+        with:
+          # The change-aware gate diffs against the PR base; --require-base
+          # makes an unresolvable base a hard failure, so fetch everything.
+          fetch-depth: 0
+
+      - name: Setup Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dbt (ClickHouse adapter) + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.9.4 dbt-clickhouse==1.9.1 pytest
+
+      - name: Install dbt package dependencies
+        run: |
+          dbt deps
+
+      - name: Run all parse-tier gates
+        # --ci: base ref must resolve (fail closed), stale manifest is an error.
+        run: |
+          dbt parse
+          python scripts/checks/run_all.py --ci --base-ref "origin/${{ github.base_ref }}"

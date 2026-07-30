@@ -11,7 +11,7 @@
         order_by='(date, solver)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'execution', 'cow', 'solvers', 'daily']
+        tags=['production', 'execution', 'cow', 'solvers', 'daily', 'microbatch']
     )
 }}
 

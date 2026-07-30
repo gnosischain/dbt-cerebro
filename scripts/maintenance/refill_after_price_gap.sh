@@ -107,10 +107,23 @@ SKIP_PHASE2=false
 # Phase-1 cohort is tag-driven: any model tagged `refill_append` is a heavy
 # aggregate whose `delete+insert` lookback path OOMs on a multi-day mutation,
 # and which falls back to `append` strategy when `start_month`/`end_month`
-# are set. To add a new model: tag it `refill_append` and ensure it has the
+# are set. To add a new model: tag it `refill_append`, ensure it has the
 # `('append' if (start_month or incremental_end_date) else 'delete+insert')`
-# strategy expression. No edits to this script needed.
+# strategy expression, AND add it to exactly one of the two lists below —
+# the split-membership guard fails the run otherwise.
 PHASE1_TAG="refill_append"
+
+# SPLIT: sources vs aggregators. An aggregator must NEVER run in the same
+# dbt invocation as an append to a source it reads: dbt's DAG ordering runs
+# the source append first, so the aggregator computes from 2x live rows
+# (original + fresh append) before any OPTIMIZE can collapse them — and its
+# doubled row then survives every later merge as the "latest" version per
+# key. This exact failure doubled July supply for every token on 2026-07-17
+# (see docs/lessons/refill-append-aggregator-inflation.md). Pass A appends
+# + OPTIMIZEs sources only; pass B runs aggregators only, against merged
+# sources.
+PHASE1_SOURCES="int_execution_tokens_balances_daily int_execution_lending_aave_user_balances_daily int_execution_gpay_activity int_execution_pools_fees_daily int_revenue_gpay_fees_daily"
+PHASE1_AGGREGATORS="int_execution_account_balance_history_daily int_execution_lending_aave_balance_cohorts_daily int_execution_tokens_balance_cohorts_daily int_execution_tokens_balances_by_sector_daily int_execution_tokens_supply_holders_daily int_revenue_holdings_fees_daily int_revenue_sdai_fees_daily"
 
 usage() {
   cat >&2 <<'EOF'
@@ -240,36 +253,61 @@ if [ "$SKIP_PHASE1" = "false" ]; then
     if [ -z "$PHASE1_MODELS" ]; then
       echo "[phase1] no models tagged $PHASE1_TAG — skipping"
     fi
-  else
-    PHASE1_MODELS="<resolved at runtime from tag:$PHASE1_TAG>"
+    # Split-membership guard: every cohort model must be classified as a
+    # source or an aggregator, or we refuse — an unclassified model would
+    # silently fall out of the refill.
+    for model in $PHASE1_MODELS; do
+      case " $PHASE1_SOURCES $PHASE1_AGGREGATORS " in
+        *" $model "*) ;;
+        *) echo "ERROR: model '$model' is tagged $PHASE1_TAG but is in neither" \
+               "PHASE1_SOURCES nor PHASE1_AGGREGATORS — classify it first."; exit 2 ;;
+      esac
+    done
   fi
 
-  echo "=== Phase 1: two-pass append-rewrite tag:$PHASE1_TAG + OPTIMIZE ==="
-  echo "[phase1] models: $(echo "$PHASE1_MODELS" | tr '\n' ' ')"
+  echo "=== Phase 1: per-month source-then-aggregator rewrite + OPTIMIZE ==="
+  echo "[phase1] sources    : $PHASE1_SOURCES"
+  echo "[phase1] aggregators: $PHASE1_AGGREGATORS"
 
   for m in "${MONTHS[@]}"; do
-    for pass in A B; do
-      echo "[phase1][pass-$pass] month=$m  rewrite (append, dbt-managed DAG order)"
-      run_or_print dbt run \
-        --select "tag:$PHASE1_TAG" \
-        --vars "{\"start_month\":\"$m\",\"end_month\":\"$m\"}" \
-        --project-dir "$PROJECT_DIR" \
-        --profiles-dir "$PROFILES_DIR" \
-        || { echo "[phase1][pass-$pass] rewrite failed for $m"; OVERALL_RC=2; break 2; }
+    # Pass A — SOURCES only: append + OPTIMIZE so aggregators later read
+    # fully-merged rows. Aggregators must not run in this invocation.
+    echo "[phase1][pass-A] month=$m  sources append"
+    run_or_print dbt run \
+      --select $PHASE1_SOURCES \
+      --vars "{\"start_month\":\"$m\",\"end_month\":\"$m\"}" \
+      --project-dir "$PROJECT_DIR" \
+      --profiles-dir "$PROFILES_DIR" \
+      || { echo "[phase1][pass-A] source rewrite failed for $m"; OVERALL_RC=2; break; }
+    if [ "$DRY_RUN" = "false" ]; then
+      for model in $PHASE1_SOURCES; do
+        echo "[phase1][pass-A] $model  month=$m  OPTIMIZE PARTITION FINAL DEDUPLICATE"
+        run_or_print dbt run-operation optimize_partition_final \
+          --args "{database: dbt, table_name: ${model}, partition: \"$m\"}" \
+          --project-dir "$PROJECT_DIR" \
+          --profiles-dir "$PROFILES_DIR" \
+          || { echo "[phase1][pass-A] $model OPTIMIZE failed for $m"; OVERALL_RC=2; break 2; }
+      done
+    fi
 
-      if [ "$DRY_RUN" = "false" ]; then
-        for model in $PHASE1_MODELS; do
-          echo "[phase1][pass-$pass] $model  month=$m  OPTIMIZE PARTITION FINAL DEDUPLICATE"
-          run_or_print dbt run-operation optimize_partition_final \
-            --args "{database: dbt, table_name: ${model}, partition: \"$m\"}" \
-            --project-dir "$PROJECT_DIR" \
-            --profiles-dir "$PROFILES_DIR" \
-            || { echo "[phase1][pass-$pass] $model OPTIMIZE failed for $m"; OVERALL_RC=2; break 3; }
-        done
-      else
-        echo "[dry-run][pass-$pass] for each model in tag:$PHASE1_TAG: optimize_partition_final partition=$m"
-      fi
-    done
+    # Pass B — AGGREGATORS only, against merged sources.
+    echo "[phase1][pass-B] month=$m  aggregators append"
+    run_or_print dbt run \
+      --select $PHASE1_AGGREGATORS \
+      --vars "{\"start_month\":\"$m\",\"end_month\":\"$m\"}" \
+      --project-dir "$PROJECT_DIR" \
+      --profiles-dir "$PROFILES_DIR" \
+      || { echo "[phase1][pass-B] aggregator rewrite failed for $m"; OVERALL_RC=2; break; }
+    if [ "$DRY_RUN" = "false" ]; then
+      for model in $PHASE1_AGGREGATORS; do
+        echo "[phase1][pass-B] $model  month=$m  OPTIMIZE PARTITION FINAL DEDUPLICATE"
+        run_or_print dbt run-operation optimize_partition_final \
+          --args "{database: dbt, table_name: ${model}, partition: \"$m\"}" \
+          --project-dir "$PROJECT_DIR" \
+          --profiles-dir "$PROFILES_DIR" \
+          || { echo "[phase1][pass-B] $model OPTIMIZE failed for $m"; OVERALL_RC=2; break 2; }
+      done
+    fi
   done
   echo
 fi
@@ -281,8 +319,13 @@ fi
 # converge. Refill is a no-op if the canary is clean.
 if [ "$SKIP_PHASE1" = "false" ] && [ "$OVERALL_RC" -eq 0 ] && [ "$DRY_RUN" = "false" ]; then
   echo "=== Phase 1.5: canary check on int_execution_tokens_supply_holders_daily (GNO) ==="
+  # Scan from 3 days BEFORE the first affected month through today: the
+  # 2026-07-17 supply-doubling sat exactly at the month boundary (06-30 ->
+  # 07-01), which a +/-7d window around FROM_DATE missed entirely — inside
+  # the refilled month everything was uniformly 2x, so no intra-month jump.
+  CANARY_START="${MONTHS[0]}"
   CANARY_SQL="WITH s AS (SELECT date, supply FROM dbt.int_execution_tokens_supply_holders_daily \
-WHERE symbol='GNO' AND date >= toDate('${FROM_DATE}') - 7 AND date <= toDate('${FROM_DATE}') + 7) \
+WHERE symbol='GNO' AND date >= toDate('${CANARY_START}') - 3 AND date <= today()) \
 SELECT date, supply, supply / nullIf(lagInFrame(supply) OVER (ORDER BY date), 0) AS ratio \
 FROM s ORDER BY date"
   CANARY_OUT=$(dbt run-operation run_query --args "{sql: \"$CANARY_SQL\"}" \

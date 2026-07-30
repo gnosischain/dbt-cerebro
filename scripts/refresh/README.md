@@ -159,7 +159,13 @@ Synthesized stages flow through the same `--max-slices-per-stage` cap as declare
 
 ## State and resume
 
-`target/incremental_microbatch_state.json`:
+State is identity-keyed: `target/refresh_state/microbatch_<id>.json`, where `<id>`
+hashes (`--select`, `--stage`) — two different selections never share a state file, so
+a manual run can't clobber the cron's pending state. `--resume` must be invoked with
+the same selection arguments. The file is cleared on clean completion and, alongside
+`completed`, records `run_id`/`identity`/`models` metadata so other invocations can
+detect overlap (see `docs/lessons/refresh-state-collision.md`). `--state-file` still
+overrides the path entirely. Contents:
 
 ```json
 {

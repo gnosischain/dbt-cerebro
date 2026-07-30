@@ -3,7 +3,6 @@
     materialized='table',
     engine='ReplacingMergeTree()',
     order_by='(invited_at, avatar)',
-    unique_key='(avatar)',
     partition_by='toStartOfMonth(invited_at)',
     settings={'allow_nullable_key': 1},
     tags=['production','execution','circles_v2','invite_funnel'],
@@ -33,8 +32,6 @@
 --                             AND mint_14dw >= 0.8 * 336 (canonical Active
 --                             Minter definition). NULL if never reached.
 
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month',   none) %}
 
 WITH invitees AS (
     SELECT
@@ -46,15 +43,6 @@ WITH invitees AS (
       AND invited_by IS NOT NULL
       AND invited_by != '0x0000000000000000000000000000000000000000'
       AND block_timestamp < today()
-      {% if start_month and end_month %}
-        AND toStartOfMonth(toDate(block_timestamp)) >= toDate('{{ start_month }}')
-        AND toStartOfMonth(toDate(block_timestamp)) <= toDate('{{ end_month }}')
-      {% else %}
-        {{ apply_monthly_incremental_filter(
-              source_field='block_timestamp',
-              destination_field='invited_at',
-              add_and=True) }}
-      {% endif %}
 ),
 
 -- Per-avatar mint events for the avatars in this batch. Restricting by the

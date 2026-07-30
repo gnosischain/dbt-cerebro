@@ -1,3 +1,16 @@
+{#
+  Windowed backfills (start_month) normally APPEND -- the full_refresh
+  orchestrator / batch runner writes non-overlapping months, so append never
+  duplicates. Pass reprocess_overwrite=true to re-run an OVERLAPPING window
+  safely: delete+insert replaces the touched keys (no duplicate rows), mirroring
+  int_execution_tokens_balances_native_daily / _pools_uniswap_v3_daily.
+
+  IMPORTANT: this model unions many streams; a whole-window delete+insert across
+  ALL of them OOMs the delete set. Reprocess ONE `slice` at a time (batch to
+  bound memory), e.g.:
+    dbt run -s int_revenue_fees_weekly_per_user \
+      --vars 'start_month: 2026-03-01, end_month: 2026-07-01, reprocess_overwrite: true, slice: "holdings:EURe"'
+#}
 {% set lookback_weeks        = 4  %}
 {% set window_history_weeks  = 52 %}
 
@@ -38,7 +51,7 @@
 {{
   config(
     materialized='incremental',
-    incremental_strategy=('append' if start_month else 'delete+insert'),
+    incremental_strategy=('delete+insert' if var('reprocess_overwrite', false) else ('append' if start_month else 'delete+insert')),
     engine='ReplacingMergeTree()',
     order_by='(week, stream_type, symbol, user)',
     partition_by='toStartOfMonth(week)',

@@ -9,7 +9,13 @@ Usage:
     python refresh.py --select tag:production
     python refresh.py --select int_execution_tokens_balances_daily --dry-run
     python refresh.py --select tag:tokens --resume
-    
+
+    # Run state is keyed by (select, exclude, stage, incremental_only) under
+    # target/refresh_state/full_refresh_<id>.json. Starting a run that overlaps
+    # a pending run's models is refused; resume with the ORIGINAL arguments
+    # (or --resume <id>/latest, verified against the current selection), or
+    # discard explicitly with --clear-state <id|all>.
+
     # Add new token without destroying existing data:
     python refresh.py --select model_name --stage new_token --incremental-only
 
@@ -33,7 +39,17 @@ from typing import Optional, List, Tuple, Dict, Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = PROJECT_ROOT / "target" / "manifest.json"
-STATE_FILE = Path(__file__).parent / ".refresh_state.json"
+
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "refresh"))
+import run_state  # noqa: E402
+
+TOOL = "full_refresh"
+# Legacy single shared state file (pre run-identity). Kept only so a pending
+# old-format resume isn't stranded; see docs/lessons/refresh-state-collision.md.
+LEGACY_STATE_FILE = Path(__file__).parent / ".refresh_state.json"
+
+# Set in main() once the run identity is known; every save targets this path.
+STATE_FILE: Path = LEGACY_STATE_FILE
 
 
 # ============================================================================
@@ -41,23 +57,24 @@ STATE_FILE = Path(__file__).parent / ".refresh_state.json"
 # ============================================================================
 
 def load_state() -> dict:
-    """Load progress state from JSON file."""
-    if STATE_FILE.exists():
-        with open(STATE_FILE) as f:
-            return json.load(f)
-    return {"completed_models": [], "current_model": None, "current_batch": 0}
+    """Load progress state for the current run identity."""
+    state = run_state.load(STATE_FILE)
+    if state is None:
+        return {"completed_models": [], "current_model": None, "current_batch": 0}
+    state.setdefault("completed_models", [])
+    state.setdefault("current_model", None)
+    state.setdefault("current_batch", 0)
+    return state
 
 
 def save_state(state: dict) -> None:
-    """Save progress state to JSON file."""
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    """Save progress state to the run-identity state file (atomic)."""
+    run_state.save(STATE_FILE, state)
 
 
 def clear_state() -> None:
     """Remove state file on successful completion."""
-    if STATE_FILE.exists():
-        STATE_FILE.unlink()
+    run_state.clear(STATE_FILE)
 
 
 # ============================================================================
@@ -669,8 +686,20 @@ Examples:
     )
     parser.add_argument(
         "--resume",
-        action="store_true",
-        help="Resume from last saved state"
+        nargs="?",
+        const="__own__",
+        default=None,
+        metavar="RUN_ID",
+        help="Resume a pending run. Bare --resume resumes the state matching "
+             "the current selection; --resume <id> / --resume latest verify the "
+             "given pending run matches the current selection before resuming."
+    )
+    parser.add_argument(
+        "--clear-state",
+        metavar="RUN_ID",
+        default=None,
+        help="Discard a pending run's state file (RUN_ID or 'all') and exit. "
+             "Use only when a pending run is truly abandoned."
     )
     parser.add_argument(
         "--inprocess",
@@ -726,25 +755,127 @@ Examples:
     if args.state:
         defer_args.extend(["--state", args.state])
     
-    # Load or initialize state
-    state = load_state() if args.resume else {"completed_models": [], "current_model": None, "current_batch": 0}
-    
+    # ------------------------------------------------------------------
+    # Run identity: state is keyed by the fields that define this run's
+    # plan, so distinct runs never share a state file and a pending run
+    # can be compared against a new one before anything executes.
+    # See docs/lessons/refresh-state-collision.md.
+    # ------------------------------------------------------------------
+    global STATE_FILE
+    identity_fields = {
+        "select": args.select,
+        "exclude": args.exclude,
+        "stage": args.stage,
+        "incremental_only": bool(args.incremental_only),
+    }
+    run_id = run_state.run_identity(TOOL, identity_fields)
+    STATE_FILE = run_state.state_path(PROJECT_ROOT, TOOL, run_id)
+
+    if args.clear_state:
+        if args.clear_state == "all":
+            targets = [p for p, _ in run_state.pending_states(PROJECT_ROOT, TOOL)]
+        else:
+            targets = [run_state.state_path(PROJECT_ROOT, TOOL, args.clear_state)]
+        for p in targets:
+            if p.exists():
+                p.unlink()
+                print(f"Cleared {p}")
+            else:
+                print(f"No state file at {p}")
+        sys.exit(0)
+
     # Join multiple selectors into space-separated string for dbt
     selector = " ".join(args.select)
     exclude = " ".join(args.exclude) if args.exclude else None
 
+    print(f"Run id: {run_id}")
     print(f"Getting models for: {selector}" + (f"  (exclude: {exclude})" if exclude else ""))
     try:
         models = get_models_in_order(selector, exclude=exclude)
     except subprocess.CalledProcessError:
         print("ERROR: Failed to get model list. Is dbt configured correctly?")
         sys.exit(1)
-    
+
     if not models:
         print(f"No models found for selector: {selector}")
         sys.exit(1)
-    
+
     print(f"Found {len(models)} model(s): {', '.join(models)}")
+
+    # ------------------------------------------------------------------
+    # Pending-state safety checks (skipped for --dry-run: read-only).
+    # ------------------------------------------------------------------
+    pending = run_state.pending_states(PROJECT_ROOT)
+    if LEGACY_STATE_FILE.exists():
+        print(
+            f"\nERROR: legacy shared state file exists: {LEGACY_STATE_FILE}\n"
+            "  It predates run-identity state and may belong to a pending run\n"
+            "  with a DIFFERENT selection. Inspect it, then either finish that\n"
+            "  run or delete the file explicitly. Refusing to guess."
+        )
+        if not args.dry_run:
+            sys.exit(1)
+
+    if args.resume:
+        state = None
+        if args.resume == "__own__":
+            state = run_state.load(STATE_FILE)
+            if state is None:
+                print(f"\nERROR: no pending state for this selection (run {run_id}).")
+                if pending:
+                    print("  Pending runs:")
+                    for _, st in pending:
+                        print(f"    - {run_state.describe(st)}")
+                sys.exit(1)
+        else:
+            wanted = args.resume
+            if wanted == "latest":
+                tool_pending = run_state.pending_states(PROJECT_ROOT, TOOL)
+                if not tool_pending:
+                    print("\nERROR: --resume latest, but no pending runs exist.")
+                    sys.exit(1)
+                wanted = tool_pending[0][1].get("run_id", "")
+            if wanted != run_id:
+                print(
+                    f"\nERROR: --resume {args.resume} points at run {wanted}, but the\n"
+                    f"  current selection hashes to run {run_id}. Resuming a run under\n"
+                    f"  a different selection is exactly the collision this guard\n"
+                    f"  prevents — re-run with the pending run's original arguments."
+                )
+                for _, st in pending:
+                    if st.get("run_id") == wanted:
+                        print(f"  Pending: {run_state.describe(st)}")
+                sys.exit(1)
+            state = run_state.load(STATE_FILE)
+            if state is None:
+                print(f"\nERROR: no state file for run {run_id}.")
+                sys.exit(1)
+        state.setdefault("completed_models", [])
+        state.setdefault("current_model", None)
+        state.setdefault("current_batch", 0)
+    else:
+        if STATE_FILE.exists() and not args.dry_run:
+            print(
+                f"\nERROR: pending state exists for this exact selection (run {run_id}).\n"
+                f"  Continue it with --resume, or discard it with --clear-state {run_id}."
+            )
+            sys.exit(1)
+        conflicts = run_state.overlapping(pending, models, exclude_run_id=run_id)
+        if conflicts and not args.dry_run:
+            print("\nERROR: pending run(s) overlap this selection — starting now could")
+            print("  duplicate or corrupt their staged history. Finish or clear them first:")
+            for _, st, shared in conflicts:
+                print(f"    - {run_state.describe(st)}")
+                print(f"      shared models: {', '.join(shared[:8])}"
+                      + (f" (+{len(shared) - 8} more)" if len(shared) > 8 else ""))
+                if st.get("tool") == TOOL:
+                    print(f"      resume: python scripts/full_refresh/refresh.py "
+                          f"--select {' '.join((st.get('identity') or {}).get('select') or ['?'])} --resume")
+            sys.exit(1)
+        state = run_state.new_state(TOOL, run_id, identity_fields, models)
+        state.update({"completed_models": [], "current_model": None, "current_batch": 0})
+        if not args.dry_run:
+            save_state(state)
     
     if args.dry_run:
         print("\n" + "="*60)
@@ -783,7 +914,9 @@ Examples:
             if exclude:
                 resume_cmd += f" --exclude {exclude}"
             resume_cmd += " --resume"
-            print(f"State saved. Resume with: {resume_cmd}")
+            print(f"State saved (run {run_id}). Resume with: {resume_cmd}")
+            print("(Resume requires the same --select/--exclude/--stage arguments; "
+                  "state is keyed by them.)")
             sys.exit(1)
         
         # Mark model complete

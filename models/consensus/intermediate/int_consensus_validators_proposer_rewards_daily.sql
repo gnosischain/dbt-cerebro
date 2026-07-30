@@ -18,7 +18,7 @@
             "SET max_bytes_before_external_group_by = 0",
             "SET max_bytes_before_external_sort = 0"
         ],
-        tags=["production", "consensus", "proposer_rewards"]
+        tags=["production", "consensus", "proposer_rewards", "microbatch"]
     )
 }}
 
