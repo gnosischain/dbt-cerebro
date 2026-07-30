@@ -229,11 +229,16 @@ models:
       downstream should parse choice_raw again. basic/single-choice yield one
       row per voter; ranked-choice yields one row per preference with vp only on
       rank 1. Unsupported ballot types (approval/weighted/quadratic, none
-      currently used) yield NO rows by design -- guarded by
-      governance_vote_choices_no_dropped_voters so a new type fails loudly.
-      The 1-based positional mapping into choices[] is proven, not assumed:
-      governance_vote_choices_reconstruct_scores reconciles summed vp_effective
-      against Snapshot's own reported scores[].
+      currently used) yield NO rows by design -- the accepted_values test on
+      ballot_type below is the guard: it fires the moment gnosis.eth enables a
+      type this model cannot decode, before voters can silently vanish from the
+      direction metrics.
+      The 1-based positional mapping into choices[] was verified on 2026-07-28
+      by reconstructing every proposal's scores[] from summed vp_effective and
+      reconciling against Snapshot's own reported scores[] -- exact match across
+      all basic/single-choice proposals. That was a one-off check rather than a
+      standing test, since tests/ here is reserved for heavyweight financial
+      reconciliations; re-run it by hand if the ballot handling ever changes.
     columns:
       - name: proposal_id
         data_type: String
@@ -242,6 +247,17 @@ models:
         description: Lowercased voter address.
         data_type: String
         tests: [not_null]
+      - name: ballot_type
+        description: >
+          Snapshot voting system for the proposal. The accepted_values test is a
+          real guardrail, not a formality: a type outside this set cannot be
+          decoded, produces zero rows, and would silently remove those voters
+          from every direction metric. If it fails, add explicit handling in
+          int_governance_vote_choices -- do not widen the list.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['basic', 'single-choice', 'ranked-choice']
       - name: choice_kind
         description: >
           single (basic/single-choice, one row per voter) | ranked
@@ -282,6 +298,126 @@ models:
           instant-runoff, not by splitting weight), so summing never
           double-counts a ranked voter.
         data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_proposal_topic_links
+    description: >
+      The unified forum-topic <-> Snapshot-proposal bridge, one row per
+      (proposal, topic). Everything phase-related joins through here instead of
+      re-deriving a bridge. Union of two signals: matching GIP number in both
+      titles (links 133 proposals) and a post pasting the proposal's 0x URL
+      (links 95, and reaches non-GIP proposals the number match cannot). Union
+      is 137 of 253 proposals (54%), effectively all 134 GIPs, across 265 pairs.
+      The proposal's own `discussion` URL is deliberately NOT a third signal --
+      it parses for only 89 and is a subset of the above. MANY-TO-MANY BY
+      DESIGN: re-balloted GIPs (74/87/91/134) give a topic several proposals.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: topic_id
+        data_type: UInt32
+        tests: [not_null]
+      - name: link_methods
+        description: Which signal(s) established this link.
+        data_type: Array(String)
+      - name: corroborated
+        description: >
+          Both signals fired. A strength indicator, not a requirement -- false
+          means one signal fired, NOT that the two disagreed.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_post_phases
+    description: >
+      Every forum post placed in the lifecycle phase of a proposal its topic
+      links to: pre_discussion / pre_vote / voting / post_close. Turns "opinion
+      moved at hour 40" into "here is what was said at hour 40" -- align
+      hours_from_vote_open against api_governance_vote_trajectory.hour_offset.
+      GRAIN IS (post, proposal), NOT post: a post in a topic linked to two
+      proposals yields two rows and its phase can legitimately differ between
+      them, so counting posts without grouping by proposal_id double-counts.
+      Coverage is partial (137 of 253 proposals); posts in unlinked topics have
+      no row at all.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: phase
+        description: >
+          Derived from the proposal's own created_at/start_at/end_at, NOT from
+          the DAO's declared phase-1/2/3 tags (those cover only ~21% of topics).
+          post_close is a signal in its own right, not leftover noise.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: hours_from_vote_open
+        description: Hours from start_at; negative for posts before voting opened.
+        data_type: Int64
+      - name: has_question
+        description: >
+          Post contains '?' after [quote] blocks are stripped. A friction proxy
+          needing no sentiment model. Quote-stripping matters: 11% of posts quote
+          someone else, and a question inside a quotation is not the author's.
+        data_type: Bool
+      - name: is_short_procedural
+        description: Under 120 chars ex-quotes -- "cc @x", moderation. 19% of the corpus.
+        data_type: Bool
+      - name: post_like_count_current
+        description: >
+          Current-state scalar frozen at the topic's last bump. For likes that can
+          be attributed to a phase, use stg_governance__forum_likes.
+        data_type: UInt32
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_engagement_counters_daily
+    description: >
+      Daily snapshots of the two forum counters that CANNOT be recovered
+      retroactively -- topic `views` and post `reads`. Discourse exposes both
+      only as current totals with no per-event endpoint, and daily ingestion
+      re-reads a topic only when its bumped_at beats the watermark, so a dormant
+      thread's counters are frozen at its last activity. Likes are deliberately
+      excluded: they have a per-event endpoint, so the full history including
+      timestamps and actors is backfillable into forum_likes instead.
+      THIS CANNOT BE BACKFILLED -- history starts the day it first runs.
+      Partitioned by snapshot_date (NOT month): with insert_overwrite, a
+      month-grain partition would wipe every earlier day in the current month on
+      every run, since each run emits only today's rows.
+    columns:
+      - name: snapshot_date
+        description: The day we LOOKED. Compare against observed_at to spot a stale reading.
+        data_type: Date
+        tests: [not_null]
+      - name: entity_kind
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['topic', 'post']
+      - name: entity_id
+        data_type: UInt64
+      - name: metric
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['views', 'reads']
+      - name: value
+        data_type: UInt64
+      - name: observed_at
+        description: >
+          The source row's ingested_at -- when the value was actually true. A
+          regular daily grid can otherwise hide that it is repeating a
+          months-old number for a dormant thread.
+        data_type: DateTime
     meta:
       owner: analytics_team
       authoritative: false

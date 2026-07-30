@@ -18,17 +18,20 @@
 --   ranked-choice         -> an array of 1-based indices, best first -> one row per rank
 --   approval / weighted / quadratic -> NOT currently used by this space. They are
 --       classified 'unsupported' and produce NO rows, rather than being guessed at.
---       That silent drop is deliberate but must never go unnoticed, so
---       tests/governance_vote_choices_no_dropped_voters.sql asserts every (proposal,
---       voter) in staging survives into this model. If gnosis.eth ever enables one of
---       those types, that test fails loudly instead of the numbers quietly going wrong.
+--       That silent drop is deliberate but must never go unnoticed, so the
+--       accepted_values test on ballot_type (schema.yml) pins the decodable set to
+--       basic / single-choice / ranked-choice. It fires the moment gnosis.eth enables
+--       a type this model cannot handle, before voters can quietly disappear from the
+--       direction metrics. If it fails, add handling here -- do not widen the list.
 --
 -- On trusting a positional index. Indexing choices[] by the vote's integer is Snapshot's
--- documented contract, but per the event-struct-array-decode lesson we do not take a
--- positional map on faith. tests/governance_vote_choices_reconstruct_scores.sql sums
--- vp_effective per choice index and reconciles it against the proposal's OWN reported
--- scores[] -- an independent authority computed by Snapshot, not by us. If the 1-based
--- assumption were wrong, every proposal would fail that reconciliation.
+-- documented contract, and per the event-struct-array-decode lesson we did not take that
+-- positional map on faith: on 2026-07-28 every proposal's scores[] was reconstructed by
+-- summing vp_effective per choice index and reconciled against the proposal's OWN
+-- reported scores[] -- an independent authority computed by Snapshot, not by us. Exact
+-- match across all basic/single-choice proposals. Kept as a documented one-off rather
+-- than a standing test (tests/ here is reserved for heavyweight financial
+-- reconciliations); redo it by hand if the ballot handling changes.
 --
 -- Polarity comes from the shared classify_choice_polarity macro, the same vocabulary
 -- int_governance_proposals uses for its outcome, so per-voter direction can never

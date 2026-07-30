@@ -215,3 +215,38 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: stg_governance__forum_likes
+    description: >
+      One row per (post, liker) with the like's OWN timestamp, from
+      /user_actions.json. This is the only source that can answer "how many
+      likes did this post get DURING the voting window" -- forum_posts.like_count
+      is a scalar frozen at the topic's last bump, with no timestamp and no
+      actor. Hidden and deleted edges are KEPT so totals stay reconcilable
+      against forum_posts; filter downstream where the intent is explicit.
+      Unlikes are not representable (a row simply stops being re-observed).
+      Captures ~74% of the directory's likes_given total -- /user_actions.json
+      404s for 673 of 1169 users whose profile endpoint is a healthy 200.
+    columns:
+      - name: post_id
+        description: Discourse post that was liked.
+        data_type: UInt64
+        tests: [not_null]
+      - name: acting_username
+        description: >
+          Lowercased username of the LIKER, authoritative (it is the crawled
+          key). The payload's target_* fields echo the acting user rather than
+          the post author, so they are not stored -- join forum_posts on post_id
+          for the author.
+        data_type: String
+        tests: [not_null]
+      - name: created_at
+        description: When the like was given. The whole point of this table.
+        data_type: DateTime
+      - name: hidden
+        data_type: UInt8
+      - name: deleted
+        data_type: UInt8
+    meta:
+      owner: analytics_team
+      authoritative: false

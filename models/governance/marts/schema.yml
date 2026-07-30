@@ -442,3 +442,60 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: api_governance_discussion_phases
+    description: >
+      Discussion and endorsement per proposal per lifecycle phase: before the
+      proposal existed, after it existed but before voting opened, during the
+      vote, and after it closed. Rows exist for any (proposal, phase) with
+      either posts or likes, so a phase where people only clicked like is still
+      present -- an ABSENT row means nothing happened, a zero means the phase had
+      activity of the other kind. Coverage is 137 of 253 proposals (54%),
+      effectively all GIPs; filter is_gip = 1 for aggregates.
+      CAUTION on cross-phase comparison: pre_discussion and post_close are
+      UNBOUNDED windows while voting is typically 7 days, so comparing raw post
+      counts across phases is not like-for-like. Compare per-proposal or
+      per-day.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: proposal_created_at
+        description: >
+          Proposal creation time. Declared so the daily time-spine bridge can
+          resolve it -- the registry validator checks relationship keys against
+          DECLARED columns, not the model's actual SQL columns.
+        data_type: DateTime
+      - name: phase
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: posts
+        data_type: UInt64
+      - name: participants
+        description: Distinct forum user_ids posting in this phase.
+        data_type: UInt64
+      - name: likes_given_in_phase
+        description: >
+          Likes counted by the LIKE's own timestamp -- exact, and the real
+          "endorsement during the vote" figure. PREFER THIS.
+        data_type: UInt64
+      - name: likes_on_posts_written_in_phase
+        description: >
+          Sum of the current like_count of posts WRITTEN in this phase.
+          Approximate: a like given today on a 2023 post lands in 2023. Kept only
+          so likes_given_in_phase can be reconciled against forum_posts, which is
+          the only figure the mini-app can currently show. If the two diverge
+          sharply, this is the one that is wrong.
+        data_type: UInt64
+      - name: distinct_likers
+        data_type: UInt64
+      - name: question_share
+        description: >
+          Share of posts in this phase asking something rather than asserting,
+          measured on quote-stripped text. NULL when the phase has no posts.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false

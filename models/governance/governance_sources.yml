@@ -73,6 +73,20 @@ sources:
       - name: forum_users
         description: Public Discourse user directory (activity + like counts).
         loaded_at_field: ingested_at
+      - name: forum_likes
+        description: >
+          Per-like edges from /user_actions.json (filter=1): one row per (post,
+          liker) with the like's OWN created_at. This is what makes like timing
+          answerable at all -- forum_posts.like_count is a scalar frozen at the
+          topic's last bump, with no timestamp and no actor. Unlikes are not
+          representable (the row simply stops being re-observed).
+          acting_username is the crawled username, authoritative for "who liked
+          this"; resolve the post's AUTHOR by joining forum_posts on post_id.
+          Coverage is partial by nature: /user_actions.json 404s for 673 of 1169
+          users whose /u/{username}.json is a healthy 200, so roughly 74% of the
+          directory's likes_given total is captured. The ingestor logs its capture
+          rate every run rather than leaving the gap silent.
+        loaded_at_field: ingested_at
       - name: snapshot_delegations
         description: >
           DelegateRegistry SetDelegate/ClearDelegate events for gnosis.eth on

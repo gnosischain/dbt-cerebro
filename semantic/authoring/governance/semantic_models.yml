@@ -575,6 +575,59 @@ semantic_models:
         - electorate size over time
         - voters versus voting power
 
+- name: governance_discussion_phases
+  model: ref('api_governance_discussion_phases')
+  defaults:
+    agg_time_dimension: proposal_created_at
+  dimensions:
+  - name: proposal_created_at
+    type: time
+    expr: proposal_created_at
+    type_params:
+      time_granularity: day
+  - name: phase
+    type: categorical
+    expr: phase
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: category
+    type: categorical
+    expr: category
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_discussion_phases__posts
+    agg: sum
+    expr: posts
+  - name: governance_discussion_phases__participants
+    agg: sum
+    expr: participants
+  - name: governance_discussion_phases__likes_given_value
+    agg: sum
+    expr: likes_given_in_phase
+  - name: governance_discussion_phases__question_posts
+    agg: sum
+    expr: question_posts
+  - name: governance_discussion_phases__question_share_value
+    agg: average
+    expr: question_share
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - when does governance discussion happen
+        - discussion before or after the vote
+        - forum activity by proposal phase
+        - was there debate during voting
+
 # --- Intermediates -----------------------------------------------------------
 # Registered at `candidate` tier for coverage and docs, not for public metric
 # routing: the api_ endpoints above are the supported read path. Dimensions and
@@ -1219,6 +1272,72 @@ metrics:
         - how many people vote per proposal
         - is governance participation declining
         - voters per gip over time
+
+- name: governance_discussion_posts_by_phase
+  label: Forum Posts by Proposal Phase
+  description: >
+    Forum posts grouped by where they fall in a proposal's lifecycle -- before the
+    proposal existed, after it existed but before voting opened, during the vote, or
+    after it closed. Group by phase; filter is_gip = 1 for aggregates.
+    CAUTION: pre_discussion and post_close are UNBOUNDED windows while voting is
+    typically 7 days, so comparing raw counts across phases is not like-for-like --
+    compare per-proposal or per-day. Coverage is 137 of 253 proposals (54%),
+    effectively all GIPs; posts in topics with no linked proposal are absent entirely.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__posts
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - discussion before or after the vote
+        - when do people post about proposals
+        - was there debate during voting
+
+- name: governance_likes_in_phase
+  label: Likes Given by Proposal Phase
+  description: >
+    Likes counted by the LIKE's own timestamp, grouped by proposal phase -- the real
+    "endorsement during the vote" figure. Depends on the per-like edge table
+    (forum_likes); it is NOT derivable from forum_posts.like_count, which is a scalar
+    frozen at the topic's last bump with no timestamp. Likes are the only signal
+    available from people who never voted and never posted. Captures ~74% of the
+    forum's likes_given total -- see stg_governance__forum_likes for why.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__likes_given_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - likes during voting
+        - endorsement by phase
+        - what did lurkers react to
+
+- name: governance_question_share
+  label: Question Share of Posts (per proposal phase)
+  description: >
+    Share of posts asking something rather than asserting, measured on text with
+    [quote] blocks stripped -- a friction proxy that needs no sentiment model.
+    READ IT PER (proposal, phase). Averaging a share across proposals is not
+    population-weighted (each has a different post count), which is why this is
+    candidate rather than approved; weight by posts if you need a real aggregate.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__question_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - how many questions were asked
+        - discussion friction
+        - question density
 
 - name: governance_median_vp_per_proposal
   label: Median Voting Power per GIP (monthly)
