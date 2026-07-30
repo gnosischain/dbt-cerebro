@@ -138,18 +138,23 @@ unioned AS (
     SELECT * FROM inbound
 )
 
+-- Every projected column carries an explicit alias, including the pass-throughs.
+-- Under the legacy analyzer (enable_analyzer = 0) a bare `u.block_date` is named
+-- `u.block_date` in the result header, so PARTITION BY toStartOfMonth(block_date)
+-- and the order_by keys cannot resolve at CREATE TABLE time (CH code 47). The
+-- aliases make the header identical under either analyzer.
 SELECT
-    u.block_date,
-    u.block_time,
-    u.tx_hash,
-    u.log_index,
-    u.safe_address,
-    u.direction,
-    u.counterparty,
+    u.block_date                                                      AS block_date,
+    u.block_time                                                      AS block_time,
+    u.tx_hash                                                         AS tx_hash,
+    u.log_index                                                       AS log_index,
+    u.safe_address                                                    AS safe_address,
+    u.direction                                                       AS direction,
+    u.counterparty                                                    AS counterparty,
     concat('0x', u.token_addr)                                        AS token_address,
     w.symbol                                                          AS token_symbol,
     w.token_class                                                     AS token_class,
-    u.amount_raw,
+    u.amount_raw                                                      AS amount_raw,
     if(w.decimals IS NULL, NULL, toFloat64(u.amount_raw) / pow(10, w.decimals)) AS amount,
     if(w.decimals IS NULL, NULL,
        (toFloat64(u.amount_raw) / pow(10, w.decimals)) * nullIf(p.price, 0))    AS amount_usd

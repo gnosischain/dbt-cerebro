@@ -13,6 +13,9 @@
 {% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge (settlement sink) #}
 {% set cashback_sources = [] %}  {# reward disburser(s); empty until identified — cashback not paid yet #}
 
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 -- Per-transfer classified Celo GP activity, off the single transfer base
 -- (int_celo_gpay_safe_transfers_alltoken), restricted to whitelisted GP tokens
 -- (token_symbol IS NOT NULL — excludes CELO gas dust and spoof tokens). The base
@@ -39,12 +42,24 @@
 --
 -- Incremental insert_overwrite recomputes the whole current calendar month every
 -- run, so a card recognized slightly late is reclassified within the month.
+--
+-- The start_month/end_month branch is the staged-rebuild path driven by
+-- scripts/full_refresh/refresh.py (meta.full_refresh), mirroring
+-- int_execution_gpay_activity on Gnosis Chain. The window is always COMPLETE
+-- months, so insert_overwrite's REPLACE PARTITION stays lossless and the
+-- strategy does not need to flip to append (docs/lessons/staged-insert-overwrite-wipe.md).
+-- Rebuild this after a staged rebuild of the transfers base, month for month.
 
 WITH base AS (
     SELECT *
     FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
     WHERE token_symbol IS NOT NULL
-    {{ apply_monthly_incremental_filter('block_date', 'date', true) }}
+    {% if start_month and end_month %}
+      AND toStartOfMonth(block_date) >= toDate('{{ start_month }}')
+      AND toStartOfMonth(block_date) <= toDate('{{ end_month }}')
+    {% else %}
+      {{ apply_monthly_incremental_filter('block_date', 'date', true) }}
+    {% endif %}
 ),
 
 one_per_transfer AS (

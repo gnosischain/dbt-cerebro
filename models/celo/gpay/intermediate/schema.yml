@@ -175,10 +175,13 @@ models:
     Safes on Celo, decoded through the multichain decode pipeline
     (chain='celo', ABI resolved from the Safe v1.3.0 L2 singleton row of the
     celo partition of event_signatures). SafeSetup rows are exploded one row
-    per owner. materialized='table' full rebuild deliberately while the
-    celo_execution backfill is in flight — a block watermark would silently
-    skip rows landing for old months; flip to the Gnosis-style incremental
-    append once the indexer follows head.
+    per owner. Incremental append on monthly partitions, mirroring Gnosis
+    Chain's int_execution_safes_owner_events: the output is bounded by card
+    count, but a full rebuild re-scans celo_execution.logs across the whole GP
+    era in one query and OOMs (CH code 241) now that the Celo backfill has
+    landed. Rebuild through scripts/full_refresh/refresh.py in the monthly
+    batches declared in meta.full_refresh below; decode_logs honors the
+    start_month/end_month vars the runner passes.
   columns:
   - name: safe_address
     description: GP card Safe address (0x-prefixed, lowercase).
@@ -207,12 +210,46 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-    # NOT batched: materialized='table' does a full CREATE-OR-REPLACE on every
-    # run, so a refresh.py full_refresh batch would OVERWRITE prior batches
-    # instead of accumulating (batching only accumulates for incremental
-    # append/insert_overwrite models). This model is address-filtered to the card
-    # registry (bounded by card count, ~15s), so a single un-batched full rebuild
-    # is correct and cheap — refresh.py runs it via run_model_normal.
+    agent:
+      grain: [transaction_hash, log_index, owner]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-owner-per-event
+        text: One row per (Safe lifecycle log, owner). A SafeSetup with N decoded owners
+          yields N rows; a setup whose owners array failed to decode yields exactly one
+          row with a NULL owner so the card still counts as issued. The
+          ReplacingMergeTree order_by is (safe_address, block_timestamp, log_index) and
+          does NOT include owner, so a multi-owner SafeSetup collapses to one row on
+          merge — the same shape as Gnosis int_execution_safes_owner_events, safe only
+          while GP card Safes are single-owner.
+      - id: watermark-skips-late-logs
+        text: Append-only off the decode_logs block_number watermark, so logs landing in
+          celo_execution below the high-water mark are never decoded. That covers both
+          the in-flight backfill filling old months and a Safe newly discovered by
+          int_celo_gpay_safe_registry whose SafeSetup predates the watermark — those
+          months must be re-decoded explicitly or the card silently disappears from
+          int_celo_gpay_wallets.
+      hazards: [decode-watermark-late-logs, append-over-populated-duplicates, ch-overcommit-victim, raw-logs-ingestion-holes]
+      validation:
+      - 'duplicate excess: count() - uniqExact((transaction_hash, log_index, owner)) == 0'
+      - 'every registry Safe has a safe_setup row: countIf(event_kind = ''safe_setup'') matches int_celo_gpay_safe_registry cardinality'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` this directly — the single-query scan of the GP-era
+        logs OOMs (ClickHouse Code 241). Rebuild via scripts/full_refresh/refresh.py in
+        the monthly batches declared below. Because the strategy is append, drop the
+        target partitions first (macros/db/drop_partition.sql) if they already hold rows,
+        then rebuild int_celo_gpay_wallet_events, int_celo_gpay_wallets and
+        int_celo_gpay_safe_current_owners downstream.
+    # HEAVY: scans the GP-era slice of celo_execution.logs. batch_months=1 rather
+    # than the 3 its Gnosis twin uses — the Celo GP era is only a few months long,
+    # and the un-batched rebuild already OOMed at 230s, so keep the window tight.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
 
 - name: int_celo_gpay_activity
   description: |
@@ -310,9 +347,16 @@ models:
       reprocess_runbook: >-
         Rebuild the upstream base for the affected months first
         (int_celo_gpay_safe_transfers_alltoken — see its runbook), then re-run this
-        model scoped to those months; insert_overwrite replaces each month partition,
-        so no partition drop is needed here. Finally rebuild
-        int_celo_gpay_activity_daily and the api_celo_gpay_* marts.
+        model scoped to those months via scripts/full_refresh/refresh.py;
+        insert_overwrite replaces each month partition, so no partition drop is needed
+        here. Finally rebuild int_celo_gpay_activity_daily and the api_celo_gpay_* marts.
+    # Staged rebuild in 3-month batches, matching int_execution_gpay_activity on
+    # Gnosis Chain. Reads the card-filtered transfer base rather than raw logs, so
+    # the window can be wider than the base model's 1 month. insert_overwrite is
+    # kept (not flipped to append): the batch window is always complete months.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 3
 
 - name: int_celo_gpay_activity_daily
   description: |

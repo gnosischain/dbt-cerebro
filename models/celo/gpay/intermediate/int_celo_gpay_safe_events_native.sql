@@ -1,12 +1,24 @@
 {{
   config(
-    materialized='table',
+    materialized='incremental',
+    incremental_strategy='append',
     engine='ReplacingMergeTree()',
     order_by='(safe_address, block_timestamp, log_index)',
+    partition_by='toStartOfMonth(block_timestamp)',
+    unique_key='(transaction_hash, log_index, owner)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','celo','gpay','native','safe'],
+    tags=['production','celo','gpay','native','safe','microbatch'],
     pre_hook=["SET allow_experimental_json_type = 1", "SET enable_analyzer = 0"],
-    post_hook=["SET allow_experimental_json_type = 0", "SET enable_analyzer = 1"]
+    post_hook=["SET allow_experimental_json_type = 0", "SET enable_analyzer = 1"],
+    query_settings={
+        'max_threads': '1',
+        'max_memory_usage': '4000000000',
+        'memory_usage_overcommit_max_wait_microseconds': '60000000',
+        'max_bytes_before_external_group_by': '20000000',
+        'max_bytes_before_external_sort':     '20000000',
+        'use_uncompressed_cache': '0',
+        'use_query_cache': '0'
+    }
   )
 }}
 -- Safe lifecycle events for GP card Safes on Celo, decoded through the
@@ -17,11 +29,28 @@
 -- the singleton; SafeSetup/AddedOwner/RemovedOwner topic0s are identical
 -- across Safe 1.3.0/1.4.1 so one ABI source covers both).
 --
--- materialized='table' (full rebuild), NOT incremental, deliberately: the
--- celo_execution backfill is still in progress, so rows for OLD months keep
--- appearing — a block_number watermark or current-month insert_overwrite
--- would silently skip them. Output is bounded by card count. Flip to the
--- Gnosis-style microbatch append once the indexer follows head.
+-- Incremental append + monthly partitions, mirroring Gnosis Chain's
+-- int_execution_safes_owner_events. The output is tiny (bounded by card count)
+-- but the COST is the scan of celo_execution.logs, which a full rebuild re-reads
+-- over the whole GP era on every run — that is what OOMed once the Celo backfill
+-- landed (CH code 241, OvercommitTracker victim). Append + the decode_logs
+-- block_number watermark means a daily run reads only new blocks, and a rebuild
+-- goes through scripts/full_refresh/refresh.py in the monthly batches declared
+-- in meta.full_refresh (decode_logs honors start_month/end_month).
+--
+-- Consequence of the watermark, same as every other append decode stream here
+-- (contracts_celo_chainlink_feeds_events documents the identical hazard): logs
+-- landing in celo_execution BELOW the high-water mark are never decoded. While
+-- the backfill still fills old months out of order, and whenever
+-- int_celo_gpay_safe_registry discovers a Safe whose SafeSetup predates the
+-- watermark, the affected months must be re-decoded explicitly — drop those
+-- partitions first (macros/db/drop_partition.sql), because appending over a
+-- populated month duplicates rows and int_celo_gpay_wallet_events reads this
+-- table without FINAL (docs/lessons/append-over-populated-duplicates.md).
+--
+-- Every projected column is explicitly aliased: enable_analyzer = 0 (needed for
+-- decode planning speed) names a bare `d.block_timestamp` as `d.block_timestamp`
+-- in the result header, which the partition key and order_by could not resolve.
 
 WITH decoded AS (
     SELECT * FROM (
@@ -50,10 +79,10 @@ safe_setup_rows AS (
         'safe_setup'                                                AS event_kind,
         lower(JSONExtractString(d.decoded_params['owners'], idx))   AS owner,
         toUInt32OrNull(d.decoded_params['threshold'])               AS threshold,
-        d.block_timestamp,
-        d.block_number,
+        d.block_timestamp                                           AS block_timestamp,
+        d.block_number                                              AS block_number,
         concat('0x', d.transaction_hash)                            AS transaction_hash,
-        d.log_index
+        d.log_index                                                 AS log_index
     FROM (SELECT * FROM decoded WHERE event_name = 'SafeSetup' AND JSONLength(decoded_params['owners']) > 0) d
     ARRAY JOIN range(1, toUInt32(JSONLength(d.decoded_params['owners'])) + 1) AS idx
 ),
@@ -70,10 +99,10 @@ safe_setup_ownerless_rows AS (
         'safe_setup'                                                AS event_kind,
         CAST(NULL AS Nullable(String))                              AS owner,
         toUInt32OrNull(d.decoded_params['threshold'])               AS threshold,
-        d.block_timestamp,
-        d.block_number,
+        d.block_timestamp                                           AS block_timestamp,
+        d.block_number                                              AS block_number,
         concat('0x', d.transaction_hash)                            AS transaction_hash,
-        d.log_index
+        d.log_index                                                 AS log_index
     FROM decoded d
     WHERE d.event_name = 'SafeSetup'
       AND coalesce(JSONLength(d.decoded_params['owners']), 0) = 0
@@ -85,10 +114,10 @@ owner_delta_rows AS (
         if(d.event_name = 'AddedOwner', 'added_owner', 'removed_owner') AS event_kind,
         lower(d.decoded_params['owner'])                            AS owner,
         CAST(NULL AS Nullable(UInt32))                              AS threshold,
-        d.block_timestamp,
-        d.block_number,
+        d.block_timestamp                                           AS block_timestamp,
+        d.block_number                                              AS block_number,
         concat('0x', d.transaction_hash)                            AS transaction_hash,
-        d.log_index
+        d.log_index                                                 AS log_index
     FROM decoded d
     WHERE d.event_name IN ('AddedOwner','RemovedOwner')
 )
