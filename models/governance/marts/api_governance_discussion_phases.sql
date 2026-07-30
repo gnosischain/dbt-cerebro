@@ -93,7 +93,16 @@ SELECT
     p.last_post_at,
     -- Share of posts in this phase that ask something rather than assert. A friction
     -- proxy with no sentiment model behind it. NULL when the phase has no posts.
-    round(p.question_posts / nullIf(p.posts, 0), 4) AS question_share
+    round(p.question_posts / nullIf(p.posts, 0), 4) AS question_share,
+    -- Freshness anchor required of a point-in-time endpoint. Taken across BOTH
+    -- activity sources rather than posts alone: a phase can be present on likes
+    -- only, so a posts-only anchor would under-report the date whenever likes
+    -- arrived more recently. Scoped to post_phases (not raw forum_posts) because
+    -- that is the linked-topic subset this endpoint can actually see.
+    greatest(
+        (SELECT toDate(max(posted_at)) FROM {{ ref('int_governance_forum_post_phases') }}),
+        (SELECT toDate(max(created_at)) FROM {{ ref('stg_governance__forum_likes') }})
+    )                                               AS as_of_date
 FROM spine AS s
 LEFT JOIN post_side AS p
     ON p.proposal_id = s.proposal_id AND p.phase = s.phase

@@ -421,3 +421,54 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+      agent:
+        grain: [snapshot_date, entity_kind, entity_id, metric]
+        semantics: snapshot
+        invariants:
+        - id: history-is-unrecoverable
+          text: >
+            Each run emits ONLY today's rows, and Discourse exposes views/reads as
+            current totals with no per-event endpoint. A day this model did not run is
+            permanently absent and cannot be reconstructed from any source. Do not
+            interpolate across a gap and do not treat the series as continuous without
+            checking snapshot_date coverage first.
+        - id: full-refresh-is-destructive-here
+          text: >
+            Unlike every other incremental model in this project, `dbt run
+            --full-refresh` on this one DESTROYS data: it drops the accumulated daily
+            history and re-emits a single day (today). There is no recovery. Rebuild
+            requests for this model must be refused.
+        - id: daily-partition-is-load-bearing
+          text: >
+            partition_by is snapshot_date, deliberately NOT toStartOfMonth. Because
+            insert_overwrite REPLACEs whole partitions present in the batch and each
+            run emits only today's rows, a month-grain partition would wipe every
+            earlier day of the current month on every run. Daily partitions make a
+            re-run overwrite exactly its own day, which is what makes it idempotent.
+            The cost is one partition per day (ch-partition-cap), accepted knowingly.
+        - id: snapshot-date-is-not-observed-at
+          text: >
+            snapshot_date is the day we LOOKED; observed_at is when the value was
+            actually true. Ingestion re-reads a topic only when bumped_at beats the
+            watermark, so a dormant thread's counter is frozen at its last activity.
+            A difference between two consecutive snapshot_dates is real change ONLY if
+            observed_at also moved; otherwise the grid is repeating a stale number.
+        - id: views-and-reads-only
+          text: >
+            Scope is the two counters that cannot be recovered retroactively. Likes are
+            deliberately excluded because they have a per-event endpoint
+            (/user_actions.json), so their full history with timestamps and actors is
+            backfillable into stg_governance__forum_likes. Adding a like counter here
+            would be strictly worse information at higher cost.
+        hazards: [never-seeded-incremental, ch-partition-cap, stale-snapshot-caveat, ch-overcommit-victim]
+        validation:
+        - 'duplicate excess: count() - uniqExact((snapshot_date, entity_kind, entity_id, metric)) == 0'
+        - 'no gaps since inception: uniqExact(snapshot_date) == dateDiff(''day'', min(snapshot_date), max(snapshot_date)) + 1'
+        - 'staleness is visible, not hidden: countIf(observed_at < snapshot_date - INTERVAL 30 DAY) > 0 is EXPECTED (dormant threads), not a defect'
+        reprocess_runbook: >-
+          There is nothing to backfill and nothing to full-refresh — see the
+          full-refresh-is-destructive-here invariant. Re-running today is safe and
+          idempotent: insert_overwrite replaces only today's snapshot_date partition.
+          If a past day is missing, it stays missing; record the gap rather than
+          filling it. Never change partition_by to a month grain. Nothing reads this
+          model yet, so a re-run has no downstream rebuild.

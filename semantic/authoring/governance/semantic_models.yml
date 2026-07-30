@@ -868,6 +868,100 @@ semantic_models:
         - per voter choice and direction
         - for against abstain per voter
 
+- name: governance_proposal_topic_links
+  model: ref('int_governance_proposal_topic_links')
+  dimensions:
+  - name: corroborated
+    type: categorical
+    expr: corroborated
+  # link_methods is Array(String); an array is not a categorical dimension, so the
+  # per-signal breakdown belongs in SQL (arrayJoin) rather than the picker.
+  measures:
+  - name: governance_proposal_topic_links__link_count
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum topic to proposal bridge
+        - which topic discusses which proposal
+
+- name: governance_forum_post_phases
+  model: ref('int_governance_forum_post_phases')
+  dimensions:
+  - name: phase
+    type: categorical
+    expr: phase
+  - name: has_question
+    type: categorical
+    expr: has_question
+  - name: is_short_procedural
+    type: categorical
+    expr: is_short_procedural
+  measures:
+  - name: governance_forum_post_phases__post_count
+    agg: count
+    expr: post_id
+  - name: governance_forum_post_phases__hours_from_vote_open
+    agg: average
+    expr: hours_from_vote_open
+  # post_like_count_current is a current-state scalar frozen at the topic's last
+  # bump, so a sum of it is an approximation that attributes today's like to the
+  # phase the POST was written in. api_governance_discussion_phases exposes that
+  # approximation explicitly alongside the exact like-timestamped figure; it is not
+  # promoted to a measure here so it cannot be picked up as if it were exact.
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum posts by proposal lifecycle phase
+        - was there debate during voting
+
+- name: governance_engagement_counters_daily
+  model: ref('int_governance_engagement_counters_daily')
+  defaults:
+    agg_time_dimension: snapshot_date
+  dimensions:
+  - name: snapshot_date
+    type: time
+    expr: snapshot_date
+    type_params:
+      time_granularity: day
+  - name: entity_kind
+    type: categorical
+    expr: entity_kind
+  - name: entity_id
+    type: categorical
+    expr: entity_id
+  - name: metric
+    type: categorical
+    expr: metric
+  - name: observed_at
+    type: time
+    expr: observed_at
+    type_params:
+      time_granularity: day
+  # Deliberately measure-less. `value` is a counter SNAPSHOT re-emitted every day,
+  # so summing it across snapshot_dates multiplies one topic's view count by the
+  # number of days observed, and summing across `metric` adds topic views to post
+  # reads. The meaningful reads are a per-entity delta between two snapshot_dates
+  # (valid only where observed_at also moved) and a latest-value lookup — both of
+  # which are SQL, not a picker aggregate.
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - forum topic views over time
+        - post reads snapshots
+
 # NOT registered here, deliberately: api_governance_vote_trajectory.
 # It is a per-proposal drill-down (one row per proposal x hour-since-open), and its
 # cumulative-share columns are only meaningful for a SINGLE proposal. Any aggregate the
