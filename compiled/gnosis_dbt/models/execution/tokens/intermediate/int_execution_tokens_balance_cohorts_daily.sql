@@ -3,6 +3,10 @@
 
 
 
+
+
+
+
 WITH
 
 balances_base AS (
@@ -34,6 +38,50 @@ balances_base AS (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_tokens_balance_cohorts_daily` AS x1
         WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
+
       )
       AND toDate(b.date) >= (
         SELECT
@@ -43,11 +91,98 @@ balances_base AS (
 
         FROM `dbt`.`int_execution_tokens_balance_cohorts_daily` AS x2
         WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
+
       )
     
   
 
       
+      
+  
+
+      
+  
+    
+    
+      AND b.symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
 ),
 
 bucketed_usd AS (

@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 11,
+    "explicit_contracts": 13,
     "high_risk": 301,
-    "models": 1161
+    "models": 1165
   },
-  "inputs_fingerprint": "64bb70bb1a5923efab4d8f71e76e024af10fcb3da2d6ef2e70b20fb63c5028cc",
+  "inputs_fingerprint": "30504980570122fdd75f8c37d904e91d483a17d62ab3ba34922e742c70e2bf87",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -411,6 +411,23 @@
       "status": "enforced",
       "symptom": "a handful of rows survive every reprocess unchanged \u2014 always keys whose CORRECTED value is exactly zero (e.g. addresses that spent their full balance); rebuilds fix everything else and reliably skip these",
       "title": "A sparse table that drops zero rows can never overwrite a stale key with \"zero\""
+    },
+    "stage-vars-scope-illusion": {
+      "body": "## Symptom\nA backfill scoped to one new token \"succeeds\", and afterwards either every *other* token\nin the touched months is duplicated, or every other token is gone. The run log looks\nclean either way \u2014 the stage name and its `vars` are printed, so the run reads as scoped.\n\n## Root cause\nA `meta.full_refresh` stage's `vars` are inert metadata. `refresh.py` merges them into\n`{start_month, end_month, **stage_vars}` and hands them to `dbt run --vars`. dbt does not\nerror on a var that no model reads, so scoping only happens if the model's SQL actually\nreads it \u2014 `{% set symbol = var('symbol', none) %}` plus `{{ symbol_filter(...) }}`.\n\nThat gives two independent failure modes, with opposite polarity:\n\n| Model shape | Stage passes `symbol:` | Result |\n|---|---|---|\n| SQL never reads `var('symbol')` | filter is inert | run covers ALL tokens; on an `append` strategy that is an exact second copy of every token in the window (`append-over-populated-duplicates`) |\n| SQL reads it, strategy resolves to literal `insert_overwrite` | filter applies | the result set holds only the filtered tokens, so `REPLACE PARTITION` swaps each whole month to filtered-only content \u2014 every other token is wiped (`staged-insert-overwrite-wipe`, on the *dimension* axis instead of the time axis) |\n\nOnly the intersection is safe: the SQL reads the var **and** the strategy resolves to\n`append` for the scoped window.\n\n## Forbidden action\nNever add a per-dimension stage (`symbol`, `slice`) to a model without first confirming\nboth halves:\n1. the model body contains `var('<name>'` and applies it via `symbol_filter`;\n2. the strategy resolves to `append` when `start_month` is set \u2014 i.e. the\n   `('append' if start_month else \u2026)` pattern, not a literal `insert_overwrite`.\n\nNever \"fix\" a missing filter by dropping the stage var and running a bare\n`start_month` window over already-populated months \u2014 that is the duplicate half.\n\n## Detection\nBefore running: `grep -c \"var('symbol'\" <model>.sql` must be non-zero for any model whose\nstage passes `symbol:`, and the compiled SQL under those vars must contain the\n`symbol IN (\u2026)` predicate.\n\nAfter running, per-symbol row counts for the touched window against a pre-run baseline:\nevery pre-existing symbol must be **unchanged** \u2014 a decrease is the wipe, an exact\ndoubling is the duplicate.\n\n## Safe remediation\nGive the model the filter rather than working around its absence. For a stateless,\nper-token-grain aggregate already on `('append' if start_month else \u2026)`, adding the\n`symbol`/`symbol_exclude` var reads plus `symbol_filter` calls (and passing `filters_sql`\ninto `apply_monthly_incremental_filter` so the watermark subquery is scoped too) makes a\nnew-token backfill purely additive \u2014 no partition drop needed, because new rows land at a\nnew `token_address` and cannot collide.\n\nWhere the strategy is a literal `insert_overwrite` and cannot be changed cheaply, do not\nscope by dimension at all: re-run the affected months **unfiltered**. `REPLACE PARTITION`\nis atomic and idempotent, so a whole-month recompute reproduces every existing token and\npicks up the new one.\n\n## Ground truth\nPer-symbol row counts for the window, before and after, from a baseline captured *before*\nthe first write. `REPLACE PARTITION` has no undo.\n\n## Enforcement\nSTATIC GATE (2026-07-31): `scripts/checks/no_delete_insert.py` rules\n`stage_var_not_read` (a stage passes an include filter the model body never reads) and\n`staged_scoped_include_overwrite` (a literal-`insert_overwrite` model carries a stage with\nan include filter). Both operate on RAW model code \u2014 the manifest collapses the strategy\nexpression to its default branch and cannot see which vars the body reads. Neither rule is\nallowlisted: no model violates either today, and the gate exists to keep it that way. Note\nthese are deliberately narrower than `staged_literal_overwrite`, whose grandfathered\nentries in `no_delete_insert.allow` are defensible precisely because those stages carry\n`symbol_exclude` (an exclude filter, run whole-month) rather than an include filter.",
+      "evidence": [
+        "seeds/tokens_whitelist.csv (2026-07-31, commit da587794) \u2014 6 Ripio wrapped-fiat stablecoins added with date_start 2026-02-19; the same commit added a `ripio_wfiat` stage to exactly the two models that read var('symbol') and take the append path",
+        "models/execution/tokens/intermediate/int_execution_tokens_address_diffs_daily.sql:4,41-42 \u2014 literal incremental_strategy='insert_overwrite' with partition_by='toStartOfMonth(date)' that nevertheless honours var('symbol'); same shape in int_execution_tokens_transfers_daily.sql:5",
+        "models/execution/tokens/intermediate/int_execution_tokens_balance_cohorts_daily.sql and int_execution_tokens_balances_by_sector_daily.sql (pre-2026-07-31) \u2014 meta.full_refresh present, zero var('symbol') reads and zero symbol_filter() calls, so a stage var added here would have been inert; both were given the wiring on 2026-07-31",
+        "scripts/full_refresh/refresh.py:513-522 \u2014 vars are assembled as {start_month, end_month, **stage_vars} and passed to `dbt run --vars`; dbt does not error on a var no model reads",
+        "macros/db/symbol_filter.sql \u2014 the only dimension-filter mechanism in the repo"
+      ],
+      "id": "stage-vars-scope-illusion",
+      "last_verified": "2026-07-31",
+      "path": "docs/lessons/stage-vars-scope-illusion.md",
+      "scope": "models with meta.full_refresh stages carrying a dimension include filter (symbol/slice); macros/db/symbol_filter.sql; scripts/full_refresh/refresh.py",
+      "status": "enforced",
+      "symptom": "a per-token backfill either silently doubles every OTHER token in the window (append models) or silently deletes them (insert_overwrite models)",
+      "title": "A meta.full_refresh stage var only scopes a run if the model SQL reads it \u2014 and on insert_overwrite it wipes instead"
     },
     "staged-insert-overwrite-wipe": {
       "body": "## Symptom\nA staged or windowed refresh \"succeeds\", and afterwards the target holds only the last\nstage's window \u2014 earlier months/days in the same partition are gone.\n\n## Root cause\n`insert_overwrite` REPLACEs whole partitions. Any run that writes a *narrower* window\nthan the partition grain \u2014 a microbatch slice, a `start_month` stage, an\n`incremental_end_date`-bounded run \u2014 replaces the full partition with just that window.\nThree instances (June\u2013July 2026): the microbatch branch winning over insert_overwrite in\nthe shared filter macro, and staged `refresh.py` batches against insert_overwrite\nconsensus models.\n\n## Forbidden action\nNever combine `insert_overwrite` with staged batches, `slice` vars, or any run window\nnarrower than the partition. Never partition wider (e.g. by year) on an\ninsert_overwrite model to dodge partition-count limits \u2014 that widens the blast radius\n(see ch-partition-cap).\n\n## Detection\nRow counts per partition before/after any staged run; a partition whose distinct\ndate-span shrank is a wipe.\n\n## Safe remediation\nModels needing staged backfills use the strategy expression\n`('append' if (start_month or incr_end) else 'insert_overwrite')` (narrower\n`('append' if start_month ...)` variant on the consensus pair) so scoped windows\nappend and only full runs REPLACE. Recover wiped windows with the affected-only\nrunner path (drop partition + re-run scoped) \u2014 not a whole-month plain run (OOMs).\n\n## Ground truth\nPartition-level row counts vs the upstream source for the affected window.\n\n## Enforcement\nMacro branch-order fix (267e04bf, 641b5aae) + append-if-start_month strategy\nexpressions across staged models (~16 models use the pattern). The wipe mechanism is\ndocumented in the macro header itself. STATIC GATE (2026-07):\n`scripts/checks/no_delete_insert.py` rules `staged_literal_overwrite` /\n`staged_scoped_branch` fail any meta.full_refresh model whose RAW strategy is a\nliteral/inherited insert_overwrite or whose scoped branch is not append (raw code,\nnot resolved config \u2014 the manifest collapses the expression to its default branch).\nPre-existing violators are grandfathered shrink-only in no_delete_insert.allow.",
@@ -33741,7 +33758,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 6,
-      "downstream_transitive_count": 492,
+      "downstream_transitive_count": 493,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -34087,7 +34104,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 8,
-      "downstream_transitive_count": 490,
+      "downstream_transitive_count": 491,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -34781,7 +34798,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 4,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -36699,7 +36716,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 494,
+      "downstream_transitive_count": 495,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -36942,7 +36959,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 11,
-      "downstream_transitive_count": 497,
+      "downstream_transitive_count": 498,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37304,7 +37321,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 494,
+      "downstream_transitive_count": 495,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37551,7 +37568,7 @@
         "api_execution_circles_v2_pools_daily"
       ],
       "downstream_direct_count": 9,
-      "downstream_transitive_count": 498,
+      "downstream_transitive_count": 499,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38177,7 +38194,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38309,7 +38326,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38441,7 +38458,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38573,7 +38590,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38705,7 +38722,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38837,7 +38854,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38969,7 +38986,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39101,7 +39118,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39233,7 +39250,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39365,7 +39382,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -45111,7 +45128,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -45311,7 +45328,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -46046,7 +46063,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 489,
+      "downstream_transitive_count": 490,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -56381,7 +56398,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -73916,7 +73933,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -74870,7 +74887,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -74952,8 +74969,8 @@
         "api_execution_circles_v2_pools_daily",
         "api_execution_circles_v2_pools_latest"
       ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 481,
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 482,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -75073,7 +75090,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -75188,7 +75205,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -75752,6 +75769,65 @@
       ],
       "unique_key": null
     },
+    "int_execution_token_prices_compare": {
+      "contract": {
+        "agents_md": [
+          "models/execution/AGENTS.md"
+        ],
+        "hazards": [
+          {
+            "id": "unpriced-wrapper-token",
+            "status": "remediated",
+            "title": "Every wrapper/vault token needs a price path or it reads $0 everywhere"
+          }
+        ],
+        "profiles": [
+          "prices_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "int_execution_token_prices_compare",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/prices/intermediate/int_execution_token_prices_compare.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "daily",
+        "execution",
+        "external",
+        "prices",
+        "production"
+      ],
+      "unique_key": null
+    },
     "int_execution_token_prices_daily": {
       "contract": {
         "agents_md": [
@@ -75808,8 +75884,8 @@
         "api_execution_circles_v2_pools_daily",
         "api_execution_circles_v2_pools_latest"
       ],
-      "downstream_direct_count": 26,
-      "downstream_transitive_count": 480,
+      "downstream_direct_count": 27,
+      "downstream_transitive_count": 481,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -75826,6 +75902,65 @@
       "tags": [
         "daily",
         "execution",
+        "prices",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_execution_token_prices_external_daily": {
+      "contract": {
+        "agents_md": [
+          "models/execution/AGENTS.md"
+        ],
+        "hazards": [
+          {
+            "id": "unpriced-wrapper-token",
+            "status": "remediated",
+            "title": "Every wrapper/vault token needs a price path or it reads $0 everywhere"
+          }
+        ],
+        "profiles": [
+          "prices_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "int_execution_token_prices_external_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/prices/intermediate/int_execution_token_prices_external_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "daily",
+        "execution",
+        "external",
         "prices",
         "production"
       ],
@@ -75968,7 +76103,13 @@
           "scripts/full_refresh/AGENTS.md",
           "models/execution/AGENTS.md"
         ],
-        "ground_truth": "on-chain balanceOf / eth_getBalance at the day's last block (see balance-diagnosis-playbook)",
+        "grain": [
+          "date",
+          "token_address",
+          "cohort_unit",
+          "balance_bucket"
+        ],
+        "ground_truth": "Re-derivable from int_execution_tokens_balances_daily alone: bucket every non-zero holder balance for a (date, token_address) and count distinct addresses per bucket. No carry-forward state.",
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -76016,13 +76157,23 @@
             "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
           }
         ],
+        "invariants": [
+          {
+            "description": "sum(holders_in_bucket) per (date, token_address, cohort_unit) must equal the count of distinct non-zero holders for that token-day in int_execution_tokens_balances_daily. A shortfall means the append landed on a partially-built upstream day.",
+            "name": "holder-conservation"
+          },
+          {
+            "description": "Exactly one row per (date, token_address, cohort_unit, balance_bucket). A duplicate doubles holders_in_bucket and both value sums, and no consumer reads with FINAL.",
+            "name": "bucket-uniqueness"
+          }
+        ],
         "profiles": [
           "incremental_models",
           "strategy_expression_models",
           "staged_full_refresh",
           "execution_token_models"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "Per-token: dbt run with vars {start_month, end_month, symbol} \u2014 the start_month branch is append, so the target range must be EMPTY for those symbols (new token, or drop the partition first). All-token month repair: drop the month partition, then re-run windowed; never a bare start_month run over populated months.",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -76044,8 +76195,11 @@
             "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
           }
         ],
+        "semantics": "stateless",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "duplicate-key excess by (date, token_address, cohort_unit, balance_bucket)",
+          "holders_in_bucket sum vs distinct holders in int_execution_tokens_balances_daily"
         ]
       },
       "description_present": true,
@@ -76057,8 +76211,11 @@
       ],
       "downstream_direct_count": 3,
       "downstream_transitive_count": 4,
-      "explicit_contract": false,
-      "full_refresh_stages": null,
+      "explicit_contract": true,
+      "full_refresh_stages": [
+        "all",
+        "ripio_wfiat"
+      ],
       "has_meta_full_refresh": true,
       "high_risk": true,
       "incremental_strategy": "delete+insert",
@@ -76085,7 +76242,13 @@
           "scripts/full_refresh/AGENTS.md",
           "models/execution/AGENTS.md"
         ],
-        "ground_truth": "on-chain balanceOf / eth_getBalance at the day's last block (see balance-diagnosis-playbook)",
+        "grain": [
+          "date",
+          "token_address",
+          "sector",
+          "token_class"
+        ],
+        "ground_truth": "Re-derivable from int_execution_tokens_balances_daily joined to int_crawlers_data_labels: sum positive holder balances per (date, token_address, sector). No carry-forward state.",
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -76133,13 +76296,23 @@
             "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
           }
         ],
+        "invariants": [
+          {
+            "description": "sum over sectors per (date, token_address) must equal the total positive balance for that token-day in int_execution_tokens_balances_daily, including the unlabelled bucket. A shortfall means labels dropped rows rather than falling through to the default sector.",
+            "name": "sector-conservation"
+          },
+          {
+            "description": "Exactly one row per (date, token_address, sector, token_class). A duplicate inflates every value column and no consumer reads with FINAL.",
+            "name": "sector-uniqueness"
+          }
+        ],
         "profiles": [
           "incremental_models",
           "strategy_expression_models",
           "staged_full_refresh",
           "execution_token_models"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "Per-token: dbt run with vars {start_month, end_month, symbol} \u2014 the start_month branch is append, so the target range must be EMPTY for those symbols (new token, or drop the partition first). All-token month repair: drop the month partition, then re-run windowed; never a bare start_month run over populated months.",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -76161,8 +76334,11 @@
             "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
           }
         ],
+        "semantics": "stateless",
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "duplicate-key excess by (date, token_address, sector, token_class)",
+          "per-token sector sum vs total positive balance in int_execution_tokens_balances_daily"
         ]
       },
       "description_present": true,
@@ -76172,8 +76348,11 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 2,
-      "explicit_contract": false,
-      "full_refresh_stages": null,
+      "explicit_contract": true,
+      "full_refresh_stages": [
+        "all",
+        "ripio_wfiat"
+      ],
       "has_meta_full_refresh": true,
       "high_risk": true,
       "incremental_strategy": "delete+insert",
@@ -76315,7 +76494,8 @@
       "explicit_contract": false,
       "full_refresh_stages": [
         "all",
-        "ocsdai"
+        "ocsdai",
+        "ripio_wfiat"
       ],
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -76504,7 +76684,8 @@
         "small_tokens",
         "tokens_2025",
         "wsteth",
-        "ocsdai"
+        "ocsdai",
+        "ripio_wfiat"
       ],
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -80962,7 +81143,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 481,
+      "downstream_transitive_count": 482,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -81031,7 +81212,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -82163,7 +82344,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -82236,6 +82417,74 @@
         "blacklist",
         "circles_v2",
         "crawlers_data",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_crawlers_data__coingecko_prices": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 279,
+      "downstream_api_models": [
+        "api_dao_treasury_allocation_latest",
+        "api_dao_treasury_holdings_by_class_ts",
+        "api_dao_treasury_holdings_detail_latest",
+        "api_dao_treasury_kpi_gno_held",
+        "api_dao_treasury_kpi_lending_total",
+        "api_dao_treasury_kpi_non_gno_holdings",
+        "api_dao_treasury_kpi_total_holdings",
+        "api_execution_account_balance_history_daily",
+        "api_execution_account_counterparty_graph",
+        "api_execution_account_profile_latest",
+        "api_execution_account_search_index",
+        "api_execution_account_token_balances_latest",
+        "api_execution_address_resolver",
+        "api_execution_address_search",
+        "api_execution_circles_v2_crc20_prices_daily",
+        "api_execution_circles_v2_pool_explorer_liquidity_events",
+        "api_execution_circles_v2_pool_explorer_swaps",
+        "api_execution_circles_v2_pool_explorer_swaps_daily",
+        "api_execution_circles_v2_pools_daily",
+        "api_execution_circles_v2_pools_latest"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 483,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_crawlers_data__coingecko_prices",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/crawlers_data/staging/stg_crawlers_data__coingecko_prices.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "prices",
         "production",
         "staging"
       ],
@@ -82353,6 +82602,74 @@
       "strategy_scoped_append": null,
       "tags": [
         "crawlers_data",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_crawlers_data__defillama_prices": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 279,
+      "downstream_api_models": [
+        "api_dao_treasury_allocation_latest",
+        "api_dao_treasury_holdings_by_class_ts",
+        "api_dao_treasury_holdings_detail_latest",
+        "api_dao_treasury_kpi_gno_held",
+        "api_dao_treasury_kpi_lending_total",
+        "api_dao_treasury_kpi_non_gno_holdings",
+        "api_dao_treasury_kpi_total_holdings",
+        "api_execution_account_balance_history_daily",
+        "api_execution_account_counterparty_graph",
+        "api_execution_account_profile_latest",
+        "api_execution_account_search_index",
+        "api_execution_account_token_balances_latest",
+        "api_execution_address_resolver",
+        "api_execution_address_search",
+        "api_execution_circles_v2_crc20_prices_daily",
+        "api_execution_circles_v2_pool_explorer_liquidity_events",
+        "api_execution_circles_v2_pool_explorer_swaps",
+        "api_execution_circles_v2_pool_explorer_swaps_daily",
+        "api_execution_circles_v2_pools_daily",
+        "api_execution_circles_v2_pools_latest"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 483,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_crawlers_data__defillama_prices",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/crawlers_data/staging/stg_crawlers_data__defillama_prices.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "prices",
         "production",
         "staging"
       ],
@@ -82626,8 +82943,8 @@
         "api_execution_circles_v2_pools_daily",
         "api_execution_circles_v2_pools_latest"
       ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 481,
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 482,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -83922,7 +84239,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 488,
+      "downstream_transitive_count": 489,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84275,7 +84592,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84353,7 +84670,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84431,7 +84748,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84509,7 +84826,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84671,7 +84988,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 13,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84906,7 +85223,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 19,
-      "downstream_transitive_count": 493,
+      "downstream_transitive_count": 494,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84929,7 +85246,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "a87dfadb35518f2e72bfc1ace94c74aa5c74921813501e1316526d6353af5918",
+  "models_hash": "44d07e27d427e0c05de0f31f7e453b773041f2b0268dba739bc67136b85d51f2",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

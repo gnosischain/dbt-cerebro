@@ -3,6 +3,10 @@
 
 
 
+
+
+
+
 WITH
 
 balances_filtered AS (
@@ -35,6 +39,50 @@ balances_filtered AS (
         SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
         FROM `dbt`.`int_execution_tokens_balances_by_sector_daily` AS x1
         WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
+
       )
       AND toDate(b.date) >= (
         SELECT
@@ -44,11 +92,98 @@ balances_filtered AS (
 
         FROM `dbt`.`int_execution_tokens_balances_by_sector_daily` AS x2
         WHERE 1=1 
+  
+  
+
+  
+  
+    
+    
+      AND symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
+
       )
     
   
 
       
+      
+  
+
+      
+  
+    
+    
+      AND b.symbol NOT IN (
+        
+          'aGnoGNO', 
+        
+          'aGnoWXDAI', 
+        
+          'aGnosDAI', 
+        
+          'aGnoUSDC', 
+        
+          'aGnoEURe', 
+        
+          'aGnoUSDCe', 
+        
+          'spGNO', 
+        
+          'spUSDT', 
+        
+          'spUSDC', 
+        
+          'spUSDC.e', 
+        
+          'spWETH', 
+        
+          'spwstETH', 
+        
+          'spWXDAI', 
+        
+          'spsDAI', 
+        
+          'spEURe'
+        
+      )
+    
+  
+
 ),
 
 balance_addresses AS (
