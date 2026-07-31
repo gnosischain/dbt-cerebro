@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -66,13 +68,50 @@ def load(path: Path) -> Optional[dict]:
         return None
 
 
+_REPLACE_ATTEMPTS = 6
+
+
+def _replace_with_retry(tmp: Path, path: Path, attempts: int = _REPLACE_ATTEMPTS) -> None:
+    """Rename tmp over path, retrying on Windows PermissionError.
+
+    On Windows the rename raises PermissionError (WinError 5 / 32) whenever any
+    other process holds a transient handle on the destination — Defender's
+    real-time scan, the search indexer, an editor previewing the file — and also
+    when the destination carries the read-only attribute. POSIX has no such
+    failure mode. Both causes clear within milliseconds, so retry with backoff:
+    an unretried failure aborts the caller mid-run, which for refresh.py means
+    losing a multi-hour backfill's bookkeeping AFTER the batches already landed.
+    Still raises if every attempt fails — a silently stale state would let a
+    later --resume re-run a completed batch and duplicate rows in append models.
+    """
+    delay = 0.1
+    for attempt in range(attempts):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            # Clearing the read-only attribute only means something on Windows. A
+            # POSIX EACCES here is about the parent directory, not this file's mode,
+            # so the chmod could not fix it and would just tighten existing bits.
+            if sys.platform == "win32":
+                try:
+                    if path.exists():
+                        path.chmod(stat.S_IWRITE | stat.S_IREAD)
+                except OSError:
+                    pass
+            time.sleep(delay)
+            delay *= 2
+
+
 def save(path: Path, state: dict) -> None:
     """Atomic write (tmp + replace) so a crash never leaves a torn state file."""
     state["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True, default=str))
-    tmp.replace(path)
+    _replace_with_retry(tmp, path)
 
 
 def clear(path: Path) -> None:

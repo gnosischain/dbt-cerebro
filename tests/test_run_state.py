@@ -12,6 +12,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "refresh"))
 
@@ -70,6 +72,43 @@ def test_save_is_atomic_no_tmp_left(tmp_path):
     run_state.save(p, {"completed": {"m::s": {"last_completed_end_date": "2026-07-01"}}})
     assert not p.with_suffix(".json.tmp").exists()
     assert json.loads(p.read_text())["completed"]["m::s"]["last_completed_end_date"] == "2026-07-01"
+
+
+def test_save_retries_transient_permission_error(tmp_path, monkeypatch):
+    """Windows raises PermissionError when a scanner holds the destination."""
+    p = run_state.state_path(tmp_path, "full_refresh", "eeee1111eeee")
+    real_replace = Path.replace
+    calls = {"n": 0}
+
+    def flaky(self, target):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(5, "Access is denied")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", flaky)
+    monkeypatch.setattr(run_state.time, "sleep", lambda _: None)
+
+    run_state.save(p, {"completed": {"m::s": {"last_completed_end_date": "2026-07-01"}}})
+
+    assert calls["n"] == 3
+    assert not p.with_suffix(".json.tmp").exists()
+    assert json.loads(p.read_text())["completed"]["m::s"]["last_completed_end_date"] == "2026-07-01"
+
+
+def test_save_raises_when_permission_error_persists(tmp_path, monkeypatch):
+    """A permanently unwritable state file must NOT pass silently: a stale state
+    would let a later --resume redo a completed batch and duplicate append rows."""
+    p = run_state.state_path(tmp_path, "full_refresh", "ffff2222ffff")
+
+    def always_denied(self, target):
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(Path, "replace", always_denied)
+    monkeypatch.setattr(run_state.time, "sleep", lambda _: None)
+
+    with pytest.raises(PermissionError):
+        run_state.save(p, {"completed": {}})
 
 
 def test_load_corrupt_returns_none(tmp_path):
