@@ -399,9 +399,48 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, token_address, cohort_unit, balance_bucket]
+      semantics: stateless
+      ground_truth: >-
+        Re-derivable from int_execution_tokens_balances_daily alone: bucket every
+        non-zero holder balance for a (date, token_address) and count distinct
+        addresses per bucket. No carry-forward state.
+      invariants:
+      - name: holder-conservation
+        description: >-
+          sum(holders_in_bucket) per (date, token_address, cohort_unit) must equal the
+          count of distinct non-zero holders for that token-day in
+          int_execution_tokens_balances_daily. A shortfall means the append landed on a
+          partially-built upstream day.
+      - name: bucket-uniqueness
+        description: >-
+          Exactly one row per (date, token_address, cohort_unit, balance_bucket). A
+          duplicate doubles holders_in_bucket and both value sums, and no consumer reads
+          with FINAL.
+      reprocess_runbook: >-
+        Per-token: dbt run with vars {start_month, end_month, symbol} — the start_month
+        branch is append, so the target range must be EMPTY for those symbols (new token,
+        or drop the partition first). All-token month repair: drop the month partition,
+        then re-run windowed; never a bare start_month run over populated months.
+      hazards:
+      - append-over-populated-duplicates
+      - unpriced-wrapper-token
+      validation:
+      - duplicate-key excess by (date, token_address, cohort_unit, balance_bucket)
+      - holders_in_bucket sum vs distinct holders in int_execution_tokens_balances_daily
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 1
+      stages:
+      - name: all
+        vars:
+          symbol_exclude: "{{ var('symbol_exclude') }}"
+      - name: ripio_wfiat
+        start_date: "2026-02-19"
+        batch_months: 12
+        vars:
+          symbol: "wARS,wBRL,wMXN,wCOP,wCLP,wPEN"
   columns:
   - name: date
     description: The specific date for which the token balance data is recorded.
@@ -451,9 +490,47 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, token_address, sector, token_class]
+      semantics: stateless
+      ground_truth: >-
+        Re-derivable from int_execution_tokens_balances_daily joined to
+        int_crawlers_data_labels: sum positive holder balances per (date,
+        token_address, sector). No carry-forward state.
+      invariants:
+      - name: sector-conservation
+        description: >-
+          sum over sectors per (date, token_address) must equal the total positive
+          balance for that token-day in int_execution_tokens_balances_daily, including
+          the unlabelled bucket. A shortfall means labels dropped rows rather than
+          falling through to the default sector.
+      - name: sector-uniqueness
+        description: >-
+          Exactly one row per (date, token_address, sector, token_class). A duplicate
+          inflates every value column and no consumer reads with FINAL.
+      reprocess_runbook: >-
+        Per-token: dbt run with vars {start_month, end_month, symbol} — the start_month
+        branch is append, so the target range must be EMPTY for those symbols (new token,
+        or drop the partition first). All-token month repair: drop the month partition,
+        then re-run windowed; never a bare start_month run over populated months.
+      hazards:
+      - append-over-populated-duplicates
+      - unpriced-wrapper-token
+      validation:
+      - duplicate-key excess by (date, token_address, sector, token_class)
+      - per-token sector sum vs total positive balance in int_execution_tokens_balances_daily
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
+      stages:
+      - name: all
+        vars:
+          symbol_exclude: "{{ var('symbol_exclude') }}"
+      - name: ripio_wfiat
+        start_date: "2026-02-19"
+        batch_months: 12
+        vars:
+          symbol: "wARS,wBRL,wMXN,wCOP,wCLP,wPEN"
   columns:
   - name: date
     description: The specific date for which the data is recorded.
