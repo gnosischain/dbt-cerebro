@@ -95,7 +95,16 @@ the initial parse it resolves to `insert_overwrite` for the balances models, whi
 wipe. Avoid running across UTC midnight: `refresh.py` derives batches from `date.today()`,
 and the new token must land on the same frontier day as the rest of the table.
 
-### 6. Verify
+### 6. Re-parse before running any static gate
+
+`incremental_strategy` is a **parse-time** `var()` inside `config()`. After any
+`dbt run --vars '{start_month: …}'`, `target/manifest.json` holds those models resolved to
+their `append` branch, and `scripts/checks/no_delete_insert.py` will report spurious
+`append_no_microbatch` violations on models you never touched. A bare `dbt parse` (no
+vars) restores the default branch. Do this before `run_all.py`, or you will chase a
+phantom failure.
+
+### 7. Verify
 
 - **No collateral damage**: per-symbol counts for the window vs the baseline. Every
   pre-existing symbol unchanged; a decrease is a wipe, an exact doubling is the append
