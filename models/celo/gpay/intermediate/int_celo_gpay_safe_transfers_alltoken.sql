@@ -9,7 +9,9 @@
     order_by='(safe_address, block_time, tx_hash, log_index)',
     partition_by='toStartOfMonth(block_date)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','celo','gpay','native','transfers','alltoken']
+    tags=['production','celo','gpay','native','transfers','alltoken'],
+    pre_hook=["SET join_use_nulls = 1"],
+    post_hook=["SET join_use_nulls = 0"]
   )
 }}
 
@@ -32,6 +34,13 @@
 -- amount_raw (the integer word) and leave amount/amount_usd/token_symbol/
 -- token_class NULL rather than guessing. amount_usd prices at the transfer date
 -- via the Celo price hub; NULL when unpriced (visibly unpriced, never 0).
+--
+-- That NULL-for-unknown contract is why join_use_nulls = 1 is set in the pre_hook
+-- (docs/lessons/ch-left-join-nulls.md). The whitelist seed's columns are non-nullable,
+-- so at the ClickHouse default a non-whitelisted token leaves the LEFT JOIN as
+-- symbol = '' and decimals = 0: `w.decimals IS NULL` never fires, `amount` silently
+-- gets a 10^0 scale (raw integer read as human units), and int_celo_gpay_activity's
+-- `token_symbol IS NOT NULL` whitelist gate matches every row instead of none.
 --
 -- A Safe-to-Safe transfer legitimately produces TWO rows (an 'out' row for the
 -- sending Safe and an 'in' row for the receiving Safe) — each Safe's own

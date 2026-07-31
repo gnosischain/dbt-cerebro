@@ -1,7 +1,10 @@
+{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+
 {{
   config(
     materialized='incremental',
-    incremental_strategy='insert_overwrite',
+    incremental_strategy=('append' if start_month else 'insert_overwrite'),
     engine='ReplacingMergeTree()',
     order_by='(safe_address, block_time, tx_hash, token_address, counterparty, action)',
     partition_by='toStartOfMonth(date)',
@@ -12,9 +15,6 @@
 
 {% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge (settlement sink) #}
 {% set cashback_sources = [] %}  {# reward disburser(s); empty until identified — cashback not paid yet #}
-
-{% set start_month = var('start_month', none) %}
-{% set end_month   = var('end_month', none) %}
 
 -- Per-transfer classified Celo GP activity, off the single transfer base
 -- (int_celo_gpay_safe_transfers_alltoken), restricted to whitelisted GP tokens
@@ -45,9 +45,13 @@
 --
 -- The start_month/end_month branch is the staged-rebuild path driven by
 -- scripts/full_refresh/refresh.py (meta.full_refresh), mirroring
--- int_execution_gpay_activity on Gnosis Chain. The window is always COMPLETE
--- months, so insert_overwrite's REPLACE PARTITION stays lossless and the
--- strategy does not need to flip to append (docs/lessons/staged-insert-overwrite-wipe.md).
+-- int_execution_gpay_activity on Gnosis Chain. Scoped batches APPEND rather than
+-- REPLACE (docs/lessons/staged-insert-overwrite-wipe.md): a 3-month batch against
+-- monthly partitions happens to be partition-aligned, but append removes the
+-- dependence on that alignment entirely, so no future change to batch_months or
+-- the partition grain can turn a stage into a partition wipe. The cost is that a
+-- scoped run must target EMPTY months — re-running one over a populated month
+-- appends a second copy, and the marts read this table without FINAL.
 -- Rebuild this after a staged rebuild of the transfers base, month for month.
 
 WITH base AS (
