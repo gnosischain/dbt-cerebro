@@ -260,3 +260,76 @@ models:
     amount_token/amount_usd to volume_token/volume_usd), casts txs to
     UInt64, and derives direction as 'in'/'out'/'xchain' from whether
     Gnosis is the destination or source chain.
+
+- name: stg_crawlers_data__defillama_prices
+  description: >
+    Staging for DefiLlama external USD prices. Dedupes append-only
+    crawlers_data.defillama_prices to one row per (date, symbol). Raw rows may
+    span chains; gnosis is preferred when a symbol appears on multiple chains.
+    Feeds int_execution_token_prices_external_daily and
+    the compare model; not wired into the production price hub yet.
+  columns:
+  - name: date
+    description: Calendar date of the price observation (UTC).
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Uppercase allowlist symbol.
+    data_type: String
+  - name: token_address
+    description: Lowercase Gnosis token address (last observed for the grain).
+    data_type: String
+  - name: price
+    description: USD price from DefiLlama.
+    data_type: Float64
+  - name: confidence
+    description: DefiLlama confidence score (0–1), nullable.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: stg_crawlers_data__coingecko_prices
+  description: >
+    Staging for CoinGecko external USD prices. Dedupes append-only
+    crawlers_data.coingecko_prices to one row per (date, symbol) via anyLast.
+    Phase 1 standbein — feeds int_execution_token_prices_external_daily and
+    the compare model; not wired into the production price hub yet.
+  columns:
+  - name: date
+    description: Calendar date of the price observation (UTC).
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: symbol
+    description: Uppercase allowlist symbol.
+    data_type: String
+  - name: coingecko_id
+    description: CoinGecko coin id used for the fetch.
+    data_type: String
+  - name: price
+    description: USD price from CoinGecko.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - symbol
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+

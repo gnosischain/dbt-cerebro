@@ -9,23 +9,30 @@
   )
 }}
 
--- Hybrid price hub: native on-chain prices are primary; the Dune feed is kept as a
--- lower-priority fallback for history native cannot reach. Native (Chainlink oracles +
--- DEX-derived + sDAI vault) only exists from ~2021 (Chainlink's Gnosis deployment),
--- whereas Dune's off-chain feed covers 2017+. So for any (date, symbol) native lacks
--- -- mainly pre-2021, plus tokens with no native source (e.g. SAFE) -- Dune fills in.
--- Priority: FRESH native (1) > backedfi RWA / aToken wrappers (2) > Dune fallback (3) >
--- $1 pegs (4) > STALE native (5, last resort).
+-- Hybrid price hub: native on-chain prices are primary; off-chain feeds fill gaps.
+-- Native (Chainlink oracles + DEX-derived + sDAI vault) only exists from ~2021
+-- (Chainlink's Gnosis deployment), whereas Dune's off-chain feed covers 2017+.
+--
+-- Priority: FRESH native (1) > backedfi RWA / aToken wrappers (2) >
+-- off-chain pick (3) > $1 pegs (4) > STALE native (5, last resort).
+--
+-- Off-chain pick (priority 3), per (date, symbol):
+--   DefiLlama if present AND confidence >= {{ var('external_price_min_confidence', 0.9) }}
+--   else CoinGecko
+--   else Dune
+-- Native and backedfi stay above this layer so issuer NAV / on-chain never lose to
+-- aggregators (RWA hub-vs-Llama gaps of 15-40% are expected, not bugs).
 --
 -- Staleness demotion: native forward-fills every symbol across a daily calendar, so a
 -- DEX-only token that loses liquidity would otherwise serve its last trade price forever
 -- at priority 1 (e.g. SAFE froze for >250d at ~4.3x its live value; COW at +14%). We
--- therefore demote a native price BELOW Dune once it has been forward-filled for more
--- than {{ var('native_price_max_staleness_days', 7) }} days past its last real
--- observation, so the dense live Dune feed wins. Stale native is kept as priority 5 so a
--- symbol with no Dune coverage still gets a (clearly-flagged-stale) value rather than a gap.
+-- therefore demote a native price BELOW off-chain once it has been forward-filled for
+-- more than {{ var('native_price_max_staleness_days', 7) }} days past its last real
+-- observation. Stale native is kept as priority 5 so a symbol with no off-chain
+-- coverage still gets a (clearly-flagged-stale) value rather than a gap.
 
 {% set max_staleness_days = var('native_price_max_staleness_days', 7) %}
+{% set min_llama_confidence = var('external_price_min_confidence', 0.9) %}
 
 WITH native AS (
     SELECT
@@ -38,13 +45,58 @@ WITH native AS (
 ),
 
 dune AS (
-    -- Historical / gap fallback only (lower priority than native).
     SELECT
         toDate(date)        AS date,
         upper(symbol)       AS symbol,
         toFloat64(price)    AS price
     FROM {{ ref('stg_crawlers_data__dune_prices') }}
     WHERE date < today()
+),
+
+defillama AS (
+    SELECT
+        toDate(date)        AS date,
+        upper(symbol)       AS symbol,
+        toFloat64(price)    AS price,
+        toFloat64(confidence) AS confidence
+    FROM {{ ref('stg_crawlers_data__defillama_prices') }}
+    WHERE date < today()
+      AND confidence >= {{ min_llama_confidence }}
+),
+
+coingecko AS (
+    SELECT
+        toDate(date)        AS date,
+        upper(symbol)       AS symbol,
+        toFloat64(price)    AS price
+    FROM {{ ref('stg_crawlers_data__coingecko_prices') }}
+    WHERE date < today()
+),
+
+-- Single off-chain series: Llama (high-confidence) > CoinGecko > Dune.
+offchain AS (
+    SELECT
+        date,
+        symbol,
+        price
+    FROM (
+        SELECT
+            date,
+            symbol,
+            price,
+            row_number() OVER (
+                PARTITION BY date, symbol
+                ORDER BY src_rank
+            ) AS rn
+        FROM (
+            SELECT date, symbol, price, 1 AS src_rank FROM defillama
+            UNION ALL
+            SELECT date, symbol, price, 2 AS src_rank FROM coingecko
+            UNION ALL
+            SELECT date, symbol, price, 3 AS src_rank FROM dune
+        )
+    )
+    WHERE rn = 1
 ),
 
 backedfi AS (
@@ -107,7 +159,7 @@ ocsdai_price AS (
 
 all_prices AS (
     -- Fresh native = priority 1; native forward-filled beyond the staleness budget is
-    -- demoted to priority 5 (below Dune) so a stale frozen DEX price stops winning.
+    -- demoted to priority 5 (below off-chain) so a stale frozen DEX price stops winning.
     SELECT
         date,
         symbol,
@@ -121,7 +173,7 @@ all_prices AS (
     UNION ALL
     SELECT date, symbol, price, 2 AS priority FROM wrapper_prices
     UNION ALL
-    SELECT date, symbol, price, 3 AS priority FROM dune
+    SELECT date, symbol, price, 3 AS priority FROM offchain
     UNION ALL
     SELECT date, symbol, 1.0 AS price, 4 AS priority FROM usd_pegs
     UNION ALL

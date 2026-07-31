@@ -26,6 +26,38 @@
   balances go negative. See `docs/lessons/late-start-mis-staging.md`.
 - Respect per-token `decimals` and `date_start`/`date_end` address pairs (EURe/GBPe
   have historical↔current addresses).
+- **Adding a token is a documented workflow, not a judgement call** — follow
+  [docs/workflows/add-token.md](../../docs/workflows/add-token.md) end to end (seed →
+  verify first on-chain activity → confirm a price path → stages → ordered backfill →
+  verify).
+
+### Per-token scoping: where it works, and where it dies
+
+`macros/db/symbol_filter.sql` + `var('symbol')` is the only dimension filter in the repo.
+A `meta.full_refresh` stage's `vars` are **inert metadata** until the model body reads
+them — dbt does not error on an unread var. Only the intersection is safe: the SQL reads
+`var('symbol')` **and** the strategy resolves to `append` when `start_month` is set.
+
+```
+execution.logs + tokens_whitelist
+  → int_execution_transfers_whitelisted_daily   literal insert_overwrite, no symbol var → month-scoped only
+  → int_execution_tokens_address_diffs_daily    literal insert_overwrite, HAS symbol var → NEVER symbol-scope
+  → int_execution_tokens_balances_native_daily  append-if-start_month, cumulative        → safe to symbol-scope
+  → int_execution_tokens_balances_daily         append-if-start_month                    → safe to symbol-scope
+  → int_execution_tokens_balance_cohorts_daily  append-if-start_month                    → safe to symbol-scope
+  → int_execution_tokens_balances_by_sector_daily  append-if-start_month                 → safe to symbol-scope
+  → int_execution_tokens_supply_holders_daily   literal insert_overwrite, no symbol var  → month-scoped only
+  int_execution_tokens_transfers_daily          literal insert_overwrite, HAS symbol var → NEVER symbol-scope
+```
+
+Symbol-scoping a literal `insert_overwrite` model REPLACEs each whole month partition
+with filtered-only content, wiping every other token. Re-run those months **unfiltered**
+instead — `REPLACE PARTITION` is atomic and idempotent, so a whole-month recompute
+reproduces every existing token exactly and picks up the new one. Conversely, running a
+scopable model with `start_month` but *no* `symbol` appends a second copy of every token.
+See [docs/lessons/stage-vars-scope-illusion.md](../../docs/lessons/stage-vars-scope-illusion.md);
+CI gate: `scripts/checks/no_delete_insert.py` rules `stage_var_not_read` /
+`staged_scoped_include_overwrite`.
 
 ## Daily carry-forward / spine models (pools, reserves, balances)
 

@@ -15,6 +15,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 - [staged-insert-overwrite-wipe](staged-insert-overwrite-wipe.md) `enforced` — any run
   window narrower than the partition on an insert_overwrite model REPLACEs the whole
   partition; staged models must use append-if-start_month.
+- [stage-vars-scope-illusion](stage-vars-scope-illusion.md) `enforced` — a
+  meta.full_refresh stage var only scopes a run if the model SQL reads it; inert it
+  duplicates every other token, honoured on insert_overwrite it wipes them.
 - [wide-delete-insert-wipe](wide-delete-insert-wipe.md) `enforced` — a failed
   delete+insert keeps deleting in the background after dbt errors; reprocess per slice.
 - [table-mat-batch-vars-truncation](table-mat-batch-vars-truncation.md) `observed` —

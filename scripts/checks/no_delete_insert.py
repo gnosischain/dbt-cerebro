@@ -29,6 +29,19 @@ Walks target/manifest.json and fails if any FIRST-PARTY incremental model:
         NOTE: raw code is authoritative here — the manifest's resolved value
         collapses that expression to its default branch, so resolved config
         CANNOT distinguish the safe pattern from a dangerous literal.
+  5. [stage_var_not_read] has a meta.full_refresh stage passing a dimension
+     INCLUDE filter (symbol/slice) that the model body never reads via var()
+     -> the filter is inert: dbt ignores unknown vars, so the run silently
+        covers ALL members. On an append strategy that is an exact second copy
+        of every existing member in the window.
+  6. [staged_scoped_include_overwrite] has such a stage AND a literal/inherited
+     insert_overwrite strategy
+     -> the filtered result set REPLACEs whole partitions, wiping every other
+        member for those partitions.
+     Rules 5-6 are the two halves of docs/lessons/stage-vars-scope-illusion.md;
+     only their intersection (body reads the var AND scoped branch is append) is
+     safe. Both are narrower than rule 4 on purpose: rule 4's grandfathered
+     allowlist entries carry symbol_exclude, which is not an include filter.
 
 Allowlist (scripts/checks/no_delete_insert.allow): one entry per line,
 '#' comments; either a bare unique_id (exempts the model from ALL rules) or
@@ -61,6 +74,11 @@ ALLOWLIST = pathlib.Path(__file__).resolve().parent / "no_delete_insert.allow"
 # Elementary) manage their own materialization and are not ours to migrate.
 PROJECT_PACKAGE = "gnosis_dbt"
 
+# Stage vars that NARROW a run to a subset of dimension members. Exclude-style
+# vars (symbol_exclude) are deliberately absent: they widen rather than narrow,
+# so they neither leave other members unbuilt nor shrink an overwrite window.
+INCLUDE_FILTER_VARS = {"symbol", "slice"}
+
 
 def load_allowlist() -> set:
     if not ALLOWLIST.exists():
@@ -71,6 +89,21 @@ def load_allowlist() -> set:
         if line:
             out.add(line)
     return out
+
+
+def _stages(meta_full_refresh) -> list:
+    """The stage dicts of a meta.full_refresh block, tolerant of odd shapes."""
+    if not isinstance(meta_full_refresh, dict):
+        return []
+    stages = meta_full_refresh.get("stages") or []
+    if not isinstance(stages, list):
+        return []
+    return [s for s in stages if isinstance(s, dict)]
+
+
+def _reads_var(raw_code: str, var_name: str) -> bool:
+    """True if the model body reads var('<name>') / var("<name>")."""
+    return f"var('{var_name}'" in raw_code or f'var("{var_name}"' in raw_code
 
 
 def _merged_meta(node: dict) -> dict:
@@ -118,11 +151,15 @@ def find_violations(manifest: dict, allow: set):
 
         # Staged-strategy rule: raw code is authoritative (resolved config
         # collapsed any expression to its default branch at parse time).
-        if _merged_meta(node).get("full_refresh"):
-            info = analyze_strategy(node.get("raw_code") or "")
-            if info["literal"] == "insert_overwrite" or (
-                not info["assigned"] and strategy == "insert_overwrite"
-            ):
+        meta_fr = _merged_meta(node).get("full_refresh")
+        if meta_fr:
+            raw_code = node.get("raw_code") or ""
+            info = analyze_strategy(raw_code)
+            inherited_overwrite = (
+                info["literal"] == "insert_overwrite"
+                or (not info["assigned"] and strategy == "insert_overwrite")
+            )
+            if inherited_overwrite:
                 check(uid, "staged_literal_overwrite",
                       "meta.full_refresh stages + literal/inherited insert_overwrite: "
                       "staged batches REPLACE partitions and keep only the last stage. "
@@ -132,6 +169,34 @@ def find_violations(manifest: dict, allow: set):
                       f"staged model's scoped (start_month) branch resolves to "
                       f"'{info['scoped_branch']}', not 'append' — scoped batches must "
                       "append, never overwrite/mutate.")
+
+            # Dimension-scoping rules. A stage's vars are inert metadata until the
+            # model body reads them, and honouring them on insert_overwrite wipes
+            # every other dimension member.
+            # See docs/lessons/stage-vars-scope-illusion.md.
+            scoped_vars = set()
+            for stage in _stages(meta_fr):
+                for var_name in (stage.get("vars") or {}):
+                    if var_name in INCLUDE_FILTER_VARS:
+                        scoped_vars.add(var_name)
+
+            if scoped_vars:
+                unread = sorted(v for v in scoped_vars if not _reads_var(raw_code, v))
+                if unread:
+                    check(uid, "stage_var_not_read",
+                          f"meta.full_refresh stage passes include filter(s) "
+                          f"{', '.join(unread)} that the model body never reads via "
+                          f"var(). dbt ignores unknown vars, so the run silently covers "
+                          f"ALL members — on an append strategy that duplicates every "
+                          f"existing member in the window. Wire up "
+                          f"macros/db/symbol_filter.sql, or drop the stage var.")
+                if inherited_overwrite:
+                    check(uid, "staged_scoped_include_overwrite",
+                          f"meta.full_refresh stage carries include filter(s) "
+                          f"{', '.join(sorted(scoped_vars))} on a literal/inherited "
+                          f"insert_overwrite model: the filtered result set REPLACEs "
+                          f"whole partitions, wiping every other member for those "
+                          f"partitions. Re-run such months unfiltered instead.")
 
     return violations, used_allow
 
