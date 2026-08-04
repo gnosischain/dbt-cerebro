@@ -220,18 +220,31 @@ models:
 - name: fct_celo_gpay_snapshots
   description: |
     All-time and trailing-7D headline snapshots per action (Volume/Count/Users),
-    plus TotalBalance. Feeds the counter tiles. No Cashback branch (Gnosis Chain
-    only). TotalBalance is the net-flow USDC+USDT float on the latest day.
+    plus TotalBalance and RewardBalance. Feeds the counter tiles. No Cashback action
+    branch (Gnosis Chain only).
+
+    TotalBalance is the latest-day SPENDABLE float: mark-to-market USD across
+    token_class = 'STABLECOIN'. RewardBalance is the same for token_class = 'RWA'
+    (zero until the cashback program pays out). The split is driven by
+    celo_tokens_whitelist.token_class, never a hardcoded symbol list, so a newly
+    transacting token cannot be silently excluded from the headline. RWA is reported
+    separately rather than blended because a reward token is not spendable at the
+    settlement contract.
   columns:
   - name: label
-    description: "Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance."
+    description: >-
+      Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance,
+      RewardBalance.
     data_type: String
   - name: window
     description: "'All' (all-time) or '7D' (trailing 7 days)."
     data_type: String
   - name: value
-    description: Snapshot value.
-    data_type: Float64
+    description: >-
+      Snapshot value. For the balance labels, NULL means a position is held but
+      unpriced (a visible failure) whereas 0 means no position — the two are
+      deliberately distinguished so an outage cannot render as a plausible $0 tile.
+    data_type: Nullable(Float64)
   - name: change_pct
     description: Percent change vs the prior 7-day window (7D rows only; NULL for All).
     data_type: Nullable(Float64)
@@ -434,12 +447,62 @@ models:
   - name: token_symbol
     description: USDC or USDT.
     data_type: String
+  - name: token_class
+    description: >-
+      STABLECOIN or RWA, from celo_tokens_whitelist ('UNKNOWN' if a symbol is somehow
+      absent from the seed). Exists so headline figures can separate spendable float
+      from reward holdings without hardcoding a symbol list — fct_celo_gpay_snapshots
+      reports STABLECOIN as TotalBalance and RWA as RewardBalance.
+    data_type: String
   - name: balance
-    description: Cumulative net native-token balance as of this date.
+    description: >-
+      Cumulative net NATIVE-token balance as of this date. This is the quantity of
+      tokens held; 25,676.93 across all cards on 2026-08-04.
     data_type: Float64
   - name: balance_usd
-    description: Cumulative net USD balance as of this date.
-    data_type: Float64
+    description: >-
+      MARK-TO-MARKET USD value: `balance` valued at the token's price as of this date,
+      carried forward from the last observed price via ASOF join. It is NOT a running
+      sum of each flow's USD value — that would be an accumulated cost basis, a
+      different quantity that goes arbitrarily wrong for a volatile token (and can go
+      negative while the card still holds it). Flows are valued at transaction time
+      (int_celo_gpay_activity.amount_usd, correctly historical); stocks are valued as
+      of the reporting date, which is this column.
+      NULL, never 0, when a held token has no price at or before this date — unknown
+      must not read as empty. sum() therefore skips such positions, which is what the
+      two valuation tests on this model guard against.
+      Additive across cards and tokens within a date; NEVER across dates.
+    data_type: Nullable(Float64)
+  - name: price_date
+    description: >-
+      The date of the price actually used to value this row. Equals `date` when an
+      oracle answer landed that day, and is EARLIER when the ASOF join carried the
+      last observed price forward (the price hub does not forward-fill). Exposed so
+      the valuation is auditable and so staleness is assertable — the carry-forward is
+      uncapped by design. NULL means no price existed at or before `date`, in which
+      case balance_usd is NULL too.
+    data_type: Nullable(Date)
+  tests:
+  # The uncapped ASOF carry-forward is only safe if these two fire. Both are scoped to
+  # rows that actually hold something: a stale price on a zero balance is harmless, and
+  # most of this dense table is zero-balance rows.
+  #   1. held but UNPRICED -> balance_usd NULL -> sum() skips it, so the position
+  #      disappears from TotalBalance rather than reading zero.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_held_token_is_priced
+      expression: "balance_usd IS NOT NULL"
+      config:
+        severity: warn
+        where: "abs(balance) > 0.000001"
+  #   2. held but STALE -> the float is valued at an old rate. Pennies for a
+  #      stablecoin, unbounded for the whitelisted RWA token XAUt0. The 2-day
+  #      tolerance matches dq_daily_unpriced_tokens and absorbs the feed's 1-day lag.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_held_token_price_is_fresh
+      expression: "dateDiff('day', price_date, date) <= 2"
+      config:
+        severity: warn
+        where: "abs(balance) > 0.000001 AND date >= today() - 3"
   meta:
     owner: analytics_team
     authoritative: false
@@ -451,14 +514,25 @@ models:
     description: Calendar date.
     data_type: Date
   - name: symbol
-    description: USDC or USDT.
+    description: >-
+      Whitelisted token symbol. No filter is applied here; USDT and USDC are simply
+      the only tokens that have ever carried a balance (all 69 spine days).
+    data_type: String
+  - name: token_class
+    description: >-
+      STABLECOIN or RWA, inherited from the per-Safe base. Partition headline totals
+      on this rather than on a symbol list.
     data_type: String
   - name: balance
     description: Total net native-token balance across all Safes.
     data_type: Float64
   - name: balance_usd
-    description: Total net USD balance across all Safes.
-    data_type: Float64
+    description: >-
+      Total MARK-TO-MARKET USD value across all Safes (native balance valued at that
+      date's price), inherited from the per-Safe base — not a cost basis. Positions
+      whose token has no price at or before the date are NULL upstream and are skipped
+      by this sum; dq_daily_celo_gpay_stale_held_token_price is the guard.
+    data_type: Nullable(Float64)
   meta:
     owner: analytics_team
     authoritative: false
@@ -1049,9 +1123,14 @@ models:
     exposed for its DIMENSIONS (which tokens a card holds). For a total use
     api_celo_gpay_total_balance (single latest-day row); the correct per-safe base is
     the dense fct_celo_gpay_balances_safe_daily, whose latest day equals the
-    carry-forward total here to the cent. Note api_celo_gpay_total_balance reads
-    25,657.65 against that 25,676.93 — a 19.28 gap via fct_celo_gpay_snapshots that
-    is still unexplained; reconcile before quoting either as exact.
+    carry-forward total here to the cent (25,676.93 on 2026-08-04).
+
+    Do not read api_celo_gpay_total_balance (25,653.36) as disagreeing with that
+    25,676.93 — they are different units, not a discrepancy. This model and `balance`
+    are NATIVE token units; the api reports mark-to-market USD, which is lower simply
+    because USDT and USDC trade a hair under a dollar (20,059.08 USDT at 0.9989 plus
+    5,617.85 USDC at 0.99973, verified 2026-08-04). See the balance_usd column note on
+    fct_celo_gpay_balances_safe_daily.
   columns:
   - name: date
     description: Day of the balance change. Sparse — present only on days this (safe, token) pair had flow.

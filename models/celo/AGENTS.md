@@ -53,13 +53,31 @@ Read with root AGENTS.md.
   unrelated projects, so it cannot be trusted to add cards — only to confirm that
   the fingerprint has not developed a gap. Of its 3491 rows, ~301 are proxies of
   unrelated projects that happen to share the `roles_pilot` mastercopy; the GP subset
-  is the intersection with `int_celo_gpay_roles_modules`, which the consuming test
-  applies. Never aggregate this table as if every row were a GP card.
-  `tests/assert_celo_gpay_roles_mastercopy_known.sql` asserts fingerprint ⊆
-  mastercopy, i.e. it fires when GP starts issuing from a mastercopy this repo does
-  not know. Treat that as a prompt to re-derive the card universe (a new mastercopy
-  generation has twice coincided with a new settlement contract), not merely to
-  append an address; do not widen the registry.
+  is the intersection with `int_celo_gpay_roles_modules`. Never aggregate this table
+  as if every row were a GP card.
+- **Mastercopy drift is a manual check, not an automated one.** The invariant is
+  fingerprint ⊆ mastercopy: every GP Roles proxy should trace to a mastercopy this
+  repo knows. It held at 100% on 2026-08-04. It is deliberately NOT a dbt test —
+  a new mastercopy is legitimate GP activity, not a data defect, so it does not
+  belong in a build-breaking gate. Run it by hand when Celo card counts look wrong
+  or before trusting a cohort/growth figure:
+
+  ```sql
+  SELECT r.address, r.first_seen_at
+  FROM int_celo_gpay_roles_modules r
+  WHERE lower(r.address) NOT IN (
+      SELECT lower(proxy_address) FROM int_celo_gpay_module_mastercopies
+      WHERE module_type IN ('roles_patched', 'roles_pilot'))
+    -- both sides full-rebuild: bound at the mastercopy table's watermark or
+    -- freshly-provisioned cards read as false positives
+    AND r.first_seen_at <= (SELECT max(created_at) FROM int_celo_gpay_module_mastercopies)
+  ```
+
+  Rows mean GP started issuing from an unknown mastercopy. Treat that as a prompt to
+  re-derive the card universe — a new mastercopy generation has twice coincided with a
+  new settlement contract — not merely to append an address; do not widen the registry.
+  Never invert the direction: mastercopy ⊆ fingerprint is FALSE (532 correct rows), as
+  `roles_pilot` is shared with unrelated projects.
 - Funnel stages are three different populations and are routinely confused:
   issued (registry) > funded (received any inbound token) > activated (made a
   payment). Roughly 1490 / 815 / 476 on 2026-08-03, with issuance running ~10
@@ -75,6 +93,26 @@ Read with root AGENTS.md.
 - **No cumulative (`{{ this }}`) models in this tree** — reprocessing must be
   order-free; monthly insert_overwrite is safe per partition
   (docs/lessons/backfill-order-cumulative.md).
+- **Value flows at transaction time, stocks as of the reporting date.** A flow's
+  `amount_usd` is priced when it happened (`int_celo_gpay_activity`) and is correct.
+  A balance must be the native running total valued at that date's price
+  (`fct_celo_gpay_balances_safe_daily`, mark-to-market via ASOF join). Never build a
+  balance by accumulating flow-USD: that is a cost basis, it drifts without bound for
+  a volatile token, and it can go negative while the card still holds the asset. Only
+  USDT/USDC have ever moved, so the two differ by ~0.02% today — the whitelisted RWA
+  token XAUt0 is what makes the distinction load-bearing.
+- **Never scope a headline balance with a hardcoded symbol list.** Partition on
+  `token_class` from `celo_tokens_whitelist` (`fct_celo_gpay_snapshots`: STABLECOIN =
+  TotalBalance = spendable float, RWA = RewardBalance). A symbol list silently drops
+  the first newly-transacting token instead of failing. Distinguish "no position"
+  (0) from "position held but unpriced" (NULL) — the price hub does not forward-fill,
+  so a $0 tile would be a plausible-looking lie; the ASOF carry-forward is uncapped
+  and the two warn tests on `fct_celo_gpay_balances_safe_daily` are what make it safe.
+- **Celo tests belong in the model's own `schema.yml`, never in `tests/`.** That
+  folder is reserved for platform-wide invariants; a per-project assertion goes next to
+  its model as a `dbt_utils.expression_is_true` (use `config.where` to scope it, as the
+  two valuation tests on `fct_celo_gpay_balances_safe_daily` do). The mastercopy-drift
+  check is deliberately not a test at all — see the manual probe above.
 - **`join_use_nulls` is 0 by default.** An unmatched LEFT JOIN row yields `''`
   for a String and `0` for a number, so `right.col IS NULL` never fires and
   `IS NOT NULL` is always true. This has already produced one inert test and one

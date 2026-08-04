@@ -49,10 +49,11 @@ GROUP BY receiver ORDER BY count() DESC
 ```
 
 The cheap proxy signal is mastercopy drift: a new card generation has now twice
-coincided with a new mastercopy, so `assert_celo_gpay_roles_mastercopy_known` fires
-first and costs 0.2s. It is a leading indicator, NOT a substitute — both known Celo
-generations used allowlisted mastercopies, so that test would not have caught this
-instance on its own.
+coincided with a new mastercopy, so the fingerprint ⊆ mastercopy probe in
+`models/celo/AGENTS.md` is a useful first look. It is a leading indicator, NOT a
+substitute — both known Celo generations used allowlisted mastercopies, so that probe
+would not have caught this instance on its own. The settlement-receiver query above is
+the only detection that actually works.
 
 ## Safe remediation
 Do NOT simply widen the bridge filter to `IN (bridge1, bridge2)`. The two Celo
@@ -69,9 +70,18 @@ addresses — ask, do not infer, and treat the answer as the seed rather than a
 confirmation of what you already modelled.
 
 ## Enforcement
-None yet. `assert_celo_gpay_roles_mastercopy_known` is the partial leading indicator
-described above. `models/celo/AGENTS.md` carries the rule that any Celo completeness
-check must start from the set of settlement contracts, never a single address.
+None, by decision. There is no automated gate for this class on Celo: a new settlement
+contract or mastercopy is legitimate operator activity, not a data defect, so it does
+not belong in a build-breaking test — and a dbt test cannot see the thing that matters
+here anyway (a bridge the model has never heard of). A predecessor test asserting the
+inverted direction was removed for exactly this reason.
+
+Enforcement is therefore documentary and must stay that way to be useful:
+`models/celo/AGENTS.md` carries the rule that any Celo completeness check starts from
+the set of settlement contracts, never a single address, plus the manual mastercopy
+drift probe. This hazard is registered on `int_celo_gpay_safe_registry`, so it surfaces
+via `get_dbt_change_context` to anyone editing the card universe. Re-run the detection
+query above by hand before trusting any Celo GP growth, cohort, or churn figure.
 
 ## OPEN DECISION (as of 2026-08-04)
 `int_celo_gpay_safe_registry` is knowingly incomplete and every Celo GP figure is

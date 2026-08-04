@@ -34,11 +34,13 @@
 --             proxies belong to unrelated projects: this mastercopy is SHARED,
 --             which is exactly why this model can never become an inclusion
 --             source. The GP filter is the intersection with
---             int_celo_gpay_roles_modules, applied by the consuming tests.
+--             int_celo_gpay_roles_modules, applied by every consumer.
 -- With both included the allowlist covers 100% of the fingerprint Safes; with only
 -- roles_mc it silently missed that 51-card pilot cohort. Every GP Roles proxy so far
 -- was created through this factory, so a fingerprint-only card now means a THIRD
--- mastercopy to add here — assert_celo_gpay_roles_mastercopy_known is that signal.
+-- mastercopy to add here. That drift check is a MANUAL probe (query in
+-- models/celo/AGENTS.md), not a dbt test — a new mastercopy is legitimate GP activity
+-- rather than a data defect. Run it before trusting a Celo card count.
 --
 -- Consequence of the shared mastercopy: a row count here is NOT a GP card count
 -- (3491 rows on 2026-08-04, ~301 of them other projects' proxies). Anything that
