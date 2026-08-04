@@ -384,6 +384,39 @@ seeds:
         start_blocktime: "String"
         discovery_source: "String"
 
+    # HOPR mixnet / GnosisVPN. Two networks live on Gnosis Chain simultaneously:
+    # `dufour` (legacy production, hoprd v2/v3) and `jura` (v4, the network the
+    # GnosisVPN client defaults to). The same logical events have DIFFERENT
+    # topic0s across the two deployments, so `network` must stay on the grain
+    # and ABIs must resolve per contract address, never per protocol.
+    contracts_hopr_registry_static:
+      +engine: MergeTree()
+      +order_by: [address]
+      +column_types:
+        address: "String"
+        network: "LowCardinality(String)"
+        contract_type: "String"
+        abi_source_address: "String"
+        is_dynamic: "UInt8"
+        start_blocktime: "String"
+        discovery_source: "String"
+
+    # Node-level classification. Sourced from HOPR's own repos, not inferred:
+    # cover_traffic from ct-research core_prod_config.yaml, gnosisvpn_exit from
+    # gnosis_vpn config-jura.toml. Anything absent here is deliberately left
+    # unclassified rather than guessed.
+    hopr_node_registry:
+      +engine: MergeTree()
+      +order_by: [network, node_address]
+      +column_types:
+        node_address: "String"
+        network: "LowCardinality(String)"
+        node_class: "LowCardinality(String)"
+        label: "String"
+        location_city: "String"
+        country_code: "LowCardinality(String)"
+        source: "String"
+
     contracts_factory_registry:
       +engine: MergeTree()
       +order_by: [factory_address, creation_event_name]
