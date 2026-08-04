@@ -87,6 +87,23 @@ sources:
           directory's likes_given total is captured. The ingestor logs its capture
           rate every run rather than leaving the gap silent.
         loaded_at_field: ingested_at
+      - name: forum_polls
+        description: >
+          Discourse poll options, one row per (post, poll, option) with its vote
+          count. 189 polls across 180 topics back to 2020-11-02, 152 in GIP
+          topics, and 75 carrying an "In Favour"/"Against" temperature check --
+          the only place in the corpus where one-person-one-vote community
+          sentiment is recorded on a question that later gets a token-weighted
+          Snapshot vote.
+          Three traps, all load-bearing: option_votes = -1 means WITHHELD (results
+          policy hides counts) and 0 is a real zero; close_at is a SCHEDULE never
+          reconciled with reality (72 of 106 open polls have a lapsed close_at, 34
+          have none, none are future -- so "close_at < now()" reports every poll
+          closed), `status` is the only open/closed signal; option_id is an md5 of
+          the option TEXT so it recurs across unrelated topics and identifies an
+          option only WITHIN a poll.
+          The poll row carries no created_at -- date a poll by its host post.
+        loaded_at_field: ingested_at
       - name: snapshot_delegations
         description: >
           DelegateRegistry SetDelegate/ClearDelegate events for gnosis.eth on

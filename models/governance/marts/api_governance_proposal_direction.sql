@@ -69,7 +69,9 @@ SELECT
     (a.decisive_voters > 0)                     AS directional,
 
     a.voters,
-    a.total_vp,
+    -- Aliased because total_vp also exists on int_governance_proposals; unaliased,
+    -- ClickHouse emits the qualified name "a.total_vp" as the column name.
+    a.total_vp                                  AS total_vp,
     a.for_voters,
     a.against_voters,
     a.abstain_voters,

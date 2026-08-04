@@ -47,7 +47,9 @@ WITH posts AS (
 
 SELECT
     po.id                       AS post_id,
-    po.topic_id,
+    -- Aliased because topic_id also exists on the links relation; unaliased, ClickHouse
+    -- emits the qualified name "po.topic_id" as the column name.
+    po.topic_id                 AS topic_id,
     po.post_number,
     po.user_id,
     po.username,

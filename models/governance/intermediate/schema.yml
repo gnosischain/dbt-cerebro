@@ -421,6 +421,49 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: int_governance_poll_sentiment
+    description: >
+      One row per (post, poll): a forum poll collapsed into a for/against tally,
+      with the timing of the post hosting it. The only record of
+      one-person-one-vote community sentiment on questions that later get a
+      token-weighted Snapshot vote -- the missing middle of the
+      discussion -> signal -> vote funnel.
+      TIMING COMES FROM THE HOST POST: the poll row has no created_at (close_at is
+      a schedule, ingested_at is first-seen), so it is dated by its host post via
+      an INNER JOIN on post_id -- coverage verified 184 of 184. An undated poll
+      must not silently acquire a phase downstream.
+      poll_against_share is NULL rather than 0 when nothing decisive was cast or
+      any count was withheld; a hidden live poll reading as 0% opposition would be
+      worse than no number.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: poll_name
+        data_type: String
+        tests: [not_null]
+      - name: is_temperature_check
+        description: >
+          Poll offers BOTH a favour and an against option. A one-sided poll or a
+          multi-option selection ballot is not a for/against check and its
+          against_share would be meaningless.
+        data_type: Bool
+      - name: poll_against_share
+        description: against / (favour + against). NULL when withheld or nothing decisive.
+        data_type: Nullable(Float64)
+      - name: has_withheld_counts
+        description: Any option's count hidden by the poll's results policy.
+        data_type: Bool
+      - name: poll_posted_at
+        description: created_at of the HOST POST -- the poll itself carries no timestamp.
+        data_type: DateTime
+      - name: decisive_votes
+        description: favour + against. Runs roughly 10-65; filter on it before ranking.
+        data_type: Nullable(Int64)
+    meta:
+      owner: analytics_team
+      authoritative: false
       agent:
         grain: [snapshot_date, entity_kind, entity_id, metric]
         semantics: snapshot

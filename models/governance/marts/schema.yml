@@ -507,3 +507,67 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: api_governance_poll_vs_vote
+    description: >
+      The forum's headcount verdict against the token verdict on the SAME question.
+      The only comparison in the layer between two genuinely SEPARATE populations --
+      a forum temperature check (one person one vote, no token needed) and the
+      Snapshot ballot that followed. head_minus_weight_against on
+      api_governance_proposal_direction compares headcount to capital within ONE
+      ballot, i.e. the same voters weighted twice; here the voters are different people.
+      It sometimes reverses outright: GIP-120 forum 58% against -> Snapshot 0.05%
+      against by VP; GIP-128 37% -> 0.01%; GIP-119 the opposite at 13% -> 98.7%.
+      A blended contestation score would hide that those are opposite phenomena.
+      FILTER is_pre_vote_check for the honest subset (130 of 142 pairs). 2 polls ran
+      during voting and 10 AFTER the ballot closed -- a post-close poll is a
+      retrospective, not a temperature check. Those rows are kept with their phase
+      exposed so the exclusion is visible rather than silent.
+      GRAIN (poll, proposal), MANY-TO-MANY both ways -- a topic hosts several named
+      polls and links to several proposals when a GIP is re-balloted, so GIP-120
+      legitimately appears more than once. Never aggregate without deciding which
+      poll you mean. Poll totals are small (roughly 10-65 votes): directional, not precise.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: proposal_created_at
+        description: Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: poll_name
+        description: Exposed because the grain is many-to-many; part of the poll's identity.
+        data_type: String
+      - name: poll_phase
+        description: >
+          Where the poll sits in this proposal's lifecycle. 'pre_discussion' is the
+          only phase that makes it a genuine temperature check.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: is_pre_vote_check
+        description: is_temperature_check AND poll_phase = 'pre_discussion'. The honest subset.
+        data_type: Bool
+      - name: poll_against_share
+        data_type: Nullable(Float64)
+      - name: vote_against_share_by_vp
+        data_type: Nullable(Float64)
+      - name: poll_minus_vote_vp
+        description: >
+          Forum headcount minus token weight. POSITIVE = the community was more
+          opposed than the capital that decided it; NEGATIVE = capital more opposed
+          than the community.
+        data_type: Nullable(Float64)
+      - name: verdicts_disagree
+        description: The two populations landed on opposite sides of 50%. The headline cases.
+        data_type: Bool
+      - name: as_of_date
+        description: >
+          Freshness anchor for the whole view, NOT a per-row date. Taken from the
+          poll side, since that is what this endpoint adds. Polls dedup at block
+          level, so an unchanged poll writes nothing and this can sit still while
+          the forum moves.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false

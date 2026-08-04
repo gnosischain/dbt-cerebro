@@ -250,3 +250,42 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
+
+  - name: stg_governance__forum_polls
+    description: >
+      One row per (post, poll, option) with its vote count and a direction.
+      option_votes = -1 (WITHHELD, because the poll's results policy hides counts)
+      is mapped to NULL so a sum cannot read a hidden live temperature check as
+      unanimous-nothing; genuine zeros survive as 0. Direction reuses
+      classify_choice_polarity -- the same macro that labels Snapshot choices, so
+      a poll's "In Favour" and a ballot's "For" mean the same thing. option_html
+      is rendered HTML, so tags are stripped before matching. close_at stays
+      Nullable and is a schedule, not evidence of closure.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: poll_name
+        description: A post can host several named polls ("poll", "poll2").
+        data_type: String
+        tests: [not_null]
+      - name: option_id
+        description: >
+          Discourse md5 of the option TEXT -- NOT globally unique. The same
+          "In Favour" id recurs across unrelated topics, so it identifies an
+          option only within a poll and must never be joined on alone.
+        data_type: String
+      - name: option_polarity
+        description: Direction of the option, from the shared classify_choice_polarity macro.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['for', 'against', 'abstain', 'other']
+      - name: option_votes
+        description: NULL when withheld by the poll's results policy; 0 is a real zero.
+        data_type: Nullable(Int32)
+      - name: votes_withheld
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
