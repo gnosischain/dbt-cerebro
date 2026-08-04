@@ -40,6 +40,10 @@
 -- was created through this factory, so a fingerprint-only card now means a THIRD
 -- mastercopy to add here — assert_celo_gpay_roles_mastercopy_known is that signal.
 --
+-- Consequence of the shared mastercopy: a row count here is NOT a GP card count
+-- (3491 rows on 2026-08-04, ~301 of them other projects' proxies). Anything that
+-- aggregates this model must first intersect with int_celo_gpay_roles_modules.
+--
 -- Raw-slice ModuleProxyCreation(address indexed proxy, address indexed masterCopy)
 -- => topic1 = proxy, topic2 = masterCopy. Bounded by card count; full rebuild.
 

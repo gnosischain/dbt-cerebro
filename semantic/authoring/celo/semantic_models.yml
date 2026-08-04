@@ -64,32 +64,14 @@ semantic_models:
         - celo gp roles module proxies
         - zodiac roles modules on celo
 
-- name: celo_gpay_module_mastercopies
-  model: ref('int_celo_gpay_module_mastercopies')
-  defaults:
-    agg_time_dimension: created_at
-  dimensions:
-  - name: created_at
-    type: time
-    expr: created_at
-    type_params:
-      time_granularity: day
-  - name: module_type
-    type: categorical
-    expr: module_type
-  measures:
-  - name: celo_gpay_module_mastercopies__proxy_count
-    agg: count
-    expr: proxy_address
-  config:
-    meta:
-      cerebro:
-        owner: analytics_team
-        quality_tier: candidate
-        grain: day
-        question_synonyms:
-        - celo gp module mastercopy proxies
-        - roles and delay proxy cross-check
+# int_celo_gpay_module_mastercopies is deliberately NOT exposed as a semantic model.
+# The roles_pilot mastercopy is shared with unrelated projects, so ~301 of its 3491
+# rows are other projects' proxies: any count() measure over it answers a GP question
+# with a non-GP number, and no dimension available here can correct that (the fix is
+# an intersection with int_celo_gpay_roles_modules). It is an internal identity
+# cross-check consumed by assert_celo_gpay_roles_mastercopy_known, not a business
+# entity. Do not re-add a proxy_count measure — and if the bridge/generation question
+# is ever resolved, expose the GP-only derivation instead of this raw table.
 
 - name: celo_gpay_safe_events_native
   model: ref('int_celo_gpay_safe_events_native')

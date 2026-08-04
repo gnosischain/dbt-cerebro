@@ -548,19 +548,24 @@ models:
     be a subset of the bridge-fingerprint universe (int_celo_gpay_safe_registry).
 
     Two Roles mastercopies are in play and both are needed for full coverage
-    (verified 2026-08-03): roles_patched (0x732b9e9f…, current, source of every
-    card since 2026-06-10, grows with issuance) and roles_pilot (0x9646fdad…, a
-    CLOSED cohort used 2026-01-15..2026-06-12 for the 51 pre-launch pilot cards).
-    roles_pilot is SHARED with unrelated projects — only 51 of its 587 proxies are
-    GP — which is the structural reason this model can never become an inclusion
-    source. With both, the allowlist covers 100% of the fingerprint Safes; with
-    roles_patched alone it silently missed the pilot cohort.
+    (verified 2026-08-04): roles_patched (0x732b9e9f…, current, source of every
+    card since 2026-06-10, grows with issuance, 1452 proxies) and roles_pilot
+    (0x9646fdad…, a CLOSED cohort used 2026-01-15..2026-06-12, 587 proxies).
+    With both, the allowlist covers 100% of the fingerprint Safes; with
+    roles_patched alone it silently missed the 51-card pilot cohort.
 
-    Consumed by two tests: assert_celo_gpay_identity_reconciled (mastercopy-derived
-    Safes are all found by the fingerprint — GP-exclusive mastercopies only, so the
-    shared one cannot raise false positives) and assert_celo_gpay_roles_mastercopy_known
-    (every GP Roles proxy traces to a mastercopy here — the drift signal that a
-    third mastercopy needs adding).
+    DO NOT AGGREGATE THIS TABLE AS A GP CARD COUNT. roles_pilot is SHARED with
+    unrelated projects, so of its 587 proxies only 286 are GP (51 wired the current
+    settlement contract and are visible to int_celo_gpay_roles_modules; 235 wired the
+    earlier 0xc4df5cac… bridge and are the unmodelled generation). The remaining ~301
+    belong to other projects entirely. That is the structural reason this model can
+    never become an inclusion source, and why row counts here are not card counts.
+    The GP subset is always the intersection with int_celo_gpay_roles_modules.
+
+    Consumed by one test, assert_celo_gpay_roles_mastercopy_known: every GP Roles
+    proxy must trace to a mastercopy here. It is the drift signal that GP began
+    issuing from a mastercopy this repo does not know — which has twice coincided
+    with a new settlement contract, so a failure means re-derive the card universe.
   columns:
   - name: proxy_address
     description: The GP module proxy address (0x-prefixed, lowercase).

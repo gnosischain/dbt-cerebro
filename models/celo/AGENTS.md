@@ -51,9 +51,15 @@ Read with root AGENTS.md.
   cross-check, never an inclusion source**. GP provisions Roles proxies from more
   than one mastercopy, and at least one of those mastercopies is shared with
   unrelated projects, so it cannot be trusted to add cards — only to confirm that
-  the fingerprint has not developed a gap. `tests/assert_celo_gpay_identity_reconciled.sql`
-  asserts mastercopy ⊆ fingerprint. When a new mastercopy appears, add it there
-  and the coverage gap closes; do not widen the registry.
+  the fingerprint has not developed a gap. Of its 3491 rows, ~301 are proxies of
+  unrelated projects that happen to share the `roles_pilot` mastercopy; the GP subset
+  is the intersection with `int_celo_gpay_roles_modules`, which the consuming test
+  applies. Never aggregate this table as if every row were a GP card.
+  `tests/assert_celo_gpay_roles_mastercopy_known.sql` asserts fingerprint ⊆
+  mastercopy, i.e. it fires when GP starts issuing from a mastercopy this repo does
+  not know. Treat that as a prompt to re-derive the card universe (a new mastercopy
+  generation has twice coincided with a new settlement contract), not merely to
+  append an address; do not widen the registry.
 - Funnel stages are three different populations and are routinely confused:
   issued (registry) > funded (received any inbound token) > activated (made a
   payment). Roughly 1490 / 815 / 476 on 2026-08-03, with issuance running ~10
