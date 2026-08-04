@@ -1,0 +1,162 @@
+version: 2
+
+models:
+  - name: int_hopr_channels_events
+    description: >
+      Normalized HOPR payment-channel events across both live networks. Reconciles
+      three differences between the deployments: (1) dufour emits typed scalars
+      while jura emits the raw packed storage word (balance uint96 | ticketIndex
+      uint48 | closureTime uint32 | epoch uint24 | status uint8, low bits first),
+      unpacked here and verified against blokli's API to the exact wei;
+      (2) dufour's ChannelOpened carries no channelId, so it is derived as
+      keccak256(source || destination) -- verified against 52/52 real events;
+      (3) source/destination appear only on ChannelOpened, so they are filled
+      across each (network, channel_id) partition, which is sound because
+      channel_id is a pure function of the endpoint pair and therefore invariant
+      across channel reopens.
+      Materialized as a table rather than an incremental append: the expensive
+      log scan already happened upstream, so a full rebuild is cheap and avoids
+      the append-watermark and append-over-populated-partition hazards.
+    columns:
+      - name: network
+        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: channel_id
+        description: >
+          Channel identifier, keccak256(abi.encodePacked(source, destination)).
+          Derived for dufour ChannelOpened, taken from the event elsewhere.
+        data_type: String
+        tests: [not_null]
+      - name: event_name
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ChannelOpened', 'ChannelBalanceIncreased',
+                       'ChannelBalanceDecreased', 'TicketRedeemed',
+                       'OutgoingChannelClosureInitiated', 'ChannelClosed']
+      - name: balance_wei
+        description: >
+          Channel balance AFTER the event, in wei. NULL where the event carries no
+          balance observation (dufour ChannelOpened and ChannelClosed) -- must stay
+          NULL so the delta window does not diff against a fabricated zero.
+        data_type: Nullable(UInt256)
+      - name: redeemed_wei
+        description: >
+          Value paid out to the destination node on a ticket redemption, derived as
+          the drop in balance on ChannelBalanceDecreased. Scoped to that event
+          because a channel closing also drops the balance but returns funds to
+          the source instead.
+        data_type: Nullable(UInt256)
+      - name: ticket_index
+        description: >
+          Channel's ticket index after the event. NOT a ticket count -- it advances
+          by a ticket's index RANGE, so jura channels reach millions within a week.
+          Never aggregate as a volume.
+        data_type: Nullable(UInt64)
+      - name: channel_status
+        description: Decoded ChannelStatus; 'unknown' on dufour, which does not emit it
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['CLOSED', 'OPEN', 'PENDING_TO_CLOSE', 'unknown', 'unexpected']
+      - name: packing_overflow_check
+        description: >
+          Guard on the jura bit layout itself: the packed struct occupies bits
+          0..207, so anything at bit 208 or above must be zero. A non-zero value
+          means the Channel struct changed and the unpacking offsets are stale.
+        data_type: Nullable(UInt256)
+        tests:
+          - accepted_values:
+              values: [0]
+              config:
+                where: "packing_overflow_check IS NOT NULL"
+
+  - name: fct_hopr_network_daily
+    description: >
+      Daily HOPR channel activity per network, split by is_cover_traffic. THE SPLIT
+      IS THE POINT: on dufour, 5,644 of 5,676 ChannelOpened events in July 2026
+      (99.44%) came from the ten cover-traffic nodes HOPR publishes in ct-research,
+      and the config's 48-hour channel max_age is what generates almost all
+      observed churn. Cover traffic is HOPR paying node runners in proportion to
+      stake -- a staking rewards programme -- so summing across the split would
+      present a rewards schedule as user demand. jura carries no cover traffic.
+    columns:
+      - name: network
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: activity_date
+        data_type: Date
+        tests: [not_null]
+      - name: is_cover_traffic
+        description: 1 where the channel source is a known HOPR cover-traffic node
+        data_type: UInt8
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+      - name: redeemed_wxhopr
+        description: Value redeemed by relayers, reconstructed from balance diffs
+        data_type: Decimal(38, 18)
+      - name: tickets_redeemed
+        data_type: UInt64
+        tests: [not_null]
+
+  - name: api_gnosisvpn_exit_activity_daily
+    description: >
+      GnosisVPN traffic by exit node and country, per day -- the one HOPR series
+      that is about product demand rather than protocol plumbing. Works because
+      the exit-node roster is committed to git (gnosis/gnosis_vpn
+      linux/resources/config-jura.toml) with an address, city and country per
+      destination. Scoped to jura, which carries no cover traffic.
+      Two caveats consumers must carry: tickets are probabilistic payments, so
+      they are proportional to relayed volume in expectation but are NOT a
+      bandwidth measurement (real bytes live only in node-local Prometheus
+      metrics); and channel counts track how many clients are running, not usage,
+      because the client auto-maintains channels toward target_open_channels.
+      The city/country labels are product metadata, not verified geography -- the
+      announced IPs for these nodes cluster in one 185.9.1.0/24 block plus Google
+      Cloud ranges.
+    columns:
+      - name: activity_date
+        data_type: Date
+        tests: [not_null]
+      - name: country_code
+        description: ISO-3166 alpha-2 of the exit node's advertised location
+        data_type: LowCardinality(String)
+        tests: [not_null]
+      - name: tickets_redeemed
+        description: Redeemed tickets on channels terminating at this exit
+        data_type: UInt64
+        tests: [not_null]
+      - name: unique_counterparty_nodes
+        description: >
+          Distinct nodes funding channels toward this exit. An upper bound on
+          running clients, not a user count -- one operator can run many nodes.
+        data_type: UInt64
+
+seeds:
+  - name: hopr_node_registry
+    description: >
+      Node classification, sourced from HOPR's own repos rather than inferred.
+      cover_traffic comes from ct-research ct-app/.configs/core_prod_config.yaml
+      (sessions.green_destinations + blue_destinations); gnosisvpn_exit from
+      gnosis_vpn linux/resources/config-jura.toml, which also supplies city and
+      country. Nodes absent from this seed are deliberately left unclassified
+      rather than guessed at.
+    columns:
+      - name: node_address
+        description: Node chain key, lowercased with 0x prefix
+        tests: [not_null, unique]
+      - name: node_class
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cover_traffic', 'gnosisvpn_exit']

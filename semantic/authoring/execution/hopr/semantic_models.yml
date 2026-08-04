@@ -1,0 +1,187 @@
+# HOPR mixnet / GnosisVPN semantic models.
+#
+# Hand-corrected after scaffolding. The generated defaults turned every numeric
+# column into a sum(), which produced three actively misleading measures:
+#   - sum(is_cover_traffic): a 0/1 flag summed into a meaningless number. It is a
+#     DIMENSION, and the cover-traffic split is the entire point of the fact table
+#     (~100% of dufour ticket value is HOPR's own cover traffic, i.e. a staking
+#     rewards programme rather than user demand). It is now a dimension.
+#   - sum(ticket_index): ticket_index advances by a ticket's index RANGE, not one
+#     per ticket, so it is not a count and must never be aggregated as a volume.
+#     Removed.
+#   - sum(balance_wei) / sum(packing_overflow_check): balance is per-event state,
+#     not a flow, and packing_overflow_check is an internal integrity guard.
+#     Neither is a metric. Removed.
+# Distinct counts are exposed with agg: max, never sum -- summing a per-day
+# uniqExact across days double-counts.
+
+semantic_models:
+- name: gnosisvpn_exit_activity_daily
+  description: >
+    GnosisVPN traffic by exit node and country, per day. Tickets are probabilistic
+    payments, so they are proportional to relayed volume in expectation but are NOT
+    a bandwidth measurement. Channel counts track how many clients are running, not
+    how much they used. City/country are the product's own labels, not verified
+    geography.
+  model: ref('api_gnosisvpn_exit_activity_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosisvpn exit activity
+        - gnosis vpn traffic by country
+        - vpn exit node usage
+        grain: day
+  defaults:
+    agg_time_dimension: activity_date
+  dimensions:
+  - name: activity_date
+    type: time
+    expr: activity_date
+    type_params:
+      time_granularity: day
+  - name: country_code
+    type: categorical
+    expr: country_code
+  - name: location_city
+    type: categorical
+    expr: location_city
+  - name: exit_label
+    type: categorical
+    expr: exit_label
+  measures:
+  - name: gnosisvpn_tickets_redeemed
+    description: Redeemed tickets on channels terminating at this exit node.
+    agg: sum
+    expr: tickets_redeemed
+  - name: gnosisvpn_redeemed_wxhopr
+    description: wxHOPR paid out to this exit, reconstructed from channel balance diffs.
+    agg: sum
+    expr: redeemed_wxhopr
+  - name: gnosisvpn_channels_opened
+    description: Channels opened toward this exit. A running-client proxy, not usage.
+    agg: sum
+    expr: channels_opened
+  - name: gnosisvpn_peak_counterparty_nodes
+    description: >
+      Peak distinct counterparty nodes funding channels to this exit. agg is max,
+      not sum: the underlying value is a per-day distinct count and summing it
+      across days would double-count. An upper bound on running clients, not users.
+    agg: max
+    expr: unique_counterparty_nodes
+
+- name: hopr_channels_events
+  description: >
+    Event-grain HOPR payment-channel activity across both live networks (dufour and
+    jura). Neither network emits an amount, so redeemed value is reconstructed from
+    per-channel balance diffs.
+  model: ref('int_hopr_channels_events')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr channel events
+        - hopr ticket redemptions
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  - name: event_name
+    type: categorical
+    expr: event_name
+  - name: channel_status
+    type: categorical
+    expr: channel_status
+  measures:
+  - name: hopr_channel_events
+    description: Count of channel lifecycle events.
+    agg: count
+    expr: 1
+  - name: hopr_redeemed_wei
+    description: >
+      Value paid out to destination nodes on ticket redemption, in wei. Prefer the
+      wxHOPR measures on hopr_network_daily for reporting.
+    agg: sum
+    expr: redeemed_wei
+  - name: hopr_distinct_channels
+    description: Distinct channels touched. Non-additive; do not sum across grains.
+    agg: count_distinct
+    expr: channel_id
+
+- name: hopr_network_daily
+  description: >
+    Daily HOPR channel activity per network, split by whether the traffic is HOPR's
+    own cover traffic. The split is essential: on dufour ~100% of ticket value in
+    every year since 2023 is cover traffic, which pays node runners in proportion to
+    stake. Reporting the two together presents a rewards schedule as user demand.
+  model: ref('fct_hopr_network_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr network activity
+        - hopr cover traffic share
+        - hopr tickets redeemed daily
+        grain: day
+  defaults:
+    agg_time_dimension: activity_date
+  dimensions:
+  - name: activity_date
+    type: time
+    expr: activity_date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  - name: is_cover_traffic
+    description: >
+      1 where the channel source is a known HOPR cover-traffic node. A DIMENSION,
+      never a measure - always split or filter on it before quoting a HOPR usage
+      number.
+    type: categorical
+    expr: is_cover_traffic
+  measures:
+  - name: hopr_tickets_redeemed
+    description: Ticket redemptions. The trustworthy volume metric; time-stable.
+    agg: sum
+    expr: tickets_redeemed
+  - name: hopr_redeemed_wxhopr
+    description: wxHOPR paid out to relayers, reconstructed from channel balance diffs.
+    agg: sum
+    expr: redeemed_wxhopr
+  - name: hopr_funded_wxhopr
+    description: wxHOPR pushed into channels.
+    agg: sum
+    expr: funded_wxhopr
+  - name: hopr_channels_opened
+    description: >
+      Channels opened. Composition shifts over time (cover traffic was 27.9% of
+      dufour opens in 2023 vs 98% in 2026), so prefer tickets for trend claims.
+    agg: sum
+    expr: channels_opened
+  - name: hopr_channels_closed
+    description: Channels closed.
+    agg: sum
+    expr: channels_closed
+  - name: hopr_peak_active_channels
+    description: >
+      Peak channels seen in a day. agg is max, not sum: the underlying value is a
+      per-day distinct count.
+    agg: max
+    expr: active_channels
+
+metrics: []

@@ -962,6 +962,59 @@ semantic_models:
         - forum topic views over time
         - post reads snapshots
 
+- name: governance_poll_vs_vote
+  model: ref('api_governance_poll_vs_vote')
+  defaults:
+    agg_time_dimension: proposal_created_at
+  dimensions:
+  - name: proposal_created_at
+    type: time
+    expr: proposal_created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: poll_phase
+    type: categorical
+    expr: poll_phase
+  - name: is_pre_vote_check
+    type: categorical
+    expr: is_pre_vote_check
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_poll_vs_vote__poll_against_share_value
+    agg: average
+    expr: poll_against_share
+  - name: governance_poll_vs_vote__gap_value
+    agg: average
+    expr: poll_minus_vote_vp
+  - name: governance_poll_vs_vote__disagreements
+    agg: sum
+    expr: verdicts_disagree
+  - name: governance_poll_vs_vote__pairs
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - did the forum agree with the token vote
+        - community versus token holders
+        - temperature check versus snapshot result
+        - proposals the community voted down but passed
+
 # NOT registered here, deliberately: api_governance_vote_trajectory.
 # It is a per-proposal drill-down (one row per proposal x hour-since-open), and its
 # cumulative-share columns are only meaningful for a SINGLE proposal. Any aggregate the
@@ -1432,6 +1485,54 @@ metrics:
         - how many questions were asked
         - discussion friction
         - question density
+
+- name: governance_poll_vs_vote_gap
+  label: Forum Poll vs Token Vote (gap)
+  description: >
+    Forum temperature-check against-share MINUS the Snapshot against-share by voting
+    power, per (poll, proposal). POSITIVE means the community was more opposed than the
+    capital that actually decided it; NEGATIVE means capital was more opposed than the
+    community. Unlike governance_head_vs_weight_divergence -- which weights the SAME
+    ballot two ways -- this compares two genuinely different populations answering the
+    same question, so it is the only measure of community-versus-tokenholder disagreement.
+    ALWAYS filter is_pre_vote_check: 10 polls ran after the ballot closed and are
+    retrospectives, not temperature checks. Read per proposal; poll totals are small
+    (roughly 10-65 votes) so this is directional, not precise -- hence candidate.
+  type: simple
+  type_params:
+    measure: governance_poll_vs_vote__gap_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - community versus token holders
+        - did the forum agree with the vote
+        - temperature check versus snapshot result
+
+- name: governance_verdict_disagreements
+  label: Proposals Where Forum and Token Vote Disagreed
+  description: >
+    Count of (poll, proposal) pairs where the forum temperature check and the
+    token-weighted Snapshot vote landed on OPPOSITE sides of 50%. The headline cases:
+    GIP-120 (forum 58% against, Snapshot 0.05% against by voting power) and GIP-128
+    (37% versus 0.01%) were voted down by the community and passed nearly unopposed by
+    token holders; GIP-119 ran the other way. Filter is_pre_vote_check. Grain is
+    (poll, proposal) and is many-to-many, so a re-balloted GIP can contribute more than
+    one pair -- this counts pairs, not proposals.
+  type: simple
+  type_params:
+    measure: governance_poll_vs_vote__disagreements
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - proposals the community voted down but passed
+        - where did forum and token vote disagree
+        - community overruled by token holders
 
 - name: governance_median_vp_per_proposal
   label: Median Voting Power per GIP (monthly)

@@ -1,0 +1,783 @@
+version: 2
+
+models:
+- name: contracts_hopr_registry
+  description: >
+    Address / ABI / network resolution point for every HOPR model. Two HOPR
+    networks run on Gnosis Chain simultaneously - dufour (legacy production,
+    hoprd v2/v3) and jura (v4, the network the GnosisVPN client defaults to,
+    live since block 47415377 / 2026-07-27). The same logical event has a
+    different topic0 on each, so ABIs must resolve per contract address.
+    Addresses come from hoprnet/contracts ethereum/bindings/contracts-addresses.json;
+    every start_blocktime is the contract's own creation date from
+    execution.contracts. The pre-jura staging HoprChannels
+    0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57 is deliberately excluded.
+  meta:
+    owner: analytics_team
+    authoritative: false
+  columns:
+  - name: address
+    description: Contract address, lowercased with 0x prefix.
+    data_type: String
+    tests: [not_null, unique]
+  - name: network
+    description: HOPR network this deployment belongs to (dufour or jura).
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['dufour', 'jura']
+  - name: contract_type
+    description: Logical contract type, used as the decode_logs contract_type_filter.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['Channels', 'Announcements', 'NodeStakeFactory', 'NodeSafeRegistry',
+                 'NodeSafeMigration', 'TicketPriceOracle', 'WinningProbabilityOracle',
+                 'NetworkRegistry']
+  - name: abi_source_address
+    description: >
+      Address whose event_signatures rows carry this contract's ABI. For proxies
+      this is the PROXY's own address, not the implementation:
+      fetch_abi_to_csv.py stores the implementation's ABI under the proxy's
+      contract_address, so signature_generator keys the rows on the proxy. Only
+      point this at a different address when the ABI genuinely lives under
+      another contract (shared runtime ABIs, Safe singletons).
+    data_type: String
+    tests: [not_null]
+  - name: is_dynamic
+    description: >
+      1 if the contract was discovered from a factory, 0 if statically declared.
+      All HOPR rows are static.
+    data_type: UInt8
+  - name: start_blocktime
+    description: >
+      Contract creation date, taken from execution.contracts rather than estimated
+      from a block delta.
+    data_type: String
+  - name: discovery_source
+    description: Provenance of the row, for example hoprnet_contracts_addresses_json.
+    data_type: String
+
+- name: contracts_hopr_Channels_events
+  description: >
+    Decoded HoprChannels events for both live networks (dufour and jura). The ABI is
+    resolved per contract address, which is what makes the dual-deployment decode
+    correct: the two networks emit the same logical events under different topic0s,
+    so a single-ABI decode would silently drop one of them. All 14 topic0s were
+    verified against keccak of their canonical signatures. Neither network emits an
+    amount - every balance-bearing event reports the NEW balance, so value requires
+    a per-channel diff (see int_hopr_channels_events). HEAVY: ~3.0M rows decoded
+    from the full execution.logs history since 2023-08-29.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: ticket-redemption-pairs-with-balance-decrease
+        text: >-
+          A ticket redemption always moves value out of the channel, so within
+          a (network, day) countIf(event_name='TicketRedeemed') must equal
+          countIf(event_name='ChannelBalanceDecreased'). Verified exactly on
+          both networks (dufour 1,121,123 each; jura 2,201 each). This is the
+          cheapest guard against the dual-deployment decode half-failing, and
+          is enforced by tests/hopr_channels_ticket_redemption_invariant.sql.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'no undecoded rows: countIf(event_name = '''') == 0'
+      - 'both deployments decoded: uniqExact(contract_address) == 2'
+      - 'ticket pairing: countIf(event_name = ''TicketRedeemed'') == countIf(event_name = ''ChannelBalanceDecreased'')'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params. dufour carries typed scalars (newBalance
+      uint96, newTicketIndex uint48, closureTime uint32); jura carries the whole
+      packed storage word as `channel` bytes32.
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_Announcements_events
+  description: >
+    Node identity events. AddressAnnouncement carries the announced multiaddress (a
+    raw IP), which is the input for geo/ASN enrichment against crawlers_data.ipinfo;
+    KeyBinding links a node's packet key to its chain key. jura's contract is an
+    EIP-1967 proxy and additionally emits KeyBindingFeeUpdate.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: proxy-abi-resolves-to-proxy-address
+        text: >-
+          jura's Announcements is an EIP-1967 proxy (implementation
+          0x914c4ad36e5ec147be0a94c671d7440f1d0fc8c1) but its event_signatures
+          rows are keyed on the PROXY address, because fetch_abi_to_csv.py
+          stores the implementation's ABI under the proxy's contract_address.
+          Setting abi_source_address to the implementation makes the ABI join
+          miss and produced 59 rows with empty event_name and no error.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'no undecoded rows: countIf(event_name = '''') == 0'
+      - 'both deployments decoded: uniqExact(contract_address) == 2'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params. AddressAnnouncement exposes `node` and
+      `baseMultiaddr` (for example /ip4/34.159.20.69/tcp/9024).
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_NodeStakeFactory_events
+  description: >
+    Node onboarding. NewHoprNodeStakeSafe and NewHoprNodeStakeModule are emitted
+    once per node runner Safe, so counting them gives cumulative node onboarding per
+    network.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: safe-and-module-emitted-together
+        text: >-
+          Each node onboarding emits NewHoprNodeStakeSafe and
+          NewHoprNodeStakeModule together, so their counts must match per
+          network (dufour 1,466 each as of 2026-08-03). jura additionally
+          emits NewHoprNodeStakeModuleForSafe, which dufour does not.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'no undecoded rows: countIf(event_name = '''') == 0'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params, including the created Safe and module
+      addresses.
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_NodeSafeRegistry_events
+  description: >
+    Binds a node chain key to its Safe. NOTE dufour misspells the event as
+    DergisteredNodeSafe while jura spells it DeregisteredNodeSafe - never filter on
+    a single spelling.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: deregistration-event-name-differs-per-network
+        text: >-
+          dufour emits DergisteredNodeSafe (a typo in the deployed contract)
+          and jura emits DeregisteredNodeSafe. Any deregistration logic must
+          accept BOTH spellings or it silently under-counts on one network.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'no undecoded rows: countIf(event_name = '''') == 0'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params (nodeAddress, safeAddress).
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_NodeSafeMigration_events
+  description: >
+    dufour to jura v4 migration tracking. Expected to be EMPTY until migration
+    starts (zero events as of 2026-08-03). The documented procedure requires
+    redeeming all tickets and closing all channels first, so a dufour mass channel-
+    close wave is a migration signal, not node abandonment.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: empty-until-migration-starts
+        text: >-
+          Zero rows is the CORRECT state until node operators begin migrating
+          from dufour to jura; it is not a decode failure. The contract exists
+          only on jura, so this model covers ONE network unlike its siblings.
+          When rows appear, SafeAndModuleMigrationCompleted counts migration
+          progress.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'no undecoded rows: countIf(event_name = '''') == 0'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params (safeProxy, oldModuleProxy, newModuleProxy).
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_TicketPriceOracle_events
+  description: >
+    TicketPriceUpdated, required to value redeemed tickets: ticket price is an
+    oracle parameter and is not carried in the ticket event itself. Winning-ticket
+    payout equals ticket price divided by winning probability - verified against
+    observed payouts (dufour 10.0, jura 2.5 wxHOPR).
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: price-params-must-be-named
+        text: >-
+          The on-chain ABI leaves both TicketPriceUpdated params unnamed, so
+          decode_logs collapses every map key to '' and
+          decoded_params['newTicketPrice'] returns NULL with no error.
+          scripts/signatures/name_hopr_oracle_params.py restores the names,
+          but only after regenerating event_signatures, reseeding AND full-
+          refreshing this model - skipping any step fails silently. Enforced
+          by tests/hopr_oracle_params_are_named.sql.
+      - id: price-series-is-a-chain
+        text: >-
+          Each event's oldTicketPrice equals the previous event's
+          newTicketPrice, which is what proves the unnamed params are ordered
+          (old, new).
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'params are named: countIf(event_name = ''TicketPriceUpdated'' AND NOT has(mapKeys(decoded_params), ''newTicketPrice'')) == 0'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params. oldTicketPrice and newTicketPrice are in wei;
+      the names are supplied by scripts/signatures/name_hopr_oracle_params.py
+      because the on-chain ABI leaves them unnamed.
+    data_type: Map(String, Nullable(String))
+
+- name: contracts_hopr_WinningProbabilityOracle_events
+  description: >
+    WinProbUpdated - the other half of ticket valuation. dufour's verified ABI omits
+    the param names while jura's keeps them; both are restored from the Solidity
+    source.
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [block_timestamp, transaction_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-log
+        text: >-
+          One row per emitted log. (block_timestamp, transaction_hash,
+          log_index) is both the unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, transaction_hash,
+          log_index)) must be 0.
+      - id: no-undecoded-rows
+        text: >-
+          event_name must never be empty. An empty event_name means the ABI
+          join missed, which happens silently with no error - the usual cause
+          is contracts_hopr_registry.abi_source_address pointing at an
+          implementation address instead of the proxy. Verified 0 undecoded
+          rows across all six populated event tables on 2026-08-03.
+      - id: both-networks-present
+        text: >-
+          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
+          jura) and they emit the same logical events under DIFFERENT topic0s.
+          The ABI resolves per contract address, so a single-ABI decode would
+          silently drop one network entirely. Any model covering both must
+          keep uniqExact(contract_address) == 2.
+      - id: winprob-is-uint56-not-a-fraction
+        text: >-
+          oldWinProb/newWinProb are uint56 fixed-point: probability = raw /
+          2^56. Reading the raw value as a probability overstates it by 56
+          bits. Cross-checked against blokli's minTicketWinningProbability for
+          jura (raw 288230376143 -> 0.000004, exact match).
+      - id: winprob-params-must-be-named
+        text: >-
+          dufour's verified ABI omits both param names even though the
+          Solidity source names them; jura's keeps them. Restored by
+          name_hopr_oracle_params.py and enforced by
+          tests/hopr_oracle_params_are_named.sql.
+      - id: watermark-skips-late-logs
+        text: >-
+          The decode is append-only off a block_number/block_timestamp
+          watermark, so logs landing in execution.logs below the current high-
+          water mark are never decoded. A backfill or gap-repair of the raw
+          logs requires re-decoding the affected range explicitly.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
+      - 'params are named: countIf(event_name = ''WinProbUpdated'' AND NOT has(mapKeys(decoded_params), ''newWinProb'')) == 0'
+      reprocess_runbook: >-
+        Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
+        refresh` also works but re-scans the whole logs history in one query). A
+        single-pass rebuild of the largest model here took ~36 min and succeeded
+        on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy
+        ad-hoc queries ran concurrently, so retry when the cluster is quiet
+        before assuming the model is too fat. If it still OOMs, declare
+        meta.full_refresh batch_months and let refresh.py batch it - decode_logs
+        honors the start_month/end_month vars. Because the strategy is append,
+        drop target partitions first (macros/db/drop_partition.sql) if they
+        already hold rows. Changing contracts_hopr_registry_static or the oracle
+        ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only,
+        and a stale registry yields silently undecoded rows.
+  columns:
+  - name: block_number
+    description: >
+      Block height of the log.
+    data_type: UInt64
+  - name: block_timestamp
+    description: >
+      On-chain timestamp of the log; the incremental watermark column.
+    data_type: DateTime
+    tests: [not_null]
+  - name: transaction_hash
+    description: >
+      Hash of the transaction that emitted the log.
+    data_type: String
+  - name: transaction_index
+    description: >
+      Index of the transaction within its block.
+    data_type: UInt32
+  - name: log_index
+    description: >
+      Index of the log within its block.
+    data_type: UInt32
+  - name: contract_address
+    description: >
+      Emitting HOPR contract, bare hex without 0x prefix. Join to
+      contracts_hopr_registry to resolve network and contract_type.
+    data_type: String
+    tests: [not_null]
+  - name: event_name
+    description: >
+      Decoded event name. An empty string means the ABI join missed - see
+      contracts_hopr_registry on abi_source_address.
+    data_type: String
+  - name: decoded_params
+    description: >
+      Map of decoded event params. oldWinProb and newWinProb are uint56:
+      probability equals the raw value divided by 2^56.
+    data_type: Map(String, Nullable(String))
