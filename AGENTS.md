@@ -103,6 +103,13 @@ Footnotes that have burned hours:
 
 - An output alias **shadows** the source column in a same-level `WHERE` — relabel
   constants in an outer subquery.
+- Projecting an **ambiguous** column from a join without an alias ships the qualifier
+  *inside* the column name (`a.total_vp`, `s.phase`) — the build is green and every
+  consumer of the intended name gets Code 47. Alias every projected column whose name
+  exists on more than one joined relation, and sweep with
+  `SELECT table, name FROM system.columns WHERE database = currentDatabase() AND name LIKE '%.%'`
+  (empty is correct). No gate exists — the catalog has no model nodes here.
+  `docs/lessons/ch-qualified-column-leak.md`.
 - LEFT JOINs that need NULLs on unmatched rows require `SET join_use_nulls = 1` in a
   `pre_hook` — not `nullIf` workarounds. (Models that must restore the default add the
   paired `post_hook` reset; see the pools models.)

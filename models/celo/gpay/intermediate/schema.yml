@@ -200,6 +200,27 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [address]
+      semantics: dimension
+      invariants:
+      - id: one-settlement-generation-only
+        text: This registry is the population of card Safes wired to ONE settlement
+          contract (AggregateBridge 0xc07cd8c2…), not the GP card program. A second
+          live bridge 0xc4df5cac… serves 235 further cards with zero overlap, so
+          treat every count derived from here as current-generation-only and say so
+          on any dashboard. Do NOT close the gap by widening the bridge filter to a
+          union — the two generations straddle the June 2026 post-exploit rebuild and
+          blending them corrupts cohort/retention/growth figures. See
+          docs/lessons/circular-completeness-proof.md for the open decision.
+      hazards: [circular-completeness-proof]
+      validation:
+      - 'cardinality matches its fingerprint source: count() == (SELECT count() FROM int_celo_gpay_roles_modules)'
+      - 'no new settlement generation: every contract receiving Transfers from a registry Safe is a known bridge (see the detection query in docs/lessons/circular-completeness-proof.md)'
+      notes: >-
+        Full rebuild, bounded by card count. Coverage is knowingly partial pending a
+        Gnosis Pay answer on the second settlement contract — quantified impact and the
+        questions asked are in docs/lessons/circular-completeness-proof.md.
 
 - name: int_celo_gpay_safe_events_native
   description: |

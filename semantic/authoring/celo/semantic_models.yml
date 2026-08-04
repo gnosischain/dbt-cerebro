@@ -165,9 +165,19 @@ semantic_models:
     type: categorical
     expr: token_symbol
   measures:
-  - name: celo_gpay_card_balances_alltoken_daily__balance
-    agg: sum
-    expr: balance
+  # Deliberately NOT sum(balance). This model is SPARSE (a row only on days a
+  # balance changed) and `balance` is a running total, so summing it is wrong in
+  # both directions: across dates it re-counts the same running balance every day,
+  # and on a single date it silently drops every card that had no flow that day
+  # (measured 2026-08-04: 11,574 vs a true 25,677 — a 55% undercount). It also
+  # adds nothing summable over the dense model, because `balance` is NULL by design
+  # for tokens whose decimals are unknown, which is the only content this model has
+  # beyond fct_celo_gpay_balances_safe_daily (19 such keys, all NULL).
+  # For balances use celo_gpay_balances_safe_daily below (dense, semi-additive).
+  # This entry stays for its DIMENSIONS: which tokens a card actually holds.
+  - name: celo_gpay_card_balances_alltoken_daily__token_positions
+    agg: count
+    expr: token_address
   config:
     meta:
       cerebro:
@@ -175,8 +185,54 @@ semantic_models:
         quality_tier: candidate
         grain: day
         question_synonyms:
-        - celo gp card all-token balances
+        - celo gp card all-token positions
         - what tokens celo gp cards hold
+
+- name: celo_gpay_balances_safe_daily
+  model: ref('fct_celo_gpay_balances_safe_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  measures:
+  # DENSE (a row per safe/token/day, 913 keys x 69 days), so the latest day is the
+  # true outstanding balance — verified 2026-08-04 to equal the carry-forward total
+  # of the sparse all-token model to the cent (25,676.93).
+  # non_additive_dimension is what makes this correct: a running balance must be
+  # summed ACROSS cards but never ACROSS days, so over any window we take the last
+  # date rather than adding every day's snapshot together.
+  - name: celo_gpay_balances_safe_daily__balance
+    agg: sum
+    expr: balance
+    non_additive_dimension:
+      name: date
+      window_choice: max
+  - name: celo_gpay_balances_safe_daily__balance_usd
+    agg: sum
+    expr: balance_usd
+    non_additive_dimension:
+      name: date
+      window_choice: max
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card balances
+        - total celo gp card balance
+        - how much do celo gp cards hold
 
 - name: celo_gpay_card_funding
   model: ref('fct_celo_gpay_card_funding')

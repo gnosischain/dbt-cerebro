@@ -141,8 +141,9 @@ models:
           a (network, day) countIf(event_name='TicketRedeemed') must equal
           countIf(event_name='ChannelBalanceDecreased'). Verified exactly on
           both networks (dufour 1,121,123 each; jura 2,201 each). This is the
-          cheapest guard against the dual-deployment decode half-failing, and
-          is enforced by tests/hopr_channels_ticket_redemption_invariant.sql.
+          cheapest guard against the dual-deployment decode half-failing. It is
+          an AGGREGATE equality, so it cannot be a row-level generic test - run
+          the `ticket pairing` query in validation below.
       - id: watermark-skips-late-logs
         text: >-
           The decode is append-only off a block_number/block_timestamp
@@ -610,6 +611,14 @@ models:
     oracle parameter and is not carried in the ticket event itself. Winning-ticket
     payout equals ticket price divided by winning probability - verified against
     observed payouts (dufour 10.0, jura 2.5 wxHOPR).
+  tests:
+  # Backstop for the unnamed-ABI regression. Model-level, NOT column-level: a
+  # column-level expression_is_true renders as `<column> <expression>`, which is
+  # only valid for suffix expressions like `> 0`.
+  - dbt_utils.expression_is_true:
+      expression: "has(mapKeys(decoded_params), 'newTicketPrice')"
+      config:
+        where: "event_name = 'TicketPriceUpdated'"
   meta:
     owner: analytics_team
     authoritative: false
@@ -644,8 +653,8 @@ models:
           decoded_params['newTicketPrice'] returns NULL with no error.
           scripts/signatures/name_hopr_oracle_params.py restores the names,
           but only after regenerating event_signatures, reseeding AND full-
-          refreshing this model - skipping any step fails silently. Enforced
-          by tests/hopr_oracle_params_are_named.sql.
+          refreshing this model - skipping any step fails silently. Enforced by
+          the model-level dbt_utils.expression_is_true test above.
       - id: price-series-is-a-chain
         text: >-
           Each event's oldTicketPrice equals the previous event's
@@ -719,6 +728,11 @@ models:
     WinProbUpdated - the other half of ticket valuation. dufour's verified ABI omits
     the param names while jura's keeps them; both are restored from the Solidity
     source.
+  tests:
+  - dbt_utils.expression_is_true:
+      expression: "has(mapKeys(decoded_params), 'newWinProb')"
+      config:
+        where: "event_name = 'WinProbUpdated'"
   meta:
     owner: analytics_team
     authoritative: false
@@ -756,8 +770,8 @@ models:
         text: >-
           dufour's verified ABI omits both param names even though the
           Solidity source names them; jura's keeps them. Restored by
-          name_hopr_oracle_params.py and enforced by
-          tests/hopr_oracle_params_are_named.sql.
+          name_hopr_oracle_params.py and enforced by the model-level
+          dbt_utils.expression_is_true test above.
       - id: watermark-skips-late-logs
         text: >-
           The decode is append-only off a block_number/block_timestamp
