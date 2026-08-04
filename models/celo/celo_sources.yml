@@ -9,18 +9,19 @@ sources:
       insert_version column the decode macros rely on for dedup). The indexer
       runs in MINIMAL mode, so only blocks / transactions / logs are populated —
       traces, native_transfers and contracts exist but stay empty. History
-      starts at the L2 migration block (~31,056,500, 2025-03-26).
+      starts at the L2 migration block (~31,056,500, 2025-03-26) and the
+      backfill is COMPLETE: blocks, transactions and logs all report 100% in
+      celo_execution.indexing_progress, with continuous coverage from the
+      migration block to head and no month-level gaps.
     schema: celo_execution
     loaded_at_field: block_timestamp
     tags: ["celo", "execution", "l2", "authoritative", "crawler"]
-    # Freshness is intentionally NOT enforced yet: the backfill is still
-    # catching up (about a year behind head as of 2026-07). Enable the same
-    # thresholds as the Gnosis `execution` source once the indexer reaches
-    # continuous head-following:
-    #   freshness:
-    #     warn_after: {count: 26, period: hour}
-    #     error_after: {count: 48, period: hour}
-    #     filter: "block_timestamp > now() - INTERVAL 7 DAY"
+    # Backfill complete and the indexer follows head, so freshness is enforced
+    # with the same thresholds as the Gnosis `execution` source.
+    freshness:
+      warn_after: {count: 26, period: hour}
+      error_after: {count: 48, period: hour}
+      filter: "block_timestamp > now() - INTERVAL 7 DAY"
     meta:
       owner: analytics_team
       authoritative: true

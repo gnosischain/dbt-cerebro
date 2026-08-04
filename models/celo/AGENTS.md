@@ -1,25 +1,128 @@
 # models/celo/ — scoped guide
 
-Gnosis Pay activity mirrored on the Celo chain (wallets, payments, balances,
-retention). Read with root AGENTS.md.
+Gnosis Pay card activity on Celo (card provisioning, payments, funding,
+balances, retention), built natively from decoded Celo execution logs.
+Read with root AGENTS.md.
+
+## Source of truth
+
+- **Sources are native on-chain data**, not crawler- or Dune-fed: everything in
+  this tree derives from `celo_execution` (blocks / transactions / logs),
+  captured by the cryo-indexer deployment. The indexer runs in MINIMAL mode, so
+  `traces`, `native_transfers`, `balance_diffs`, `storage_diffs` and `contracts`
+  exist but stay **empty** — never build on them here.
+- The backfill is **complete**: continuous coverage from the L2 migration block
+  (31,056,500, 2025-03-26) through head, and the indexer now follows head. Source
+  freshness is enforced (`celo_sources.yml`). Historical note: model comments used
+  to tell you to `--full-refresh` because old months landed out of order. That is
+  over; plain incremental is now the correct daily path.
+- A flat or missing metric here is **not** a halted crawler (the pre-2026-08
+  framing). Diagnose in this order:
+  1. `celo_execution.indexing_progress` — completion and highest block per dataset.
+  2. `int_celo_gpay_safe_registry` row count — did card discovery stall?
+  3. The decoded layer (`int_celo_gpay_safe_events_native`, `_safe_transfers_alltoken`)
+     against raw `celo_execution.logs` for the same window.
+  See docs/lessons/raw-logs-ingestion-holes.md and
+  docs/lessons/stale-snapshot-caveat.md.
+
+## Card universe
+
+- The registry is built from the **bridge fingerprint**: a Safe that emits
+  `EnabledModule(<GP Roles proxy>)` has been provisioned as a GP card. It fires
+  **pre-spend**, so the registry covers created-but-never-funded cards (the funnel
+  top). The AggregateBridge is excluded from the card list — it is the settlement
+  sink, not a card.
+- **There are TWO live settlement contracts, and this tree models only one.**
+  `0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1` (current generation, from
+  2026-05-28) is what every model here keys on.
+  `0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d` serves an earlier generation of 235
+  cards provisioned 2026-03-31..2026-06-11 and was still settling on 2026-08-03 —
+  it is entirely absent from this tree, so Celo GP totals here understate the
+  program (~35% of settlement transfers, ~14% of cards as of 2026-08-03).
+  `0xd11e35ca1594651f172748428ffc4b6c63c3cca3` is a deployed-but-unused third.
+  The two generations straddle the June 2026 post-exploit module rebuild, so they
+  want a generation dimension, not a blind union. Do not quote a Celo GP total as
+  "the card program" without stating which generation it covers.
+- Corollary for any completeness check: start from the **set of settlement
+  contracts**, never from a single bridge address. The earlier "every spender is in
+  the registry" proof was circular — it derived the spender population from the one
+  bridge the model already knew about, so a second bridge was undetectable.
+- `int_celo_gpay_module_mastercopies` is an **independent deterministic
+  cross-check, never an inclusion source**. GP provisions Roles proxies from more
+  than one mastercopy, and at least one of those mastercopies is shared with
+  unrelated projects, so it cannot be trusted to add cards — only to confirm that
+  the fingerprint has not developed a gap. `tests/assert_celo_gpay_identity_reconciled.sql`
+  asserts mastercopy ⊆ fingerprint. When a new mastercopy appears, add it there
+  and the coverage gap closes; do not widen the registry.
+- Funnel stages are three different populations and are routinely confused:
+  issued (registry) > funded (received any inbound token) > activated (made a
+  payment). Roughly 1490 / 815 / 476 on 2026-08-03, with issuance running ~10
+  cards/hour, so treat any absolute count in this repo's prose as a snapshot and
+  re-derive it. `cumulative_funded` in `fct_celo_gpay_activity_daily` counts from
+  first **payment**, so it tracks activated, not funded — do not read it as funded.
 
 ## Invariants
 
-- **Sources are crawler-fed** (`crawlers_data.celo_gpay_*`), not on-chain
-  decode: freshness depends on an external crawler. A flat metric here is a
-  halted crawler until proven otherwise — check the source `max(date)` before
-  diagnosing model logic (stale-snapshot-caveat pattern).
-- **Keep Celo and Gnosis gpay metrics separate.** Same product, different
-  chain: never sum or blend them in a mart without an explicit chain
-  dimension; cross-chain totals are a presentation-layer decision.
-- **No cumulative (`{{ this }}`) models in this tree** — backfills are
-  order-free; monthly insert_overwrite reprocessing is safe per partition.
+- **Keep Celo and Gnosis gpay metrics separate.** Same product, different chain:
+  never sum or blend them in a mart without an explicit chain dimension;
+  cross-chain totals are a presentation-layer decision.
+- **No cumulative (`{{ this }}`) models in this tree** — reprocessing must be
+  order-free; monthly insert_overwrite is safe per partition
+  (docs/lessons/backfill-order-cumulative.md).
+- **`join_use_nulls` is 0 by default.** An unmatched LEFT JOIN row yields `''`
+  for a String and `0` for a number, so `right.col IS NULL` never fires and
+  `IS NOT NULL` is always true. This has already produced one inert test and one
+  unreachable churn segment in this tree. Use `NOT IN` / `= ''`, or set
+  `join_use_nulls = 1` in a pre-hook and keep it consistent across the model.
+  Read docs/lessons/ch-left-join-nulls.md before writing any outer join here.
+- **The heavy models scan ALL Celo Transfer logs.** Never
+  `dbt run --full-refresh` `int_celo_gpay_safe_transfers_alltoken`,
+  `int_celo_gpay_safe_events_native` or `contracts_celo_chainlink_feeds_events`
+  directly — the single-query scan OOMs (ClickHouse code 241). Rebuild through
+  `scripts/full_refresh/refresh.py` in the monthly batches declared in
+  `meta.full_refresh`. The scoped-append path only fills EMPTY months; to
+  reprocess a populated month, drop its partition first
+  (docs/lessons/staged-insert-overwrite-wipe.md,
+  docs/lessons/append-over-populated-duplicates.md).
 - Wallet-recognition timing: a Safe can be recognized shortly AFTER its first
   activity lands; the activity models rely on ReplacingMergeTree latest-row
   semantics to reconcile — don't "fix" apparent same-key duplicates by hand,
   read docs/lessons/ch-merge-semantics-primer.md first.
+- **Whitelist scope.** `celo_tokens_whitelist` carries four tokens (USDT, USDC,
+  USDm, XAUt0), and priced/whitelisted models cover all four. Only USDT and USDC
+  have ever moved on a card as of 2026-08-03 — USDm and XAUt0 paths are real code
+  on zero rows, so treat any claim about them as untested. Note USDm is the
+  rebranded cUSD at `0x765de816845861e75a25fca122bb6898b8b1282a`, which most
+  external tooling still labels cUSD. The all-token models
+  (`_safe_transfers_alltoken`, `fct_celo_gpay_card_funding`,
+  `fct_celo_gpay_card_balances_alltoken_daily`) deliberately include
+  non-whitelisted tokens with NULL `amount`/`amount_usd`; do not sum those columns
+  without filtering.
+- **The all-token daily balance model is sparse** (rows only on days with flow),
+  unlike the densified `fct_celo_gpay_balances_safe_daily`. "Latest balance"
+  requires `argMax(balance, date)` per Safe, never `WHERE date = max(date)`
+  (docs/lessons/sparse-zero-row-stale-survival.md).
+
+## Prices
+
+- `int_celo_token_prices_daily` is the single price hub. Priority: Chainlink
+  `AnswerUpdated` decoded from native logs, then a Dune off-chain fallback for
+  what native cannot reach, then a $1 peg for the card stablecoins. XAUt0 has no
+  direct Celo feed and is derived as `CELO/USD ÷ (CELO/XAUt)` from Mento
+  SortedOracles (CGP-0240, live 2026-06-09).
+- The Chainlink USDT and USDC aggregators only start **2026-06-23**, so earlier
+  stablecoin history legitimately resolves via Dune or the peg. Check
+  `price_source` before concluding a feed is broken.
+- Forward-fill is not applied. Every (date, symbol) is the last answer actually
+  observed that day, so a symbol can be absent on a day with no oracle update.
 
 ## Validation
 
 - `python scripts/checks/run_all.py`; `dbt test -s tag:celo` (or the gpay
   subtree selector) after any change.
+- After adding or renaming a model, regenerate the semantic entity overlay:
+  `dbt docs generate` (warehouse-connected, for `target/catalog.json`) then
+  `python scripts/semantic/generate_entities.py --target-dir target`. New models
+  carrying `safe_address` / `token_address` / `token_symbol` are not joinable
+  through the semantic hubs until that generated overlay is refreshed, and
+  `run_all.py --full`'s `entity-overlay` step fails while it is stale.

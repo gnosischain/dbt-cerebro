@@ -40,8 +40,8 @@
 --
 -- Consequence of the watermark, same as every other append decode stream here
 -- (contracts_celo_chainlink_feeds_events documents the identical hazard): logs
--- landing in celo_execution BELOW the high-water mark are never decoded. While
--- the backfill still fills old months out of order, and whenever
+-- landing in celo_execution BELOW the high-water mark are never decoded. The
+-- backfill is complete, so the remaining trigger is registry growth: whenever
 -- int_celo_gpay_safe_registry discovers a Safe whose SafeSetup predates the
 -- watermark, the affected months must be re-decoded explicitly — drop those
 -- partitions first (macros/db/drop_partition.sql), because appending over a

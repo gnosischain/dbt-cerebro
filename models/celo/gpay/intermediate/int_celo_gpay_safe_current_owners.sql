@@ -8,8 +8,9 @@
   )
 }}
 
--- Current (as of now) owner set per Safe, folded directly from the
--- unified crawlers_data.celo_gpay_wallet_events log. Mirrors Gnosis
+-- Current (as of now) owner set per Safe, folded directly from the unified
+-- int_celo_gpay_wallet_events log (native decode; the crawlers_data source this
+-- once read is retired). Mirrors Gnosis
 -- Chain's int_execution_safes_current_owners exactly: for each
 -- (safe_address, owner_address) pair, take whichever event happened
 -- last; keep the pair only if that last event was issued_at or add_owner.
@@ -20,10 +21,11 @@
 -- all still naturally has its initial owner represented in this same
 -- source.
 --
--- Tie-break: GP's Celo provisioning commonly swaps the owner within
--- seconds of SafeSetup (sometimes, though not always, the exact same
--- timestamp — see sources.yml for what was observed), so issued_at and a
--- same-second remove_owner are possible. is_mutation (0 for issued_at, 1
+-- Tie-break: GP's Celo provisioning swaps the owner within seconds of
+-- SafeSetup on every card (sometimes in the very same block, hence the same
+-- timestamp), so issued_at and a same-second remove_owner are possible —
+-- which is why every row here ends up on the 0x…0002 sentinel rather than a
+-- user EOA. is_mutation (0 for issued_at, 1
 -- for add_owner/remove_owner) breaks a tie in favor of the mutation event
 -- winning argMax's tuple comparison — issuance must, causally, precede
 -- any subsequent owner change for the same Safe, even on the rare

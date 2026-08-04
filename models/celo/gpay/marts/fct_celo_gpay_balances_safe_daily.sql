@@ -23,14 +23,20 @@
 -- aggregating downstream, makes both the daily balance time series AND the
 -- latest-day snapshot correct (every Safe/token present on every day).
 --
--- CORRECTNESS SCOPE: net flow == true on-chain balance holds ONLY for the two
--- whitelisted stablecoins (USDC, USDT), and only because (verified on-chain,
--- 2026-07) Celo GP Safes start at zero pre-launch, there are no Safe-to-Safe
--- transfers, and no other token carries real value. If a third settlement
--- token is ever added on Celo it must be added to the ingestion whitelist AND
--- surfaced here; until then balances intentionally cover USDC/USDT only.
--- Net-flow formula matches int_celo_gpay_balances_daily exactly (inflows =
--- Top-up + Reversal, outflows = Payment + Withdrawal).
+-- CORRECTNESS SCOPE: net flow == true on-chain balance holds for the whitelisted
+-- tokens (celo_tokens_whitelist: USDT, USDC, USDm, XAUt0 — only USDT and USDC
+-- carry any flow as of 2026-08-03), and only because Celo GP Safes start at zero
+-- pre-launch and there are no Safe-to-Safe transfers (re-verified on the complete
+-- backfill 2026-08-03: zero transfers with a registry Safe on both sides). Value
+-- arriving in a NON-whitelisted token is outside this model by design — see
+-- fct_celo_gpay_card_balances_alltoken_daily for the all-token view. Adding a real
+-- token means adding it to celo_tokens_whitelist; that is now the only gate.
+-- Inflows = Top-up + Reversal, outflows = Payment + Withdrawal.
+--
+-- SCALING: this model cross-joins a date spine against every (safe, token) pair
+-- and full-rebuilds, so it is O(cards x days) with no incremental path (60,792
+-- rows at 894 pairs x 68 days on 2026-08-03). Revisit the materialisation before
+-- the card base grows another order of magnitude.
 WITH bounds AS (
     SELECT
         assumeNotNull(min(date)) AS min_date,

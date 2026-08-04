@@ -9,7 +9,8 @@ models:
     Full table rebuild (bounded by card count, not transaction volume).
     Consumed by int_celo_gpay_wallets.sql (issued_at only) and
     int_celo_gpay_safe_current_owners.sql (the full fold). Replaces the old
-    Dune-fed crawlers_data.celo_gpay_wallet_events source (MVP, retired).
+    Dune-fed crawlers_data.celo_gpay_wallet_events source, retired with the MVP
+    — nothing in this tree reads crawlers_data any more.
   columns:
   - name: safe_address
     description: The GP card Safe this event is about.
@@ -45,6 +46,14 @@ models:
     0x0000000000000000000000000000000000000002 as the current owner for
     Safes where GP's provisioning flow disabled owner-based signing — that
     is not a bug, it correctly reflects the on-chain state.
+
+    CONSUMER WARNING: as of 2026-08-03 that is the state for EVERY card — every
+    row carries the sentinel and no real EOA, because GP's provisioning flow swaps
+    the owner out within seconds of SafeSetup on every card. So this model
+    currently carries no user-identifying information at all; anything that needs
+    a per-user address must read int_celo_gpay_wallets.owner_address (the initial
+    SafeSetup owner, one distinct value per card). Revisit exposing this model
+    once owner-based signing is actually used.
   columns:
   - name: safe_address
     description: GP card Safe address.
@@ -63,11 +72,11 @@ models:
   description: |
     Canonical Celo GP card Safe list, reconstructed from
     int_celo_gpay_wallet_events (action='issued_at') rather than read from
-    a per-safe snapshot table — see sources.yml for why the earlier
-    mutable-row wallets table was replaced with an append-only event log.
+    a per-safe snapshot table: the retired MVP used a mutable-row wallets table
+    fed from Dune, which an append-only event log replaces.
     first_spend_at/is_activated are derived here directly from
-    int_celo_gpay_transfers_native (a transfer to the settlement bridge) — see
-    this model's own header comment for why that read goes straight to that
+    int_celo_gpay_safe_transfers_alltoken (a transfer to the settlement bridge) —
+    see this model's own header comment for why that read goes straight to that
     model rather than through int_celo_gpay_activity (would create a
     circular dbt ref) and why a full scan of the transfers table on every
     rebuild is acceptable (Gnosis Chain's own int_execution_gpay_wallets
@@ -147,11 +156,34 @@ models:
     GP card Safes on Celo, discovered natively: a Safe that emits
     EnabledModule(<GP Roles proxy>) has been provisioned as a GP card
     (replaces the fp CTE of Dune query 7808895). Confirmed pre-spend, so this
-    also covers created-but-never-funded cards. Validated 2026-07-16 against
-    the Dune spine: within the then-indexed celo_execution window every one
-    of the 116 native Safes matched a Dune-discovered wallet, with zero
-    native-only extras. address/contract_type columns follow the whitelist
-    shape the decode macros expect via contract_address_ref.
+    also covers created-but-never-funded cards. address/contract_type columns
+    follow the whitelist shape the decode macros expect via contract_address_ref.
+
+    Cardinality is 1:1 with int_celo_gpay_roles_modules and grows continuously
+    with issuance (~1490 on 2026-08-03); first card 2026-05-28.
+
+    KNOWN INCOMPLETE — this registry covers ONE of two live settlement contracts.
+    Verified on-chain 2026-08-03: a second AggregateBridge
+    0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d serves an EARLIER card generation
+    (235 Safes provisioned 2026-03-31..2026-06-11, all 235 of their Roles proxies
+    from the roles_pilot mastercopy 0x9646fdad, ZERO overlap with this registry or
+    with int_celo_gpay_roles_modules). 154 of those cards have spent, 1709
+    settlement transfers (USDT 1374, USDC 335), and that bridge was still settling
+    at 2026-08-03 13:00:14 — it is live, not historical. So Celo GP payment counts
+    from this tree understate the real card program by roughly 35% of transfers and
+    14% of cards. A third AggregateBridge 0xd11e35ca1594651f172748428ffc4b6c63c3cca3
+    was deployed and never used; watch it in case it activates.
+
+    Deciding how to close this is a modelling choice, NOT a widening of the bridge
+    filter: the two generations straddle the 2026-06 post-exploit module rebuild,
+    so they likely need a generation/bridge dimension rather than a union that
+    silently blends them. Until then treat every Celo GP figure as new-generation
+    only and say so on any dashboard.
+
+    Note the earlier "483 senders, all present, no unknown spenders" verification
+    was circular: it defined the spender population using this model's own bridge
+    address, so it could not have detected a second bridge. Any future completeness
+    proof must start from the set of settlement contracts, not from one address.
   columns:
   - name: address
     description: GP card Safe address (0x-prefixed, lowercase).
@@ -224,9 +256,10 @@ models:
           while GP card Safes are single-owner.
       - id: watermark-skips-late-logs
         text: Append-only off the decode_logs block_number watermark, so logs landing in
-          celo_execution below the high-water mark are never decoded. That covers both
-          the in-flight backfill filling old months and a Safe newly discovered by
-          int_celo_gpay_safe_registry whose SafeSetup predates the watermark — those
+          celo_execution below the high-water mark are never decoded. Now that the
+          backfill is complete the live trigger is registry growth — a Safe newly
+          discovered by int_celo_gpay_safe_registry whose SafeSetup predates the
+          watermark, or any gap-repair of raw logs below it. Those
           months must be re-decoded explicitly or the card silently disappears from
           int_celo_gpay_wallets.
       hazards: [decode-watermark-late-logs, append-over-populated-duplicates, ch-overcommit-victim, raw-logs-ingestion-holes]
@@ -301,7 +334,9 @@ models:
     description: "'out' if the Safe is the sender, 'in' otherwise."
     data_type: String
   - name: token_symbol
-    description: USDT or USDC.
+    description: >
+      Whitelist symbol from celo_tokens_whitelist (USDT, USDC, USDm or XAUt0).
+      Only USDT and USDC occur in the data as of 2026-08-03.
     data_type: String
   - name: token_address
     description: Transferred token contract address (0x-prefixed, lowercase). Part of the
@@ -390,7 +425,9 @@ models:
     description: "Payment | Withdrawal | Reversal | Top-up."
     data_type: String
   - name: token_symbol
-    description: USDT or USDC.
+    description: >
+      Whitelist symbol (USDT, USDC, USDm or XAUt0); only USDT and USDC occur in
+      the data as of 2026-08-03.
     data_type: String
   - name: amount
     description: Sum of token-native amount for the day.
@@ -415,12 +452,14 @@ models:
     are set only for whitelisted tokens (celo_tokens_whitelist, address-gated, so
     spoof tokens are excluded); `amount_raw` is always the exact integer. A
     Safe-to-Safe transfer yields two rows
-    (one per Safe-side) by design. Incremental (insert_overwrite) — run with
-    --full-refresh while the backfill fills old months out of order; scans all
-    Celo Transfer logs filtered to registry Safes (heavy on full-refresh,
-    bounded per-month incrementally).
+    (one per Safe-side) by design. Incremental (insert_overwrite); the backfill
+    is complete, so plain daily incremental is the correct path. Scans all Celo
+    Transfer logs filtered to registry Safes — heavy on full-refresh (rebuild via
+    scripts/full_refresh/refresh.py in monthly batches, never a plain
+    --full-refresh), bounded per-month incrementally.
   columns:
   - name: block_date
+    description: UTC date of the transfer's block; the monthly incremental partition key derives from it.
     data_type: Date
   - name: safe_address
     description: The GP card Safe side of this transfer (0x-prefixed, lowercase).
@@ -432,6 +471,7 @@ models:
     description: The other side of the transfer — RAW address, deliberately unlabeled.
     data_type: String
   - name: token_address
+    description: Transferred token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.
     data_type: String
   - name: token_symbol
     description: Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).
@@ -503,11 +543,24 @@ models:
 - name: int_celo_gpay_module_mastercopies
   description: |
     Deterministic mastercopy allowlist: GP Zodiac module proxies created via the
-    canonical ModuleProxyFactory from the patched Roles/Delay mastercopies. A
-    CROSS-CHECK only (NOT a card-inclusion source) — verified on-chain to be a
-    strict subset of the bridge-fingerprint universe (int_celo_gpay_safe_registry).
-    Consumed by the identity reconciliation test (assert mastercopy-derived Safes
-    are all found by the fingerprint).
+    canonical ModuleProxyFactory from the Roles/Delay mastercopies GP provisions
+    from. A CROSS-CHECK only (NOT a card-inclusion source) — verified on-chain to
+    be a subset of the bridge-fingerprint universe (int_celo_gpay_safe_registry).
+
+    Two Roles mastercopies are in play and both are needed for full coverage
+    (verified 2026-08-03): roles_patched (0x732b9e9f…, current, source of every
+    card since 2026-06-10, grows with issuance) and roles_pilot (0x9646fdad…, a
+    CLOSED cohort used 2026-01-15..2026-06-12 for the 51 pre-launch pilot cards).
+    roles_pilot is SHARED with unrelated projects — only 51 of its 587 proxies are
+    GP — which is the structural reason this model can never become an inclusion
+    source. With both, the allowlist covers 100% of the fingerprint Safes; with
+    roles_patched alone it silently missed the pilot cohort.
+
+    Consumed by two tests: assert_celo_gpay_identity_reconciled (mastercopy-derived
+    Safes are all found by the fingerprint — GP-exclusive mastercopies only, so the
+    shared one cannot raise false positives) and assert_celo_gpay_roles_mastercopy_known
+    (every GP Roles proxy traces to a mastercopy here — the drift signal that a
+    third mastercopy needs adding).
   columns:
   - name: proxy_address
     description: The GP module proxy address (0x-prefixed, lowercase).
@@ -516,7 +569,11 @@ models:
       - unique
       - not_null
   - name: module_type
-    description: "roles_patched | delay_patched."
+    description: >
+      roles_patched (0x732b9e9f…, GP-exclusive, current) | roles_pilot
+      (0x9646fdad…, shared with other projects, pilot cohort) | delay_patched
+      (0x22d903fd…, GP-exclusive). Nullable by construction of the CASE, but the
+      WHERE clause admits only these three so it is never NULL in practice.
     data_type: String
   - name: created_at
     description: ModuleProxyCreation block timestamp (first seen).

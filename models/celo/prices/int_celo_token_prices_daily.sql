@@ -17,16 +17,23 @@
 --      but Mento's SortedOracles publishes a relayed CELO/XAUt rate daily
 --      (CGP-0240, live since 2026-06-09), so
 --      XAUt/USD = CELO/USD / (CELO/XAUt) — both factors native.
---   2. Dune off-chain feed fallback for symbols/dates native cannot reach
---      (pre-backfill history, and XAUt0 before 2026-06-09)
+--   2. Dune off-chain feed fallback for symbols/dates native cannot reach.
+--      This is NOT vestigial: the Celo Chainlink USDT and USDC aggregators only
+--      start 2026-06-23, so all earlier stablecoin history resolves here or on
+--      the peg. XAUt0 before 2026-06-09 likewise.
 --   3. $1 peg last-resort for the card stablecoins
 --
 -- Daily price = last answer of the day (Chainlink answers are already
 -- outlier-filtered at the oracle level; last-of-day matches how the Gnosis
--- oracle model summarises a day). Forward-fill is deliberately NOT applied
--- here yet — the celo_execution backfill is still in progress, and
--- forward-filling across the backfill frontier would fabricate long stale
--- runs. Revisit once the indexer follows head.
+-- oracle model summarises a day).
+--
+-- Forward-fill is NOT applied: every (date, symbol) is an answer actually
+-- observed that day, so a symbol is simply absent on a day with no oracle
+-- update and downstream joins must tolerate a missing row rather than assume
+-- density. The original reason to defer it (fabricating stale runs across the
+-- in-flight backfill frontier) is gone now that the backfill is complete, so
+-- this is a live design choice to revisit — coverage is currently 496/496 days
+-- for CELO/USDC/USDT/USDm and 56/56 for XAUt0, i.e. nothing to fill yet.
 
 WITH chainlink_daily AS (
     SELECT

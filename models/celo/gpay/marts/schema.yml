@@ -4,21 +4,30 @@ version: 2
 # Celo Gnosis Pay marts.
 #
 # SCOPE (applies to every model below): Celo Gnosis Pay is the "GP 2.0" product
-# that launched with MiniPay on Celo. All volume, balance and flow figures cover
-# ONLY the two settlement stablecoins currently tracked — USDC and USDT. This is
-# a deliberate, documented limitation, not an approximation gap: on-chain
-# verification (2026-07) confirmed these are the only tokens the AggregateBridge
-# settles and the only tokens GP Safes hold in meaningful value. When a third
-# settlement token is introduced on Celo it must be (1) added to the click-runner
-# ingestion whitelist and (2) surfaced through these models; until then anything
-# outside {USDC, USDT} is intentionally excluded.
+# that launched with MiniPay on Celo. All volume, balance and flow figures are
+# gated on the celo_tokens_whitelist seed, which carries FOUR tokens — USDT,
+# USDC, USDm and XAUt0. Every "USDC/USDT" note below is therefore a statement
+# about the DATA, not the code: as of 2026-08-03 only USDT and USDC have ever
+# moved on a card Safe (USDT 6032 transfers / 713 Safes, USDC 1941 / 181), while
+# USDm and XAUt0 have zero rows. If either starts moving these marts pick it up
+# automatically with no code change — but nothing about them is exercised today,
+# so treat any USDm/XAUt0 figure as untested until it appears.
+# Two NON-whitelisted tokens do reach card Safes (0xc750468f… 14 transfers,
+# 0xd896efcf… 5) and are excluded by the address-gated whitelist join; they are
+# visible only in the all-token models. Introducing a real fifth token means
+# adding it to celo_tokens_whitelist (the seed is now the only gate — the old
+# click-runner / Dune ingestion whitelist is retired).
 #
 # Balances are net-flow (cumulative inflows − outflows since a Safe's first
 # activity), which equals the true on-chain balance here because Safes start
-# empty pre-launch, there are no Safe-to-Safe transfers, and only the two
-# whitelisted tokens carry value. The MiniPay Card's XAUt0/USDT/USDC cashback is
-# NOT yet modeled in these marts (the on-chain rewards disburser is not yet
-# identified; see the cashback_sources scaffold in int_celo_gpay_activity).
+# empty pre-launch and there are no Safe-to-Safe transfers (verified 2026-08-03:
+# zero transfers with a registry Safe on both sides) — so no inflow is
+# double-counted and no value arrives outside the whitelisted set.
+# The MiniPay Card's XAUt0/USDT/USDC cashback is NOT yet modeled in these marts
+# (the on-chain rewards disburser is not yet identified; see the cashback_sources
+# scaffold in int_celo_gpay_activity — it is compiled out, so Cashback is a
+# zero-row action, not a measured one). Reversal is likewise scaffolded but has
+# never fired: no bridge-to-card transfer has occurred.
 # There is no GNO cashback program on Celo (unlike the Gnosis Chain GP dashboard).
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -32,7 +41,7 @@ models:
     newly-funded and cumulative-funded card counts. "Funded" == a Safe that has
     settled at least one Payment to the bridge (== int_celo_gpay_wallets.is_activated).
     User grain is safe_address (on Celo a card = a Safe = the user). Current
-    partial day is excluded. USDC/USDT only.
+    partial day is excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: date
     description: Calendar date.
@@ -57,7 +66,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_activity_weekly
-  description: Weekly rollup of fct_celo_gpay_activity_daily. Partial current week excluded. USDC/USDT only.
+  description: Weekly rollup of fct_celo_gpay_activity_daily. Partial current week excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: week
     description: ISO week start (Monday).
@@ -82,7 +91,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_activity_monthly
-  description: Monthly rollup of fct_celo_gpay_activity_daily. Partial current month excluded. USDC/USDT only.
+  description: Monthly rollup of fct_celo_gpay_activity_daily. Partial current month excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: month
     description: Calendar month start.
@@ -107,7 +116,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_actions_by_token_daily
-  description: Daily volume (native + USD) and count per action x token, with running cumulatives. Actions - Payment, Top-up, Withdrawal, Reversal. USDC/USDT only.
+  description: Daily volume (native + USD) and count per action x token, with running cumulatives. Actions - Payment, Top-up, Withdrawal, Reversal. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: action
     description: "Payment | Top-up | Withdrawal | Reversal."
@@ -141,7 +150,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_actions_by_token_weekly
-  description: Weekly rollup of fct_celo_gpay_actions_by_token_daily. USDC/USDT only.
+  description: Weekly rollup of fct_celo_gpay_actions_by_token_daily. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: action
     description: "Payment | Top-up | Withdrawal | Reversal."
@@ -175,7 +184,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_actions_by_token_monthly
-  description: Monthly rollup of fct_celo_gpay_actions_by_token_daily. USDC/USDT only.
+  description: Monthly rollup of fct_celo_gpay_actions_by_token_daily. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: action
     description: "Payment | Top-up | Withdrawal | Reversal."
@@ -235,7 +244,7 @@ models:
     Monthly KPIs - MAU (and per-action MAU), payment/deposit/withdrawal USD
     volumes, net flow (deposits minus withdrawals), ARPU, avg tx/user, repeat
     purchase rate. Deposit == Top-up, Withdrawal == Withdrawal. No cashback
-    columns. Partial current month excluded. USDC/USDT only.
+    columns. Partial current month excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: month
     description: Calendar month start.
@@ -284,7 +293,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_retention_monthly
-  description: Monthly payment-cohort retention (users + USD). Cohort = month of a Safe's first Payment. USDC/USDT only.
+  description: Monthly payment-cohort retention (users + USD). Cohort = month of a Safe's first Payment. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: cohort_month
     description: Month of the cohort's first payment.
@@ -315,7 +324,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_retention_by_action_monthly
-  description: Per-action monthly cohort retention. Cohort = month a Safe first performed the action. Actions - Payment, Top-up, Withdrawal, Reversal. USDC/USDT only.
+  description: Per-action monthly cohort retention. Cohort = month a Safe first performed the action. Actions - Payment, Top-up, Withdrawal, Reversal. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: action
     description: "Payment | Top-up | Withdrawal | Reversal."
@@ -352,7 +361,7 @@ models:
   description: |
     Monthly new/retained/returning/churned Safe segmentation and churn/retention
     rates, for two scopes - Payment (card spenders) and Any (any GP activity).
-    Partial current month excluded. USDC/USDT only.
+    Partial current month excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: scope
     description: "'Payment' or 'Any'."
@@ -386,7 +395,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_payments_hourly
-  description: Hourly payment counts by token over the trailing 14 days. Serves the time-of-day distribution panel. USDC/USDT only.
+  description: Hourly payment counts by token over the trailing 14 days. Serves the time-of-day distribution panel. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: hour
     description: Hour bucket (start of hour).
@@ -407,8 +416,8 @@ models:
     int_execution_gpay_balances_user_daily). Densified over a date spine so
     downstream daily totals and latest-day snapshots are correct on every day.
     Net flow = (Top-up + Reversal) - (Payment + Withdrawal). Equals the true
-    on-chain balance ONLY for USDC/USDT under the documented scope assumptions
-    (see file header). Not a chain-wide balance snapshot.
+    on-chain balance only for whitelisted tokens under the documented scope
+    assumptions (see file header). Not a chain-wide balance snapshot.
   columns:
   - name: date
     description: Calendar date (dense).
@@ -430,7 +439,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_balances_by_token_daily
-  description: Total net-flow balance across all Safes, per day per token. Built from the dense per-Safe base. USDC/USDT only.
+  description: Total net-flow balance across all Safes, per day per token. Built from the dense per-Safe base. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: date
     description: Calendar date.
@@ -449,7 +458,7 @@ models:
     authoritative: false
 
 - name: fct_celo_gpay_balance_cohorts_daily
-  description: Per-day holder distribution across balance buckets, by token, in USD and native units. Zero/negative balances excluded. USDC/USDT only.
+  description: Per-day holder distribution across balance buckets, by token, in USD and native units. Zero/negative balances excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: date
     description: Calendar date.
@@ -479,10 +488,10 @@ models:
 # ── API views ─────────────────────────────────────────────────────────────
 # Thin, dashboard-facing views. Column contracts (date/label/value etc.) mirror
 # the Gnosis Chain api_execution_gpay_* views so the frontend query files are
-# near-identical. Same USDC/USDT scope as the facts above.
+# near-identical. Same whitelisted-token scope as the facts above.
 
 - name: api_celo_gpay_total_volume
-  description: All-time card payment volume in USD (USDC + USDT). Counter tile.
+  description: All-time card payment volume in USD across whitelisted tokens (USDT + USDC in practice). Counter tile.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: value
@@ -562,7 +571,7 @@ models:
     data_type: Nullable(Date)
 
 - name: api_celo_gpay_volume_payments_by_token_daily
-  description: Daily payment volume (USD) split by token (USDC/USDT).
+  description: Daily payment volume (USD) split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -575,7 +584,7 @@ models:
     description: "The payment volume in USD for this token on this date."
     data_type: Nullable(Float64)
 - name: api_celo_gpay_volume_payments_by_token_weekly
-  description: Weekly payment volume (USD) split by token (USDC/USDT).
+  description: Weekly payment volume (USD) split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -588,7 +597,7 @@ models:
     description: "The payment volume in USD for this token in this week."
     data_type: Nullable(Float64)
 - name: api_celo_gpay_volume_payments_by_token_monthly
-  description: Monthly payment volume (USD) split by token (USDC/USDT).
+  description: Monthly payment volume (USD) split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -601,7 +610,7 @@ models:
     description: "The payment volume in USD for this token in this month."
     data_type: Nullable(Float64)
 - name: api_celo_gpay_payments_by_token_daily
-  description: Daily payment count split by token (USDC/USDT).
+  description: Daily payment count split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -614,7 +623,7 @@ models:
     description: "The number of payments for this token on this date."
     data_type: UInt64
 - name: api_celo_gpay_payments_by_token_weekly
-  description: Weekly payment count split by token (USDC/USDT).
+  description: Weekly payment count split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -627,7 +636,7 @@ models:
     description: "The number of payments for this token in this week."
     data_type: UInt64
 - name: api_celo_gpay_payments_by_token_monthly
-  description: Monthly payment count split by token (USDC/USDT).
+  description: Monthly payment count split by token (whitelisted; USDT/USDC in practice).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -742,7 +751,7 @@ models:
     data_type: UInt64
 
 - name: api_celo_gpay_kpi_monthly
-  description: Monthly KPI table (MAU, volumes, net flow, ARPU, repeat rate). Backs the KPI tiles and monthly KPI charts. USDC/USDT only.
+  description: Monthly KPI table (MAU, volumes, net flow, ARPU, repeat rate). Backs the KPI tiles and monthly KPI charts. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: month
@@ -925,7 +934,7 @@ models:
     data_type: Float64
 
 - name: api_celo_gpay_wallet_balance_composition
-  description: Latest-day USD balance composition across tokens (USDC/USDT); sub-1% folded into Other.
+  description: Latest-day USD balance composition across whitelisted tokens (USDT/USDC in practice); sub-1% folded into Other.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: name
@@ -938,7 +947,7 @@ models:
     description: "Date the snapshot is computed as of (max date in the underlying data)."
     data_type: Nullable(Date)
 - name: api_celo_gpay_balances_usd_daily
-  description: Daily total net-flow balance (USD) by token. USDC/USDT only.
+  description: Daily total net-flow balance (USD) by token. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -951,7 +960,7 @@ models:
     description: "The total balance in USD for this token."
     data_type: Float64
 - name: api_celo_gpay_balances_native_daily
-  description: Daily total net-flow balance (native units) by token. USDC/USDT only.
+  description: Daily total net-flow balance (native units) by token. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
@@ -1009,16 +1018,28 @@ models:
   description: |
     Deterministic ALL-TOKEN running balance per card Safe (net-flow-since-
     inception, same idiom as fct_celo_gpay_balances_safe_daily but across every token
-    the Safe touches). NOTE: the marts-level USDC/USDT scope comment above does
+    the Safe touches). NOTE: the marts-level whitelist scope comment above does
     NOT apply here — this model is intentionally all-token. balance_raw is the
     exact integer net flow (always set); balance is human units, set only for
     known-decimals tokens. No USD.
+
+    SPARSE, unlike fct_celo_gpay_balances_safe_daily: a (safe, token) pair only
+    has a row on days it had flow, so the latest row per pair carries forward
+    implicitly. "Total balance held" therefore requires
+    argMax(balance, date) per (safe_address, token_address) — a
+    `WHERE date = (SELECT max(date) ...)` snapshot undercounts badly (15.9k vs
+    the true 27.7k on 2026-08-03, because most cards had no flow that day).
+    See docs/lessons/sparse-zero-row-stale-survival.md. Any semantic measure or
+    dashboard tile that sums `balance` over a day grain inherits this error.
   columns:
   - name: date
+    description: Day of the balance change. Sparse — present only on days this (safe, token) pair had flow.
     data_type: Date
   - name: safe_address
+    description: GP card Safe address (0x-prefixed, lowercase).
     data_type: String
   - name: token_address
+    description: Token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.
     data_type: String
   - name: token_symbol
     description: Whitelist symbol; NULL for non-whitelisted tokens.
@@ -1040,23 +1061,28 @@ models:
     NO labels. funder_n_cards_funded is the label-free signal separating a shared
     onboarding/relayer EOA (funds many cards) from an individual funder (funds
     one), without asserting any identity. Grain (safe_address, funder,
-    token_address). All-token (the marts USDC/USDT scope comment does not apply).
+    token_address). All-token (the marts whitelist scope comment does not apply).
   columns:
   - name: safe_address
+    description: The GP card Safe being funded (0x-prefixed, lowercase).
     data_type: String
   - name: funder
     description: RAW inbound sender address, deliberately unlabeled.
     data_type: String
   - name: token_address
+    description: Funding token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.
     data_type: String
   - name: token_symbol
+    description: Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).
     data_type: Nullable(String)
   - name: n_transfers
     description: Inbound transfers from this funder to this card in this token.
     data_type: UInt64
   - name: first_funded_at
+    description: Timestamp of this funder's first inbound transfer to this card in this token.
     data_type: DateTime
   - name: last_funded_at
+    description: Timestamp of this funder's most recent inbound transfer to this card in this token.
     data_type: DateTime
   - name: total_amount_raw
     description: Exact integer sum of inbound amounts (this card/funder/token).

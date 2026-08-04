@@ -27,9 +27,9 @@
 -- The feed list is inline (not a seed) while it has one entry; lift it into
 -- a seed if/when more Mento feeds become relevant.
 --
--- Full rebuild while the celo_execution backfill is in flight (rows for old
--- months keep appearing), same rationale as the other Celo native models.
--- Volume is one row per feed per day — trivially cheap forever.
+-- Full rebuild every run: volume is one row per feed per day (56 rows as of
+-- 2026-08-03), so a rebuild is trivially cheap forever and sidesteps watermark
+-- bookkeeping entirely.
 
 SELECT
     rate_feed_id,

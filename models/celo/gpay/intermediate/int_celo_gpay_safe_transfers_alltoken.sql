@@ -49,9 +49,15 @@
 --
 -- Cost note: scans ALL Celo Transfer logs (no cheap token pre-filter for "all
 -- tokens") and keeps only rows where a registry Safe is on one side. Heavy on a
--- full-refresh, bounded per-month under incremental. While the celo_execution
--- backfill is still filling old months out of order, run with --full-refresh;
--- plain daily incremental is correct once the indexer follows head.
+-- full-refresh, bounded per-month under incremental. The celo_execution backfill
+-- is complete and the indexer follows head, so plain daily incremental is the
+-- correct path; a rebuild is only needed after a registry change that adds Safes
+-- whose history predates the current partitions.
+--
+-- Watch the intra-month cost curve: the monthly insert_overwrite re-reads the
+-- whole current month of all-chain Transfer logs on every run, so cost climbs
+-- through the month and resets. Revisit the partition grain (or add a token
+-- pre-filter) before Celo GP volume grows another order of magnitude.
 --
 -- incremental_strategy resolves to `append` when start_month is set: refresh.py
 -- drives the staged monthly backfill, and a staged window narrower than the month
