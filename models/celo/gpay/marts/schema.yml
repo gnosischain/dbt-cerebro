@@ -274,10 +274,16 @@ models:
     description: Withdrawal USD volume for the month.
     data_type: Float64
   - name: net_flow_usd
-    description: Deposits minus withdrawals (USD). Excludes card spend.
+    description: >-
+      Deposits minus withdrawals (USD). Excludes card spend. Both components are
+      coalesced to 0, so a month in which an action did not occur no longer turns
+      this NULL — before that fix May 2026 (no withdrawals) read NULL here.
     data_type: Float64
   - name: reversal_total_usd
-    description: Processor-refund (Reversal) USD volume for the month.
+    description: >-
+      Processor-refund (Reversal) USD volume for the month. Currently 0 in every
+      month: GP has never issued a Reversal on Celo, so the action does not appear
+      in int_celo_gpay_activity at all. 0 means "none happened", not "not tracked".
     data_type: Float64
   - name: arpu
     description: Average revenue (payment volume) per paying Safe.
@@ -770,26 +776,30 @@ models:
     description: "Monthly active users who made withdrawals."
     data_type: UInt64
   - name: total_payment_volume_usd
-    description: "Total payment volume in USD for the month."
-    data_type: Nullable(Float64)
+    description: "Total payment volume in USD for the month. 0, never NULL, when no payments occurred."
+    data_type: Float64
   - name: total_payment_count
     description: "Total number of payments in the month."
     data_type: UInt64
   - name: total_deposit_volume_usd
-    description: "Total deposit volume in USD for the month."
-    data_type: Nullable(Float64)
+    description: "Total deposit volume in USD for the month. 0, never NULL, when none occurred."
+    data_type: Float64
   - name: total_withdrawal_volume_usd
-    description: "Total withdrawal volume in USD for the month."
-    data_type: Nullable(Float64)
+    description: "Total withdrawal volume in USD for the month. 0, never NULL, when none occurred."
+    data_type: Float64
   - name: net_flow_usd
-    description: "Net flow (deposits minus withdrawals) in USD for the month."
-    data_type: Nullable(Float64)
+    description: >-
+      Net flow (deposits minus withdrawals) in USD for the month. Components are
+      coalesced to 0 upstream, so a month missing one action no longer reads NULL.
+    data_type: Float64
   - name: reversal_total_usd
-    description: "Total reversal value in USD for the month."
-    data_type: Nullable(Float64)
+    description: >-
+      Total reversal value in USD for the month. Currently 0 in every month — GP has
+      never issued a Reversal on Celo. 0 means "none happened", not "not tracked".
+    data_type: Float64
   - name: arpu
     description: "Average revenue per user in USD."
-    data_type: Nullable(Float64)
+    data_type: Float64
   - name: avg_tx_per_user
     description: "Average number of transactions per active user."
     data_type: Float64
@@ -1027,10 +1037,21 @@ models:
     has a row on days it had flow, so the latest row per pair carries forward
     implicitly. "Total balance held" therefore requires
     argMax(balance, date) per (safe_address, token_address) — a
-    `WHERE date = (SELECT max(date) ...)` snapshot undercounts badly (15.9k vs
-    the true 27.7k on 2026-08-03, because most cards had no flow that day).
-    See docs/lessons/sparse-zero-row-stale-survival.md. Any semantic measure or
-    dashboard tile that sums `balance` over a day grain inherits this error.
+    `WHERE date = (SELECT max(date) ...)` snapshot undercounts badly (measured
+    2026-08-04: 11,574.22 on the latest day vs a true 25,676.93, a 55% undercount,
+    because only 112 of 932 pairs had flow that day). Zero rows ARE written (501 of
+    them), so the carry-forward total is trustworthy and the sibling trap in
+    docs/lessons/sparse-zero-row-stale-survival.md does not bite here.
+
+    DO NOT SUM `balance`. It is a running total, so summing across dates re-counts
+    the same balance every day, and summing one date drops every card without flow.
+    The semantic measure that did this was removed 2026-08-04; the model stays
+    exposed for its DIMENSIONS (which tokens a card holds). For a total use
+    api_celo_gpay_total_balance (single latest-day row); the correct per-safe base is
+    the dense fct_celo_gpay_balances_safe_daily, whose latest day equals the
+    carry-forward total here to the cent. Note api_celo_gpay_total_balance reads
+    25,657.65 against that 25,676.93 — a 19.28 gap via fct_celo_gpay_snapshots that
+    is still unexplained; reconcile before quoting either as exact.
   columns:
   - name: date
     description: Day of the balance change. Sparse — present only on days this (safe, token) pair had flow.
