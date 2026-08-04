@@ -421,49 +421,6 @@ models:
     meta:
       owner: analytics_team
       authoritative: false
-
-  - name: int_governance_poll_sentiment
-    description: >
-      One row per (post, poll): a forum poll collapsed into a for/against tally,
-      with the timing of the post hosting it. The only record of
-      one-person-one-vote community sentiment on questions that later get a
-      token-weighted Snapshot vote -- the missing middle of the
-      discussion -> signal -> vote funnel.
-      TIMING COMES FROM THE HOST POST: the poll row has no created_at (close_at is
-      a schedule, ingested_at is first-seen), so it is dated by its host post via
-      an INNER JOIN on post_id -- coverage verified 184 of 184. An undated poll
-      must not silently acquire a phase downstream.
-      poll_against_share is NULL rather than 0 when nothing decisive was cast or
-      any count was withheld; a hidden live poll reading as 0% opposition would be
-      worse than no number.
-    columns:
-      - name: post_id
-        data_type: UInt64
-        tests: [not_null]
-      - name: poll_name
-        data_type: String
-        tests: [not_null]
-      - name: is_temperature_check
-        description: >
-          Poll offers BOTH a favour and an against option. A one-sided poll or a
-          multi-option selection ballot is not a for/against check and its
-          against_share would be meaningless.
-        data_type: Bool
-      - name: poll_against_share
-        description: against / (favour + against). NULL when withheld or nothing decisive.
-        data_type: Nullable(Float64)
-      - name: has_withheld_counts
-        description: Any option's count hidden by the poll's results policy.
-        data_type: Bool
-      - name: poll_posted_at
-        description: created_at of the HOST POST -- the poll itself carries no timestamp.
-        data_type: DateTime
-      - name: decisive_votes
-        description: favour + against. Runs roughly 10-65; filter on it before ranking.
-        data_type: Nullable(Int64)
-    meta:
-      owner: analytics_team
-      authoritative: false
       agent:
         grain: [snapshot_date, entity_kind, entity_id, metric]
         semantics: snapshot
@@ -515,3 +472,77 @@ models:
           If a past day is missing, it stays missing; record the gap rather than
           filling it. Never change partition_by to a month grain. Nothing reads this
           model yet, so a re-run has no downstream rebuild.
+
+  - name: int_governance_poll_sentiment
+    description: >
+      One row per (post, poll): a forum poll collapsed into a for/against tally,
+      with the timing of the post hosting it. The only record of
+      one-person-one-vote community sentiment on questions that later get a
+      token-weighted Snapshot vote -- the missing middle of the
+      discussion -> signal -> vote funnel.
+      TIMING COMES FROM THE HOST POST: the poll row has no created_at (close_at is
+      a schedule, ingested_at is first-seen), so it is dated by its host post via
+      an INNER JOIN on post_id -- coverage verified 184 of 184. An undated poll
+      must not silently acquire a phase downstream.
+      poll_against_share is NULL rather than 0 when nothing decisive was cast or
+      any count was withheld; a hidden live poll reading as 0% opposition would be
+      worse than no number.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: poll_name
+        data_type: String
+        tests: [not_null]
+      - name: is_temperature_check
+        description: >
+          Poll offers BOTH a favour and an against option. A one-sided poll or a
+          multi-option selection ballot is not a for/against check and its
+          against_share would be meaningless.
+        data_type: Bool
+      - name: poll_against_share
+        description: against / (favour + against). NULL when withheld or nothing decisive.
+        data_type: Nullable(Float64)
+      - name: has_withheld_counts
+        description: Any option's count hidden by the poll's results policy.
+        data_type: Bool
+      - name: poll_posted_at
+        description: created_at of the HOST POST -- the poll itself carries no timestamp.
+        data_type: DateTime
+      - name: decisive_votes
+        description: favour + against. Runs roughly 10-65; filter on it before ranking.
+        data_type: Nullable(Int64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [post_id, poll_name]
+        semantics: stateless
+        ground_truth: >-
+          Re-derivable from stg_governance__forum_polls collapsed by polarity,
+          INNER JOIN stg_governance__forum_posts for poll_posted_at. Coverage of
+          the host-post join must stay complete (every poll resolves a post).
+        invariants:
+        - id: temperature-check-needs-both-sides
+          text: >
+            is_temperature_check is true only when the poll offers BOTH a favour
+            and an against option. Reading poll_against_share on a one-sided or
+            multi-option ballot is meaningless — always filter
+            is_temperature_check before ranking or averaging.
+        - id: against-share-null-not-zero
+          text: >
+            poll_against_share is NULL (never 0) when decisive_votes is 0 or any
+            option count is withheld. Treating NULL as 0 invents 0% opposition
+            for a hidden live poll.
+        - id: timing-from-host-post
+          text: >
+            The poll row has no created_at. poll_posted_at is the host post's
+            created_at via INNER JOIN on post_id — an undated poll must not
+            silently acquire a phase downstream.
+        hazards: [stale-snapshot-caveat]
+        validation:
+        - 'duplicate excess: count() - uniqExact((post_id, poll_name)) == 0'
+        - 'temperature checks only: countIf(is_temperature_check AND (poll_against_share < 0 OR poll_against_share > 1)) == 0'
+        reprocess_runbook: >-
+          Table materialization — `dbt run --select int_governance_poll_sentiment`
+          rebuilds the full collapse from staging. No partition surgery.

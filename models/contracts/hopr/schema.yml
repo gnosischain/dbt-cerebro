@@ -15,6 +15,44 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [address]
+      semantics: dimension
+      ground_truth: >-
+        hoprnet/contracts ethereum/bindings/contracts-addresses.json plus
+        execution.contracts creation dates, loaded via the
+        contracts_hopr_registry_static seed.
+      invariants:
+      - id: one-row-per-address
+        text: >-
+          address is unique. A duplicate would make every decode_logs join
+          ambiguous and silently double-decode that deployment.
+      - id: abi-source-is-proxy-not-impl
+        text: >-
+          For EIP-1967 proxies, abi_source_address must be the PROXY address
+          (where event_signatures rows are keyed), never the implementation.
+          Pointing at the impl makes the ABI join miss and yields empty
+          event_name with no error.
+      - id: both-networks-present
+        text: >-
+          Registry must contain both dufour and jura for every shared
+          contract_type both networks deploy. A missing network silently drops
+          that network's events from every downstream decode.
+      - id: staging-channels-excluded
+        text: >-
+          Pre-jura staging HoprChannels
+          0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57 must never appear. It is
+          not production and must never be aggregated with either network.
+      hazards: [decode-watermark-late-logs, decoder-watermark-literals]
+      validation:
+      - 'uniqExact(address) == count()'
+      - 'uniqExact(network) == 2'
+      - 'countIf(address = ''0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57'') == 0'
+      reprocess_runbook: >-
+        `dbt seed --select contracts_hopr_registry_static` then `dbt run
+        --select contracts_hopr_registry+`. Changing the seed without reseeding
+        leaves every decode on a stale address set; a wrong abi_source_address
+        yields silently undecoded rows rather than an error.
   columns:
   - name: address
     description: Contract address, lowercased with 0x prefix.
