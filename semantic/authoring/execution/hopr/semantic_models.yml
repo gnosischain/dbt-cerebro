@@ -16,6 +16,85 @@
 # uniqExact across days double-counts.
 
 semantic_models:
+- name: hopr_nodes
+  description: >
+    HOPR node dimension. The operator angle is what this exists for:
+    distinct_operators over safe_address is the decentralisation metric, because a
+    node count says nothing about who controls them (on jura, 15+ of the first 16
+    nodes sit under one HOPR-operated Safe). hosting_provider carries the
+    home-ISP-vs-hyperscaler signal. geo_source must be respected when reading
+    ip_country: only ~15% of announced IPs resolve, so an absent country means
+    unenriched, not unknown-location.
+  model: ref('int_hopr_nodes')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr nodes
+        - hopr node operators
+        - hopr node geography
+        - hopr node hosting providers
+        grain: node
+  defaults:
+    agg_time_dimension: first_announced_at
+  dimensions:
+  - name: first_announced_at
+    description: When the node first announced itself - use for node cohorts.
+    type: time
+    expr: first_announced_at
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  - name: node_class
+    description: cover_traffic, gnosisvpn_exit, or unclassified. Sourced from HOPR's repos.
+    type: categorical
+    expr: node_class
+  - name: safe_address
+    description: The operator. Group by this for nodes-per-operator concentration.
+    type: categorical
+    expr: safe_address
+  - name: hosting_provider
+    description: Bucketed provider - the home-vs-hyperscaler decentralisation signal.
+    type: categorical
+    expr: hosting_provider
+  - name: ip_country
+    description: Country from the announced IP. Only meaningful where geo_source = 'ipinfo'.
+    type: categorical
+    expr: ip_country
+  - name: declared_country
+    description: Country the product advertises. NOT verified geography.
+    type: categorical
+    expr: declared_country
+  - name: geo_source
+    description: >
+      Enrichment provenance ('ipinfo' / 'unenriched' / 'no_ipv4'). Always filter or
+      split on this before quoting a geographic distribution.
+    type: categorical
+    expr: geo_source
+  measures:
+  - name: hopr_nodes
+    description: Node count.
+    agg: count
+    expr: 1
+  - name: hopr_distinct_operators
+    description: >
+      Distinct Safes controlling these nodes. The decentralisation numerator -
+      compare against hopr_nodes for concentration.
+    agg: count_distinct
+    expr: safe_address
+  - name: hopr_node_earned_wxhopr
+    description: wxHOPR paid to these nodes as relay destinations. Additive across nodes.
+    agg: sum
+    expr: earned_wxhopr
+  - name: hopr_node_tickets_earned
+    description: Ticket redemptions on channels terminating at these nodes.
+    agg: sum
+    expr: tickets_earned
+
 - name: gnosisvpn_exit_activity_daily
   description: >
     GnosisVPN traffic by exit node and country, per day. Tickets are probabilistic

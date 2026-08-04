@@ -76,6 +76,197 @@ models:
               config:
                 where: "packing_overflow_check IS NOT NULL"
 
+  - name: int_hopr_nodes
+    description: >
+      HOPR node dimension, one row per (network, node_address). Turns three
+      previously dead-end decode streams into something usable: before it, only
+      contracts_hopr_Channels_events had any consumer, while Announcements,
+      NodeSafeRegistry and NodeStakeFactory were decoded but referenced by nothing.
+      Joins node identity to its Safe (operator), its announced IP (geo/ASN/hosting
+      via the same stg_crawlers_data__ipinfo view the p2p models use), its declared
+      class, and its channel earnings as a relay destination.
+      The operator dimension is the point: safe_address is what makes
+      nodes-per-operator computable, the one HOPR decentralisation metric that is
+      not a vanity count.
+      NOT joined yet: per-node uptime/latency from the network.hoprnet.org prober.
+      Those click-runner tables live in playground_max until the cron is deployed to
+      crawlers_data; the join key is node_address and it is dufour-only, because that
+      prober was never ported to jura.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [network, node_address]
+        semantics: dimension
+        ground_truth: >-
+          On-chain HoprAnnouncements / HoprNodeSafeRegistry / HoprNodeStakeFactory
+          events, plus the hopr_node_registry seed for class labels and
+          crawlers_data.ipinfo for geography.
+        invariants:
+        - id: one-row-per-network-node
+          text: >-
+            Grain is (network, node_address); count() must equal
+            uniqExact((network, node_address)). A duplicate would double-count a
+            node in every operator-concentration or geography aggregate.
+        - id: join-use-nulls-required
+          text: >-
+            join_use_nulls = 1 must stay set in the pre_hook. Every enrichment is a
+            LEFT JOIN and ClickHouse otherwise fills unmatched rows with the column
+            TYPE DEFAULT ('' for String), not NULL. Measured without it: all 1,213
+            unclassified nodes read as classified and 1,020 of 1,191 dufour nodes
+            reported geo enrichment when only ~151 had a country. Both silent.
+        - id: geo-coverage-is-partial-and-explicit
+          text: >-
+            crawlers_data.ipinfo was populated by the nebula/ip_crawler pipeline for
+            a different node set, so it only incidentally contains HOPR IPs -
+            151 of 1,020 announced dufour IPv4 addresses (14.8%) on 2026-08-03, and
+            0 of 16 on jura. geo_source records which bucket each node fell into.
+            Never filter unenriched nodes out of counts, and never read a NULL
+            ip_country as "no country".
+        - id: safe-link-only-from-registry
+          text: >-
+            NodeSafeRegistry is the ONLY source linking a node to a Safe.
+            NewHoprNodeStakeSafe carries just `instance` (the Safe address) and no
+            node address, so it can only date a Safe's creation, never attribute it.
+        - id: deregistration-event-name-differs-per-network
+          text: >-
+            dufour emits DergisteredNodeSafe (a typo in the deployed contract) and
+            jura emits DeregisteredNodeSafe. Matching one spelling silently
+            under-counts deregistrations on the other network, inflating
+            is_registered.
+        hazards: [ch-left-join-nulls, decode-watermark-late-logs, stale-snapshot-caveat]
+        validation:
+        - 'count() - uniqExact((network, node_address)) == 0'
+        - 'countIf(node_class = ''cover_traffic'') == 10 AND countIf(node_class = ''gnosisvpn_exit'') == 7'
+        - 'geo honesty: countIf(geo_source = ''ipinfo'' AND ip_country IS NULL) == 0'
+        - 'every classified node resolves a safe: countIf(node_class != ''unclassified'' AND safe_address IS NULL) == 0'
+        reprocess_runbook: >-
+          Plain `dbt run --select int_hopr_nodes` - it is a table over already-decoded
+          inputs (~1,200 rows), so a full rebuild is seconds and there is no
+          watermark to respect. Rebuild after any of its upstreams change, and after
+          reseeding hopr_node_registry. If geo coverage jumps or collapses, check
+          crawlers_data.ipinfo first rather than this model.
+    columns:
+      - name: network
+        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: node_address
+        description: Node chain key, lowercased with 0x prefix. Join key to channel endpoints and to the prober feed.
+        data_type: String
+        tests: [not_null]
+      - name: safe_address
+        description: >
+          Currently bound HOPR Safe (the operator). NULL for nodes never registered.
+          Group by this for nodes-per-operator concentration.
+        data_type: Nullable(String)
+      - name: is_registered
+        description: 1 if the latest NodeSafeRegistry event for this node was a registration.
+        data_type: UInt8
+      - name: first_registered_at
+        description: First RegisteredNodeSafe timestamp for this node.
+        data_type: Nullable(DateTime)
+      - name: last_deregistered_at
+        description: Most recent deregistration (either spelling), NULL if never deregistered.
+        data_type: Nullable(DateTime)
+      - name: safe_created_at
+        description: When the bound Safe was created, from NewHoprNodeStakeSafe.
+        data_type: Nullable(DateTime)
+      - name: packet_pub_key
+        description: Latest announced ed25519 packet public key from KeyBinding.
+        data_type: Nullable(String)
+      - name: announced_multiaddr
+        description: Latest announced transport multiaddress, e.g. /ip4/34.159.20.69/tcp/9024.
+        data_type: Nullable(String)
+      - name: announced_ip
+        description: IPv4 extracted from announced_multiaddr; NULL for /dns4/ and /ip6/ forms.
+        data_type: Nullable(String)
+      - name: announcement_count
+        description: Number of AddressAnnouncement events; a node re-announces when its address changes.
+        data_type: UInt64
+      - name: first_announced_at
+        description: First AddressAnnouncement timestamp.
+        data_type: Nullable(DateTime)
+      - name: last_announced_at
+        description: Most recent AddressAnnouncement timestamp.
+        data_type: Nullable(DateTime)
+      - name: node_class
+        description: >
+          Declared class from the hopr_node_registry seed, sourced from HOPR's own
+          repos rather than inferred: cover_traffic, gnosisvpn_exit, or unclassified.
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cover_traffic', 'gnosisvpn_exit', 'unclassified']
+      - name: node_label
+        description: Human label from the seed, e.g. "GnosisVPN UK" or "CT blue 3".
+        data_type: Nullable(String)
+      - name: declared_city
+        description: City the product advertises for this node. NOT verified geography.
+        data_type: Nullable(String)
+      - name: declared_country
+        description: Country the product advertises for this node. NOT verified geography.
+        data_type: Nullable(String)
+      - name: ip_country
+        description: Country resolved from the announced IP via ipinfo. NULL unless geo_source = 'ipinfo'.
+        data_type: Nullable(String)
+      - name: ip_city
+        description: City resolved from the announced IP via ipinfo.
+        data_type: Nullable(String)
+      - name: ip_org
+        description: Owning organisation of the announced IP, e.g. "AS8767 M-net Telekommunikations GmbH".
+        data_type: Nullable(String)
+      - name: ip_asn
+        description: ASN of the announced IP where ipinfo provides it.
+        data_type: Nullable(String)
+      - name: hosting_provider
+        description: >
+          Bucketed provider from stg_crawlers_data__ipinfo (AWS, Google, Hetzner,
+          "Public ISP (Home/Office)", ...). This is the home-vs-hyperscaler signal
+          for HOPR decentralisation.
+        data_type: Nullable(String)
+      - name: ip_is_mobile
+        description: Whether ipinfo flags the announced IP as a mobile network.
+        data_type: Nullable(Bool)
+      - name: geo_source
+        description: >
+          Enrichment provenance, so partial coverage is never mistaken for absence:
+          'ipinfo' (resolved), 'unenriched' (has an IPv4 but ipinfo has no row),
+          'no_ipv4' (announced a dns4/ip6 address, or never announced).
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ipinfo', 'unenriched', 'no_ipv4']
+      - name: earned_wei
+        description: Value paid to this node as a relay destination, in wei.
+        data_type: UInt256
+      - name: earned_wxhopr
+        description: earned_wei scaled to wxHOPR.
+        data_type: Decimal(38, 18)
+      - name: tickets_earned
+        description: TicketRedeemed events on channels terminating at this node.
+        data_type: UInt64
+      - name: channels_as_destination
+        description: Distinct channels where this node is the destination (it relays and is paid).
+        data_type: UInt64
+      - name: channels_as_source
+        description: Distinct channels where this node is the source (it funds and pays).
+        data_type: UInt64
+      - name: channels_opened
+        description: ChannelOpened events initiated by this node as source.
+        data_type: UInt64
+      - name: first_channel_activity_at
+        description: First channel event involving this node.
+        data_type: Nullable(DateTime)
+      - name: last_channel_activity_at
+        description: Most recent channel event involving this node.
+        data_type: Nullable(DateTime)
+
   - name: fct_hopr_network_daily
     description: >
       Daily HOPR channel activity per network, split by is_cover_traffic. THE SPLIT
