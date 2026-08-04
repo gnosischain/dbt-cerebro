@@ -25,7 +25,8 @@ Repeatable workflows (vendor-neutral; Claude slash commands are thin wrappers):
 [docs/workflows/new-model.md](docs/workflows/new-model.md),
 [docs/workflows/generate-schema.md](docs/workflows/generate-schema.md),
 [docs/workflows/refresh-advisor.md](docs/workflows/refresh-advisor.md),
-[docs/workflows/incident.md](docs/workflows/incident.md).
+[docs/workflows/incident.md](docs/workflows/incident.md),
+[docs/workflows/add-token.md](docs/workflows/add-token.md).
 
 ## Required workflow for any model change
 

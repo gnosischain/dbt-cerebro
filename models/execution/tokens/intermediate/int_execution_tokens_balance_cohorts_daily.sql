@@ -15,6 +15,13 @@
 
 {% set start_month = var('start_month', none) %}
 {% set end_month   = var('end_month', none) %}
+{% set symbol = var('symbol', none) %}
+{% set symbol_exclude = var('symbol_exclude', none) %}
+
+{% set symbol_sql %}
+  {{ symbol_filter('symbol', symbol, 'include') }}
+  {{ symbol_filter('symbol', symbol_exclude, 'exclude') }}
+{% endset %}
 
 WITH
 
@@ -34,8 +41,10 @@ balances_base AS (
         AND toStartOfMonth(b.date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(b.date) <= toDate('{{ end_month }}')
       {% else %}
-        {{ apply_monthly_incremental_filter('b.date', 'date', 'true') }}
+        {{ apply_monthly_incremental_filter('b.date', 'date', 'true', filters_sql=symbol_sql) }}
       {% endif %}
+      {{ symbol_filter('b.symbol', symbol, 'include') }}
+      {{ symbol_filter('b.symbol', symbol_exclude, 'exclude') }}
 ),
 
 bucketed_usd AS (
