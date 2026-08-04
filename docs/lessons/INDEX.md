@@ -65,6 +65,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   server "(total)" cap = you're the victim of saturation, not a fat query.
 - [ch-partition-cap](ch-partition-cap.md) `remediated` — >100 partitions/INSERT fails
   (252), Cloud blocks raising it (452); never year-partition an insert_overwrite model.
+- [ch-qualified-column-leak](ch-qualified-column-leak.md) `remediated` — an unaliased
+  ambiguous column ships as `a.total_vp`; build is green, consumers get Code 47. Sweep
+  system.columns for `%.%`; no gate possible (catalog has no model nodes).
 - [ch-alias-shadows-where](ch-alias-shadows-where.md) `remediated` — output aliases
   shadow source columns in same-level WHERE; isolate/relabel in another scope.
 - [ch-left-join-nulls](ch-left-join-nulls.md) `remediated` — LEFT JOIN misses return
@@ -85,6 +88,10 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   token maps from an independent source (address-sorted swap tokens == Vault order).
 - [unpriced-wrapper-token](unpriced-wrapper-token.md) `remediated` — every new
   wrapper/vault token needs a price path or it reads $0 everywhere.
+- [circular-completeness-proof](circular-completeness-proof.md) `observed` — proving an
+  anchored population complete using its own anchor always returns 100%; a second Celo
+  GP settlement bridge (~14% of cards, ~35% of transfers, front-loaded) stayed invisible
+  for months. Enumerate from the entity side. OPEN: modelling blocked on the GP team.
 - [stale-snapshot-caveat](stale-snapshot-caveat.md) `observed` — argMax "latest" marts
   silently serve the last ingested (possibly partial) day; check max(date) first.
 - [elementary-artifact-upload-tax](elementary-artifact-upload-tax.md) `enforced` —
