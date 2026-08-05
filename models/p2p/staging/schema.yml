@@ -214,8 +214,46 @@ models:
     description: Boolean indicating if the IP belongs to a mobile network provider.
     data_type: UInt8
 
+  - name: updated_at
+    description: >
+      When ip_crawler last wrote this row. The source table is a plain MergeTree
+      ordered by (ip, updated_at) rather than a ReplacingMergeTree and a retry
+      appends a new row, so an IP can legitimately have several rows. Use this to
+      pick the latest per IP before joining on `ip`, otherwise the join fans out.
+    data_type: DateTime
+
   - name: generic_provider
-    description: A categorized label representing the type of network provider or hosting service based on organization data.
+    description: >
+      Network type inferred from the ipinfo `org` string by pattern match: a named
+      cloud/hoster bucket (AWS, Hetzner, ...), 'Hosting/CDN (Other)', 'Carrier/Transit',
+      'Public ISP (Home/Office)', or 'Unknown'.
+
+      Classification is positive-evidence-only: an org that matches no rule yields
+      'Unknown', NOT a residential label. This matters because consumers turn the
+      residential bucket into an economic claim -- int_esg_node_classification maps
+      'Public ISP (Home/Office)' to node_category='home_staker' at 0.80 confidence.
+      Defaulting unrecognised orgs to residential (the behaviour before 2026-08-05)
+      manufactured home-staker signal for every unmatched hoster: 10,162 of the 15,557
+      IPs then labelled residential matched no residential pattern at all, 651 of them
+      Contabo. 'Unknown' scores 0.30 downstream, so an honest gap stays visible.
+
+      Two consequences to respect when editing the classifier in
+      stg_crawlers_data__ipinfo:
+      - Do not add new top-level bucket names. ESG enumerates bucket names explicitly
+        and falls through to node_category='unknown', so a new bucket would make a
+        correctly-identified datacenter classify worse than an unrecognised one. Put
+        additional hosters in 'Hosting/CDN (Other)', which ESG already reads as
+        cloud_hosted.
+      - `lowerUTF8` lowercases accents but ILIKE matches literal bytes, so accented brand
+        spellings need care, and one stem is not enough: the accent sits in a different
+        place per language, so 'telefonica' keeps "telef" while 'telefonos' breaks it at
+        "tel-e". Match a stem on each side of the accent ('%telef%' plus '%fono%'). Missing
+        one splits a single brand across buckets by country. Keep patterns ASCII -- some
+        scripts/checks readers open model SQL without an explicit encoding.
+
+      Coverage is deliberately incomplete rather than exhaustive: 872 of 22,177 IPs
+      (3.9%) are 'Unknown' as of 2026-08-05, mostly small regional ISPs and one-off
+      hosters. Widen the pattern lists; do not narrow the fallback.
     data_type: String
   meta:
     owner: analytics_team

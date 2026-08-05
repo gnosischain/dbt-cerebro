@@ -262,6 +262,27 @@ seeds:
         date_end: "Nullable(Date)"
         token_class: "String"
 
+    # Celo GP settlement contracts. The card universe is the UNION over these: a
+    # Safe is a GP card if its Roles module ever wired ANY of them. Two are live
+    # simultaneously — settlement_legacy is scheduled to migrate onto
+    # settlement_current — so membership is a property of the TRANSFER, never a
+    # permanent per-card attribute. They are different contracts sharing no event
+    # signatures, NOT two versions of one; decoding them needs two ABIs.
+    # Consumed by int_celo_gpay_roles_modules
+    # (discovery), int_celo_gpay_safe_registry (self-exclusion) and
+    # int_celo_gpay_activity (Payment/Reversal classification). Adding the
+    # migration target here is a one-line change; do NOT hardcode an address.
+    # Only status IN ('active','migrating') is in scope; 'planned' stays inert.
+    celo_gpay_settlement_contracts:
+      +engine: MergeTree()
+      +order_by: [address]
+      +column_types:
+        address: "String"
+        label: "String"
+        status: "String"
+        first_seen: "Nullable(Date)"
+        notes: "String"
+
     # Chainlink feed registry on Celo: maps the AnswerUpdated-emitting
     # aggregator to its stable proxy and symbol pair. Consumed by
     # int_celo_token_prices_daily to turn decoded feed events into per-token

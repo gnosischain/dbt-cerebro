@@ -193,6 +193,28 @@ spine AS (
     SELECT network, node_address FROM channel_activity
 ),
 
+-- crawlers_data.ipinfo is a plain MergeTree ORDER BY (ip, updated_at), NOT a
+-- ReplacingMergeTree, so it legitimately holds more than one row per IP: 71
+-- duplicate rows across 22,106 distinct IPs as of 2026-08-03, max 2 per IP.
+-- ip_crawler re-fetches an IP whenever it retries, and each attempt appends.
+-- Joining it raw would FAN OUT and silently duplicate a node row, inflating every
+-- operator-concentration and geography aggregate. None of the currently matched
+-- HOPR IPs happen to be duplicated, which is exactly why the grain test passes
+-- today and would keep passing right up until it broke. Collapse to one row per
+-- IP, latest wins.
+ipinfo_latest AS (
+    SELECT
+        ip                                              AS ip,
+        argMax(country, updated_at)                     AS country,
+        argMax(city, updated_at)                        AS city,
+        argMax(org, updated_at)                         AS org,
+        argMax(asn, updated_at)                         AS asn,
+        argMax(generic_provider, updated_at)            AS generic_provider,
+        argMax(is_mobile, updated_at)                   AS is_mobile
+    FROM {{ ref('stg_crawlers_data__ipinfo') }}
+    GROUP BY ip
+),
+
 enriched AS (
     SELECT
         s.network                                       AS network,
@@ -282,5 +304,5 @@ SELECT
     e.first_channel_activity_at                         AS first_channel_activity_at,
     e.last_channel_activity_at                          AS last_channel_activity_at
 FROM enriched AS e
-LEFT JOIN {{ ref('stg_crawlers_data__ipinfo') }} AS ip
+LEFT JOIN ipinfo_latest AS ip
     ON ip.ip = e.announced_ip

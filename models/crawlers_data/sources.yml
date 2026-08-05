@@ -252,3 +252,72 @@ sources:
             description: USD price from CoinGecko.
           - name: ingested_at
             description: Wall-clock timestamp of the insert.
+
+  # Separate source so the schema can be redirected (e.g. to playground_max)
+  # during dev/backfill validation without also redirecting dune_* and the
+  # other crawlers_data tables. Defaults to crawlers_data in prod.
+  #
+  # Redirecting matters here because ipinfo is the one crawlers_data table a
+  # developer can populate themselves: `ip_crawler --source hopr` writes it, and
+  # dev accounts cannot write crawlers_data. Without this, a dev enrichment run
+  # is invisible to dbt.
+  #
+  # NOTE the blast radius: stg_crawlers_data__ipinfo also feeds the p2p models
+  # (int_p2p_discv4_peers, int_p2p_discv5_peers and both topology models). A dev
+  # schema holding only HOPR IPs makes those look devoid of geography, so set
+  # DBT_IPINFO_SCHEMA for HOPR work only and unset it before building p2p.
+  - name: crawlers_data_ipinfo
+    schema: "{{ env_var('DBT_IPINFO_SCHEMA', 'crawlers_data') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: ipinfo
+        freshness: null
+        description: "IP intelligence enrichment from ipinfo.io lookups."
+        columns:
+          - name: ip
+            data_type: String
+          - name: hostname
+            data_type: String
+          - name: city
+            data_type: String
+          - name: region
+            data_type: String
+          - name: country
+            data_type: String
+          - name: loc
+            data_type: String
+          - name: org
+            data_type: String
+          - name: postal
+            data_type: String
+          - name: timezone
+            data_type: String
+          - name: asn
+            data_type: String
+          - name: company
+            data_type: String
+          - name: carrier
+            data_type: String
+          - name: is_bogon
+            data_type: Bool
+          - name: is_mobile
+            data_type: Bool
+          - name: abuse_email
+            data_type: String
+          - name: abuse_phone
+            data_type: String
+          - name: error
+            data_type: String
+          - name: attempts
+            data_type: UInt8
+          - name: success
+            data_type: Bool
+          - name: created_at
+            data_type: DateTime
+          - name: updated_at
+            data_type: DateTime
+
+      # ──────────────── ProbeLab rollups ────────────────
+      # ProbeLab rollup tables use Nullable timestamps — exempt from freshness

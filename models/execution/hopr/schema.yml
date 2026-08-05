@@ -117,12 +117,14 @@ models:
             reported geo enrichment when only ~151 had a country. Both silent.
         - id: geo-coverage-is-partial-and-explicit
           text: >-
-            crawlers_data.ipinfo was populated by the nebula/ip_crawler pipeline for
-            a different node set, so it only incidentally contains HOPR IPs -
-            151 of 1,020 announced dufour IPv4 addresses (14.8%) on 2026-08-03, and
-            0 of 16 on jura. geo_source records which bucket each node fell into.
-            Never filter unenriched nodes out of counts, and never read a NULL
-            ip_country as "no country".
+            ipinfo coverage of HOPR IPs depends on ip_crawler having been pointed at
+            them. Before the `hopr` source preset existed the table was populated by the
+            nebula pipeline for a different node set and only incidentally contained HOPR
+            IPs (151 of 1,020 dufour, 14.8%, on 2026-08-03). After running that preset:
+            1,020 of 1,020 dufour and 16 of 16 jura on 2026-08-05. Coverage can regress
+            for newly-announced IPs until the crawler runs again, so geo_source still
+            records which bucket each node fell into. Never filter unenriched nodes out
+            of counts, and never read a NULL ip_country as "no country".
         - id: safe-link-only-from-registry
           text: >-
             NodeSafeRegistry is the ONLY source linking a node to a Safe.
@@ -226,8 +228,17 @@ models:
       - name: hosting_provider
         description: >
           Bucketed provider from stg_crawlers_data__ipinfo (AWS, Google, Hetzner,
-          "Public ISP (Home/Office)", ...). This is the home-vs-hyperscaler signal
-          for HOPR decentralisation.
+          'Hosting/CDN (Other)', 'Public ISP (Home/Office)', 'Unknown', ...). This is the
+          home-vs-datacenter signal for HOPR decentralisation.
+
+          'Unknown' means the org string matched no rule -- do not read it as residential,
+          and do not fold it into either side of a home-vs-datacenter split. On 2026-08-05:
+          751 of 1,020 dufour nodes datacenter-hosted (Hosting/CDN (Other) 356 incl. 232
+          Contabo, Hetzner 278, Google 72, OVHcloud 28, DigitalOcean 8, Oracle Cloud 6,
+          AWS 3), 157 residential, 110 Unknown, 2 Carrier/Transit; all 16 jura nodes Google.
+          Budget-VPS hosters used to fall through the classifier's residential default,
+          which put 545 dufour nodes in the residential bucket and overstated home hosting
+          by ~3.5x -- see the stg_crawlers_data__ipinfo column doc.
         data_type: Nullable(String)
       - name: ip_is_mobile
         description: Whether ipinfo flags the announced IP as a mobile network.
