@@ -36,9 +36,15 @@ Read with root AGENTS.md.
   `seeds/celo_gpay_settlement_contracts.csv` is the single source of truth, read by
   `int_celo_gpay_roles_modules` (discovery), `int_celo_gpay_safe_registry`
   (self-exclusion) and `int_celo_gpay_activity` (classification). Two bridges are
-  live and both are GP's: v1 `0xc4df5cac…` (from 2026-03-31, `status=migrating`) and
-  v2 `0xc07cd8c2…` (from 2026-05-28, `status=active`). GP confirmed on 2026-08-05
-  that v1 will be migrated onto v2. `0xd11e35ca…` is deployed, unused and
+  live and both are GP's: `settlement_legacy` `0xc4df5cac…` (from 2026-03-31,
+  `status=migrating`) and `settlement_current` `0xc07cd8c2…` (from 2026-05-28,
+  `status=active`). GP confirmed on 2026-08-05 that the legacy one will be migrated
+  onto the current one. **Do not call them v1/v2** — they are two different
+  contracts, not two versions of one, and they share ZERO event signatures (5 events
+  on legacy vs 7 on current, no overlap, different per-payment events `ccc11cdc…` vs
+  `8b4c0107…`). Practical consequence: decoding settlement events needs TWO separate
+  ABIs, and any settlement model must handle both shapes rather than one.
+  `0xd11e35ca…` is deployed, unused and
   unconfirmed — it sits at `status=planned` and is excluded from every filter.
   Adding GP's migration target must be a seed edit, nothing more.
 - **Discovery and classification widen together, in the same run.** The registry
@@ -51,7 +57,7 @@ Read with root AGENTS.md.
   "generation" column is correct only until that card moves and silently wrong after.
   Migration state lives in `int_celo_gpay_roles_modules.wired_settlements`: a
   two-element array means that card has migrated. Zero had on 2026-08-05.
-- Keying the tree on v2 alone until 2026-08-05 cost 235 cards, 1,743 transfers and
+- Keying the tree on the current contract alone until 2026-08-05 cost 235 cards, 1,743 transfers and
   ~$75.4k of volume, and — worse — made March–May read as empty, so a program running
   since March looked like it launched in June. Treat any Celo GP figure produced
   before 2026-08-05 as understated **and reshaped**; restate rather than splice.
@@ -90,7 +96,7 @@ Read with root AGENTS.md.
   re-derive the card universe — a new mastercopy generation has twice coincided with a
   new settlement contract — not merely to append an address. It returned **0 rows on
   2026-08-05**, once both bridges were in the seed; the 532 rows seen beforehand were
-  the v1 cohort plus unrelated projects. Never invert the direction: mastercopy ⊆
+  the legacy cohort plus unrelated projects. Never invert the direction: mastercopy ⊆
   fingerprint is FALSE, as `roles_pilot` is shared with unrelated projects.
 - Funnel stages are three different populations and are routinely confused:
   issued (registry) > funded (received any inbound token) > activated (made a

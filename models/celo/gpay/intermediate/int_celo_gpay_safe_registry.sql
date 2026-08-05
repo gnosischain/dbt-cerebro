@@ -17,9 +17,9 @@
 --
 -- Population = the UNION over every in-scope settlement contract, inherited from
 -- int_celo_gpay_roles_modules (seeded in celo_gpay_settlement_contracts). Both the
--- v1 bridge scheduled for migration and the current v2 bridge count: they are one
+-- legacy bridge scheduled for migration and the current bridge count: they are one
 -- card program, not two, and 235 real cards sat outside this registry while it was
--- keyed on v2 alone. See docs/lessons/circular-completeness-proof.md.
+-- keyed on the current bridge alone. See docs/lessons/circular-completeness-proof.md.
 --
 -- EVERY settlement contract is excluded, not just one (settlement sinks, not user
 -- cards — mirrors Dune exclusion list query 7809356). A bridge enables modules

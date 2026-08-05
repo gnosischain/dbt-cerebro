@@ -12,7 +12,8 @@ evidence:
   - seeds/celo_gpay_settlement_contracts.csv (the fix — the anchor set is now seeded, and consumed by int_celo_gpay_roles_modules, int_celo_gpay_safe_registry and int_celo_gpay_activity)
   - "on-chain 2026-08-04: a second AggregateBridge 0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d settled 1,743 transfers from 155 distinct card Safes; 235 cards provisioned on it 2026-03-31..2026-06-11; ZERO overlap with the then-registry; both bridges settled within 4 seconds of each other that morning"
   - "the earlier verification that 'all 483 spenders are in the registry' passed because it defined the spender set as senders-to-0xc07cd8c2 — the second bridge was outside the question being asked"
-  - "Gnosis Pay confirmed 2026-08-05 that both bridges are theirs and that v1 will be migrated onto v2, which is why the bridge is modelled per-transfer and not as a per-card generation"
+  - "Gnosis Pay confirmed 2026-08-05 that both bridges are theirs and that the legacy one will be migrated onto the current one, which is why the bridge is modelled per-transfer and not as a per-card generation"
+  - "the two bridges share ZERO event signatures (5 vs 7, no overlap), so they are different contracts rather than two versions of one — do not label anchors v1/v2 on assumption"
 ---
 
 ## Symptom
@@ -68,8 +69,9 @@ not on the entity. Three parts, and they are not separable:
    first admits entities whose events then fall through to a catch-all branch — on Celo
    that would have booked 1,743 payments as *withdrawals*, which is worse than omitting
    the cards.
-3. **Attach the anchor to the transfer, never to the entity.** GP is migrating v1 cards
-   onto v2, so a card's bridge changes over its life. A per-card "generation" column is
+3. **Attach the anchor to the transfer, never to the entity.** GP is migrating the
+   legacy cards onto the current contract, so a card's bridge changes over its life.
+   A per-card "generation" column is
    correct only until the first migration, then silently wrong; a per-transfer
    `settlement_address` stays correct and makes migration progress measurable.
 
@@ -119,15 +121,23 @@ vs. real:
 | 2026-07 | 2,533 | 3,008 | 16% |
 
 March through May were essentially absent, so the tree told a zero-to-one story
-starting in June when the program had been running steadily since March and the v1
-cohort was flat at ~470–490 payments/month while v2 grew. Every pre-2026-08-05 Celo GP
+starting in June when the program had been running steadily since March and the legacy
+cohort was flat at ~470–490 payments/month while the current one grew. Every pre-2026-08-05 Celo GP
 growth, cohort and churn figure is both understated and reshaped — restate, do not
 splice.
 
 **Post-fix state.** 1,815 cards from 2026-03-31; completeness re-proven from the seed
-rather than an anchor (507 v2 + 155 v1 spenders, zero missing); zero bridges enrolled as
-cards; and the mastercopy cross-check gap closed to zero, which independently confirms
-the v1 cohort and the `roles_pilot` mastercopy are the same population.
+rather than an anchor (507 current + 155 legacy spenders, zero missing); zero bridges
+enrolled as cards; and the mastercopy cross-check gap closed to zero, which
+independently confirms the legacy cohort and the `roles_pilot` mastercopy are the same
+population.
+
+**Do not name anchors on assumption.** The first version of this fix labelled the two
+contracts `v1`/`v2`, which invented a lineage nobody had evidenced. They in fact share
+no event signatures at all, so they are separate contracts that both happen to settle
+cards — the labels are now `settlement_legacy` / `settlement_current`, ours and
+descriptive. This is not cosmetic: it means decoding settlement events requires two
+distinct ABIs, which a v1/v2 reading would have obscured.
 
 **Still watch.** `0xd11e35ca…` is deployed, unused, and unconfirmed — it sits in the
 seed as `status='planned'`, excluded from every filter, so activating it is a one-word

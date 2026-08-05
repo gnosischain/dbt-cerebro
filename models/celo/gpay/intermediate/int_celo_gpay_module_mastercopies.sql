@@ -26,10 +26,11 @@
 --             issuance; a handful are created-but-never-enabled.
 --   roles_mc2 0x9646fdad… — CLOSED cohort: 587 proxies created 2026-01-15..
 --             2026-06-12. 286 are GP Roles proxies, split across BOTH settlement
---             contracts: 235 wired AggregateBridge v1 0xc4df5cac… and 51 wired v2
---             0xc07cd8c2…. All 286 are now visible to int_celo_gpay_roles_modules,
---             which unions the seeded bridge set; before 2026-08-05 it keyed on v2
---             alone and the other 235 were an unmodelled card generation. The
+--             contracts: 235 wired settlement_legacy 0xc4df5cac… and 51 wired
+--             settlement_current 0xc07cd8c2…. All 286 are now visible to
+--             int_celo_gpay_roles_modules, which unions the seeded bridge set;
+--             before 2026-08-05 it keyed on the current contract alone and the
+--             other 235 were an unmodelled card generation. The
 --             remaining ~301 proxies belong to unrelated projects: this mastercopy
 --             is SHARED, which is exactly why this model can never become an
 --             inclusion source. The GP filter is the intersection with

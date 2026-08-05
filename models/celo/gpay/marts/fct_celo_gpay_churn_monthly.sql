@@ -12,16 +12,25 @@
 -- fct_execution_gpay_churn_monthly with safe_address as the user grain.
 --
 -- PRESENCE IS TESTED WITH TUPLE IN / NOT IN, NEVER WITH A LEFT JOIN + IS NULL.
--- join_use_nulls is 0 in this project, so an unmatched LEFT JOIN yields '' for a
--- String and `prev.safe_address IS NOT NULL` is then ALWAYS true — which would
--- classify every returning user as retained and make 'returning' unreachable.
--- That form did produce correct numbers here, but only because the ClickHouse
--- analyzer happens to rewrite the anti-join pattern; the CASE-expression form got
--- no such rewrite and was correct by luck plus the absence of any activity gap in
--- a three-month-old product. IN / NOT IN is true set membership and depends on
--- neither the setting nor the analyzer. Read docs/lessons/ch-left-join-nulls.md
--- before reintroducing an outer join here.
--- Verified 2026-08-05: this rewrite reproduces the previous output exactly.
+-- This is a ROBUSTNESS choice, not a bug fix — be precise about why, because the
+-- distinction was originally got wrong here. join_use_nulls is 0 in this project,
+-- and at expression level an unmatched LEFT JOIN really does yield '' for a String
+-- with `IS NOT NULL` then true (see docs/lessons/ch-left-join-nulls.md). But that
+-- naive reading does NOT hold for this query shape: measured head-to-head on
+-- 2026-08-05 against ClickHouse 26.2.1 with enable_analyzer = 1, the LEFT JOIN +
+-- `prev.safe_address IS NOT NULL` form returns numbers IDENTICAL to this one, on
+-- Celo and on the 120k-row Gnosis twin where thousands of genuinely returning users
+-- exist. The analyzer promotes the joined column, so the outer-join form is correct
+-- today — it is not "correct by luck" and 'returning' is not unreachable.
+--
+-- IN / NOT IN is kept because it is true set membership and so depends on neither
+-- join_use_nulls nor analyzer internals that a ClickHouse upgrade could change,
+-- and because it reads as the question being asked. Do not reintroduce an outer
+-- join here, but equally do not "fix" the Gnosis twin on the assumption that it is
+-- broken — it is not; verify first.
+-- Verified 2026-08-05: this form reproduces the previous output exactly, and
+-- post-refresh reports 16 genuinely returning users (595 new / 163 retained),
+-- matching an independent recomputation.
 
 -- ── Scope: Payment ──────────────────────────────────────────────────────
 WITH payment_safe_months AS (

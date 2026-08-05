@@ -141,8 +141,9 @@ models:
     The fingerprint matches ANY settlement contract seeded in
     celo_gpay_settlement_contracts (status active or migrating), not a single
     hardcoded address — both live bridges are GP's and are unioned. 1815 modules on
-    2026-08-05: 1580 on v2 0xc07cd8c2…, 235 on v1 0xc4df5cac…. See
-    int_celo_gpay_safe_registry for the impact of the period when only v2 counted.
+    2026-08-05: 1580 on settlement_current 0xc07cd8c2…, 235 on settlement_legacy
+    0xc4df5cac…. See int_celo_gpay_safe_registry for the impact of the period when
+    only the current contract counted.
   columns:
   - name: address
     description: Roles module proxy address (0x-prefixed, lowercase).
@@ -159,7 +160,7 @@ models:
   - name: wired_settlements
     description: >-
       Sorted distinct settlement contracts this Roles module has wired, and the
-      migration tracker for GP's planned move off v1. One element is the normal
+      migration tracker for GP's planned move off the legacy contract. One element is the normal
       state; TWO elements means that card has migrated and its payment history spans
       both bridges. Zero modules had two on 2026-08-05, i.e. migration had not
       started. Read migration state from here — never from a per-card generation
@@ -182,11 +183,14 @@ models:
 
     POPULATION = THE UNION OVER EVERY IN-SCOPE SETTLEMENT CONTRACT, seeded in
     celo_gpay_settlement_contracts. Two AggregateBridges are live at once and both
-    are Gnosis Pay's (confirmed by GP 2026-08-05): v1 0xc4df5cac… from 2026-03-31,
-    which GP will migrate onto v2 0xc07cd8c2… (from 2026-05-28) at an unannounced
-    date. They are ONE card program, so they are unioned here.
+    are Gnosis Pay's (confirmed by GP 2026-08-05): settlement_legacy 0xc4df5cac… from
+    2026-03-31, which GP will migrate onto settlement_current 0xc07cd8c2… (from
+    2026-05-28) at an unannounced date. They are ONE card program, so they are unioned
+    here — but they are two DIFFERENT contracts sharing no event signatures, not two
+    versions of one, so avoid v1/v2 language and expect to need two ABIs to decode
+    their events.
 
-    Until 2026-08-05 this registry keyed on v2 alone and therefore omitted 235 real
+    Until 2026-08-05 this registry keyed on the current contract alone and therefore omitted 235 real
     cards and 1743 settlement transfers — roughly 34% of all settlement traffic and
     13% of cards. The distortion was worst in shape, not level: March/April/May were
     ~100% missing, so the tree showed payments starting in June and rising 4 -> 266
@@ -196,7 +200,7 @@ models:
 
     Which bridge a payment settled to is a per-TRANSFER fact
     (int_celo_gpay_activity.settlement_address), never a per-card generation column
-    — a migrating card keeps its v1 history and gains v2 payments, so a card-level
+    — a migrating card keeps its legacy history and gains current-contract payments, so a card-level
     attribute would go stale on migration day. int_celo_gpay_roles_modules
     .wired_settlements is the migration tracker: a module listing both addresses has
     migrated. Zero had as of 2026-08-05.
@@ -206,7 +210,7 @@ models:
     Flipping it to 'active' is the whole change needed if it goes live.
 
     Completeness is now proven non-circularly, from settlement traffic on BOTH
-    bridges: 507 v2 spenders + 155 v1 spenders, zero missing from this registry
+    bridges: 507 current-contract spenders + 155 legacy spenders, zero missing from this registry
     (2026-08-05). The earlier "483 senders, all present" proof was circular — it
     defined the spender population using this model's own single bridge address, so
     it could not have detected a second one. Any future proof must start from the
@@ -247,7 +251,7 @@ models:
           withdrawals while still under-reporting payments — strictly worse than
           omitting those cards.
       - id: bridge-is-a-transfer-fact-not-a-card-attribute
-        text: GP will migrate v1 cards onto v2, so a card can settle to different
+        text: GP will migrate the legacy cards onto the current contract, so a card can settle to different
           bridges over its life. Membership therefore belongs on the transfer
           (int_celo_gpay_activity.settlement_address), never as a per-card
           generation column, which would go stale the day that card moves. Migration
@@ -422,11 +426,11 @@ models:
     description: >-
       Which settlement contract this transfer used, for Payment / Other / Reversal
       rows; NULL for Top-up and Withdrawal, which do not touch a bridge. This is the
-      bridge dimension — slice payments by it to separate the v1 cohort GP is
-      migrating from the v2 cohort, or to watch the migration land.
+      bridge dimension — slice payments by it to separate the legacy cohort GP is
+      migrating from the current cohort, or to watch the migration land.
 
       Deliberately a per-TRANSFER fact rather than a per-card generation column: a
-      migrating card keeps its v1 payments and gains v2 ones, so any card-level
+      migrating card keeps its legacy payments and gains current-contract ones, so any card-level
       attribute would be wrong from migration day onward.
     data_type: Nullable(String)
   - name: amount

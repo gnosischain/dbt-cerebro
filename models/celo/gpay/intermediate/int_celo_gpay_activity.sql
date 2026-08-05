@@ -23,8 +23,10 @@
 --
 -- SETTLEMENT IS A SET OF CONTRACTS, seeded in celo_gpay_settlement_contracts and
 -- resolved in the `settlements` CTE below — never a hardcoded address. Two bridges
--- are live at once (v1 0xc4df5cac… since 2026-03-31, scheduled to migrate onto v2
--- 0xc07cd8c2… since 2026-05-28; GP confirmed both are theirs on 2026-08-05).
+-- are live at once (settlement_legacy 0xc4df5cac… since 2026-03-31, scheduled to
+-- migrate onto settlement_current 0xc07cd8c2… since 2026-05-28; GP confirmed both
+-- are theirs on 2026-08-05). They are different contracts sharing no event
+-- signatures, not two versions of one — so do not call them v1/v2.
 --
 -- THIS FILTER AND int_celo_gpay_safe_registry MUST WIDEN TOGETHER. The registry
 -- decides which Safes exist; this CASE decides what their transfers mean. Widening
@@ -35,9 +37,9 @@
 --
 -- settlement_address records WHICH bridge each settlement transfer used. It is a
 -- per-TRANSFER fact, deliberately not a per-card generation column: when a card
--- migrates from v1 to v2 its old payments stay v1 and its new ones are v2, so any
--- card-level attribute would go stale on migration day. This column is also how
--- migration progress becomes measurable.
+-- migrates, its old payments stay on the legacy contract and its new ones land on
+-- the current one, so any card-level attribute would go stale on migration day.
+-- This column is also how migration progress becomes measurable.
 --
 -- Actions:
 --   Payment    — card -> any settlement bridge in a STABLECOIN (the only real card

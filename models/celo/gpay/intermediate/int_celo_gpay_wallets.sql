@@ -23,8 +23,8 @@
 -- THE BRIDGE SET IS SEEDED, never hardcoded (celo_gpay_settlement_contracts). This
 -- is the THIRD place the settlement set is applied, after int_celo_gpay_roles_modules
 -- and int_celo_gpay_activity, and the easiest to overlook: activation is defined
--- here, so pinning it to one bridge marked all 155 spending cards of the v1 cohort
--- as NEVER ACTIVATED — silently, since a card with no matching spend is
+-- here, so pinning it to one bridge marked all 155 spending cards of the legacy
+-- cohort as NEVER ACTIVATED — silently, since a card with no matching spend is
 -- indistinguishable from a genuinely dormant one. Activation feeds the funnel and
 -- every "activated cards" metric. The full-table GROUP BY on
 -- every rebuild is acceptable at scale by precedent — Gnosis Chain's own
