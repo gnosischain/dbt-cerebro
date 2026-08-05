@@ -26,17 +26,17 @@
 --             issuance; a handful are created-but-never-enabled.
 --   roles_mc2 0x9646fdad… — CLOSED cohort: 587 proxies created 2026-01-15..
 --             2026-06-12. 286 are GP Roles proxies, split across BOTH settlement
---             generations: 235 wired the earlier AggregateBridge 0xc4df5cac… and
---             51 wired the current 0xc07cd8c2…. Only those 51 are visible to
---             int_celo_gpay_roles_modules, because that model keys on the current
---             bridge alone — the other 235 are an unmodelled card generation (see
---             int_celo_gpay_safe_registry's schema entry). The remaining ~301
---             proxies belong to unrelated projects: this mastercopy is SHARED,
---             which is exactly why this model can never become an inclusion
---             source. The GP filter is the intersection with
+--             contracts: 235 wired AggregateBridge v1 0xc4df5cac… and 51 wired v2
+--             0xc07cd8c2…. All 286 are now visible to int_celo_gpay_roles_modules,
+--             which unions the seeded bridge set; before 2026-08-05 it keyed on v2
+--             alone and the other 235 were an unmodelled card generation. The
+--             remaining ~301 proxies belong to unrelated projects: this mastercopy
+--             is SHARED, which is exactly why this model can never become an
+--             inclusion source. The GP filter is the intersection with
 --             int_celo_gpay_roles_modules, applied by every consumer.
--- With both included the allowlist covers 100% of the fingerprint Safes; with only
--- roles_mc it silently missed that 51-card pilot cohort. Every GP Roles proxy so far
+-- With both included the allowlist covers 100% of the fingerprint Safes (drift probe
+-- returned 0 rows on 2026-08-05, across both bridges); with only roles_mc it silently
+-- missed the 51-card pilot cohort. Every GP Roles proxy so far
 -- was created through this factory, so a fingerprint-only card now means a THIRD
 -- mastercopy to add here. That drift check is a MANUAL probe (query in
 -- models/celo/AGENTS.md), not a dbt test — a new mastercopy is legitimate GP activity

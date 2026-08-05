@@ -1145,8 +1145,15 @@ models:
     description: Whitelist symbol; NULL for non-whitelisted tokens.
     data_type: Nullable(String)
   - name: balance_raw
-    description: Cumulative exact integer net flow (in - out). Always populated.
-    data_type: Int256
+    description: >-
+      Cumulative exact integer net flow (in - out). Signed, because a balance
+      legitimately falls. NULL only if a contributing transfer exceeded Int256 max
+      (2^255-1) and so could not be represented — such a transfer is excluded from
+      the running total rather than sign-flipped into a fake outflow, and the warn
+      test celo_gpay_transfer_amount_fits_int256 on the upstream transfers model is
+      what surfaces it. Never observed (max amount_raw is 3.0e9 against a 5.8e76
+      bound); 0 NULL and 0 negative rows on 2026-08-05.
+    data_type: Nullable(Int256)
   - name: balance
     description: Cumulative human-unit balance; NULL for unknown-decimals tokens.
     data_type: Nullable(Float64)
@@ -1185,8 +1192,11 @@ models:
     description: Timestamp of this funder's most recent inbound transfer to this card in this token.
     data_type: DateTime
   - name: total_amount_raw
-    description: Exact integer sum of inbound amounts (this card/funder/token).
-    data_type: Int256
+    description: >-
+      Exact integer sum of inbound amounts (this card/funder/token). UNSIGNED: these
+      are uint256 ERC-20 amounts and inbound-only, so no sign is meaningful and a
+      signed cast could only introduce a sign-flip above 2^255 (EXECUTIONTRANSFERS-C03).
+    data_type: UInt256
   - name: total_amount
     description: Native total for known-decimals tokens; NULL otherwise.
     data_type: Nullable(Float64)

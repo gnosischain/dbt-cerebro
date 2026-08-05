@@ -13,7 +13,6 @@
   )
 }}
 
-{% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge (settlement sink) #}
 {% set cashback_sources = [] %}  {# reward disburser(s); empty until identified — cashback not paid yet #}
 
 -- Per-transfer classified Celo GP activity, off the single transfer base
@@ -22,9 +21,27 @@
 -- already resolves the card side (safe_address / direction / counterparty), so
 -- classification reads those directly rather than re-deriving from sender/receiver.
 --
+-- SETTLEMENT IS A SET OF CONTRACTS, seeded in celo_gpay_settlement_contracts and
+-- resolved in the `settlements` CTE below — never a hardcoded address. Two bridges
+-- are live at once (v1 0xc4df5cac… since 2026-03-31, scheduled to migrate onto v2
+-- 0xc07cd8c2… since 2026-05-28; GP confirmed both are theirs on 2026-08-05).
+--
+-- THIS FILTER AND int_celo_gpay_safe_registry MUST WIDEN TOGETHER. The registry
+-- decides which Safes exist; this CASE decides what their transfers mean. Widening
+-- discovery alone would admit 235 cards whose 1,743 settlement transfers then fall
+-- through to the `direction = 'out'` catch-all and book as WITHDRAWALS — inflating
+-- withdrawals and still under-reporting payments, which is worse than omitting the
+-- cards entirely. Never change one without the other.
+--
+-- settlement_address records WHICH bridge each settlement transfer used. It is a
+-- per-TRANSFER fact, deliberately not a per-card generation column: when a card
+-- migrates from v1 to v2 its old payments stay v1 and its new ones are v2, so any
+-- card-level attribute would go stale on migration day. This column is also how
+-- migration progress becomes measurable.
+--
 -- Actions:
---   Payment    — card -> bridge in a STABLECOIN (the only real card spend; the
---                token_class gate keeps a reward-token-to-bridge out of spend).
+--   Payment    — card -> any settlement bridge in a STABLECOIN (the only real card
+--                spend; token_class keeps a reward-token-to-bridge out of spend).
 --   Other      — card -> bridge in a non-stablecoin whitelisted token (rare; kept
 --                visible but excluded from every payment metric downstream).
 --   Withdrawal — card -> anywhere else.
@@ -54,7 +71,13 @@
 -- appends a second copy, and the marts read this table without FINAL.
 -- Rebuild this after a staged rebuild of the transfers base, month for month.
 
-WITH base AS (
+WITH settlements AS (
+    SELECT lower(address) AS address
+    FROM {{ ref('celo_gpay_settlement_contracts') }}
+    WHERE status IN ('active', 'migrating')
+),
+
+base AS (
     SELECT *
     FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
     WHERE token_symbol IS NOT NULL
@@ -77,6 +100,15 @@ one_per_transfer AS (
         FROM base
     )
     WHERE _rn = 1
+),
+
+flagged AS (
+    -- Resolve settlement membership ONCE per row rather than re-running the IN
+    -- subquery in every CASE branch.
+    SELECT
+        *,
+        counterparty IN (SELECT address FROM settlements) AS is_settlement
+    FROM one_per_transfer
 )
 
 SELECT
@@ -85,10 +117,10 @@ SELECT
     block_date AS date,
     safe_address,
     CASE
-        WHEN direction = 'out' AND counterparty = '{{ settlement }}' AND token_class = 'STABLECOIN' THEN 'Payment'
-        WHEN direction = 'out' AND counterparty = '{{ settlement }}' THEN 'Other'
+        WHEN direction = 'out' AND is_settlement AND token_class = 'STABLECOIN' THEN 'Payment'
+        WHEN direction = 'out' AND is_settlement THEN 'Other'
         WHEN direction = 'out' THEN 'Withdrawal'
-        WHEN direction = 'in'  AND counterparty = '{{ settlement }}' THEN 'Reversal'
+        WHEN direction = 'in'  AND is_settlement THEN 'Reversal'
 {%- if cashback_sources %}
         WHEN direction = 'in'  AND counterparty IN ({% for a in cashback_sources %}'{{ a }}'{% if not loop.last %}, {% endif %}{% endfor %}) AND token_class = 'RWA' THEN 'Cashback'
 {%- endif %}
@@ -98,7 +130,8 @@ SELECT
     token_symbol,
     token_address,
     counterparty,
+    if(is_settlement, counterparty, CAST(NULL AS Nullable(String))) AS settlement_address,
     amount,
     amount_usd
-FROM one_per_transfer
+FROM flagged
 ORDER BY safe_address, block_time

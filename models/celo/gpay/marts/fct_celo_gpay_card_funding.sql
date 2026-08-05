@@ -22,6 +22,15 @@
 -- Grain is (safe_address, funder, token_address) so native amounts are summed
 -- only within a single token (summing across tokens would be meaningless).
 -- amount is populated only for known-decimals tokens; amount_raw always is.
+--
+-- total_amount_raw sums UNSIGNED. These are inbound ERC-20 amounts, which are
+-- uint256 and never negative, so there is nothing for a sign bit to express. The
+-- previous toInt256 cast would sign-flip any value above 2^255 and turn an inflow
+-- into a large negative, silently corrupting the total — the same latent defect the
+-- repo already tracks as EXECUTIONTRANSFERS-C03, with the same remedy (match the
+-- unsigned source type). Dormant here: the largest amount_raw on Celo is 3.0e9
+-- against a 5.8e76 threshold and zero rows exceed it, but a spoof token controls
+-- its own mint amount and two of them already reach these cards.
 
 WITH inbound AS (
     SELECT
@@ -54,7 +63,7 @@ per_card_funder_token AS (
         count()                         AS n_transfers,
         min(block_time)                 AS first_funded_at,
         max(block_time)                 AS last_funded_at,
-        sum(toInt256(amount_raw))       AS total_amount_raw,
+        sum(toUInt256(amount_raw))      AS total_amount_raw,
         sum(amount)                     AS total_amount
     FROM inbound
     GROUP BY safe_address, funder, token_address

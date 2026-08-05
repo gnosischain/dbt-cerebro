@@ -3,7 +3,7 @@
     materialized='incremental',
     incremental_strategy='append',
     engine='ReplacingMergeTree()',
-    order_by='(safe_address, block_timestamp, log_index)',
+    order_by='(safe_address, block_timestamp, log_index, owner)',
     partition_by='toStartOfMonth(block_timestamp)',
     unique_key='(transaction_hash, log_index, owner)',
     settings={ 'allow_nullable_key': 1 },
@@ -51,6 +51,18 @@
 -- Every projected column is explicitly aliased: enable_analyzer = 0 (needed for
 -- decode planning speed) names a bare `d.block_timestamp` as `d.block_timestamp`
 -- in the result header, which the partition key and order_by could not resolve.
+--
+-- owner IS PART OF order_by BECAUSE IT IS PART OF THE GRAIN. A SafeSetup with N
+-- owners emits N rows that differ ONLY by owner, and ReplacingMergeTree dedupes on
+-- the ORDER BY key — without owner, a merge would silently collapse a multi-owner
+-- setup to a single owner, losing co-owners with no error. It matches unique_key
+-- for the same reason. Harmless so far (all 1503 setups have exactly one owner on
+-- 2026-08-05, so the two keys are equal at 1503 each), which is exactly why it
+-- would have failed quietly the first time a multi-sig card was issued.
+-- NOTE: an order_by change only takes effect when the table is RECREATED, and this
+-- model must never be full-refreshed directly (see the OOM warning above) — the
+-- existing table keeps the old key until a staged rebuild through
+-- scripts/full_refresh/refresh.py.
 
 WITH decoded AS (
     SELECT * FROM (

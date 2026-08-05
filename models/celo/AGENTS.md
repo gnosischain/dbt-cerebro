@@ -32,21 +32,34 @@ Read with root AGENTS.md.
   **pre-spend**, so the registry covers created-but-never-funded cards (the funnel
   top). The AggregateBridge is excluded from the card list — it is the settlement
   sink, not a card.
-- **There are TWO live settlement contracts, and this tree models only one.**
-  `0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1` (current generation, from
-  2026-05-28) is what every model here keys on.
-  `0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d` serves an earlier generation of 235
-  cards provisioned 2026-03-31..2026-06-11 and was still settling on 2026-08-03 —
-  it is entirely absent from this tree, so Celo GP totals here understate the
-  program (~35% of settlement transfers, ~14% of cards as of 2026-08-03).
-  `0xd11e35ca1594651f172748428ffc4b6c63c3cca3` is a deployed-but-unused third.
-  The two generations straddle the June 2026 post-exploit module rebuild, so they
-  want a generation dimension, not a blind union. Do not quote a Celo GP total as
-  "the card program" without stating which generation it covers.
-- Corollary for any completeness check: start from the **set of settlement
-  contracts**, never from a single bridge address. The earlier "every spender is in
-  the registry" proof was circular — it derived the spender population from the one
-  bridge the model already knew about, so a second bridge was undetectable.
+- **The settlement contract is a SEEDED SET — never hardcode a bridge address.**
+  `seeds/celo_gpay_settlement_contracts.csv` is the single source of truth, read by
+  `int_celo_gpay_roles_modules` (discovery), `int_celo_gpay_safe_registry`
+  (self-exclusion) and `int_celo_gpay_activity` (classification). Two bridges are
+  live and both are GP's: v1 `0xc4df5cac…` (from 2026-03-31, `status=migrating`) and
+  v2 `0xc07cd8c2…` (from 2026-05-28, `status=active`). GP confirmed on 2026-08-05
+  that v1 will be migrated onto v2. `0xd11e35ca…` is deployed, unused and
+  unconfirmed — it sits at `status=planned` and is excluded from every filter.
+  Adding GP's migration target must be a seed edit, nothing more.
+- **Discovery and classification widen together, in the same run.** The registry
+  decides which Safes exist; `int_celo_gpay_activity` decides what their transfers
+  mean. Widening only the registry admits cards whose settlement transfers then fall
+  through to the catch-all and book as **Withdrawals** — inflating withdrawals while
+  still under-reporting payments, i.e. worse than omitting the cards.
+- **Which bridge is a property of the TRANSFER, not of the card.** Use
+  `int_celo_gpay_activity.settlement_address`. Because cards migrate, a per-card
+  "generation" column is correct only until that card moves and silently wrong after.
+  Migration state lives in `int_celo_gpay_roles_modules.wired_settlements`: a
+  two-element array means that card has migrated. Zero had on 2026-08-05.
+- Keying the tree on v2 alone until 2026-08-05 cost 235 cards, 1,743 transfers and
+  ~$75.4k of volume, and — worse — made March–May read as empty, so a program running
+  since March looked like it launched in June. Treat any Celo GP figure produced
+  before 2026-08-05 as understated **and reshaped**; restate rather than splice.
+- Corollary for any completeness check: start from the **seed**, never from a single
+  bridge address. The earlier "every spender is in the registry" proof was circular —
+  it derived the spender population from the one bridge the model already knew about,
+  so a second bridge was undetectable. See
+  `docs/lessons/circular-completeness-proof.md`.
 - `int_celo_gpay_module_mastercopies` is an **independent deterministic
   cross-check, never an inclusion source**. GP provisions Roles proxies from more
   than one mastercopy, and at least one of those mastercopies is shared with
@@ -75,9 +88,10 @@ Read with root AGENTS.md.
 
   Rows mean GP started issuing from an unknown mastercopy. Treat that as a prompt to
   re-derive the card universe — a new mastercopy generation has twice coincided with a
-  new settlement contract — not merely to append an address; do not widen the registry.
-  Never invert the direction: mastercopy ⊆ fingerprint is FALSE (532 correct rows), as
-  `roles_pilot` is shared with unrelated projects.
+  new settlement contract — not merely to append an address. It returned **0 rows on
+  2026-08-05**, once both bridges were in the seed; the 532 rows seen beforehand were
+  the v1 cohort plus unrelated projects. Never invert the direction: mastercopy ⊆
+  fingerprint is FALSE, as `roles_pilot` is shared with unrelated projects.
 - Funnel stages are three different populations and are routinely confused:
   issued (registry) > funded (received any inbound token) > activated (made a
   payment). Roughly 1490 / 815 / 476 on 2026-08-03, with issuance running ~10

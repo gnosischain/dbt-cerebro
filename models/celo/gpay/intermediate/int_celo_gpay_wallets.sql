@@ -8,18 +8,25 @@
   )
 }}
 
-{% set settlement = '0xc07cd8c24fb384d5e2b60a3ef39751f5d4cb69e1' %}  {# GP AggregateBridge (settlement sink) #}
-
 -- Canonical Celo GP card Safe list, native-only. Issuance comes from the
 -- append-only int_celo_gpay_wallet_events log (action='issued_at'); each
 -- issued_at row is an immutable SafeSetup fact, written once, never revised.
 --
 -- first_spend_at / is_activated are derived directly from the transfer base
 -- int_celo_gpay_safe_transfers_alltoken (a STABLECOIN transfer from the card to
--- the settlement bridge — the same activation signal the Dune spine used), NOT
+-- ANY settlement bridge — the same activation signal the Dune spine used), NOT
 -- via int_celo_gpay_activity: that model depends on THIS one for wallet-membership
 -- classification, so reading it here would create a dbt cycle. The base does not
--- depend on wallets, so reading it directly is cycle-free. The full-table GROUP BY on
+-- depend on wallets, so reading it directly is cycle-free. Reading the seed is
+-- likewise cycle-free.
+--
+-- THE BRIDGE SET IS SEEDED, never hardcoded (celo_gpay_settlement_contracts). This
+-- is the THIRD place the settlement set is applied, after int_celo_gpay_roles_modules
+-- and int_celo_gpay_activity, and the easiest to overlook: activation is defined
+-- here, so pinning it to one bridge marked all 155 spending cards of the v1 cohort
+-- as NEVER ACTIVATED — silently, since a card with no matching spend is
+-- indistinguishable from a genuinely dormant one. Activation feeds the funnel and
+-- every "activated cards" metric. The full-table GROUP BY on
 -- every rebuild is acceptable at scale by precedent — Gnosis Chain's own
 -- int_execution_gpay_wallets does an equivalent full scan of the much larger
 -- execution.logs on every run, materialized='table', successfully.
@@ -45,9 +52,13 @@ activation AS (
         safe_address,
         min(block_date) AS first_spend_at
     FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
-    WHERE direction    = 'out'
-      AND counterparty = '{{ settlement }}'
-      AND token_class  = 'STABLECOIN'
+    WHERE direction   = 'out'
+      AND token_class = 'STABLECOIN'
+      AND counterparty IN (
+          SELECT lower(address)
+          FROM {{ ref('celo_gpay_settlement_contracts') }}
+          WHERE status IN ('active', 'migrating')
+      )
     GROUP BY safe_address
 )
 

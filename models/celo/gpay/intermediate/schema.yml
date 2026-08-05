@@ -132,11 +132,17 @@ models:
 - name: int_celo_gpay_roles_modules
   description: |
     GP-specific Zodiac Roles module proxies on Celo, discovered natively from
-    celo_execution.logs: an EnabledModule(AggregateBridge) event emitted BY a
+    celo_execution.logs: an EnabledModule(<GP AggregateBridge>) event emitted BY a
     Roles proxy is a GP-only fingerprint set at card provisioning. Replaces
     the roles_with_bridge CTE of Dune query 7808895. Raw topic slicing, not
     the decode macro — this registry is itself an input to the decoded layer
     (see model header). Full rebuild every run; bounded by card count.
+
+    The fingerprint matches ANY settlement contract seeded in
+    celo_gpay_settlement_contracts (status active or migrating), not a single
+    hardcoded address — both live bridges are GP's and are unioned. 1815 modules on
+    2026-08-05: 1580 on v2 0xc07cd8c2…, 235 on v1 0xc4df5cac…. See
+    int_celo_gpay_safe_registry for the impact of the period when only v2 counted.
   columns:
   - name: address
     description: Roles module proxy address (0x-prefixed, lowercase).
@@ -145,8 +151,20 @@ models:
     description: Always 'RolesModProxy'.
     data_type: String
   - name: first_seen_at
-    description: First EnabledModule(bridge) event for this proxy.
+    description: >-
+      First EnabledModule(bridge) event for this proxy, i.e. card provisioning time.
+      Migration does NOT reset it: a card that later wires a second bridge emits
+      another EnabledModule from the same proxy, and the min() keeps the original.
     data_type: DateTime
+  - name: wired_settlements
+    description: >-
+      Sorted distinct settlement contracts this Roles module has wired, and the
+      migration tracker for GP's planned move off v1. One element is the normal
+      state; TWO elements means that card has migrated and its payment history spans
+      both bridges. Zero modules had two on 2026-08-05, i.e. migration had not
+      started. Read migration state from here — never from a per-card generation
+      column, which cannot represent a card that moved.
+    data_type: Array(String)
   meta:
     owner: analytics_team
     authoritative: false
@@ -160,30 +178,39 @@ models:
     follow the whitelist shape the decode macros expect via contract_address_ref.
 
     Cardinality is 1:1 with int_celo_gpay_roles_modules and grows continuously
-    with issuance (~1490 on 2026-08-03); first card 2026-05-28.
+    with issuance (1815 on 2026-08-05); first card 2026-03-31.
 
-    KNOWN INCOMPLETE — this registry covers ONE of two live settlement contracts.
-    Verified on-chain 2026-08-03: a second AggregateBridge
-    0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d serves an EARLIER card generation
-    (235 Safes provisioned 2026-03-31..2026-06-11, all 235 of their Roles proxies
-    from the roles_pilot mastercopy 0x9646fdad, ZERO overlap with this registry or
-    with int_celo_gpay_roles_modules). 154 of those cards have spent, 1709
-    settlement transfers (USDT 1374, USDC 335), and that bridge was still settling
-    at 2026-08-03 13:00:14 — it is live, not historical. So Celo GP payment counts
-    from this tree understate the real card program by roughly 35% of transfers and
-    14% of cards. A third AggregateBridge 0xd11e35ca1594651f172748428ffc4b6c63c3cca3
-    was deployed and never used; watch it in case it activates.
+    POPULATION = THE UNION OVER EVERY IN-SCOPE SETTLEMENT CONTRACT, seeded in
+    celo_gpay_settlement_contracts. Two AggregateBridges are live at once and both
+    are Gnosis Pay's (confirmed by GP 2026-08-05): v1 0xc4df5cac… from 2026-03-31,
+    which GP will migrate onto v2 0xc07cd8c2… (from 2026-05-28) at an unannounced
+    date. They are ONE card program, so they are unioned here.
 
-    Deciding how to close this is a modelling choice, NOT a widening of the bridge
-    filter: the two generations straddle the 2026-06 post-exploit module rebuild,
-    so they likely need a generation/bridge dimension rather than a union that
-    silently blends them. Until then treat every Celo GP figure as new-generation
-    only and say so on any dashboard.
+    Until 2026-08-05 this registry keyed on v2 alone and therefore omitted 235 real
+    cards and 1743 settlement transfers — roughly 34% of all settlement traffic and
+    13% of cards. The distortion was worst in shape, not level: March/April/May were
+    ~100% missing, so the tree showed payments starting in June and rising 4 -> 266
+    -> 2533, when the program had in fact been running steadily since March at
+    4 -> 225 -> 472 -> 759 -> 3008. Any historical Celo GP figure produced before
+    2026-08-05 is understated and reshaped; restate rather than splice.
 
-    Note the earlier "483 senders, all present, no unknown spenders" verification
-    was circular: it defined the spender population using this model's own bridge
-    address, so it could not have detected a second bridge. Any future completeness
-    proof must start from the set of settlement contracts, not from one address.
+    Which bridge a payment settled to is a per-TRANSFER fact
+    (int_celo_gpay_activity.settlement_address), never a per-card generation column
+    — a migrating card keeps its v1 history and gains v2 payments, so a card-level
+    attribute would go stale on migration day. int_celo_gpay_roles_modules
+    .wired_settlements is the migration tracker: a module listing both addresses has
+    migrated. Zero had as of 2026-08-05.
+
+    A third AggregateBridge 0xd11e35ca… is deployed but never used and NOT confirmed
+    GP-owned; it sits in the seed as status='planned', excluded from discovery.
+    Flipping it to 'active' is the whole change needed if it goes live.
+
+    Completeness is now proven non-circularly, from settlement traffic on BOTH
+    bridges: 507 v2 spenders + 155 v1 spenders, zero missing from this registry
+    (2026-08-05). The earlier "483 senders, all present" proof was circular — it
+    defined the spender population using this model's own single bridge address, so
+    it could not have detected a second one. Any future proof must start from the
+    seed, not from one address.
   columns:
   - name: address
     description: GP card Safe address (0x-prefixed, lowercase).
@@ -204,23 +231,38 @@ models:
       grain: [address]
       semantics: dimension
       invariants:
-      - id: one-settlement-generation-only
-        text: This registry is the population of card Safes wired to ONE settlement
-          contract (AggregateBridge 0xc07cd8c2…), not the GP card program. A second
-          live bridge 0xc4df5cac… serves 235 further cards with zero overlap, so
-          treat every count derived from here as current-generation-only and say so
-          on any dashboard. Do NOT close the gap by widening the bridge filter to a
-          union — the two generations straddle the June 2026 post-exploit rebuild and
-          blending them corrupts cohort/retention/growth figures. See
-          docs/lessons/circular-completeness-proof.md for the open decision.
+      - id: settlement-contracts-are-a-seeded-set
+        text: The card population is the union over every settlement contract in
+          celo_gpay_settlement_contracts with status active or migrating. Never
+          hardcode a bridge address in this tree and never narrow the set to one —
+          doing exactly that omitted 235 cards and a third of all settlement traffic
+          until 2026-08-05, and made a product that had run since March look like it
+          launched in June. Adding GP's migration target must be a seed edit only.
+          See docs/lessons/circular-completeness-proof.md.
+      - id: discovery-and-classification-widen-together
+        text: This registry decides which Safes exist; int_celo_gpay_activity decides
+          what their transfers mean. Both read the same seed and must change in the
+          same run. Widening discovery alone admits cards whose settlement transfers
+          then fall through to the catch-all and book as Withdrawals, which inflates
+          withdrawals while still under-reporting payments — strictly worse than
+          omitting those cards.
+      - id: bridge-is-a-transfer-fact-not-a-card-attribute
+        text: GP will migrate v1 cards onto v2, so a card can settle to different
+          bridges over its life. Membership therefore belongs on the transfer
+          (int_celo_gpay_activity.settlement_address), never as a per-card
+          generation column, which would go stale the day that card moves. Migration
+          state is readable from int_celo_gpay_roles_modules.wired_settlements — a
+          module listing two addresses has migrated; zero had on 2026-08-05.
       hazards: [circular-completeness-proof]
       validation:
       - 'cardinality matches its fingerprint source: count() == (SELECT count() FROM int_celo_gpay_roles_modules)'
-      - 'no new settlement generation: every contract receiving Transfers from a registry Safe is a known bridge (see the detection query in docs/lessons/circular-completeness-proof.md)'
+      - 'no settlement contract is enrolled as a card: zero rows join celo_gpay_settlement_contracts'
+      - 'non-circular completeness: every sender of a Transfer INTO any seeded bridge is present here (start from the seed, never from one address)'
       notes: >-
-        Full rebuild, bounded by card count. Coverage is knowingly partial pending a
-        Gnosis Pay answer on the second settlement contract — quantified impact and the
-        questions asked are in docs/lessons/circular-completeness-proof.md.
+        Full rebuild, bounded by card count. Covers both live settlement generations
+        as of 2026-08-05; the impact of the period when it did not, and the reasoning
+        behind the seeded-set design, are in
+        docs/lessons/circular-completeness-proof.md.
 
 - name: int_celo_gpay_safe_events_native
   description: |
@@ -270,11 +312,15 @@ models:
       - id: one-row-per-owner-per-event
         text: One row per (Safe lifecycle log, owner). A SafeSetup with N decoded owners
           yields N rows; a setup whose owners array failed to decode yields exactly one
-          row with a NULL owner so the card still counts as issued. The
-          ReplacingMergeTree order_by is (safe_address, block_timestamp, log_index) and
-          does NOT include owner, so a multi-owner SafeSetup collapses to one row on
-          merge — the same shape as Gnosis int_execution_safes_owner_events, safe only
-          while GP card Safes are single-owner.
+          row with a NULL owner so the card still counts as issued. owner is therefore
+          part of the grain and, since 2026-08-05, part of the ReplacingMergeTree
+          order_by — without it a multi-owner SafeSetup collapsed to a single row on
+          merge, losing co-owners with no error. Harmless to date (all 1503 setups are
+          single-owner, so both keys count 1503), and Gnosis
+          int_execution_safes_owner_events still carries the narrow shape. Note that an
+          order_by change only lands when the table is RECREATED, and this model must
+          never be plain-full-refreshed, so the deployed table keeps the old key until a
+          staged rebuild through scripts/full_refresh/refresh.py.
       - id: watermark-skips-late-logs
         text: Append-only off the decode_logs block_number watermark, so logs landing in
           celo_execution below the high-water mark are never decoded. Now that the
@@ -314,6 +360,12 @@ models:
     tokens). The base already resolves the card side (safe_address / direction /
     counterparty), so classification reads those directly (mirrors
     int_execution_gpay_activity on Gnosis Chain classifying from raw logs).
+    "Bridge" here means ANY settlement contract seeded in
+    celo_gpay_settlement_contracts (status active or migrating) — two are live and
+    both are GP's. This set and int_celo_gpay_safe_registry MUST widen together:
+    the registry decides which Safes exist, this model decides what their transfers
+    mean, and widening discovery alone would book their settlement transfers as
+    Withdrawals via the catch-all.
     Actions: Payment (card -> bridge in a STABLECOIN), Other (card -> bridge in a
     non-stablecoin whitelisted token — rare, excluded from payment metrics),
     Withdrawal (card -> anywhere else), Reversal (bridge -> card refund), Top-up
@@ -366,6 +418,17 @@ models:
   - name: counterparty
     description: The non-Safe side of the transfer (settlement contract, funding wallet, another Safe, etc).
     data_type: String
+  - name: settlement_address
+    description: >-
+      Which settlement contract this transfer used, for Payment / Other / Reversal
+      rows; NULL for Top-up and Withdrawal, which do not touch a bridge. This is the
+      bridge dimension — slice payments by it to separate the v1 cohort GP is
+      migrating from the v2 cohort, or to watch the migration land.
+
+      Deliberately a per-TRANSFER fact rather than a per-card generation column: a
+      migrating card keeps its v1 payments and gains v2 ones, so any card-level
+      attribute would be wrong from migration day onward.
+    data_type: Nullable(String)
   - name: amount
     description: Token-native transfer amount.
     data_type: Float64
@@ -462,6 +525,36 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, safe_address, action, token_symbol, token_address]
+      semantics: aggregate
+      invariants:
+      - id: order-by-must-cover-the-whole-grain
+        text: This is a ReplacingMergeTree, so it dedupes on the ORDER BY key, and the
+          key must therefore list every GROUP BY column. token_address was grouped but
+          NOT ordered until 2026-08-05, which meant two tokens sharing a symbol would
+          silently merge into one row and lose a day of activity. No symbol currently
+          maps to more than one address, so nothing was ever lost — a token migration
+          reusing a symbol is the case that would have triggered it. Never add a GROUP
+          BY column here without adding it to order_by.
+      - id: current-month-is-recomputed-every-run
+        text: insert_overwrite via apply_monthly_incremental_filter replaces the whole
+          current calendar month on each run, so a Safe recognised late in the month is
+          reclassified within it. Closed months are never revisited — reprocessing one
+          means dropping its partition first, not re-running the model.
+      - id: amount-usd-skips-nulls
+        text: amount_usd is SUM over a nullable input, so an unpriced transfer is skipped
+          rather than counted as zero. A day whose tokens are all unpriced yields NULL,
+          not 0, and downstream KPI models must coalesce at the point of display rather
+          than pretend the flow did not happen.
+      validation:
+      - 'duplicate excess: count() - uniqExact((date, safe_address, action, token_symbol, token_address)) == 0'
+      - 'grain is covered by order_by: every GROUP BY column appears in the ReplacingMergeTree key'
+      - 'symbol/address are 1:1: no token_symbol maps to more than one token_address'
+      notes: >-
+        Bounded by card count x days x actions. Scope inherits every limitation of
+        int_celo_gpay_activity, including the single-settlement-generation card
+        universe — see int_celo_gpay_safe_registry.
 
 - name: int_celo_gpay_safe_transfers_alltoken
   description: |
@@ -498,8 +591,25 @@ models:
     description: Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).
     data_type: Nullable(String)
   - name: amount_raw
-    description: Exact integer transfer amount (unscaled). Always populated.
+    description: >-
+      Exact integer transfer amount (unscaled). Always populated. uint256 on-chain,
+      so it is unsigned here — consumers that need signed arithmetic must guard the
+      cast (see fct_celo_gpay_card_balances_alltoken_daily).
     data_type: UInt256
+    tests:
+    # An amount above Int256 max (2^255-1) sign-flips under toInt256 and turns an
+    # inflow into a large outflow. The downstream models guard the cast, but the guard
+    # excludes the transfer silently, so this is the loud half. Dormant: max is 3.0e9
+    # against a 5.8e76 bound, and a real ERC-20 cannot reach it — but a spoof token
+    # picks its own mint amount, and two already reach these cards. Same class as
+    # EXECUTIONTRANSFERS-C03. WARN: it is an upstream artefact, not a defect here.
+    # Column-level expression_is_true prepends the column name, so this reads
+    # "amount_raw <= <Int256 max>".
+    - dbt_utils.expression_is_true:
+        name: celo_gpay_transfer_amount_fits_int256
+        expression: "<= toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819967')"
+        config:
+          severity: warn
   - name: amount
     description: Human-unit amount; NULL for unknown-decimals tokens (no guessing).
     data_type: Nullable(Float64)

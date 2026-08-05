@@ -10,6 +10,18 @@
 -- Monthly new / retained / returning / churned segmentation, for two scopes:
 -- Payment (card spenders) and Any (any GP activity). Mirrors
 -- fct_execution_gpay_churn_monthly with safe_address as the user grain.
+--
+-- PRESENCE IS TESTED WITH TUPLE IN / NOT IN, NEVER WITH A LEFT JOIN + IS NULL.
+-- join_use_nulls is 0 in this project, so an unmatched LEFT JOIN yields '' for a
+-- String and `prev.safe_address IS NOT NULL` is then ALWAYS true — which would
+-- classify every returning user as retained and make 'returning' unreachable.
+-- That form did produce correct numbers here, but only because the ClickHouse
+-- analyzer happens to rewrite the anti-join pattern; the CASE-expression form got
+-- no such rewrite and was correct by luck plus the absence of any activity gap in
+-- a three-month-old product. IN / NOT IN is true set membership and depends on
+-- neither the setting nor the analyzer. Read docs/lessons/ch-left-join-nulls.md
+-- before reintroducing an outer join here.
+-- Verified 2026-08-05: this rewrite reproduces the previous output exactly.
 
 -- ── Scope: Payment ──────────────────────────────────────────────────────
 WITH payment_safe_months AS (
@@ -32,15 +44,13 @@ payment_classified AS (
         wm.safe_address AS safe_address,
         wm.month        AS month,
         CASE
-            WHEN wm.month = fm.first_month      THEN 'new'
-            WHEN prev.safe_address IS NOT NULL  THEN 'retained'
-            ELSE                                     'returning'
+            WHEN wm.month = fm.first_month THEN 'new'
+            WHEN (wm.safe_address, subtractMonths(wm.month, 1))
+                 IN (SELECT safe_address, month FROM payment_safe_months) THEN 'retained'
+            ELSE 'returning'
         END AS segment
     FROM payment_safe_months wm
     INNER JOIN payment_first_month fm ON fm.safe_address = wm.safe_address
-    LEFT JOIN payment_safe_months prev
-        ON prev.safe_address = wm.safe_address
-       AND prev.month = subtractMonths(wm.month, 1)
 ),
 
 payment_segments AS (
@@ -59,10 +69,8 @@ payment_churned AS (
         curr.month,
         count() AS churned_users
     FROM payment_safe_months curr
-    LEFT JOIN payment_safe_months nxt
-        ON nxt.safe_address = curr.safe_address
-       AND nxt.month = addMonths(curr.month, 1)
-    WHERE nxt.safe_address IS NULL
+    WHERE (curr.safe_address, addMonths(curr.month, 1))
+          NOT IN (SELECT safe_address, month FROM payment_safe_months)
       AND curr.month < (SELECT max(month) FROM payment_safe_months)
     GROUP BY curr.month
 ),
@@ -104,15 +112,13 @@ any_classified AS (
         wm.safe_address AS safe_address,
         wm.month        AS month,
         CASE
-            WHEN wm.month = fm.first_month      THEN 'new'
-            WHEN prev.safe_address IS NOT NULL  THEN 'retained'
-            ELSE                                     'returning'
+            WHEN wm.month = fm.first_month THEN 'new'
+            WHEN (wm.safe_address, subtractMonths(wm.month, 1))
+                 IN (SELECT safe_address, month FROM any_safe_months) THEN 'retained'
+            ELSE 'returning'
         END AS segment
     FROM any_safe_months wm
     INNER JOIN any_first_month fm ON fm.safe_address = wm.safe_address
-    LEFT JOIN any_safe_months prev
-        ON prev.safe_address = wm.safe_address
-       AND prev.month = subtractMonths(wm.month, 1)
 ),
 
 any_segments AS (
@@ -131,10 +137,8 @@ any_churned AS (
         curr.month,
         count() AS churned_users
     FROM any_safe_months curr
-    LEFT JOIN any_safe_months nxt
-        ON nxt.safe_address = curr.safe_address
-       AND nxt.month = addMonths(curr.month, 1)
-    WHERE nxt.safe_address IS NULL
+    WHERE (curr.safe_address, addMonths(curr.month, 1))
+          NOT IN (SELECT safe_address, month FROM any_safe_months)
       AND curr.month < (SELECT max(month) FROM any_safe_months)
     GROUP BY curr.month
 ),
