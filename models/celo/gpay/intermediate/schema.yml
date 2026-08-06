@@ -52,8 +52,20 @@ models:
     the owner out within seconds of SafeSetup on every card. So this model
     currently carries no user-identifying information at all; anything that needs
     a per-user address must read int_celo_gpay_wallets.owner_address (the initial
-    SafeSetup owner, one distinct value per card). Revisit exposing this model
-    once owner-based signing is actually used.
+    SafeSetup owner, one distinct value per card). Still true at 1817/1817 cards on
+    2026-08-05.
+
+    EXPOSURE CLOSED OUT 2026-08-05. The model is kept — it is correct, cheap, and
+    becomes meaningful the moment GP adopts owner-based signing — but it is no longer
+    reachable as an owner identity:
+      * owner_address's `address` entity binding is SUPPRESSED in
+        semantic/entity_dictionary.yml. It had generated a join to
+        api_execution_account_profile_latest under which all 1817 cards resolved to
+        the same non-existent account.
+      * no semantic model / measures (registered in scaffold_gate.allow with that
+        rationale), so it cannot be aggregated into a headline.
+    safe_address keeps its `safe` binding, which is a real card. Reverse both only
+    when a query of "who currently signs for this card" would return a real EOA.
   columns:
   - name: safe_address
     description: GP card Safe address.
@@ -186,9 +198,12 @@ models:
     are Gnosis Pay's (confirmed by GP 2026-08-05): settlement_legacy 0xc4df5cac… from
     2026-03-31, which GP will migrate onto settlement_current 0xc07cd8c2… (from
     2026-05-28) at an unannounced date. They are ONE card program, so they are unioned
-    here — but they are two DIFFERENT contracts sharing no event signatures, not two
-    versions of one, so avoid v1/v2 language and expect to need two ABIs to decode
-    their events.
+    here. They share no event signatures and so need two ABIs to decode, but that is
+    because the current one adds an indexed `sender` to every event, not because the
+    contracts are unrelated — both are AggregateBridge with identical function
+    selectors (established when the ABIs were fetched on 2026-08-06). Two generations
+    of one design; the legacy/current labels describe lifecycle, not a published
+    release lineage.
 
     Until 2026-08-05 this registry keyed on the current contract alone and therefore omitted 235 real
     cards and 1743 settlement transfers — roughly 34% of all settlement traffic and

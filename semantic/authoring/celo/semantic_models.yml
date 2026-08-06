@@ -298,3 +298,131 @@ semantic_models:
         question_synonyms:
         - celo token price
         - usd price of a celo token
+
+# The per-card funnel atom. Authored (rather than grandfathered like the funnel's
+# cohort rollup and API view) because it is the one grain where the semantic layer can
+# answer funnel questions without the caller writing SQL.
+#
+# CONVERSION RATES ASKED OF THIS MODEL ARE UNCENSORED. funded_cards / cards over the
+# whole table divides by a denominator full of cards issued days ago that have not had
+# time to convert, so it tracks issuance velocity as much as behaviour and reads far
+# below the true rate. The observation_days dimension exists so a query can filter to
+# cards old enough to judge; for a rate that is already age-normalised and cohorted,
+# read fct_celo_gpay_funnel_cohorts_monthly instead.
+- name: celo_gpay_card_funnel
+  model: ref('fct_celo_gpay_card_funnel')
+  defaults:
+    agg_time_dimension: issued_at
+  dimensions:
+  - name: issued_at
+    type: time
+    expr: issued_at
+    type_params:
+      time_granularity: day
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: first_spend_at
+    type: time
+    expr: first_spend_at
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: is_funded
+    type: categorical
+    expr: is_funded
+  - name: is_activated
+    type: categorical
+    expr: is_activated
+  # Categorical rather than a measure: it is the eligibility filter for any rate, so it
+  # needs to be groupable and filterable, and averaging it means nothing.
+  - name: observation_days
+    type: categorical
+    expr: observation_days
+  measures:
+  - name: celo_gpay_card_funnel__cards
+    agg: count_distinct
+    expr: safe_address
+  - name: celo_gpay_card_funnel__funded_cards
+    agg: sum
+    expr: toUInt8(is_funded)
+  - name: celo_gpay_card_funnel__activated_cards
+    agg: sum
+    expr: toUInt8(is_activated)
+  # Averages over converters only — NULL lags are skipped, so these describe the cards
+  # that made it, not the cohort. Biased low for recently issued cards, whose slow
+  # converters have not converted yet.
+  - name: celo_gpay_card_funnel__avg_days_issue_to_fund
+    agg: average
+    expr: days_issue_to_fund
+  - name: celo_gpay_card_funnel__avg_days_fund_to_spend
+    agg: average
+    expr: days_fund_to_spend
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card funnel
+        - how many celo gp cards get funded
+        - how long until a celo gp card is funded
+        - celo gp card activation lag
+
+# Settlement batches. Every measure here is additive over transactions, which is what
+# makes this safe to expose where the monthly cost view is not.
+#
+# There is no charge-to-settlement lag to ask about: the sweep is atomic, so the answer
+# is always zero. And do NOT split charged_amount by token — settlement_legacy reports
+# the wrong token on every pull, which is why no token dimension is offered here.
+- name: celo_gpay_settlement_batches
+  model: ref('fct_celo_gpay_settlement_batches')
+  defaults:
+    agg_time_dimension: batch_time
+  dimensions:
+  - name: batch_time
+    type: time
+    expr: batch_time
+    type_params:
+      time_granularity: day
+  - name: settlement_label
+    type: categorical
+    expr: settlement_label
+  - name: settlement_contract
+    type: categorical
+    expr: settlement_contract
+  measures:
+  - name: celo_gpay_settlement_batches__batches
+    agg: count_distinct
+    expr: transaction_hash
+  - name: celo_gpay_settlement_batches__charges
+    agg: sum
+    expr: n_charges
+  - name: celo_gpay_settlement_batches__failed_charges
+    agg: sum
+    expr: n_failed_charges
+  - name: celo_gpay_settlement_batches__settled_usd
+    agg: sum
+    expr: settled_usd
+  - name: celo_gpay_settlement_batches__bridge_fee_celo
+    agg: sum
+    expr: native_fee_celo
+  - name: celo_gpay_settlement_batches__bridge_fee_usd
+    agg: sum
+    expr: native_fee_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp settlement cost
+        - what does it cost to settle celo gp payments
+        - celo gp bridge fees
+        - celo gp settlement batches

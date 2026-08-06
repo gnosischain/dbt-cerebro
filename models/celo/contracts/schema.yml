@@ -69,3 +69,188 @@ models:
   - name: transaction_hash
     description: Transaction hash (0x-prefixed).
     data_type: String
+
+- name: contracts_celo_gpay_settlement_events
+  description: |
+    Gnosis Pay's own settlement-contract events on Celo, decoded from
+    celo_execution.logs for every address in seeds/celo_gpay_settlement_contracts.
+    This is the AUTHORITATIVE record of card charges and treasury movement;
+    int_celo_gpay_activity infers the same charges from ERC-20 Transfer direction
+    instead. The two agree exactly — 5,165 TokenPullSuccess against 5,165 Payment
+    rows on 2026-08-05, with zero per-day variance on each contract independently
+    (legacy 1,743 = 1,743, current 3,422 = 3,422). That is the only external
+    confirmation the transfer-based classifier has, so it is worth re-running
+    after any change to the activity model.
+
+    Both settlement contracts live here in one model. decode_logs joins a log to
+    its ABI on (address, topic0) rather than topic0 alone, so contracts with
+    disjoint signatures cannot cross-match. Beyond the charges it exposes three
+    things nothing else in the tree can see: failed charge attempts, which move no
+    money and are therefore invisible to a transfer-derived model; the treasury
+    leg (bridged cross-chain via the LayerZero USDT0 OFT, or transferred locally);
+    and the CELO fee paid per settlement batch.
+
+    HEAVY: a full-history decode in one query OOMs (ClickHouse Code 241). Rebuild
+    via scripts/full_refresh/refresh.py in the monthly batches declared below,
+    never a plain `dbt run --full-refresh`.
+  meta:
+    owner: analytics_team
+    authoritative: true
+    agent:
+      grain: [block_timestamp, log_index]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-settlement-log
+        text: One row per log emitted by a seeded settlement contract.
+          (block_timestamp, log_index) is both unique_key and the ReplacingMergeTree
+          order_by, so count() - uniqExact((block_timestamp, log_index)) must be 0.
+      - id: no-undecoded-settlement-logs
+        text: event_name IS NULL means a seeded settlement contract has no ABI in
+          contracts_abi for chain='celo' — the address is scanned but matches no
+          signature. Adding an address to celo_gpay_settlement_contracts REQUIRES
+          fetching its ABI in the same change (fetch_abi_to_csv.py --chain celo
+          --regen). Held at zero on 2026-08-06 — every topic0 either contract has
+          ever emitted resolves to a declared ABI event. The candidate bridge
+          0xd11e35ca has emitted no logs at all, so it costs nothing to carry.
+      - id: charges-reconcile-with-inferred-payments
+        text: TokenPullSuccess is the authoritative charge. Counted up to
+          int_celo_gpay_activity's own max(block_time) watermark it must equal that
+          model's Payment rows exactly. Compare only inside the watermark — charges
+          land continuously and the activity model is built at a point in time, so
+          an unbounded comparison always shows a spurious surplus (172 of them on
+          2026-08-05, all of which were simply later than the build).
+      - id: two-abis-one-contract-design
+        text: The contracts share zero topic0s, but not because they are unrelated.
+          Every event on settlement_current takes an extra indexed `sender` as its
+          first parameter, which changes the canonical signature and so the hash.
+          Function selectors are identical on both. Treat them as two generations
+          of one design that need two ABIs, not as two different systems.
+      - id: settlement-conserves-value
+        text: Everything pulled from cards is settled out — the contract holds no float.
+          Summing TokenPullSuccess.amount against SettlementBridged plus
+          SettlementTransferred gives a residual of 0.00 on BOTH contracts
+          (settlement_current 257,965.79 in against 172,558.87 bridged + 85,406.92
+          local; settlement_legacy 75,962.09 against 58,034.40 + 17,927.70), re-verified
+          2026-08-06. CHECK IT AT CONTRACT LEVEL, NOT PER TOKEN. Per token it fails on
+          settlement_legacy, and that failure is a decode fault rather than a retained
+          balance — see legacy-mislabels-the-pulled-token. All amounts are 6-decimal here
+          because only USDC and USDT settle; a token with different decimals would need
+          per-token scaling before this check means anything.
+      - id: legacy-mislabels-the-pulled-token
+        text: settlement_legacy reports the WRONG token on TokenPullSuccess. All 1,752 of
+          its pulls decode as USDC, while raw ERC-20 Transfer logs show 345 USDC and
+          1,407 USDT actually arriving — and 17,927,696,109 + 58,034,396,265 is exactly
+          the 75,962,092,374 the events attribute to USDC alone. Counts and amounts are
+          correct, only the token field lies, and it lies consistently rather than
+          randomly, so nothing looks corrupt. settlement_current is unaffected (1,087
+          USDC and 2,505 USDT, and per-token conservation holds there exactly, which is
+          the tell). Outbound events carry the right token on BOTH contracts, verified
+          the same way. So never derive a per-token charge breakdown from this model —
+          take the amount from the event and the token from the transfer. Discovered
+          2026-08-06 by ground-truthing against transfers; docs/lessons/event-field-can-lie.md.
+          NOT a decode fault on our side, which was checked explicitly because indexed
+          flags do not enter topic0 and a wrong flag would read the wrong bytes while
+          still appearing to decode. Our ABI marks rolesModifier and token indexed with
+          amount in data, and the raw logs carry exactly topic1, topic2 and one 64-char
+          data word. topic2 is the token slot and it holds USDC in all 1,758 legacy
+          events and USDT in none, so the constant is written by the contract.
+          Re-verified against a public Celo node with no warehouse involvement — tx
+          0x7b84681b… at block 73731678 has the event naming USDC for 13,070,000 while
+          the only inbound transfer is USD₮ for exactly 13,070,000. Two controls decode
+          correctly through the same code path (legacy 0x22cc85f1… where the token really
+          is USDC, and current-contract 0x5c86713f… carrying USD₮), which is what rules
+          out a decoder fault rather than a contract one.
+      - id: settlement-runs-about-seven-times-daily
+        text: Batches run roughly 7 times a day (mean 6.4 over the trailing 30 days, range
+          4 to 9), NOT twice as recorded here until 2026-08-06 — the earlier reading came
+          from the 01:00 and 13:00 peaks and missed the rest. Cadence has risen with
+          volume, and batch size with it (median 7 charges, p90 36, max 76). This is why
+          an unbounded comparison against any point-in-time model shows a surplus, and
+          why a Celo GP figure built mid-afternoon differs from the same figure built at
+          midnight.
+      - id: settlement-is-atomic-so-there-is-no-lag
+        text: Every one of the 476 settlement transactions contains BOTH the
+          TokenPullSuccess charges and the settlement outflow; there is no transaction
+          that does only one. Cards are charged and the money leaves in the same
+          transaction, so charge-to-settlement lag is zero by construction and value in
+          flight never exists. Do not build a lag or float mart on this model — that was
+          scoped and abandoned 2026-08-06 for exactly this reason. The only residual is
+          cross-token, where about 10 percent of (transaction, token) charge groups pull
+          a token that transaction does not settle and it waits for the next sweep.
+      - id: failed-pulls-are-real-but-rare
+        text: TokenPullFailedWithAmount has fired 7 times (5 legacy, 2 current); the
+          richer TokenPullFailed with its errorData payload never has. On legacy every
+          instance had remainingAmount equal to originAmount, meaning nothing was
+          pulled at all; the two on 2026-06-29 were partial, pulling some and leaving a
+          remainder. These are charge attempts that moved no money, so nothing in the
+          transfer-derived tree can see them — do not treat them as payments, and do
+          not expect them to reconcile against anything in int_celo_gpay_activity.
+      - id: rolesmodifier-lags-the-card-registry
+        text: TokenPullSuccess.rolesModifier is the card's Zodiac Roles module and
+          normally resolves in int_celo_gpay_roles_modules, but this model follows
+          head while that one is built at a point in time, so charges by cards
+          provisioned since its last build do not resolve yet. 8 of 5,338 on
+          2026-08-06, every one of them from the 01:00 batch that ran after the
+          registry's 2026-08-05 09:44 watermark. Bound any completeness check at
+          that watermark, exactly as the mastercopy drift probe does, or read
+          ordinary issuance as breakage.
+      hazards: [decode-watermark-late-logs, raw-logs-ingestion-holes, append-over-populated-duplicates, ch-overcommit-victim]
+      validation:
+      - 'duplicate excess: count() - uniqExact((block_timestamp, log_index)) == 0'
+      - 'no undecoded logs: countIf(event_name IS NULL) == 0'
+      - 'settlement conserves value: per contract, sum(TokenPullSuccess.amount) - sum(SettlementBridged.amount + SettlementTransferred.amount) == 0'
+      - 'charges match inferred payments: countIf(event_name = ''TokenPullSuccess'' AND block_timestamp <= (SELECT max(block_time) FROM int_celo_gpay_activity)) == (SELECT countIf(action = ''Payment'') FROM int_celo_gpay_activity)'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` this directly — the single-query scan of the
+        whole logs table OOMs (ClickHouse Code 241). Rebuild via
+        scripts/full_refresh/refresh.py in the monthly batches declared below;
+        decode_logs honors the start_month/end_month vars the runner passes. The
+        strategy is append, so drop the target partitions first
+        (macros/db/drop_partition.sql) if they already hold rows. Adding a new
+        settlement contract means seeding its address AND its ABI, then rebuilding
+        from that contract's deployment month.
+    full_refresh:
+      start_date: "2026-03-31"
+      batch_months: 3
+  columns:
+  - name: block_number
+    description: Block containing the event.
+    data_type: UInt64
+  - name: block_timestamp
+    description: On-chain timestamp of the event.
+    data_type: DateTime
+  - name: transaction_hash
+    description: Transaction hash (0x-prefixed).
+    data_type: String
+  - name: transaction_index
+    description: Index of the transaction within its block.
+    data_type: UInt64
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  - name: contract_address
+    description: >-
+      Which settlement contract emitted the event. Stored BARE, with no 0x prefix,
+      which is what decode_logs emits — joining it to
+      seeds/celo_gpay_settlement_contracts.address (which is 0x-prefixed) needs
+      replaceAll(lower(x),'0x','') on both sides or every row silently falls to the
+      ELSE branch of your CASE.
+    data_type: String
+  - name: event_name
+    description: >-
+      Decoded event name. TokenPullSuccess is the per-payment charge;
+      TokenPullFailed and TokenPullFailedWithAmount are charge attempts that moved
+      no money; SettlementBridged and SettlementTransferred are the treasury leg;
+      NativeBridgeFeePaid is the CELO cost of a batch; BridgeMessageReceived and
+      BridgeOftReceiptReceived are LayerZero receipts on settlement_current only.
+      NULL means the emitting contract has no ABI loaded — see the
+      no-undecoded-settlement-logs invariant.
+    data_type: Nullable(String)
+  - name: decoded_params
+    description: >-
+      Map of decoded event parameters. Shapes differ between the two contracts:
+      every settlement_current event carries an extra leading `sender`. The one
+      that matters most is TokenPullSuccess.rolesModifier, the card's Zodiac Roles
+      module — it joins to int_celo_gpay_roles_modules and therefore identifies the
+      card without going through transfers at all.
+    data_type: Map(String, String)

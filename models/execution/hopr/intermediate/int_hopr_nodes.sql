@@ -4,7 +4,7 @@
     engine='MergeTree()',
     order_by='(network, node_address)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['dev','hopr','intermediate'],
+    tags=['production','hopr','intermediate'],
     pre_hook=["SET allow_experimental_json_type = 1", "SET join_use_nulls = 1"],
     post_hook=["SET allow_experimental_json_type = 0", "SET join_use_nulls = 0"]
   )
@@ -60,13 +60,13 @@
      node fell into so an unenriched node is never silently read as "no country".
      Do not filter unenriched nodes out of counts.
 
-  NOT joined yet: the prober feed (uptime/latency per node from
-  network.hoprnet.org, ingested by click-runner's hopr-network ingestor). Those
-  tables live in playground_max only until the click-runner cron is deployed to
-  crawlers_data; joining them now would break the model for anyone else. Once
-  deployed, add availability_30d / latency_ms here -- the join key is this
-  model's node_address, and it is dufour-only because that prober was never
-  ported to jura.
+  4. Liveness IS joined (latency_ms, availability_*, prober_snapshot_date) from the
+     network.hoprnet.org prober via stg_crawlers_data__hopr_network_nodes. It is
+     dufour-only -- the prober was never ported to jura/v4 -- and `liveness_source`
+     separates "probed and unreachable" from "never probed" from "no prober covers
+     this network". Absence from the prober's roster does NOT prove a node is dead:
+     some unprobed nodes still earn on chain, so judge liveness with
+     last_channel_activity_at as well.
 */
 
 WITH announcements AS (
@@ -209,9 +209,34 @@ ipinfo_latest AS (
         argMax(org, updated_at)                         AS org,
         argMax(asn, updated_at)                         AS asn,
         argMax(generic_provider, updated_at)            AS generic_provider,
-        argMax(is_mobile, updated_at)                   AS is_mobile
+        argMax(is_mobile, updated_at)                   AS is_mobile,
+        argMax(loc, updated_at)                         AS loc
     FROM {{ ref('stg_crawlers_data__ipinfo') }}
     GROUP BY ip
+),
+
+-- Coordinates are parsed HERE, not in the final SELECT, and that placement is load
+-- bearing. ipinfo returns them as one "lat,lon" string. After the LEFT JOIN below,
+-- join_use_nulls makes loc Nullable(String), and splitByChar over a Nullable yields
+-- Nullable(Array(String)) -- a type ClickHouse refuses outright (code 43, "Nested type
+-- Array(String) cannot be inside Nullable type"). Inside this CTE loc is still a plain
+-- String, so the split is legal; the join then makes the two Floats nullable, which is
+-- exactly what we want for a node with no ipinfo row.
+ipinfo_geo AS (
+    SELECT
+        ip,
+        country,
+        city,
+        org,
+        asn,
+        generic_provider,
+        is_mobile,
+        -- toFloat64OrNull, not toFloat64: a missing or malformed loc must yield NULL, not
+        -- 0. 0,0 is a real place in the Gulf of Guinea and would plot every unlocated
+        -- node there, which reads as a cluster rather than as missing data.
+        toFloat64OrNull(splitByChar(',', loc)[1])        AS latitude,
+        toFloat64OrNull(splitByChar(',', loc)[2])        AS longitude
+    FROM ipinfo_latest
 ),
 
 -- The prober publishes a fresh snapshot per day, so take the latest row per node.
@@ -317,6 +342,10 @@ SELECT
     -- Geo / hosting, from the same ipinfo staging view the p2p models use.
     ip.country                                          AS ip_country,
     ip.city                                             AS ip_city,
+
+    -- Already parsed in ipinfo_geo (see that CTE for why it cannot be done here).
+    ip.latitude                                         AS ip_latitude,
+    ip.longitude                                        AS ip_longitude,
     ip.org                                              AS ip_org,
     ip.asn                                              AS ip_asn,
     ip.generic_provider                                 AS hosting_provider,
@@ -359,7 +388,7 @@ SELECT
     e.first_channel_activity_at                         AS first_channel_activity_at,
     e.last_channel_activity_at                          AS last_channel_activity_at
 FROM enriched AS e
-LEFT JOIN ipinfo_latest AS ip
+LEFT JOIN ipinfo_geo AS ip
     ON ip.ip = e.announced_ip
 LEFT JOIN prober_latest AS pr
     ON pr.network = e.network AND pr.node_address = e.node_address

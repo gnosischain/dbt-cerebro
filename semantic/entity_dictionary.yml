@@ -231,6 +231,15 @@ overrides:
   # ── other re-routes ──
   - {model: int_execution_circles_v2_mint_events, column: to_address, entity: circles_avatar}
   - {model: stg_pools__balancer_v3_token_map, column: wrapper_address, entity: token} # Balancer wrapper, not Circles
+  # ── suppressed: binds a sentinel, not a real address ──
+  # Celo GP provisioning hands the Safe to the 0x…0002 sentinel immediately, so ALL
+  # 1817 rows of int_celo_gpay_safe_current_owners carry owner_address =
+  # 0x0000000000000000000000000000000000000002. That is correct on-chain but it is not
+  # an address anyone can be enriched by: bound as `address`, it generated a join to
+  # api_execution_account_profile_latest under which every card resolves to the same
+  # non-existent account. Suppressed until GP actually uses owner-based signing. The
+  # model's safe_address binding stays — that one is a real card.
+  - {model: int_celo_gpay_safe_current_owners, column: owner_address, entity: null}
   - {model: fct_execution_cow_trades, column: pool_address, entity: null} # constant GPv2Settlement (dc=1) — suppress
   # ── additive (column in no global list) ──
   - {model: int_execution_zodiac_modifier_submodules_latest, column: avatar_address, entity: safe}

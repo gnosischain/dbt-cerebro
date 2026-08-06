@@ -37,29 +37,58 @@ models:
 
 - name: fct_celo_gpay_activity_daily
   description: |
-    Daily card-payment activity (active Safes, payment count, USD volume) plus
-    newly-funded and cumulative-funded card counts. "Funded" == a Safe that has
-    settled at least one Payment to the bridge (== int_celo_gpay_wallets.is_activated).
-    User grain is safe_address (on Celo a card = a Safe = the user). Current
-    partial day is excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
+    Daily card-payment activity (active Safes, payment count, USD volume) plus BOTH
+    funnel counts, which are different metrics:
+      * funded    — the card has ever RECEIVED money (any inbound action).
+      * activated — the card has ever SPENT (settled a Payment to a settlement
+                    contract). Equals int_celo_gpay_wallets.is_activated.
+    Funnel on 2026-08-05: 1817 issued (int_celo_gpay_safe_registry) > 1087 funded >
+    662 activated.
+
+    RESTATED 2026-08-05. `cumulative_funded` previously counted from a card's first
+    PAYMENT, so it tracked activation under the funded name and read 40% low (654 vs
+    1075). The original series is preserved as newly_activated/cumulative_activated.
+
+    The date spine is the UNION of payment-activity days and funnel-transition days,
+    not payment days alone: 9 days saw a card funded with nobody spending, and a
+    payment-only spine dropped the 28 cards funded on them from cumulative_funded
+    silently. Rows contributed only by the union carry active_users / total_payments /
+    total_volume_usd = 0, which is the truth for those days — so do NOT read a 0 row
+    as missing data.
+
+    User grain is safe_address (on Celo a card = a Safe = the user). Current partial
+    day is excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   columns:
   - name: date
     description: Calendar date.
     data_type: Date
   - name: active_users
-    description: Distinct Safes that made a payment on this date.
+    description: >-
+      Distinct Safes that made a payment on this date. 0 on a date present only
+      because a card was funded that day (see the spine note above).
     data_type: UInt64
   - name: total_payments
-    description: Number of payments settled on this date.
+    description: Number of payments settled on this date. 0 on a funding-only date.
     data_type: UInt64
   - name: total_volume_usd
-    description: USD payment volume on this date (USDC + USDT).
+    description: USD payment volume on this date (USDC + USDT). 0 on a funding-only date.
     data_type: Float64
   - name: newly_funded
-    description: Safes whose first-ever payment fell on this date.
+    description: Safes that RECEIVED money for the first time on this date.
     data_type: UInt64
   - name: cumulative_funded
-    description: Running total of funded (ever-paid) Safes through this date.
+    description: >-
+      Running total of ever-funded Safes through this date. Reaches 1075 on
+      2026-08-05 (1087 all-time, less cards first funded today, which is excluded).
+    data_type: UInt64
+  - name: newly_activated
+    description: Safes whose first-ever payment fell on this date.
+    data_type: UInt64
+  - name: cumulative_activated
+    description: >-
+      Running total of ever-spent Safes through this date; 654 on 2026-08-05. This is
+      the series cumulative_funded carried before the restatement. Always <=
+      cumulative_funded, since a card cannot spend before it is funded.
     data_type: UInt64
   meta:
     owner: analytics_team
@@ -81,10 +110,18 @@ models:
     description: USD payment volume for the week.
     data_type: Float64
   - name: newly_funded
-    description: Safes first funded during the week.
+    description: Safes that RECEIVED money for the first time during the week.
     data_type: UInt64
   - name: cumulative_funded
-    description: Running total of funded Safes through the week.
+    description: Running total of ever-funded Safes through the week.
+    data_type: UInt64
+  - name: newly_activated
+    description: Safes whose first-ever payment fell in the week.
+    data_type: UInt64
+  - name: cumulative_activated
+    description: >-
+      Running total of ever-spent Safes through the week — the series
+      cumulative_funded carried before the 2026-08-05 restatement.
     data_type: UInt64
   meta:
     owner: analytics_team
@@ -106,10 +143,18 @@ models:
     description: USD payment volume for the month.
     data_type: Float64
   - name: newly_funded
-    description: Safes first funded during the month.
+    description: Safes that RECEIVED money for the first time during the month.
     data_type: UInt64
   - name: cumulative_funded
-    description: Running total of funded Safes through the month.
+    description: Running total of ever-funded Safes through the month.
+    data_type: UInt64
+  - name: newly_activated
+    description: Safes whose first-ever payment fell in the month.
+    data_type: UInt64
+  - name: cumulative_activated
+    description: >-
+      Running total of ever-spent Safes through the month — the series
+      cumulative_funded carried before the 2026-08-05 restatement.
     data_type: UInt64
   meta:
     owner: analytics_team
@@ -230,11 +275,17 @@ models:
     transacting token cannot be silently excluded from the headline. RWA is reported
     separately rather than blended because a reward token is not spendable at the
     settlement contract.
+
+    FundedCards (added 2026-08-05) counts cards that have ever RECEIVED money and is
+    deliberately distinct from PaymentUsers, which counts cards that have ever SPENT.
+    The two were conflated: api_celo_gpay_total_funded served PaymentUsers, so the
+    funded tile read 662 when 1087 cards had been funded. Funnel: issued (registry, not
+    in this model) > FundedCards > PaymentUsers.
   columns:
   - name: label
     description: >-
       Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance,
-      RewardBalance.
+      RewardBalance, FundedCards.
     data_type: String
   - name: window
     description: "'All' (all-time) or '7D' (trailing 7 days)."
@@ -570,6 +621,360 @@ models:
 # the Gnosis Chain api_execution_gpay_* views so the frontend query files are
 # near-identical. Same whitelisted-token scope as the facts above.
 
+- name: fct_celo_gpay_card_funnel
+  description: |
+    One row per card - issuance, first funding, first spend, and the lags between.
+    The atom behind fct_celo_gpay_funnel_cohorts_monthly.
+
+    Every column is measured as of ONE horizon, `observed_through`, taken from
+    int_celo_gpay_activity_daily. The three signals come from models built at
+    different times (int_celo_gpay_wallets rebuilds fully each run and reaches head;
+    int_celo_gpay_activity_daily is incremental and lags), so without a shared
+    horizon a card issued yesterday reads as issued-but-never-funded purely because
+    funding has not been built yet. Cards issued after the horizon are excluded, and
+    first_spend_at is clipped to it even where wallets already knows it.
+
+    NEVER divide is_funded by row count to get a conversion rate. Issuance is still
+    ramping, so most cards are young and "unfunded" mostly means "issued recently".
+    Use observation_days to restrict to cards old enough to have had a fair chance,
+    or read fct_celo_gpay_funnel_cohorts_monthly which does it for you.
+  columns:
+  - name: safe_address
+    description: GP card Safe address. One row per card.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: issued_at
+    description: Date the Safe was provisioned as a card (SafeSetup), from int_celo_gpay_wallets.
+    data_type: Date
+    tests:
+    - not_null
+  - name: first_funded_at
+    description: >-
+      Date the card first RECEIVED money - the first inbound action (Top-up, Reversal
+      or Cashback) in int_celo_gpay_activity_daily. NULL if it never has, which is
+      distinct from a zero lag.
+    data_type: Nullable(Date)
+  - name: first_spend_at
+    description: >-
+      Date the card first SPENT - a stablecoin settlement to a bridge, from
+      int_celo_gpay_wallets.first_spend_at, clipped to observed_through so it cannot
+      run ahead of the funding signal.
+    data_type: Nullable(Date)
+  - name: is_funded
+    description: Card has ever received money as of observed_through.
+    data_type: Bool
+  - name: is_activated
+    description: >-
+      Card has ever spent as of observed_through. Matches
+      int_celo_gpay_wallets.is_activated except where a spend falls after the horizon.
+    data_type: Bool
+  - name: days_issue_to_fund
+    description: Days from issuance to first funding. NULL where the card has never been funded.
+    data_type: Nullable(Int32)
+  - name: days_issue_to_spend
+    description: Days from issuance to first spend. NULL where the card has never spent.
+    data_type: Nullable(Int32)
+  - name: days_fund_to_spend
+    description: >-
+      Days from first funding to first spend, for cards that did both. Legitimately 0
+      - funding and spending the same day is the common MiniPay pattern (152 cards).
+    data_type: Nullable(Int32)
+  - name: observation_days
+    description: >-
+      Days from issuance to observed_through - how long this card has been observable.
+      The eligibility gate for every conversion rate built on this table.
+    data_type: Int32
+  - name: observed_through
+    description: >-
+      The as-of date for the whole row, from max(date) in int_celo_gpay_activity_daily.
+      Identical on every row; carried per-row so a consumer reading a slice can still
+      see the horizon.
+    data_type: Date
+  tests:
+  # Guaranteed by the horizon filter. If this fires the filter has been removed or the
+  # upstream watermark went backwards.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_observation_non_negative
+      expression: "observation_days >= 0"
+  # Not a hard law, hence warn. A Safe address is deterministic before deployment, so a
+  # counterfactual transfer CAN land before SafeSetup. Zero occurrences to date; if it
+  # starts firing the windowed rates still behave (a negative lag is inside every
+  # window), but the median lags will read low.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_funding_not_before_issuance
+      expression: "days_issue_to_fund >= 0"
+      config:
+        severity: warn
+        where: "days_issue_to_fund IS NOT NULL"
+  # Spending implies funding. Zero occurrences. Warn rather than error because it
+  # indicts the inflow classifier upstream, not this model - a card that spends with no
+  # recorded inbound action means int_celo_gpay_activity missed a funding transfer.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_activated_implies_funded
+      expression: "is_funded"
+      config:
+        severity: warn
+        where: "is_activated"
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_funnel_cohorts_monthly
+  description: |
+    Cards grouped by the month they were ISSUED, with how far each cohort got through
+    issued > funded > activated. Rollup of fct_celo_gpay_card_funnel.
+
+    Cohorted and age-normalised on purpose. A single all-time "60% of cards get
+    funded" is not a conversion rate on a product that is still ramping - the
+    denominator is dominated by cards issued weeks ago, and the headline moves when
+    issuance accelerates even if behaviour is identical. Cohorting removes the mix
+    shift, the _7d/_30d windows remove the age spread within a cohort.
+
+    Compare the windowed rates, not the _ever columns. funded_ever and activated_ever
+    are honest counts as of the horizon but are NOT comparable across rows, because
+    older cohorts have had longer to convert - they will always slope down toward the
+    present and that slope is an artefact.
+
+    The lag medians are completer-biased and no eligibility gate fixes it. They are
+    taken over cards that DID convert, so a young cohort's median only sees its fast
+    converters. Expect medians to drift up as a cohort matures; compare them only
+    where cohort_complete_30d is true.
+  columns:
+  - name: cohort_month
+    description: Month the cards were issued. NOT a month of activity.
+    data_type: Date
+    tests:
+    - unique
+    - not_null
+  - name: cards_issued
+    description: Cards issued in the month, as of observed_through.
+    data_type: UInt64
+  - name: eligible_7d
+    description: >-
+      Cards with at least 7 days of observation - the denominator for the 7-day rates.
+      Smaller than cards_issued for the current cohort, and 0 for a cohort younger
+      than a week.
+    data_type: UInt64
+  - name: eligible_30d
+    description: Cards with at least 30 days of observation - the denominator for the 30-day rates.
+    data_type: UInt64
+  - name: funded_7d
+    description: Eligible cards funded within 7 days of issuance.
+    data_type: UInt64
+  - name: funded_30d
+    description: Eligible cards funded within 30 days of issuance.
+    data_type: UInt64
+  - name: funded_ever
+    description: Cards funded at any point up to observed_through. Not comparable across cohorts.
+    data_type: UInt64
+  - name: activated_7d
+    description: Eligible cards that spent within 7 days of issuance.
+    data_type: UInt64
+  - name: activated_30d
+    description: Eligible cards that spent within 30 days of issuance.
+    data_type: UInt64
+  - name: activated_ever
+    description: Cards that spent at any point up to observed_through. Not comparable across cohorts.
+    data_type: UInt64
+  - name: funded_rate_7d
+    description: >-
+      funded_7d / eligible_7d. NULL where no card in the cohort has 7 days of
+      observation yet - undefined rather than zero, so dashboards do not draw a cliff
+      at the current month that reads as a collapse in conversion.
+    data_type: Nullable(Float64)
+  - name: funded_rate_30d
+    description: funded_30d / eligible_30d. NULL where the cohort has no 30-day-old cards.
+    data_type: Nullable(Float64)
+  - name: activated_rate_7d
+    description: activated_7d / eligible_7d - issuance to first spend, both legs.
+    data_type: Nullable(Float64)
+  - name: activated_rate_30d
+    description: activated_30d / eligible_30d - issuance to first spend, both legs.
+    data_type: Nullable(Float64)
+  - name: spend_rate_of_funded_7d
+    description: activated_7d / funded_7d - the second leg alone, which is where the drop-off is.
+    data_type: Nullable(Float64)
+  - name: spend_rate_of_funded_30d
+    description: activated_30d / funded_30d - the second leg alone, over 30 days.
+    data_type: Nullable(Float64)
+  - name: cohort_complete_7d
+    description: >-
+      Every card in the row has cleared 7 days of observation. FALSE means the 7-day
+      rate is computed on a subset and will still move.
+    data_type: Bool
+  - name: cohort_complete_30d
+    description: Every card in the row has cleared 30 days of observation.
+    data_type: Bool
+  - name: median_days_issue_to_fund
+    description: Median lag among cards that were funded. Completer-biased in young cohorts.
+    data_type: Int32
+  - name: p90_days_issue_to_fund
+    description: 90th percentile lag among cards that were funded.
+    data_type: Int32
+  - name: median_days_fund_to_spend
+    description: Median lag from funding to first spend, among cards that did both.
+    data_type: Int32
+  - name: p90_days_fund_to_spend
+    description: 90th percentile lag from funding to first spend.
+    data_type: Int32
+  - name: observed_through
+    description: As-of date inherited from fct_celo_gpay_card_funnel.
+    data_type: Date
+  tests:
+  # Both guaranteed by the countIf construction - a numerator cannot exceed its own
+  # eligibility gate. These exist to catch a future edit that changes one condition
+  # and not the other, which is the easy way to break a windowed rate.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_cohort_funded_within_eligible
+      expression: "funded_7d <= eligible_7d AND funded_30d <= eligible_30d"
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_cohort_activated_within_funded
+      expression: "activated_7d <= funded_7d AND activated_30d <= funded_30d"
+      config:
+        severity: warn
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_funnel_cohort_rates_are_proportions
+      expression: "funded_rate_7d BETWEEN 0 AND 1 AND funded_rate_30d BETWEEN 0 AND 1"
+      config:
+        where: "funded_rate_7d IS NOT NULL AND funded_rate_30d IS NOT NULL"
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_settlement_batches
+  description: |
+    One row per settlement transaction - how many card charges it swept, how much left
+    the contract, where it went, and what the bridge hop cost in CELO. Built on the
+    decoded event layer contracts_celo_gpay_settlement_events.
+
+    There is no settlement lag and no float, which is why this model exists instead of
+    the lag and float marts originally scoped. The sweep is atomic - all 476 settlement
+    transactions contain both the charges and the outflow, and not one does only one or
+    the other. Charge-to-settlement time is therefore zero by construction and value in
+    flight never exists. The only residual is cross-token - about 10 percent of
+    (transaction, token) charge groups pull a token that transaction does not settle,
+    so it waits for the next sweep of that token.
+
+    Charge amounts are token-agnostic on purpose. The legacy contract reports the WRONG
+    token on TokenPullSuccess - it labels all 1,752 of its pulls USDC while the chain
+    shows 345 USDC and 1,407 USDT arriving. Counts and amounts are correct, only the
+    token field lies. Both stablecoins are 6-decimal so the summed amount stays exact,
+    but a per-token split of charges would not be and is not offered. Settlement
+    outflows DO carry the right token on both contracts, verified against raw ERC-20
+    Transfer logs, which is why charges and settlements are sourced differently here.
+  columns:
+  - name: batch_time
+    description: Timestamp of the settlement transaction.
+    data_type: DateTime
+  - name: batch_date
+    description: Calendar date of the settlement transaction.
+    data_type: Date
+  - name: transaction_hash
+    description: The settlement transaction. One row per hash.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: settlement_contract
+    description: Address of the settlement contract, unprefixed lowercase as stored in the decode layer.
+    data_type: String
+  - name: settlement_label
+    description: >-
+      settlement_legacy or settlement_current, from the celo_gpay_settlement_contracts
+      seed. 'unknown' would mean a contract is emitting settlement events without being
+      in the seed, which should never happen.
+    data_type: String
+  - name: n_charges
+    description: Successful card charges (TokenPullSuccess) swept in this transaction.
+    data_type: UInt64
+  - name: n_failed_charges
+    description: >-
+      Failed pulls (TokenPullFailedWithAmount) in this transaction. 7 in total ever,
+      all between 2026-05-28 and 2026-06-29, none since.
+    data_type: UInt64
+  - name: charged_amount
+    description: >-
+      Total pulled from cards, in stablecoin units. Token-agnostic - see the model
+      description. Exact because both settlement stablecoins carry 6 decimals.
+    data_type: Float64
+  - name: failed_amount
+    description: Amount GP attempted to pull and could not (originAmount on the failure event).
+    data_type: Float64
+  - name: n_bridged
+    description: SettlementBridged events - value sent to another chain via LayerZero.
+    data_type: UInt64
+  - name: n_transferred
+    description: SettlementTransferred events - value sent to a receiver on Celo.
+    data_type: UInt64
+  - name: bridged_amount
+    description: Stablecoin units bridged off Celo in this transaction.
+    data_type: Float64
+  - name: transferred_amount
+    description: Stablecoin units transferred to a Celo receiver in this transaction.
+    data_type: Float64
+  - name: settled_amount
+    description: Total stablecoin units that left the contract. Equals charged_amount per contract over all time.
+    data_type: Float64
+  - name: settled_usd
+    description: settled_amount priced per token at the batch date.
+    data_type: Float64
+  - name: receivers
+    description: >-
+      Distinct settlement receivers in this transaction. An array because one
+      transaction can bridge one token and locally transfer another to different
+      destinations. The local receiver changed from 0x8ab54f9e to 0xdc9b73c3 after
+      2026-06-10.
+    data_type: Array(String)
+  - name: destination_eids
+    description: >-
+      LayerZero destination endpoint IDs for bridged value. 30101 (Ethereum) is the only
+      value observed. Empty for transaction that only settle locally.
+    data_type: Array(String)
+  - name: native_fee_celo
+    description: >-
+      CELO paid for the LayerZero hop. Zero for locally-settled batches, which cost
+      nothing beyond gas.
+    data_type: Float64
+  - name: native_fee_usd
+    description: native_fee_celo priced at the batch date.
+    data_type: Float64
+  - name: fee_usd_per_charge
+    description: >-
+      Bridge cost attributed per card charge in the batch. NULL rather than 0 when a
+      batch has no charges, so empty batches drop out of averages instead of dragging
+      them toward zero.
+    data_type: Nullable(Float64)
+  tests:
+  # Value conservation. The contract is a pass-through - everything pulled from cards
+  # leaves again - so this holds to the cent over all time on both contracts. It is
+  # asserted per row only in the weak direction, because a single transaction can settle
+  # a token pulled by an earlier one.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_settlement_amounts_non_negative
+      expression: "charged_amount >= 0 AND settled_amount >= 0 AND native_fee_celo >= 0"
+  # Every settlement contract must be in the seed, or discovery has missed a deployment
+  # the way it missed the second bridge before 2026-08-05.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_settlement_contract_is_seeded
+      expression: "settlement_label != 'unknown'"
+  # A bridged batch always pays a LayerZero fee; a purely local one never does. If this
+  # fires, either the fee event stopped firing or a new settlement path exists.
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_settlement_bridged_batches_pay_a_fee
+      expression: "native_fee_celo > 0"
+      config:
+        where: "n_bridged > 0"
+  - dbt_utils.expression_is_true:
+      name: celo_gpay_settlement_local_batches_pay_no_bridge_fee
+      expression: "native_fee_celo = 0"
+      config:
+        where: "n_bridged = 0"
+  meta:
+    owner: analytics_team
+    authoritative: false
+
 - name: api_celo_gpay_total_volume
   description: All-time card payment volume in USD across whitelisted tokens (USDT + USDC in practice). Counter tile.
   meta: {owner: analytics_team, authoritative: false}
@@ -617,11 +1022,28 @@ models:
     description: "Date the snapshot is computed as of (max date in the underlying data)."
     data_type: Nullable(Date)
 - name: api_celo_gpay_total_funded
-  description: All-time distinct funded (ever-paid) Safes. Counter tile.
+  description: >-
+    All-time distinct cards that have ever RECEIVED money (1087 on 2026-08-05).
+    Counter tile. RESTATED 2026-08-05: previously served the PaymentUsers snapshot,
+    i.e. cards that had ever SPENT, so it read 662 under the funded label. The old
+    value lives on as api_celo_gpay_total_activated.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: value
-    description: "The total number of funded wallets."
+    description: "Distinct cards that have ever received an inbound transfer."
+    data_type: Nullable(Float64)
+  - name: as_of_date
+    description: "Date the snapshot is computed as of (max date in the underlying data)."
+    data_type: Nullable(Date)
+- name: api_celo_gpay_total_activated
+  description: >-
+    All-time distinct cards that have ever SPENT (662 on 2026-08-05). Counter tile.
+    This is the value api_celo_gpay_total_funded served before the 2026-08-05
+    restatement, kept under its true name. Always <= total_funded.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: value
+    description: "Distinct cards that have ever settled a payment."
     data_type: Nullable(Float64)
   - name: as_of_date
     description: "Date the snapshot is computed as of (max date in the underlying data)."
@@ -730,34 +1152,79 @@ models:
     data_type: UInt64
 
 - name: api_celo_gpay_funded_addresses_daily
-  description: Cumulative funded (ever-paid) Safes by day.
+  description: >-
+    Cumulative cards that have ever RECEIVED money, by day. RESTATED 2026-08-05: this
+    served a first-PAYMENT count until then — activation under the funded label,
+    reading 654 against a true 1075. The old series is
+    api_celo_gpay_activated_addresses_daily.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
     description: "The calendar date."
     data_type: Date
   - name: value
-    description: "The cumulative number of funded wallet addresses."
+    description: "Cumulative cards that have ever received an inbound transfer."
     data_type: UInt64
 - name: api_celo_gpay_funded_addresses_weekly
-  description: Cumulative funded Safes by week.
+  description: >-
+    Cumulative cards that have ever RECEIVED money, by week. Restated 2026-08-05 — see
+    api_celo_gpay_funded_addresses_daily.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
     description: "The first day of the ISO week."
     data_type: Date
   - name: value
-    description: "The cumulative number of funded wallet addresses."
+    description: "Cumulative cards that have ever received an inbound transfer."
     data_type: UInt64
 - name: api_celo_gpay_funded_addresses_monthly
-  description: Cumulative funded Safes by month.
+  description: >-
+    Cumulative cards that have ever RECEIVED money, by month. Restated 2026-08-05 —
+    see api_celo_gpay_funded_addresses_daily.
   meta: {owner: analytics_team, authoritative: false}
   columns:
   - name: date
     description: "The first day of the month."
     data_type: Date
   - name: value
-    description: "The cumulative number of funded wallet addresses."
+    description: "Cumulative cards that have ever received an inbound transfer."
+    data_type: UInt64
+- name: api_celo_gpay_activated_addresses_daily
+  description: >-
+    Cumulative cards that have ever SPENT, by day. This is the series
+    api_celo_gpay_funded_addresses_daily served before the 2026-08-05 restatement,
+    exposed here under its true name. Always <= the funded series.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: date
+    description: "The calendar date."
+    data_type: Date
+  - name: value
+    description: "Cumulative cards that have ever settled a payment."
+    data_type: UInt64
+- name: api_celo_gpay_activated_addresses_weekly
+  description: >-
+    Cumulative cards that have ever SPENT, by week. See
+    api_celo_gpay_activated_addresses_daily.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: date
+    description: "The first day of the ISO week."
+    data_type: Date
+  - name: value
+    description: "Cumulative cards that have ever settled a payment."
+    data_type: UInt64
+- name: api_celo_gpay_activated_addresses_monthly
+  description: >-
+    Cumulative cards that have ever SPENT, by month. See
+    api_celo_gpay_activated_addresses_daily.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: date
+    description: "The first day of the month."
+    data_type: Date
+  - name: value
+    description: "Cumulative cards that have ever settled a payment."
     data_type: UInt64
 - name: api_celo_gpay_activity_by_action_daily
   description: Daily count/USD/native volume per action (Payment, Top-up, Withdrawal, Reversal).
@@ -1016,6 +1483,100 @@ models:
   - name: retention_rate
     description: "The retention rate for the month."
     data_type: Float64
+
+- name: api_celo_gpay_funnel_cohorts_monthly
+  description: |
+    Card funnel by issuance cohort. `month` is the month the cards were ISSUED, not a
+    month of activity, so the series does not read left-to-right as a timeline - each
+    row describes what one group of cards went on to do.
+
+    Plot the windowed rates. funded_ever/activated_ever slope down toward the present
+    because recent cohorts have had less time, not because they convert worse. The
+    rate columns are NULL for a cohort too young to judge, which is undefined rather
+    than zero and should render as a gap, not a drop to the axis.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: month
+    description: "Issuance cohort month, as a string date."
+    data_type: String
+  - name: cards_issued
+    description: "Cards issued in the cohort month."
+    data_type: UInt64
+  - name: funded_ever
+    description: "Cards funded at any point since issuance. Not comparable across rows."
+    data_type: UInt64
+  - name: activated_ever
+    description: "Cards that spent at any point since issuance. Not comparable across rows."
+    data_type: UInt64
+  - name: funded_rate_7d
+    description: "Share of cards funded within 7 days of issuance, among those old enough to judge."
+    data_type: Nullable(Float64)
+  - name: funded_rate_30d
+    description: "Share of cards funded within 30 days of issuance, among those old enough to judge."
+    data_type: Nullable(Float64)
+  - name: activated_rate_7d
+    description: "Share of cards that spent within 7 days of issuance."
+    data_type: Nullable(Float64)
+  - name: activated_rate_30d
+    description: "Share of cards that spent within 30 days of issuance."
+    data_type: Nullable(Float64)
+  - name: spend_rate_of_funded_30d
+    description: "Share of 30-day-funded cards that went on to spend - the second leg of the funnel."
+    data_type: Nullable(Float64)
+  - name: median_days_issue_to_fund
+    description: "Median days from issuance to funding, among funded cards."
+    data_type: Int32
+  - name: median_days_fund_to_spend
+    description: "Median days from funding to first spend, among cards that did both."
+    data_type: Int32
+  - name: cohort_complete_7d
+    description: "Every card in the row has had 7 days of observation; the 7-day rates are final."
+    data_type: Bool
+  - name: cohort_complete_30d
+    description: "Every card in the row has had 30 days of observation; the 30-day rates are final."
+    data_type: Bool
+
+- name: api_celo_gpay_settlement_cost_monthly
+  description: |
+    What it costs Gnosis Pay to settle Celo card charges, by month. Aggregates
+    fct_celo_gpay_settlement_batches directly - the source is a few hundred rows, so a
+    separate monthly fact would cost more to maintain than it saves.
+
+    The headline is fee_usd_per_charge, which has fallen from 0.205 in March to 0.0074
+    in August as batching improved (1.3 charges per batch to 18.2). Only bridged
+    batches pay anything; local settlement costs nothing beyond gas.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: month
+    description: "Calendar month, as a string date."
+    data_type: String
+  - name: batches
+    description: "Settlement transactions in the month."
+    data_type: UInt64
+  - name: charges
+    description: "Card charges swept in the month."
+    data_type: UInt64
+  - name: failed_charges
+    description: "Pulls that failed. 7 ever, none since June 2026."
+    data_type: UInt64
+  - name: settled_usd
+    description: "Value settled out of the contracts, in USD."
+    data_type: Float64
+  - name: fee_celo
+    description: "CELO spent on LayerZero bridge hops."
+    data_type: Float64
+  - name: fee_usd
+    description: "Bridge fees priced in USD at each batch date."
+    data_type: Float64
+  - name: fee_usd_per_charge
+    description: "Bridge cost per card charge settled - the unit economics figure."
+    data_type: Nullable(Float64)
+  - name: fee_bps_of_volume
+    description: "Bridge cost as basis points of settled volume. 3.03 bps all-time, 1.19 in August."
+    data_type: Nullable(Float64)
+  - name: charges_per_batch
+    description: "Mean batch size. The driver of the per-charge cost."
+    data_type: Nullable(Float64)
 
 - name: api_celo_gpay_wallet_balance_composition
   description: Latest-day USD balance composition across whitelisted tokens (USDT/USDC in practice); sub-1% folded into Other.

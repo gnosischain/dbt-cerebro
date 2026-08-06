@@ -7,13 +7,14 @@ scope: entity-discovery models that define a population from one contract finger
   verification that derives X from the model's own anchor
 symptom: a coverage check passes at 100% while an entire parallel cohort of the same
   entity is missing from the model; counts look internally consistent and are wrong
-last_verified: 2026-08-05
+last_verified: 2026-08-06
 evidence:
   - seeds/celo_gpay_settlement_contracts.csv (the fix — the anchor set is now seeded, and consumed by int_celo_gpay_roles_modules, int_celo_gpay_safe_registry and int_celo_gpay_activity)
   - "on-chain 2026-08-04: a second AggregateBridge 0xc4df5cac03f05603eb6c33cf3f68a5366e6e0a8d settled 1,743 transfers from 155 distinct card Safes; 235 cards provisioned on it 2026-03-31..2026-06-11; ZERO overlap with the then-registry; both bridges settled within 4 seconds of each other that morning"
   - "the earlier verification that 'all 483 spenders are in the registry' passed because it defined the spender set as senders-to-0xc07cd8c2 — the second bridge was outside the question being asked"
   - "Gnosis Pay confirmed 2026-08-05 that both bridges are theirs and that the legacy one will be migrated onto the current one, which is why the bridge is modelled per-transfer and not as a per-card generation"
-  - "the two bridges share ZERO event signatures (5 vs 7, no overlap), so they are different contracts rather than two versions of one — do not label anchors v1/v2 on assumption"
+  - "the two bridges share ZERO event signatures, so decoding them needs two ABIs — but fetching those ABIs on 2026-08-06 showed the reason is that the newer one adds an indexed `sender` to every event, while both are AggregateBridge with identical function selectors. An earlier note here inferred from the disjoint topic0s that they were unrelated contracts; that inference was wrong, and disjoint event hashes are weak evidence of anything until you read the ABI"
+  - "independent confirmation of the fix, 2026-08-06: contracts_celo_gpay_settlement_events decodes GP's own TokenPullSuccess charge record from BOTH bridges, and inside int_celo_gpay_activity's watermark it matches Payment exactly — 5,165 v 5,165, zero per-day variance, holding per contract (1,743 legacy, 3,422 current). The population is now verified against the platform's own record rather than against itself"
 ---
 
 ## Symptom
@@ -86,6 +87,14 @@ The chain, enumerated from the entity side: for every Safe already known to be a
 where does its money actually settle? Plus the operator's own list of settlement
 addresses — ask, do not infer, and treat the answer as the seed rather than a
 confirmation of what you already modelled.
+
+Best of all, where it exists: the operator's own event log. Decoding the settlement
+contracts' `TokenPullSuccess` (`contracts_celo_gpay_settlement_events`, added
+2026-08-06) yields a charge record GP emits for itself, independent of anything this
+tree infers, and each event names the card's Roles module directly. That is a
+non-circular completeness proof — it counts the population from the operator's side of
+the boundary. Where a contract is verified, fetch the ABI before writing a coverage
+check by hand; the check gets shorter and stops sharing an assumption with the model.
 
 ## Enforcement
 None, by decision. There is no automated gate for this class on Celo: a new settlement

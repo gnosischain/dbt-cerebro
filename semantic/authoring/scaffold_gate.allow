@@ -3,6 +3,9 @@
 # authoring yet. Author a model (scripts/semantic/scaffold_candidates.py
 # scaffolds a candidate block) and delete its line; stale lines fail the gate.
 # Seeded 2026-07 from the live manifest.
+api_celo_gpay_activated_addresses_daily
+api_celo_gpay_activated_addresses_monthly
+api_celo_gpay_activated_addresses_weekly
 api_celo_gpay_active_users_7d
 api_celo_gpay_activity_by_action_daily
 api_celo_gpay_activity_by_action_monthly
@@ -16,17 +19,28 @@ api_celo_gpay_churn_rates_monthly
 api_celo_gpay_funded_addresses_daily
 api_celo_gpay_funded_addresses_monthly
 api_celo_gpay_funded_addresses_weekly
+# Deliberate exception, same reason as fct_celo_gpay_funnel_cohorts_monthly below: the
+# columns are pre-divided rates over cohort-specific denominators, which a semantic
+# layer cannot re-aggregate. The funnel is authored at its atom grain instead, as
+# celo_gpay_card_funnel in semantic/authoring/celo/semantic_models.yml.
+api_celo_gpay_funnel_cohorts_monthly
 api_celo_gpay_kpi_monthly
 api_celo_gpay_payments_7d
 api_celo_gpay_payments_by_token_daily
 api_celo_gpay_payments_by_token_monthly
 api_celo_gpay_payments_by_token_weekly
 api_celo_gpay_payments_hourly
+# Deliberate exception — every useful column is a pre-divided ratio (fee per charge, fee
+# in bps of volume, charges per batch) whose denominators differ per row, so averaging
+# them across months is wrong. The additive batch grain is authored instead, as
+# celo_gpay_settlement_batches in semantic/authoring/celo/semantic_models.yml.
+api_celo_gpay_settlement_cost_monthly
 api_celo_gpay_retention_by_action_monthly
 api_celo_gpay_retention_by_action_users_monthly
 api_celo_gpay_retention_monthly
 api_celo_gpay_retention_pct_monthly
 api_celo_gpay_retention_volume_monthly
+api_celo_gpay_total_activated
 api_celo_gpay_total_balance
 api_celo_gpay_total_funded
 api_celo_gpay_total_payments
@@ -95,6 +109,13 @@ fct_celo_gpay_balance_cohorts_daily
 fct_celo_gpay_balances_by_token_daily
 fct_celo_gpay_balances_safe_daily
 fct_celo_gpay_churn_monthly
+# Deliberate exception — the useful columns are RATES whose denominators differ per row
+# (eligible_7d, eligible_30d), so summing or averaging them across cohorts is wrong and
+# a semantic layer offers no way to say so. Exposing it would let a caller average six
+# cohort rates into a number that means nothing. The funnel is authored at its atom
+# grain instead, as celo_gpay_card_funnel in semantic/authoring/celo/semantic_models.yml,
+# where the measures are additive counts.
+fct_celo_gpay_funnel_cohorts_monthly
 fct_celo_gpay_kpi_monthly
 fct_celo_gpay_payments_hourly
 fct_celo_gpay_retention_by_action_monthly
@@ -124,6 +145,11 @@ int_celo_gpay_activity_daily
 # answers a GP question with a non-GP number; expose a GP-only derivation
 # instead if that question ever needs a metric.
 int_celo_gpay_module_mastercopies
+# Deliberate permanent exception — every row carries the 0x…0002 sentinel because GP
+# provisioning transfers the Safe away from the user's EOA immediately, so any metric
+# over "current owner" answers with a non-existent account for all 1817 cards. Its
+# owner_address entity binding is suppressed in semantic/entity_dictionary.yml for the
+# same reason. Revisit only if GP adopts owner-based signing.
 int_celo_gpay_safe_current_owners
 int_celo_gpay_wallet_events
 int_celo_gpay_wallets

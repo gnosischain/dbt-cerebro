@@ -39,11 +39,18 @@ Read with root AGENTS.md.
   live and both are GP's: `settlement_legacy` `0xc4df5cac…` (from 2026-03-31,
   `status=migrating`) and `settlement_current` `0xc07cd8c2…` (from 2026-05-28,
   `status=active`). GP confirmed on 2026-08-05 that the legacy one will be migrated
-  onto the current one. **Do not call them v1/v2** — they are two different
-  contracts, not two versions of one, and they share ZERO event signatures (5 events
-  on legacy vs 7 on current, no overlap, different per-payment events `ccc11cdc…` vs
-  `8b4c0107…`). Practical consequence: decoding settlement events needs TWO separate
-  ABIs, and any settlement model must handle both shapes rather than one.
+  onto the current one. They share ZERO event signatures, so decoding them needs TWO
+  separate ABIs and any settlement model must handle both shapes. **Why** they share
+  none was settled on 2026-08-06 when the ABIs were fetched, and it is not that they
+  are unrelated systems: both are verified as `AggregateBridge` with identical
+  function selectors (`settle`, `USDC`, `USDT`, `USDT_OFT`, `quoteNativeBridgeFee`),
+  and every event on the current one adds an indexed `sender` as its first parameter,
+  which changes the canonical signature and therefore the topic0. Two generations of
+  one design. The `legacy`/`current` labels stay — they describe lifecycle without
+  claiming a release lineage GP has never published — but the earlier note here that
+  these were "two different contracts, not two versions of one" was wrong on the
+  substance, and the event counts it quoted (5 and 7) were events that had *fired*,
+  not events *declared* (6 and 8).
   `0xd11e35ca…` is deployed, unused and
   unconfirmed — it sits at `status=planned` and is excluded from every filter.
   Adding GP's migration target must be a seed edit, nothing more.
@@ -66,6 +73,40 @@ Read with root AGENTS.md.
   it derived the spender population from the one bridge the model already knew about,
   so a second bridge was undetectable. See
   `docs/lessons/circular-completeness-proof.md`.
+- **GP's own charge record is now decoded, and the inference matches it exactly.**
+  `contracts_celo_gpay_settlement_events` decodes both settlement contracts (ABIs
+  fetched 2026-08-06). Its `TokenPullSuccess` is what GP itself records for each card
+  charge, so it is a completeness proof from the *operator's* side of the boundary
+  rather than from our own anchor. Counted inside `int_celo_gpay_activity`'s
+  `max(block_time)` it equals that model's `Payment` rows exactly — **5,165 v 5,165**,
+  zero per-day variance, holding independently per contract (1,743 legacy, 3,422
+  current). Always bound the comparison at that watermark: settlement batches land at
+  01:00 and 13:00 UTC and the activity model is built at a point in time, so an
+  unbounded count always shows a spurious surplus (172 on 2026-08-05, every one of
+  them simply later than the build). **Re-run this after any change to the Payment
+  CASE** — it is the only external check the classifier has.
+- The decoded layer also carries three things nothing else can see: failed charge
+  attempts (`TokenPullFailedWithAmount`, 7 so far — they move no money, so a
+  transfer-derived model cannot see them by construction), the treasury leg
+  (`SettlementBridged` cross-chain via the LayerZero USDT0 OFT vs `SettlementTransferred`
+  settled locally, including the receiver change away from `0x8ab54f9e…` after
+  2026-06-10), and the CELO cost of settling (`NativeBridgeFeePaid`, 1,458 CELO across
+  451 batches). Value is conserved end to end: charges in minus settlements out is
+  0.00 on both contracts.
+- **Adding a settlement contract to the seed REQUIRES fetching its ABI in the same
+  change** — `python scripts/signatures/fetch_abi_to_csv.py 0xNEW --chain celo --regen`.
+  Discovery, classification and decoding all read that seed, so a seed-only edit leaves
+  the decode layer emitting rows with `event_name = NULL`. That is deliberate (a
+  visible null beats an absent contract) but it is not a state to ship.
+- **Never trust a regenerated signature seed on the generator's exit code.** Diff it as
+  a SET against HEAD and require zero removed rows. Running the generator on
+  web3 v7 used to silently truncate every topic0, and the committed seed used to hold
+  24 in-use rows that no ABI could reproduce — both fixed 2026-08-06, both silent while
+  armed. `docs/lessons/derived-seed-regen-unsafe.md`. The generator now writes in a
+  deterministic identity order (chain, then address, name, signature), so a
+  regeneration that adds one ABI produces a diff of that size rather than reshuffling
+  6,000 lines; the set-diff check stays mandatory regardless, since ordering says
+  nothing about content.
 - `int_celo_gpay_module_mastercopies` is an **independent deterministic
   cross-check, never an inclusion source**. GP provisions Roles proxies from more
   than one mastercopy, and at least one of those mastercopies is shared with
@@ -100,10 +141,69 @@ Read with root AGENTS.md.
   fingerprint is FALSE, as `roles_pilot` is shared with unrelated projects.
 - Funnel stages are three different populations and are routinely confused:
   issued (registry) > funded (received any inbound token) > activated (made a
-  payment). Roughly 1490 / 815 / 476 on 2026-08-03, with issuance running ~10
-  cards/hour, so treat any absolute count in this repo's prose as a snapshot and
-  re-derive it. `cumulative_funded` in `fct_celo_gpay_activity_daily` counts from
-  first **payment**, so it tracks activated, not funded — do not read it as funded.
+  payment). 1817 / 1087 / 662 on 2026-08-05, with issuance running ~10 cards/hour, so
+  treat any absolute count in this repo's prose as a snapshot and re-derive it.
+  **The confusion was in the models, not just the prose.** Until 2026-08-05 the
+  `fct_celo_gpay_activity_{daily,weekly,monthly}` column `cumulative_funded` counted
+  from first **payment**, so `api_celo_gpay_funded_addresses_*` charted activation
+  under the funded label (654 vs a true 1075) and `api_celo_gpay_total_funded` served
+  the `PaymentUsers` snapshot (662 vs 1087). Both now mean funded; the original series
+  survive as `cumulative_activated` /
+  `api_celo_gpay_activated_addresses_*` / `api_celo_gpay_total_activated`. Two rules
+  follow:
+  - **Never derive "funded" from an outbound action.** Funded is inbound
+    (`Top-up`/`Reversal`/`Cashback`); activated is outbound (`Payment`). If a metric
+    name says funded, its filter must be an inbound action.
+  - **A daily fact's date spine cannot be one action type.** The activity models'
+    spine is the UNION of payment days and funnel-transition days, because 9 days had
+    a card funded and nobody spending, and a payment-only spine silently dropped the
+    28 cards funded on them — the LEFT JOIN had no row to attach them to. Rows from
+    the union carry `active_users = total_payments = total_volume_usd = 0`, which is
+    the truth for those days, not missing data.
+  - The **Gnosis twin still has the original Payment-derived `funded`** and so still
+    understates funding. Fixing it needs the same split plus a dashboard change; it is
+    knowingly deferred, so do not treat Celo/Gnosis funded as comparable.
+- **Never quote a conversion rate without age-normalising it.** funded / issued over
+  the whole card base is not a conversion rate while issuance is ramping: most cards
+  are young, so "unfunded" mostly means "issued recently", and the ratio moves when
+  issuance accelerates even if behaviour is identical. On 2026-08-06 the naive figure
+  was 59.8% against a pooled 7-day rate of 54.9% and a 30-day rate of 78.5% — the naive
+  number sits between two very different truths and equals neither.
+  `fct_celo_gpay_card_funnel` (one row per card) and
+  `fct_celo_gpay_funnel_cohorts_monthly` (issuance cohorts, 7/30-day windows) exist so
+  this is done consistently. Three rules:
+  - **Gate every rate on `observation_days`.** A card enters the 7-day rate only once
+    it has 7 days of observation. `eligible_7d`/`eligible_30d` are the denominators,
+    not `cards_issued`, and `cohort_complete_*` says whether a row is final.
+  - **Clip all three funnel signals to one horizon.** `int_celo_gpay_wallets` rebuilds
+    fully every run and reaches head while `int_celo_gpay_activity_daily` is
+    incremental and lags, so a card can be spend-visible before it is funding-visible.
+    `observed_through` (max date in the activity model) is the binding constraint;
+    without it the newest cohort always looks like it converts worst.
+  - **The `_ever` columns are not comparable across cohorts** and the lag medians are
+    completer-biased — a young cohort's median only sees its fast converters, so
+    medians drift up as cohorts mature.
+- **Settlement is atomic — there is no lag and no float, so do not model them.** All 476
+  settlement transactions contain both the `TokenPullSuccess` charges and the outflow;
+  not one does only one of the two. Cards are charged and the money leaves in the same
+  transaction, so charge-to-settlement time is zero by construction. Lag and float marts
+  were scoped and abandoned on 2026-08-06 for this reason. What IS worth measuring is
+  cost: `fct_celo_gpay_settlement_batches` and `api_celo_gpay_settlement_cost_monthly`
+  carry the LayerZero fee per batch, which has fallen from $0.205 to $0.0074 per charge
+  (107.6 bps to 1.19) as batch size grew from 1.3 to 18.2 charges. Batches run ~7x daily,
+  not twice as previously recorded.
+- **Never take a per-token split from `TokenPullSuccess`.** `settlement_legacy` reports
+  the wrong token on every one of its 1,752 pulls — all decode as USDC, while the chain
+  shows 345 USDC and 1,407 USDT. Amounts and counts are right; only the label lies, and
+  it lies consistently, so nothing looks broken. `settlement_current` is fine. Take the
+  amount from the event and the token from the ERC-20 `Transfer`, and check value
+  conservation at contract level (where it holds at 0.00) rather than per token.
+  `docs/lessons/event-field-can-lie.md`.
+- **Roles allowances are not a constraint and are not modelled.** Decoding `SetAllowance`
+  and `ConsumeAllowance` on the Roles modules shows every card on the same uniform
+  $20k daily cap, and no card has come near it. "Remaining allowance" would therefore
+  be a constant dressed up as a metric. Revisit only if the cap is ever tiered or a
+  card actually hits it.
 
 ## Invariants
 

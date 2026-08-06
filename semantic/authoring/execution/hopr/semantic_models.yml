@@ -347,4 +347,330 @@ semantic_models:
     agg: avg
     expr: avg_availability_24h
 
+# ───────────────────────── served endpoints (api_*) ─────────────────────────
+# These mirror the fct_/int_ models above rather than replacing them: api_ is the contract
+# metrics-dashboard and the Cerebro API/MCP read, so it needs its own metric vocabulary.
+# Where a measure exists on both, the api_ one is what a consumer should discover.
+
+- name: hopr_api_network_health_daily
+  description: >
+    Served daily view of nodes ever registered on-chain versus nodes actually online. The
+    two are not interchangeable and must never be presented as one "network size":
+    registration is cumulative and never expires, so it runs several times the live
+    network and the gap has widened every year. Liveness is dufour-only.
+  model: ref('api_hopr_network_health_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr nodes online
+        - how many hopr nodes are there
+        - hopr network size
+        - hopr node availability
+        - hopr node latency
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  measures:
+  - name: hopr_api_nodes_online
+    description: >
+      Mean nodes actually online in a day. THE live network size. agg is avg, not sum: the
+      value is already a daily average of an hourly level. Read with
+      hopr_api_hours_observed.
+    agg: avg
+    expr: nodes_online_avg
+  - name: hopr_api_hours_observed
+    description: >
+      Hours the upstream dashboard actually recorded that day, 0-24. The completeness
+      qualifier for hopr_api_nodes_online, not a business metric.
+    agg: sum
+    expr: hours_observed
+  - name: hopr_api_nodes_registered_cumulative
+    description: >
+      Nodes that ever registered, cumulative and never decrementing. NOT the live network.
+      agg is max, not sum: it is already a running total, so summing across days
+      multiplies it by the number of days.
+    agg: max
+    expr: nodes_registered_cumulative
+  - name: hopr_api_nodes_registered_new
+    description: Nodes registering for the first time that day. Safe to sum.
+    agg: sum
+    expr: nodes_registered_new
+  - name: hopr_api_nodes_reachable
+    description: Nodes the prober reached. Per-day count, so max not sum. dufour only.
+    agg: max
+    expr: nodes_reachable
+  - name: hopr_api_nodes_high_availability
+    description: Nodes up at least 90% of the last 24h. Per-day count, so max not sum.
+    agg: max
+    expr: nodes_high_availability
+  - name: hopr_api_median_latency_ms
+    description: >
+      Median round-trip time across reachable nodes. Prefer over the mean, which a tail of
+      slow nodes pulls well above the typical node. dufour only.
+    agg: avg
+    expr: p50_latency_ms
+
+- name: hopr_api_channel_activity_daily
+  description: >
+    Served daily channel activity, SPLIT BY is_cover_traffic. On dufour nearly every event
+    is HOPR paying its own node runners in proportion to stake, so a total across the split
+    reports a rewards schedule as user demand. Always split or filter.
+  model: ref('api_hopr_channel_activity_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr cover traffic share
+        - hopr tickets redeemed
+        - hopr channel activity
+        - wxhopr paid to relayers
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  - name: is_cover_traffic
+    description: >
+      1 where the paying node is a known HOPR cover-traffic node. A DIMENSION, never a
+      measure -- split or filter on it before quoting any HOPR usage number.
+    type: categorical
+    expr: is_cover_traffic
+  measures:
+  - name: hopr_api_tickets_redeemed
+    description: Ticket redemptions. The trustworthy, time-stable volume metric.
+    agg: sum
+    expr: tickets_redeemed
+  - name: hopr_api_redeemed_wxhopr
+    description: wxHOPR paid to relayers, reconstructed from channel balance diffs.
+    agg: sum
+    expr: redeemed_wxhopr
+  - name: hopr_api_funded_wxhopr
+    description: wxHOPR pushed into channels.
+    agg: sum
+    expr: funded_wxhopr
+  - name: hopr_api_channels_opened
+    description: >
+      Channels opened. Composition is not comparable across years because the
+      cover-traffic share of it has risen sharply -- prefer tickets for trend claims.
+    agg: sum
+    expr: channels_opened
+  - name: hopr_api_peak_active_channels
+    description: >
+      Peak channels in a day. agg is max, not sum -- the value is already a per-day
+      distinct count.
+    agg: max
+    expr: active_channels
+
+- name: hopr_api_nodes_by_country_latest
+  description: >
+    Current node counts per country. Nodes whose IP did not resolve are kept as country
+    'UNKNOWN' rather than dropped, so shares computed here have the true denominator.
+    live_nodes is dufour-only and 0 for jura because nothing measures it.
+  model: ref('api_hopr_nodes_by_country_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - where are hopr nodes
+        - hopr nodes by country
+        - hopr geographic distribution
+        grain: snapshot
+  dimensions:
+  - name: network
+    type: categorical
+    expr: network
+  - name: country_code
+    description: ISO country code, or 'UNKNOWN' for nodes whose IP did not resolve.
+    type: categorical
+    expr: country_code
+  measures:
+  - name: hopr_api_country_nodes
+    description: Nodes ever registered in this country.
+    agg: sum
+    expr: nodes
+  - name: hopr_api_country_live_nodes
+    description: Prober-reached nodes in this country. dufour only.
+    agg: sum
+    expr: live_nodes
+  - name: hopr_api_country_distinct_operators
+    description: >
+      Distinct staking Safes. The non-vanity decentralisation count -- many nodes can sit
+      under one operator.
+    agg: sum
+    expr: distinct_operators
+  - name: hopr_api_country_distinct_hosts
+    description: Distinct announced IPs. Below the node count wherever nodes share a machine.
+    agg: sum
+    expr: distinct_hosts
+
+- name: hopr_api_nodes_hosting_latest
+  description: >
+    Current node counts per hosting provider, with host concentration. 'Unknown' means the
+    provider classifier matched no rule -- it is NOT residential. 'NO_IPV4' and
+    'UNRESOLVED' are published rather than filtered so shares keep an honest denominator.
+  model: ref('api_hopr_nodes_hosting_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr hosting providers
+        - are hopr nodes self hosted
+        - hopr node concentration
+        - hopr decentralisation
+        grain: snapshot
+  dimensions:
+  - name: network
+    type: categorical
+    expr: network
+  - name: hosting_provider
+    description: >
+      Provider bucket, plus 'NO_IPV4' and 'UNRESOLVED'. 'Unknown' is a real classifier
+      outcome meaning no rule matched, not missing data.
+    type: categorical
+    expr: hosting_provider
+  measures:
+  - name: hopr_api_hosting_nodes
+    description: Nodes ever registered on this provider.
+    agg: sum
+    expr: nodes
+  - name: hopr_api_hosting_live_nodes
+    description: Prober-reached nodes on this provider. dufour only.
+    agg: sum
+    expr: live_nodes
+  - name: hopr_api_hosting_distinct_hosts
+    description: >
+      Distinct announced IPs on this provider. Compare against hopr_api_hosting_nodes --
+      the ratio is how much a node count overstates the number of machines.
+    agg: sum
+    expr: distinct_hosts
+
+- name: hopr_api_node_locations_latest
+  description: >
+    Current nodes aggregated to plottable city points with coordinates, for maps.
+    DELIBERATELY INCOMPLETE: nodes without coordinates are excluded because they cannot be
+    plotted, so a map on this alone under-counts the network -- publish the 'UNKNOWN'
+    residual from hopr_api_nodes_by_country_latest beside it. Coordinates are city
+    centroids, not machine locations.
+  model: ref('api_hopr_node_locations_latest')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr node map
+        - hopr nodes by city
+        - hopr node locations
+        grain: snapshot
+  dimensions:
+  - name: network
+    type: categorical
+    expr: network
+  - name: country_code
+    type: categorical
+    expr: country_code
+  - name: city
+    type: categorical
+    expr: city
+  - name: top_hosting_provider
+    description: Most common provider at this point, for map tooltips.
+    type: categorical
+    expr: top_hosting_provider
+  measures:
+  - name: hopr_api_location_nodes
+    description: Nodes at this city point. Excludes nodes with no coordinates.
+    agg: sum
+    expr: nodes
+  - name: hopr_api_location_live_nodes
+    description: Prober-reached nodes at this point. dufour only.
+    agg: sum
+    expr: live_nodes
+  - name: hopr_api_location_distinct_hosts
+    description: Distinct announced IPs at this point.
+    agg: sum
+    expr: distinct_hosts
+
+- name: hopr_api_protocol_params_daily
+  description: >
+    Served daily protocol parameters and staked/locked wxHOPR from blokli. JURA ONLY --
+    blokli has no dufour endpoint and rotsee is excluded as a testnet. Forward-only, so
+    history starts when the ingestor first ran.
+  model: ref('api_hopr_protocol_params_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr ticket price
+        - hopr staked wxhopr
+        - hopr payout per ticket
+        - gnosisvpn economics
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  measures:
+  - name: hopr_api_payout_per_winning_ticket_wxhopr
+    description: >
+      ticket_price / min_winning_probability -- what a winning ticket is actually worth.
+      HOPR pays probabilistically, so the raw ticket price means nothing on its own and is
+      not comparable across networks running different probabilities. agg is avg: it is a
+      rate, not a quantity.
+    agg: avg
+    expr: payout_per_winning_ticket_wxhopr
+  - name: hopr_api_safes_balance_wxhopr
+    description: >
+      wxHOPR held in staking Safes -- staked but not in channels. agg is max: a daily
+      level, so summing across days multiplies it.
+    agg: max
+    expr: safes_balance_wxhopr
+  - name: hopr_api_channels_open_balance_wxhopr
+    description: wxHOPR locked in open channels -- working capital. Daily level, so max.
+    agg: max
+    expr: channels_open_balance_wxhopr
+  - name: hopr_api_total_wxhopr_committed
+    description: >
+      Safes plus open-channel balance. The closest thing to a TVL for HOPR, and it needs
+      no balance indexing. Daily level, so max not sum.
+    agg: max
+    expr: total_wxhopr_committed
+  - name: hopr_api_open_channels
+    description: Channels currently open. Daily level, so max.
+    agg: max
+    expr: channels_open
+
 metrics: []

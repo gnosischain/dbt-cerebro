@@ -21,9 +21,11 @@
 -- once: settlement_legacy 0xc4df5cac… (older, from 2026-03-31) and
 -- settlement_current 0xc07cd8c2… (from 2026-05-28). Gnosis Pay confirmed on
 -- 2026-08-05 that the legacy one is theirs and will be migrated onto the current
--- one. They are two DIFFERENT contracts, not two versions of one — they share zero
--- event signatures — so avoid v1/v2 language, which implies a lineage that does not
--- exist. Keying discovery on the current bridge alone hid 235 real cards and ~34% of
+-- one. They share zero event signatures, so decoding needs two ABIs — but that is
+-- because the current one adds an indexed `sender` to every event, not because the
+-- contracts differ: both are AggregateBridge with identical function selectors. The
+-- legacy/current labels describe lifecycle, not a published release lineage.
+-- Keying discovery on the current bridge alone hid 235 real cards and ~34% of
 -- all settlement traffic for months, and made March–May look empty when the
 -- product was already running (docs/lessons/circular-completeness-proof.md).
 -- The set is seeded, never hardcoded — celo_gpay_settlement_contracts — so the

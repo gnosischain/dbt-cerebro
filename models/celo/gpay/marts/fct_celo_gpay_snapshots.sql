@@ -156,6 +156,21 @@ WHERE date = (SELECT max(date) FROM {{ ref('fct_celo_gpay_balances_by_token_dail
   AND token_class = 'STABLECOIN'
 
 UNION ALL
+-- FundedCards: All (cards that have ever RECEIVED money)
+--
+-- Distinct from PaymentUsers, which counts cards that have ever SPENT. The two were
+-- conflated until 2026-08-05: api_celo_gpay_total_funded served PaymentUsers, so the
+-- "funded" tile read 662 when 1087 cards had actually been funded. Inbound actions
+-- only — Cashback is currently compiled out of int_celo_gpay_activity and Reversal has
+-- never fired, so this is Top-up in practice, but naming all three keeps it correct
+-- once either starts. Funnel: issued (registry) > FundedCards > PaymentUsers.
+SELECT 'FundedCards', 'All',
+    toFloat64(uniqExact(safe_address)),
+    toNullable(NULL)
+FROM {{ ref('int_celo_gpay_activity_daily') }}
+WHERE action IN ('Top-up', 'Reversal', 'Cashback')
+
+UNION ALL
 -- RewardBalance: All (RWA cashback holdings, mark-to-market, latest day)
 -- Zero until the cashback program pays out. Kept as an explicit line so the first
 -- reward token to land is visible instead of being filtered away. NOTE: until

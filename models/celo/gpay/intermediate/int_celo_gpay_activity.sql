@@ -25,8 +25,16 @@
 -- resolved in the `settlements` CTE below — never a hardcoded address. Two bridges
 -- are live at once (settlement_legacy 0xc4df5cac… since 2026-03-31, scheduled to
 -- migrate onto settlement_current 0xc07cd8c2… since 2026-05-28; GP confirmed both
--- are theirs on 2026-08-05). They are different contracts sharing no event
--- signatures, not two versions of one — so do not call them v1/v2.
+-- are theirs on 2026-08-05). Both are AggregateBridge with identical function
+-- selectors; the current one adds an indexed `sender` to every event, which is why
+-- they share no event signatures and need separate ABIs.
+--
+-- The Payment classification here is CONFIRMED CORRECT against Gnosis Pay's own
+-- charge record: contracts_celo_gpay_settlement_events decodes TokenPullSuccess from
+-- both contracts, and counted inside this model's own max(block_time) watermark it
+-- matches Payment row-for-row — 5,165 v 5,165 on 2026-08-05, zero per-day variance,
+-- and holding independently per contract (1,743 legacy, 3,422 current). Re-run that
+-- comparison after any change to this CASE; it is the only external check there is.
 --
 -- THIS FILTER AND int_celo_gpay_safe_registry MUST WIDEN TOGETHER. The registry
 -- decides which Safes exist; this CASE decides what their transfers mean. Widening

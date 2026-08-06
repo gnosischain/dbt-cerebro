@@ -3,7 +3,7 @@
     materialized='table',
     engine='MergeTree()',
     order_by='(network, activity_date)',
-    tags=['dev','hopr','fct']
+    tags=['production','hopr','fct']
   )
 }}
 

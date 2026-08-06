@@ -5,7 +5,7 @@
     order_by='(network, channel_id, block_number, log_index)',
     partition_by='toStartOfYear(block_timestamp)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['dev','hopr','intermediate'],
+    tags=['production','hopr','intermediate'],
     pre_hook=["SET allow_experimental_json_type = 1"],
     post_hook=["SET allow_experimental_json_type = 0"]
   )

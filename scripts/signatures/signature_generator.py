@@ -53,6 +53,20 @@ logger = logging.getLogger('signature_generator')
 # Web3 (for Keccak hashing)
 w3 = Web3()
 
+
+def keccak_hex(text: str) -> str:
+    """Keccak-256 of `text` as 64 lowercase hex chars, never 0x-prefixed.
+
+    HexBytes.hex() returned a "0x"-prefixed string up to hexbytes 0.x (web3 v6)
+    and returns it bare from hexbytes 1.0 (web3 v7). The old code sliced [2:]
+    unconditionally, so on web3 v7 it silently ate the first two real hex
+    characters of every topic0 and shifted every function selector by one byte.
+    Nothing raises: decode_logs joins logs to event_signatures on this string,
+    and a corrupted hash simply matches no log, so every decoded model rebuilds
+    to zero rows. Slice by prefix, not by position.
+    """
+    return w3.keccak(text=text).hex().removeprefix("0x").lower()
+
 # ClickHouse env (only used if we can and want to read from DB)
 host = os.environ.get('CLICKHOUSE_URL', 'localhost')
 port = os.environ.get('CLICKHOUSE_PORT', '8123')
@@ -285,7 +299,7 @@ def generate_signatures(
                     in_types_canon = [canonical_type_from_param(inp) for inp in inputs]
                     signature_str = f"{event_name}({','.join(in_types_canon)})"
                     # 32-byte Keccak for event topics (strip "0x", lowercase)
-                    signature_hash = w3.keccak(text=signature_str).hex()[2:]
+                    signature_hash = keccak_hex(signature_str)
 
                     params = []
                     indexed_params = []
@@ -324,7 +338,7 @@ def generate_signatures(
                     in_types_canon = [canonical_type_from_param(inp) for inp in inputs]
                     signature_str = f"{function_name}({','.join(in_types_canon)})"
                     # 4-byte selector (first 8 hex chars after 0x)
-                    selector = w3.keccak(text=signature_str).hex()[2:10]
+                    selector = keccak_hex(signature_str)[:8]
 
                     input_params = []
                     for i, inp in enumerate(inputs):
@@ -364,9 +378,35 @@ def generate_signatures(
 # CSV writing
 # --------------------------------------------------------------------------------------
 
+# Big JSON blobs. They are part of the row but useless as sort keys, and hashing them
+# would make the ordering depend on ABI formatting rather than on identity.
+_PAYLOAD_COLS = {
+    'params', 'indexed_params', 'non_indexed_params', 'input_params', 'output_params'
+}
+
+
+def _stable_sort_key(row: dict, headers: List[str]) -> Tuple[str, ...]:
+    """Identity-only sort key: chain first, then the remaining non-payload columns.
+
+    Output order previously followed however the ABIs happened to come back from
+    ClickHouse, so a regeneration that changed two rows produced a diff of several
+    thousand lines and nobody could review it. The same address can appear on more
+    than one chain (RolesMod_v2 is on both gnosis and celo), so `chain` has to be in
+    the key or those rows interleave nondeterministically.
+    """
+    ordered = [h for h in headers if h not in _PAYLOAD_COLS]
+    if 'chain' in ordered:
+        ordered = ['chain'] + [h for h in ordered if h != 'chain']
+    # Case-fold only for ordering; the written values keep their original casing.
+    return tuple(str(row.get(h, '') or '').lower() for h in ordered)
+
+
 def write_csv(path: Path, rows: List[dict], headers: List[str]) -> None:
     """
     Writes rows to CSV with UTF-8 encoding and newline='' for clean CSVs.
+
+    Rows are written in a deterministic order so that regenerating after an ABI
+    change yields a diff proportional to the change.
     """
     if not rows:
         logger.info(f"No rows to write for {path.name}. Skipping file creation.")
@@ -374,6 +414,8 @@ def write_csv(path: Path, rows: List[dict], headers: List[str]) -> None:
 
     # Ensure seeds directory exists
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows = sorted(rows, key=lambda r: _stable_sort_key(r, headers))
 
     logger.info(f"Writing {len(rows)} rows to {path} ...")
     with path.open('w', newline='', encoding='utf-8') as f:
