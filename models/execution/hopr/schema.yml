@@ -138,6 +138,20 @@ models:
             is not the population of record: some unprobed nodes still earn on chain, so
             last_channel_activity_at is the second signal and neither alone is sufficient.
             fct_hopr_network_health_daily holds registered and online side by side.
+        - id: prober-source-must-exist-before-this-ships
+          text: >-
+            This model reads stg_crawlers_data__hopr_network_nodes, so it now depends on
+            click-runner's HOPR tables existing in the database the source resolves to
+            (crawlers_data unless DBT_HOPR_SCHEMA overrides it). A ClickHouse view over a
+            missing table fails to CREATE, so if those tables are absent this model does
+            not degrade -- it fails outright, and it is a model that already runs in
+            production. Adding a source dependency to a live model couples that model's
+            survival to ingestion that may not be deployed yet.
+            Before merging any change that introduces or widens this dependency, confirm
+            the tables exist in the target database: a single run of each click-runner
+            HOPR ingestor creates them (CREATE TABLE IF NOT EXISTS), the cron does not
+            have to be deployed. Same applies to fct_hopr_network_health_daily and the
+            four stg_crawlers_data__hopr_* views.
         - id: safe-link-only-from-registry
           text: >-
             NodeSafeRegistry is the ONLY source linking a node to a Safe.

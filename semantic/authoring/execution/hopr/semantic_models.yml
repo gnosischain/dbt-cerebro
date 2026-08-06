@@ -248,8 +248,9 @@ semantic_models:
     expr: funded_wxhopr
   - name: hopr_channels_opened
     description: >
-      Channels opened. Composition shifts over time (cover traffic was 27.9% of
-      dufour opens in 2023 vs 98% in 2026), so prefer tickets for trend claims.
+      Channels opened. The cover-traffic share of dufour opens has risen sharply
+      since launch, so this measure's composition is not comparable across years --
+      prefer tickets for trend claims.
     agg: sum
     expr: channels_opened
   - name: hopr_channels_closed
@@ -262,5 +263,88 @@ semantic_models:
       per-day distinct count.
     agg: max
     expr: active_channels
+
+- name: hopr_network_health_daily
+  description: >
+    Daily HOPR network health: nodes ever registered on-chain versus nodes actually up.
+    The two are not interchangeable and have diverged every year -- registrations
+    accumulate and never expire while the live network has shrunk, so the registry now
+    overstates the live network several-fold. Any answer about "how big is HOPR" must
+    say which of the two it is quoting. Liveness is dufour-only; the prober was never
+    ported to jura.
+  model: ref('fct_hopr_network_health_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - hopr nodes online
+        - hopr network size
+        - how many hopr nodes are there
+        - hopr node availability
+        - hopr node latency
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  measures:
+  - name: hopr_nodes_online
+    description: >
+      Mean nodes actually online in a day, from the dashboard's hourly history. THE
+      live network size. agg is avg, not sum: the underlying value is already a daily
+      average of an hourly level. Read with hopr_hours_observed -- the history is
+      missing a substantial share of its hours and a thin day is not comparable to a
+      full one.
+    agg: avg
+    expr: nodes_online_avg
+  - name: hopr_hours_observed
+    description: >
+      Hours the dashboard actually recorded that day, 0 to 24. Not a business metric --
+      it is the completeness qualifier for hopr_nodes_online.
+    agg: sum
+    expr: hours_observed
+  - name: hopr_nodes_registered_cumulative
+    description: >
+      Nodes that ever registered on-chain, cumulative and never decrementing. NOT the
+      live network size and consistently several times larger. agg is max, not sum:
+      the underlying value is already a running total, so summing it across days
+      multiplies it by the number of days.
+    agg: max
+    expr: nodes_registered_cumulative
+  - name: hopr_nodes_registered_new
+    description: Nodes registering for the first time on that day. Safe to sum.
+    agg: sum
+    expr: nodes_registered_new
+  - name: hopr_nodes_reachable
+    description: >
+      Nodes the prober reached that day. agg is max: a per-day count, not an additive
+      quantity. dufour only.
+    agg: max
+    expr: nodes_reachable
+  - name: hopr_nodes_high_availability
+    description: >
+      Nodes up at least 90% of the last 24 hours. agg is max for the same reason.
+      dufour only.
+    agg: max
+    expr: nodes_high_availability
+  - name: hopr_median_latency_ms
+    description: >
+      Median round-trip time across reachable nodes. Prefer this over the mean, which a
+      long tail of slow nodes pulls well above the typical node. dufour only.
+    agg: avg
+    expr: p50_latency_ms
+  - name: hopr_avg_availability_24h
+    description: Mean 24-hour availability across probed nodes, in [0,1]. dufour only.
+    agg: avg
+    expr: avg_availability_24h
 
 metrics: []
