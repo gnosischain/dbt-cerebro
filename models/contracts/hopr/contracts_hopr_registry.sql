@@ -39,9 +39,10 @@
   execution.contracts -- not an estimate.
 
   Deliberately EXCLUDED: HoprChannels 0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57.
-  It is a v4-shaped pre-jura staging deployment that burst to 650k events in
-  July 2026 and stopped dead on 2026-07-29, two days after jura went live. It is
-  not production and must never be aggregated with either network.
+  It is a v4-shaped pre-jura staging deployment that generated a large burst of
+  events and then stopped dead two days after jura went live. The volume makes it
+  look production-sized; it is not, and it must never be aggregated with either
+  network.
 */
 
 SELECT

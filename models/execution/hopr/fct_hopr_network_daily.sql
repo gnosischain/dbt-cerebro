@@ -11,9 +11,10 @@
   Daily HOPR payment-channel activity per network, split by whether the traffic
   is HOPR's own cover traffic or not.
 
-  THE SPLIT IS THE POINT OF THIS MODEL. On dufour, 5,644 of 5,676 ChannelOpened
-  events in July 2026 (99.44%) originate from the ten cover-traffic nodes that
-  HOPR publishes in ct-research (ct-app/.configs/core_prod_config.yaml). Cover
+  THE SPLIT IS THE POINT OF THIS MODEL. On dufour, nearly every ChannelOpened
+  event originates from the ten cover-traffic nodes that HOPR publishes in
+  ct-research (ct-app/.configs/core_prod_config.yaml) -- it has been the
+  overwhelming majority in every year dufour has been live. Cover
   traffic is HOPR paying node runners in proportion to stake -- a staking rewards
   programme -- and the config's `channel.max_age_seconds: 172800` means every
   channel is torn down and reopened every 48 hours, which is what generates

@@ -26,9 +26,8 @@ source AS (
     is_mobile,
     -- Exposed so consumers can collapse the source's duplicate rows. ipinfo is a
     -- plain MergeTree ORDER BY (ip, updated_at), not Replacing, and ip_crawler
-    -- appends a fresh row on every retry -- 71 duplicate rows across 22,106
-    -- distinct IPs as of 2026-08-03. Without a version column a downstream join
-    -- on `ip` silently fans out.
+    -- appends a fresh row on every retry, so an IP can legitimately have several
+    -- rows. Without a version column a downstream join on `ip` silently fans out.
     updated_at,
     multiIf(
       lowerUTF8(org) ILIKE '%amazon web services%' OR lowerUTF8(org) ILIKE '%amazon data services%' OR lowerUTF8(org) ILIKE '%aws%' OR lowerUTF8(org) ILIKE '%amazon.com%', 'AWS',
@@ -106,11 +105,11 @@ source AS (
       -- No positive evidence either way. This MUST NOT default to a residential label:
       -- doing so converts absence of evidence into a positive claim, and the claim it
       -- manufactures ('home_staker' downstream, at 0.80 confidence) is the flattering one
-      -- for a decentralisation metric. Before this branch existed, 10,162 of the 15,557
-      -- IPs labelled 'Public ISP (Home/Office)' matched no residential pattern at all --
-      -- 651 of them were Contabo. 'Unknown' is a real answer; int_esg_node_classification
-      -- already scores it at 0.30 confidence. Prefer widening the lists above over
-      -- narrowing this branch.
+      -- for a decentralisation metric. Before this branch existed, most of the
+      -- 'Public ISP (Home/Office)' bucket had matched no residential pattern at all, the
+      -- largest single block of it being a budget VPS provider. 'Unknown' is a real
+      -- answer; int_esg_node_classification already scores it at 0.30 confidence. Prefer
+      -- widening the lists above over narrowing this branch.
       'Unknown'
   ) AS generic_provider
   FROM {{ source('crawlers_data_ipinfo','ipinfo') }} 

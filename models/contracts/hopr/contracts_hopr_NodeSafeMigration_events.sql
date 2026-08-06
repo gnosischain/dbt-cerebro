@@ -17,7 +17,7 @@
 
 /*
   HoprNodeSafeMigration events across both live HOPR networks (dufour + jura).
-  ABI resolved per address via contracts_hopr_registry -- dufour -> jura v4 migration tracking. SafeAndModuleMigrationCompleted / DeployedNewV4Module. Zero events as of 2026-08-03: migration has not started.
+  ABI resolved per address via contracts_hopr_registry -- dufour -> jura v4 migration tracking. SafeAndModuleMigrationCompleted / DeployedNewV4Module. Expected empty until migration starts.
 */
 
 {{

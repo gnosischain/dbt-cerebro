@@ -14,11 +14,11 @@
   join_use_nulls = 1 IS REQUIRED, NOT COSMETIC -- read this before removing it.
 
   Every enrichment below is a LEFT JOIN, and ClickHouse's default fills unmatched
-  rows with the column TYPE DEFAULT ('' for String) rather than NULL. Measured
-  without the setting: coalesce(reg.node_class, 'unclassified') returned '' so all
-  1,213 unclassified nodes read as classified, and `ip.ip IS NOT NULL` was true for
-  unmatched rows so 1,020 of 1,191 dufour nodes reported geo enrichment when only
-  ~135 actually had a country. Both failures are completely silent.
+  rows with the column TYPE DEFAULT ('' for String) rather than NULL. Without the
+  setting, coalesce(reg.node_class, 'unclassified') returns '' so every unclassified
+  node reads as classified, and `ip.ip IS NOT NULL` is true for unmatched rows so
+  every node reports geo enrichment whether or not ipinfo matched. Both failures are
+  completely silent.
   Hooks come in pairs, so the post_hook restores the default.
 */
 
@@ -54,9 +54,9 @@
      Safe's creation.
 
   3. Geo coverage is PARTIAL and that is visible, not hidden. crawlers_data.ipinfo
-     was populated by the nebula/ip_crawler pipeline for a different node set, so
-     it only incidentally contains HOPR IPs -- measured 151 of 1,036 announced
-     IPv4 addresses (14.6%) on 2026-08-03. `geo_source` records which bucket each
+     was populated by the nebula/ip_crawler pipeline for a different node set, so it
+     contains HOPR IPs only incidentally until ip_crawler's `hopr` source preset has
+     been run against the database being read. `geo_source` records which bucket each
      node fell into so an unenriched node is never silently read as "no country".
      Do not filter unenriched nodes out of counts.
 
@@ -183,8 +183,8 @@ channel_activity AS (
 ),
 
 -- Spine: every node observed anywhere. Announced-only, registry-only and
--- channel-only nodes all exist in practice (1,185 / 1,192 / 1,186 distinct), so
--- no single source is a complete population.
+-- channel-only nodes all exist in practice, so no single source is a complete
+-- population.
 spine AS (
     SELECT network, node_address FROM latest_announcement
     UNION DISTINCT
@@ -194,8 +194,7 @@ spine AS (
 ),
 
 -- crawlers_data.ipinfo is a plain MergeTree ORDER BY (ip, updated_at), NOT a
--- ReplacingMergeTree, so it legitimately holds more than one row per IP: 71
--- duplicate rows across 22,106 distinct IPs as of 2026-08-03, max 2 per IP.
+-- ReplacingMergeTree, so it legitimately holds more than one row per IP:
 -- ip_crawler re-fetches an IP whenever it retries, and each attempt appends.
 -- Joining it raw would FAN OUT and silently duplicate a node row, inflating every
 -- operator-concentration and geography aggregate. None of the currently matched
@@ -213,6 +212,41 @@ ipinfo_latest AS (
         argMax(is_mobile, updated_at)                   AS is_mobile
     FROM {{ ref('stg_crawlers_data__ipinfo') }}
     GROUP BY ip
+),
+
+-- The prober publishes a fresh snapshot per day, so take the latest row per node.
+-- Its universe is much smaller than ours: it tracks its own roster, while this model's
+-- spine is every node that ever appeared on chain.
+--
+-- THE ROSTER IS NOT THE POPULATION OF RECORD. Absence from it correlates with
+-- dormancy but does not prove it: a meaningful minority of unprobed nodes are still
+-- being PAID on chain, some of them today. So absence is recorded in liveness_source
+-- as its own state rather than collapsed into "down" -- treating not_probed as dead
+-- would silently write off live, earning nodes.
+prober_latest AS (
+    SELECT
+        network                                         AS network,
+        node_address                                    AS node_address,
+        max(snapshot_date)                              AS prober_snapshot_date,
+        argMax(latency_ms, snapshot_date)               AS latency_ms,
+        argMax(is_reachable, snapshot_date)             AS is_reachable,
+        argMax(availability_24h, snapshot_date)         AS availability_24h,
+        argMax(availability_7d, snapshot_date)          AS availability_7d,
+        argMax(availability_30d, snapshot_date)         AS availability_30d
+    FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
+    -- network is part of the key even though the prober only covers dufour today.
+    -- Grouping on node_address alone would collapse the same address across networks
+    -- and let argMax hand back another network's measurement -- silently, and only
+    -- once someone widens HOPR_NETWORK_IDS, which the CLI accepts as a list.
+    GROUP BY network, node_address
+),
+
+-- Which networks the prober covers AT ALL, derived rather than hardcoded. This is
+-- what separates "probed and down" from "this network has no prober", and deriving it
+-- means the day the prober gains v4 support the classification follows automatically
+-- instead of quietly reporting every jura node as unmeasurable forever.
+prober_networks AS (
+    SELECT DISTINCT network FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
 ),
 
 enriched AS (
@@ -295,6 +329,27 @@ SELECT
         'unenriched'
     )                                                   AS geo_source,
 
+    -- Liveness, from the network.hoprnet.org prober. On-chain presence is cumulative
+    -- and never expires, so without these columns this model cannot distinguish a node
+    -- running today from one that registered in 2023 and vanished -- a distinction
+    -- worth several times the node count. See fct_hopr_network_health_daily.
+    pr.latency_ms                                       AS latency_ms,
+    pr.is_reachable                                     AS is_reachable,
+    pr.availability_24h                                 AS availability_24h,
+    pr.availability_7d                                  AS availability_7d,
+    pr.availability_30d                                 AS availability_30d,
+    pr.prober_snapshot_date                             AS prober_snapshot_date,
+
+    -- Same honesty contract as geo_source above: never let "we did not measure this"
+    -- read as "this node is down". jura has no prober at all (never ported to v4), so
+    -- its nodes are unmeasurable rather than unreachable, and the two must not be
+    -- filtered together.
+    multiIf(
+        pn.network IS NULL,          'no_prober_for_network',
+        pr.node_address IS NOT NULL, 'prober',
+        'not_probed'
+    )                                                   AS liveness_source,
+
     e.earned_wei                                        AS earned_wei,
     toDecimal128(e.earned_wei / 1e18, 18)               AS earned_wxhopr,
     e.tickets_earned                                    AS tickets_earned,
@@ -306,3 +361,7 @@ SELECT
 FROM enriched AS e
 LEFT JOIN ipinfo_latest AS ip
     ON ip.ip = e.announced_ip
+LEFT JOIN prober_latest AS pr
+    ON pr.network = e.network AND pr.node_address = e.node_address
+LEFT JOIN prober_networks AS pn
+    ON pn.network = e.network
