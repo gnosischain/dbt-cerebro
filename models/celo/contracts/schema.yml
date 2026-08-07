@@ -160,6 +160,16 @@ models:
           correctly through the same code path (legacy 0x22cc85f1… where the token really
           is USDC, and current-contract 0x5c86713f… carrying USD₮), which is what rules
           out a decoder fault rather than a contract one.
+          Exhaustively scanned 2026-08-07 by matching every pull to the transfer of the
+          same amount in the same transaction, both contracts, full history. It is NOT
+          intermittent — the legacy token field is effectively a constant. Across all
+          1,769 of its pulls the field has only ever held USDC and has never once held
+          USDT, so it is wrong on 1,422 of 1,769 (80.4%) and right on the other 347 only
+          because the real token happened to be USDC. The rate tracks the USDT share of
+          spend, not any change in the contract, and is present from its first month
+          (2026-03, 2 of 4 wrong) to its most recent charges. settlement_current is wrong
+          on 0 of 3,764 and emits both tokens (1,122 USDC, 2,642 USDT). Every pull on both
+          contracts matched a real transfer, so there is no unexplained residue.
       - id: settlement-runs-about-seven-times-daily
         text: Batches run roughly 7 times a day (mean 6.4 over the trailing 30 days, range
           4 to 9), NOT twice as recorded here until 2026-08-06 — the earlier reading came

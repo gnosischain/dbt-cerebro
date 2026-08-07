@@ -638,6 +638,22 @@ models:
     ramping, so most cards are young and "unfunded" mostly means "issued recently".
     Use observation_days to restrict to cards old enough to have had a fair chance,
     or read fct_celo_gpay_funnel_cohorts_monthly which does it for you.
+
+    first_fund_channel is the funding_channel of the card's FIRST inbound transfer
+    (from int_celo_gpay_funding_tx_envelopes). It is a shape classification, not an
+    identity label — CIP-64 alone is not MiniPay. NULL when the card has never been
+    funded. Channel values (same glossary as fct_celo_gpay_card_funding):
+
+      cip64_direct_solo — CIP-64 (tx type 123) + funder EOA called token.transfer()
+        + that funder funds exactly one card. MiniPay-shaped; do not rename to
+        "minipay" without an off-chain identity source.
+      other_direct — same direct EOA transfer() shape, but envelope is not CIP-64
+        (type 0/2), and the funder funds exactly one card.
+      hub — this first-fund's funder funds two or more cards (fan-out wins over
+        envelope; includes the legacy 0xa0dd… onboarding hub).
+      mediated — first fund was not a direct EOA→token transfer (e.g. Safe
+        execTransaction).
+      unknown — funding transfer row exists but no matching transactions row.
   columns:
   - name: safe_address
     description: GP card Safe address. One row per card.
@@ -662,6 +678,16 @@ models:
       int_celo_gpay_wallets.first_spend_at, clipped to observed_through so it cannot
       run ahead of the funding signal.
     data_type: Nullable(Date)
+  - name: first_fund_channel
+    description: >-
+      funding_channel of the card's first inbound transfer. Shape classification,
+      not MiniPay identity. NULL if never funded. See model description for values.
+    data_type: Nullable(String)
+    tests:
+    - accepted_values:
+        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'unknown']
+        config:
+          where: "first_fund_channel IS NOT NULL"
   - name: is_funded
     description: Card has ever received money as of observed_through.
     data_type: Bool
@@ -1725,11 +1751,29 @@ models:
 - name: fct_celo_gpay_card_funding
   description: |
     Deterministic funding-relationship per card Safe: which addresses fund it
-    (inbound transfers), per token, plus each funder's fan-out — RAW addresses,
-    NO labels. funder_n_cards_funded is the label-free signal separating a shared
-    onboarding/relayer EOA (funds many cards) from an individual funder (funds
-    one), without asserting any identity. Grain (safe_address, funder,
-    token_address). All-token (the marts whitelist scope comment does not apply).
+    (inbound transfers), per token, plus each funder's fan-out and a label-free
+    funding_channel. RAW addresses, NO identity labels — we do not claim a funder
+    "is" MiniPay, a ramp, or a CEX. Grain (safe_address, funder, token_address).
+    All-token (the marts whitelist scope comment does not apply).
+
+    funding_channel is a SHAPE classification from
+    int_celo_gpay_funding_tx_envelopes (transaction envelope + call pattern +
+    funder fan-out). CIP-64 (transaction_type 123) alone is not MiniPay — most of
+    Celo uses that envelope. Channel values:
+
+      cip64_direct_solo — every transfer in this relationship is CIP-64, the funder
+        EOA called token.transfer() directly, and that funder funds exactly one
+        card. This is the MiniPay-shaped path; do not rename the value to "minipay".
+      other_direct — same direct EOA transfer() shape, but the envelope is not
+        CIP-64 (type 0/2), and the funder funds exactly one card.
+      hub — this funder funds two or more cards. Fan-out wins over envelope: a
+        multi-card CIP-64 funder is still hub. Includes the legacy 0xa0dd… hub
+        (type 0, ~250 cards).
+      mediated — not a direct EOA→token transfer (e.g. Gnosis Safe execTransaction
+        0x6a761202, routers). Assigned before hub when the call is not direct.
+      mixed — transfers in this (safe, funder, token) relationship disagree on
+        channel (rare).
+      unknown — transfer row(s) could not be joined to celo_execution.transactions.
   columns:
   - name: safe_address
     description: The GP card Safe being funded (0x-prefixed, lowercase).
@@ -1767,6 +1811,15 @@ models:
   - name: funder_n_funding_transfers
     description: Total inbound funding transfers this funder makes across all cards.
     data_type: UInt64
+  - name: funding_channel
+    description: >-
+      Shape classification for this (safe, funder, token) relationship. See model
+      description for the channel glossary. Not an identity label.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'mixed', 'unknown']
   meta:
     owner: analytics_team
     authoritative: false

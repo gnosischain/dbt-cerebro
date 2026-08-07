@@ -9,15 +9,14 @@
 }}
 
 -- Deterministic funding-relationship per card Safe: which addresses fund it
--- (inbound transfers), per token, plus each funder's fan-out. RAW ADDRESSES,
--- NO LABELS — we do not claim a funder "is" a MiniPay wallet, a ramp, or a CEX
--- (MiniPay wallets are unlabelable EOAs; see project notes). The facts are laid
--- out — who funds each card, how much, when, and how many OTHER cards the same
--- funder funds — and the reader draws the conclusion.
+-- (inbound transfers), per token, plus each funder's fan-out and a label-free
+-- funding_channel. RAW ADDRESSES, NO IDENTITY LABELS — we do not claim a funder
+-- "is" MiniPay, a ramp, or a CEX. funding_channel is a shape classification
+-- (envelope + call pattern + fan-out), not an identity; see schema.yml.
 --
--- The fan-out column (funder_n_cards_funded) is the honest, label-free signal
--- that distinguishes a shared onboarding/relayer EOA (funds many cards) from an
--- individual funder (funds one) WITHOUT asserting an identity.
+-- The fan-out column (funder_n_cards_funded) is the honest signal that separates
+-- a shared onboarding/relayer EOA (funds many cards) from an individual funder
+-- (funds one). CIP-64 alone is not MiniPay — most of Celo uses it.
 --
 -- Grain is (safe_address, funder, token_address) so native amounts are summed
 -- only within a single token (summing across tokens would be meaningless).
@@ -32,29 +31,7 @@
 -- against a 5.8e76 threshold and zero rows exceed it, but a spoof token controls
 -- its own mint amount and two of them already reach these cards.
 
-WITH inbound AS (
-    SELECT
-        safe_address,
-        counterparty   AS funder,
-        token_address,
-        token_symbol,
-        amount_raw,
-        amount,
-        block_time
-    FROM {{ ref('int_celo_gpay_safe_transfers_alltoken') }}
-    WHERE direction = 'in'
-),
-
-funder_fanout AS (
-    SELECT
-        funder,
-        uniqExact(safe_address) AS funder_n_cards_funded,
-        count()                 AS funder_n_funding_transfers
-    FROM inbound
-    GROUP BY funder
-),
-
-per_card_funder_token AS (
+WITH per_card_funder_token AS (
     SELECT
         safe_address,
         funder,
@@ -64,9 +41,22 @@ per_card_funder_token AS (
         min(block_time)                 AS first_funded_at,
         max(block_time)                 AS last_funded_at,
         sum(toUInt256(amount_raw))      AS total_amount_raw,
-        sum(amount)                     AS total_amount
-    FROM inbound
+        sum(amount)                     AS total_amount,
+        any(funder_n_cards_funded)      AS funder_n_cards_funded,
+        -- Relationship-level channel: one value when every transfer agrees, else mixed.
+        if(uniqExact(funding_channel) = 1,
+           any(funding_channel),
+           'mixed')                     AS funding_channel
+    FROM {{ ref('int_celo_gpay_funding_tx_envelopes') }}
     GROUP BY safe_address, funder, token_address
+),
+
+funder_transfer_count AS (
+    SELECT
+        funder,
+        count() AS funder_n_funding_transfers
+    FROM {{ ref('int_celo_gpay_funding_tx_envelopes') }}
+    GROUP BY funder
 )
 
 SELECT
@@ -79,7 +69,8 @@ SELECT
     p.last_funded_at,
     p.total_amount_raw,
     p.total_amount,
-    f.funder_n_cards_funded,
-    f.funder_n_funding_transfers
+    p.funder_n_cards_funded,
+    f.funder_n_funding_transfers,
+    p.funding_channel
 FROM per_card_funder_token p
-LEFT JOIN funder_fanout f ON f.funder = p.funder
+LEFT JOIN funder_transfer_count f ON f.funder = p.funder

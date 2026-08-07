@@ -8,7 +8,7 @@ scope: any model built on decoded contract events where a field is taken at face
 symptom: a decoded field is internally consistent and looks entirely plausible, but an
   aggregate built on it disagrees with the chain — value conserves at one grain and not at
   another, or one dimension holds 100 percent of the volume when reality is split
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 evidence:
   - "settlement_legacy (0xc4df5cac…) emits TokenPullSuccess with token = USDC on all 1,752 of its pulls. Raw ERC-20 Transfer logs into that contract show 345 USDC transfers totalling 17,927,696,109 and 1,407 USDT transfers totalling 58,034,396,265"
   - "the two decompose exactly: 345 + 1,407 = 1,752 events, and 17,927,696,109 + 58,034,396,265 = 75,962,092,374, which is precisely what the events attribute to USDC alone. Counts and amounts are correct; only the token field is wrong"
@@ -18,6 +18,12 @@ evidence:
   - "two controls decode correctly through the SAME code path, which is what excludes a decoder fault: legacy tx 0x22cc85f1… where the real token IS USDC agrees, and current-contract tx 0x5c86713f… carrying USD₮ agrees. The legacy contract is right only when reality happens to match the constant it always emits"
   - "contract-level value conservation still held at 0.00, which is what made the defect survive review — the invariant as originally written summed across tokens and could not see it. Per-token it is off by 58,034,396,265 in each direction"
   - "settlement_current (0xc07cd8c2…) is unaffected: 1,087 USDC and 2,505 USDT, and per-token conservation holds exactly. Outbound events (SettlementBridged, SettlementTransferred) carry the right token on BOTH contracts"
+  - "exhaustive scan 2026-08-07 matching every pull to the transfer of the same amount in the same transaction, both contracts, full history: legacy wrong on 1,422 of 1,769 (80.4%), current wrong on 0 of 3,764. Every pull on both contracts matched a real transfer, so there is no unexplained residue and the method has no blind spot"
+  - "NOT INTERMITTENT — the legacy token field is effectively a constant. Across all 1,769 pulls it has only ever held USDC and never once held USDT. The 80% is simply the USDT share of card spend; the contract behaves identically on every charge and the 347 'correct' ones are correct only by coincidence"
+  - "present from the legacy contract's first month and never improved: 2026-03 2 of 4 wrong, 04 164/225, 05 364/468, 06 433/493, 07 376/475, 08 83/104. The current contract is clean in every one of its months (05 through 08)"
+  - "BOTH CONTRACTS ARE LIVE IN PARALLEL — the newer one did not replace the older. The legacy contract was still charging cards and still mislabelling at 2026-08-07 01:00 (tx 0x53681bec…), so this is a current defect and not a historical one"
+  - "strongest single artifact for the contract owner: current-contract tx 0xe2a2d896… pulls 36 charges mixing both stablecoins in ONE transaction and labels all 36 correctly, RPC-verified. Same block, same decoder, same event shape — only the legacy contract gets it wrong"
+  - "RPC-confirmed example set, all six read directly from a Celo node: WRONG — 0x7b84681b… (blk 73731678), 0x8da41830… (69411649), 0x658b1d95… (68533098), 0xb6d18537… (68519119); AGREES — 0x22cc85f1… (69115067), 0xb6ea1dc6… (70598210). Each has exactly one pull and one inbound transfer, so none depends on how pulls are matched to transfers"
 ---
 
 ## Symptom
@@ -29,8 +35,15 @@ category holds all the volume when you know the product handles two.
 ## Root cause
 The contract emitted the wrong value. Not a decode fault, not an ABI mismatch — the event
 itself carries a field that does not describe what happened. In this case an older
-settlement contract logged a stored default token on every pull rather than the token it
-actually pulled, and a later generation of the same contract fixed it.
+settlement contract logs a stored default token on every pull rather than the token it
+actually pulled. A later generation of the contract gets it right, but it did not replace
+the older one: both run in parallel and the older one is still charging cards, so this is
+a live defect rather than a historical one.
+
+The two generations declare different events — the newer adds a `sender` param, so its
+token sits in `topic3` against `topic2` on the older — which is worth knowing before
+comparing them, and is why a scan has to branch on the contract rather than assume one
+shape.
 
 This is invisible to every check you would normally run. The ABI matches, so decoding
 succeeds. The value is a valid address, so no format check fires. It is *constant*, so it

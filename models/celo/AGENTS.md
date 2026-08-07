@@ -204,6 +204,16 @@ Read with root AGENTS.md.
   $20k daily cap, and no card has come near it. "Remaining allowance" would therefore
   be a constant dressed up as a metric. Revisit only if the cap is ever tiered or a
   card actually hits it.
+- **CIP-64 is not a MiniPay label.** `transaction_type = 123` is Celo's fee-currency
+  envelope; most of the chain uses it. Card funding is classified as a shape in
+  `int_celo_gpay_funding_tx_envelopes.funding_channel` /
+  `fct_celo_gpay_card_funding.funding_channel` /
+  `fct_celo_gpay_card_funnel.first_fund_channel`: `cip64_direct_solo` (CIP-64 + EOA
+  `transfer()` + funder funds exactly one card — MiniPay-shaped), `other_direct`
+  (same call shape, non-CIP-64 envelope), `hub` (funder funds 2+ cards; fan-out wins
+  even when every transfer is CIP-64), `mediated` (Safe/router path), `mixed` /
+  `unknown`. Do not expose `is_minipay = (type = 123)`. Glossary lives on those
+  models' schema.yml descriptions.
 
 ## Invariants
 

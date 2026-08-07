@@ -221,6 +221,11 @@ semantic_models:
   - name: token_symbol
     type: categorical
     expr: token_symbol
+  # Shape classification (envelope + call pattern + fan-out), NOT an identity.
+  # cip64_direct_solo is MiniPay-shaped; do not treat every CIP-64 funder as MiniPay.
+  - name: funding_channel
+    type: categorical
+    expr: funding_channel
   # funder_n_cards_funded / funder_n_funding_transfers are per-FUNDER attributes
   # repeated on every (safe, funder, token) row, so they are exposed as reportable
   # facts rather than measures — summing them across rows multiplies one funder's
@@ -241,6 +246,8 @@ semantic_models:
         question_synonyms:
         - who funds celo gp cards
         - celo gp card funding relationships
+        - celo gp funding channel
+        - minipay shaped card funding
 
 - name: celo_sorted_oracles_rates
   model: ref('int_celo_sorted_oracles_rates')
@@ -338,6 +345,10 @@ semantic_models:
   - name: is_activated
     type: categorical
     expr: is_activated
+  # Shape of the card's first fund (NULL if never funded). Not MiniPay identity.
+  - name: first_fund_channel
+    type: categorical
+    expr: first_fund_channel
   # Categorical rather than a measure: it is the eligibility filter for any rate, so it
   # needs to be groupable and filterable, and averaging it means nothing.
   - name: observation_days
@@ -373,6 +384,7 @@ semantic_models:
         - how many celo gp cards get funded
         - how long until a celo gp card is funded
         - celo gp card activation lag
+        - celo gp first fund channel
 
 # Settlement batches. Every measure here is additive over transactions, which is what
 # makes this safe to expose where the monthly cost view is not.

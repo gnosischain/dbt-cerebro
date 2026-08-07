@@ -690,6 +690,99 @@ models:
       start_date: "2026-01-01"
       batch_months: 1
 
+- name: int_celo_gpay_funding_tx_envelopes
+  description: |
+    One row per inbound ERC-20 transfer onto a GP card Safe, with the funding
+    transaction's envelope attached and a label-free funding_channel.
+
+    funding_channel is a SHAPE classification, not an identity. CIP-64
+    (transaction_type 123) is Celo's fee-currency envelope and is used by most
+    of the chain — it is necessary for MiniPay-style fee abstraction but not a
+    MiniPay ID. Measured 2026-08-07: ~64% of all Celo txs and ~79% of calls to
+    USDT/USDC were type 123; the discriminative signal for card funding is the
+    composite of envelope + call shape + funder fan-out. feeCurrency is not in
+    celo_execution.transactions.
+
+    Channel values (assigned in this priority order):
+
+      unknown — no matching row in celo_execution.transactions for the transfer's
+        tx hash (should be rare once the funding window is fully indexed).
+      mediated — the funding tx is NOT a direct EOA call of token.transfer()
+        (from != funder, or to != token, or selector != transfer). Typical cases
+        are Gnosis Safe execTransaction (0x6a761202) and routers.
+      hub — the call IS a direct EOA transfer, but this funder funds two or more
+        cards. Fan-out wins over envelope: even all-CIP-64 multi-card funders are
+        hub. Includes the legacy 0xa0dd… onboarding hub (~250 cards, type 0).
+      cip64_direct_solo — CIP-64 (type 123) + funder EOA called token.transfer()
+        + that funder funds exactly one card. MiniPay-shaped; do not rename to
+        "minipay" without an off-chain identity source.
+      other_direct — same direct EOA transfer() shape and solo fan-out, but the
+        envelope is not CIP-64 (type 0/2 — typically CELO gas).
+
+    Consumed by fct_celo_gpay_card_funding (relationship-level channel, with
+    mixed when transfers disagree) and fct_celo_gpay_card_funnel
+    (first_fund_channel = channel of the card's earliest inbound transfer).
+    Full-table rebuild; bounded by inbound transfer count (~6k).
+  columns:
+  - name: block_date
+    description: UTC date of the transfer's block.
+    data_type: Date
+  - name: block_time
+    description: On-chain timestamp of the transfer.
+    data_type: DateTime
+  - name: tx_hash
+    description: Funding transaction hash (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    description: Log index of the Transfer event within the transaction.
+    data_type: UInt32
+  - name: safe_address
+    description: The GP card Safe that received the transfer (0x-prefixed, lowercase).
+    data_type: String
+  - name: funder
+    description: RAW inbound sender address from the Transfer event, deliberately unlabeled.
+    data_type: String
+  - name: token_address
+    description: Token contract address (0x-prefixed, lowercase).
+    data_type: String
+  - name: token_symbol
+    description: Whitelist symbol; NULL for non-whitelisted tokens.
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Exact unscaled transfer amount (uint256).
+    data_type: UInt256
+  - name: amount
+    description: Human-unit amount; NULL when decimals unknown.
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: USD value at transfer date; NULL when unpriced.
+    data_type: Nullable(Float64)
+  - name: transaction_type
+    description: >-
+      Envelope from celo_execution.transactions. 123 = CIP-64 fee-currency (not
+      MiniPay-specific). NULL when the tx hash did not join.
+    data_type: Nullable(UInt32)
+  - name: is_direct_eoa_transfer
+    description: >-
+      1 when the funding tx has from=funder, to=token, and selector transfer
+      (0xa9059cbb) — i.e. the funder EOA signed a direct ERC-20 transfer.
+    data_type: UInt8
+  - name: funder_n_cards_funded
+    description: Distinct cards this funder funds across all inbound transfers.
+    data_type: UInt64
+  - name: funding_channel
+    description: >-
+      Shape classification for this transfer. See model description for the
+      channel glossary. Not an identity label.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'unknown']
+  meta:
+    owner: analytics_team
+    authoritative: false
+
 - name: int_celo_gpay_module_mastercopies
   description: |
     Deterministic mastercopy allowlist: GP Zodiac module proxies created via the

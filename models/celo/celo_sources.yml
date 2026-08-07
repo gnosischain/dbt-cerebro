@@ -55,10 +55,15 @@ sources:
       - name: transactions
         description: >
           Signed transactions included in Celo blocks. transaction_type 123
-          (0x7b, CIP-64) marks fee-abstraction transactions that pay gas in an
-          ERC-20 fee currency (cUSD/USDT/USDC) — the strongest on-chain signal
-          for MiniPay-originated EOA activity. Type 126 (0x7e) is the OP-stack
-          deposit/system transaction.
+          (0x7b, CIP-64) is Celo's fee-currency envelope — the signer pays gas in
+          an allowlisted ERC-20 (via a feeCurrency adapter for USDT/USDC) instead
+          of CELO. It is necessary for MiniPay-style fee abstraction but NOT a
+          MiniPay identity: a large share of all Celo activity uses type 123
+          (about two thirds of txs in 2026-07). For GP card funding, combine it
+          with call shape and funder fan-out — see
+          int_celo_gpay_funding_tx_envelopes.funding_channel. Type 126 (0x7e) is
+          the OP-stack deposit/system transaction. feeCurrency itself is not
+          stored in this table.
         loaded_at_field: block_timestamp
         columns:
           - name: block_number
@@ -81,7 +86,9 @@ sources:
             data_type: UInt64
           - name: transaction_type
             data_type: UInt32
-            description: "Envelope type: 0/1/2 standard, 123 = CIP-64 fee-currency, 126 = OP deposit."
+            description: >
+              Envelope type: 0/1/2 standard Ethereum, 123 = CIP-64 fee-currency
+              (not MiniPay-specific), 126 = OP deposit.
           - name: success
             data_type: UInt8
           - name: chain_id

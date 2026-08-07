@@ -58,6 +58,17 @@ first_inflow AS (
     GROUP BY safe_address
 ),
 
+-- Channel of the card's FIRST inbound transfer (by block_time). Shape classification
+-- from int_celo_gpay_funding_tx_envelopes — not an identity label. NULL for unfunded
+-- cards. See schema.yml for the channel glossary.
+first_fund_channel AS (
+    SELECT
+        safe_address,
+        argMin(funding_channel, block_time) AS first_fund_channel
+    FROM {{ ref('int_celo_gpay_funding_tx_envelopes') }}
+    GROUP BY safe_address
+),
+
 base AS (
     SELECT
         w.safe_address                                   AS safe_address,
@@ -73,10 +84,14 @@ base AS (
         if(w.first_spend_at IS NOT NULL
            AND w.first_spend_at <= h.observed_through,
            w.first_spend_at,
-           CAST(NULL AS Nullable(Date)))                 AS first_spend_at
+           CAST(NULL AS Nullable(Date)))                 AS first_spend_at,
+        -- Empty string on unmatched LEFT JOIN under join_use_nulls=0; nullIf keeps
+        -- unfunded cards as NULL rather than ''.
+        nullIf(c.first_fund_channel, '')                 AS first_fund_channel
     FROM {{ ref('int_celo_gpay_wallets') }} w
     CROSS JOIN horizon h
     LEFT JOIN first_inflow f ON f.safe_address = w.safe_address
+    LEFT JOIN first_fund_channel c ON c.safe_address = w.safe_address
     -- A card issued after the horizon has had zero observation time. It is not an
     -- unfunded card, it is an unobserved one, and including it only drags the newest
     -- cohort down.
@@ -88,6 +103,7 @@ SELECT
     issued_at,
     first_funded_at,
     first_spend_at,
+    first_fund_channel,
     first_funded_at IS NOT NULL                                  AS is_funded,
     first_spend_at  IS NOT NULL                                  AS is_activated,
     -- Days from issuance to each milestone. NULL where the milestone has not happened,
