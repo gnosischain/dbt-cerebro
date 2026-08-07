@@ -170,17 +170,22 @@ models:
 
   - name: stg_governance__snapshot_delegations
     description: >
-      One row per DelegateRegistry event (tx_hash, log_index) for gnosis.eth
-      on Ethereum mainnet, deduped defensively via FINAL + row_number (each
-      on-chain event fires exactly once, so duplicates would only come from
-      accidental re-ingestion). Use int_governance_current_delegations to
-      resolve current delegation state -- this table is the raw event log.
+      One row per DelegateRegistry event (chain_id, tx_hash, log_index) for
+      the gnosis.eth space on Ethereum mainnet (chain 1) and Gnosis Chain
+      (chain 100). Sourced from rpc_log_indexer.v_delegate_events_gnosis;
+      SetDelegate/ClearDelegate remapped to set/clear. Use
+      int_governance_current_delegations to resolve current state -- this
+      is the raw event log.
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: [tx_hash, log_index]
+          combination_of_columns: [chain_id, tx_hash, log_index]
     columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain. Snapshot reads both registries.
+        data_type: UInt64
+        tests: [not_null]
       - name: action
-        description: set | clear.
+        description: set | clear (remapped from SetDelegate | ClearDelegate).
         data_type: LowCardinality(String)
         tests:
           - accepted_values:

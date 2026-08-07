@@ -277,9 +277,10 @@ models:
 
   - name: api_governance_delegates_latest
     description: >
-      Delegate leaderboard: how many gnosis.eth holders currently delegate to
-      each address (DelegateRegistry on Ethereum mainnet), and since when.
-      See int_governance_current_delegations for how "current" is resolved.
+      Delegate leaderboard: how many distinct gnosis.eth holders currently
+      delegate to each address across both DelegateRegistry chains (1 and
+      100). A holder active on both chains counts once (uniqExact). See
+      int_governance_current_delegations for how "current" is resolved.
       Delegation here is a separate on-chain relationship from the per-vote
       power-source split in int_governance_vote_power_source.
     columns:
@@ -287,6 +288,7 @@ models:
         data_type: String
         tests: [not_null, unique]
       - name: delegator_count
+        description: Distinct delegators (uniqExact) — dual-chain holders count once.
         data_type: UInt64
       - name: first_delegation_at
         data_type: DateTime
@@ -301,13 +303,20 @@ models:
 
   - name: api_governance_delegation_graph
     description: >
-      Current delegator -> delegate edges (one row per active delegation),
-      for a delegation-network visual. tx_hash lets a reader verify any edge
-      directly on Ethereum mainnet.
+      Current delegator -> delegate edges (one row per active delegation per
+      chain), for a delegation-network visual. chain_id separates the two
+      registries; tx_hash lets a reader verify any edge on-chain.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [chain_id, delegator]
     columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain.
+        data_type: UInt64
+        tests: [not_null]
       - name: delegator
         data_type: String
-        tests: [not_null, unique]
+        tests: [not_null]
       - name: delegate
         data_type: String
         tests: [not_null]

@@ -104,12 +104,21 @@ sources:
           option only WITHIN a poll.
           The poll row carries no created_at -- date a poll by its host post.
         loaded_at_field: ingested_at
-      - name: snapshot_delegations
+
+  # DelegateRegistry events come from rpc-log-indexer, not click-runner.
+  # click-runner's Dune CSV ingestor was removed 2026-07-24 (201dd2e); the
+  # live source is rpc_log_indexer.v_delegate_events_gnosis (both chain 1 and
+  # chain 100 — Snapshot's gnosis.eth strategies read both registries).
+  - name: rpc_log_indexer
+    schema: rpc_log_indexer
+    meta:
+      owner: analytics_team
+      authoritative: true
+    tables:
+      - name: v_delegate_events_gnosis
         description: >
-          DelegateRegistry SetDelegate/ClearDelegate events for gnosis.eth on
-          Ethereum mainnet (not Gnosis Chain -- the space's configured
-          network), Dune-sourced via click-runner's csv/url() ingestor since
-          this platform has no Ethereum mainnet RPC indexing. One row per
-          on-chain event (tx_hash, log_index); resolve to current state via
-          int_governance_current_delegations, not this raw table directly.
-        loaded_at_field: ingested_at
+          Snapshot DelegateRegistry SetDelegate/ClearDelegate events for the
+          gnosis.eth space id, projected from rpc_log_indexer.decoded_events_canonical.
+          One row per on-chain event; includes chain_id 1 (Ethereum) and 100
+          (Gnosis Chain). Resolve current state via
+          int_governance_current_delegations, not this view directly.

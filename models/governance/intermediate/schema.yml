@@ -170,16 +170,24 @@ models:
 
   - name: int_governance_current_delegations
     description: >
-      Current delegation state per delegator: their latest DelegateRegistry
-      event ordered by (block_number, log_index) -- not block_time, which
-      ties within the same block/tx (e.g. clear-then-reset in one
-      transaction). Only currently-active delegations have a row here; a
-      delegator whose latest event is 'clear' has none.
+      Current delegation state per (delegator, chain_id): their latest
+      DelegateRegistry event ordered by (block_number, log_index) -- not
+      block_time, which ties within the same block/tx (e.g. clear-then-reset
+      in one transaction). Only currently-active delegations have a row
+      here; a (delegator, chain) whose latest event is 'clear' has none.
+      Grain is per chain because Snapshot reads both registries.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [chain_id, delegator]
     columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain.
+        data_type: UInt64
+        tests: [not_null]
       - name: delegator
         description: Address delegating their voting power (lowercased).
         data_type: String
-        tests: [not_null, unique]
+        tests: [not_null]
       - name: delegate
         description: Address currently receiving the delegation (lowercased).
         data_type: String

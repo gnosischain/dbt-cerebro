@@ -5,25 +5,21 @@
   )
 }}
 
--- One row per (tx_hash, log_index) -- each on-chain event fires exactly
--- once, so FINAL alone is normally sufficient; the row_number is a defensive
--- backstop against accidental duplicate re-ingestion (ReplacingMergeTree
--- dedup happens on merge, not insert).
+-- One row per (chain_id, tx_hash, log_index) DelegateRegistry event for the
+-- gnosis.eth space. Source is rpc-log-indexer's reorg-safe projection (not a
+-- ReplacingMergeTree ingest table), so no FINAL / ingested_at dedupe.
+-- Action vocabulary is remapped to set/clear so downstream filters stay stable.
 SELECT
+    chain_id,
     tx_hash,
     block_number,
     log_index,
-    block_time,
-    action,
-    delegator,
-    delegate
-FROM (
-    SELECT
-        tx_hash, block_number, log_index, block_time, action, delegator, delegate,
-        row_number() OVER (
-            PARTITION BY tx_hash, log_index
-            ORDER BY ingested_at DESC
-        ) AS rn
-    FROM {{ source('governance', 'snapshot_delegations') }} FINAL
-)
-WHERE rn = 1
+    toDateTime(block_timestamp) AS block_time,
+    multiIf(
+        action = 'SetDelegate', 'set',
+        action = 'ClearDelegate', 'clear',
+        action
+    ) AS action,
+    lower(delegator) AS delegator,
+    lower(delegate)  AS delegate
+FROM {{ source('rpc_log_indexer', 'v_delegate_events_gnosis') }}
