@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production', 'celo', 'gpay', 'tier1', 'api:celo_gpay_retention_by_action_users', 'granularity:monthly'],
+    tags=['production', 'celo', 'gpay', 'tier3', 'api:celo_gpay_retention_by_action_users', 'granularity:monthly'],
     meta={
       "api": {
         "methods": ["GET"],

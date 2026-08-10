@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','celo','gpay','tier0','api:celo_gpay_volume','granularity:last_7d']
+    tags=['production','celo','gpay','tier3','api:celo_gpay_volume','granularity:last_7d']
   )
 }}
 
