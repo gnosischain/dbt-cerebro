@@ -649,3 +649,75 @@ semantic_models:
         - celo gp share of cardholder spend
         - how much of cardholder money reaches the celo gp card
         - celo gp card vs wallet spending
+
+# Wallet tenure. Note for any metric built here: days_before_first_funding is EXACT only
+# where is_left_censored = 0. Censored wallets predate celo_execution's coverage (the
+# 2025-03-26 L2 migration), so their value is a lower bound — split on the flag before
+# averaging, and report the censored share beside any median.
+- name: celo_gpay_wallet_tenure
+  model: ref('fct_celo_gpay_wallet_tenure')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: tenure_bucket
+    type: categorical
+    expr: tenure_bucket
+  measures:
+  - name: celo_gpay_wallet_tenure__wallets
+    agg: count
+    expr: wallet_address
+  - name: celo_gpay_wallet_tenure__pre_existing_wallets
+    agg: sum
+    expr: is_pre_existing_user
+  - name: celo_gpay_wallet_tenure__left_censored_wallets
+    agg: sum
+    expr: is_left_censored
+  - name: celo_gpay_wallet_tenure__months_present
+    agg: sum
+    expr: months_present
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp wallet tenure
+        - were celo gnosis pay users already on celo
+        - is celo gp acquiring users or cross selling
+        - how long were celo gp cardholders on chain before the card
+
+- name: celo_gpay_funder_wallet_monthly_presence
+  model: ref('int_celo_gpay_funder_wallet_monthly_presence')
+  defaults:
+    agg_time_dimension: month
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  measures:
+  - name: celo_gpay_funder_wallet_presence__wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_presence__legs
+    agg: sum
+    expr: n_legs
+  - name: celo_gpay_funder_wallet_presence__legs_nonfee
+    agg: sum
+    expr: n_legs_nonfee
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - celo gp cardholder wallets active per month
+        - celo gp wallet presence before launch

@@ -2081,3 +2081,114 @@ models:
     description: Highest single-day distinct sending wallets in the month. Not a
       monthly unique count - daily figures cannot be summed or maxed into one.
     data_type: UInt64
+
+- name: fct_celo_gpay_wallet_tenure
+  description: |
+    One row per GP card funding wallet: how long it had been active on Celo before it
+    funded a card. The acquisition-vs-cross-sell question, answered per wallet.
+
+    WHAT IT SETTLES. If wallets predate their card by months, GP on Celo is selling into
+    MiniPay's installed base - a distribution result. If they appear days before the card,
+    GP is bringing people on-chain - an acquisition result. Both produce the same headline
+    card count, and the two were indistinguishable before this model.
+
+    LEFT-CENSORING IS THE CENTRAL CAVEAT, NOT A ROUNDING ERROR. celo_execution starts at
+    the L2 migration (2025-03-26) and Celo's L1 history is not in this warehouse, so
+    first_seen_at means "first seen BY US". For any wallet already active at the
+    migration it is a floor, not a birth date, and those wallets pile up at the window
+    edge where they would otherwise manufacture a fake cohort of wallets born the day the
+    L2 launched. is_left_censored marks them and days_before_first_funding is a LOWER
+    BOUND for them, exact for everyone else. Never average that column without splitting
+    on the flag, and never report a median tenure without reporting the censored share
+    beside it.
+  columns:
+  - name: wallet_address
+    description: The funding wallet.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: card_safe_address
+    description: The funded card, for solo funders only; NULL for hubs.
+    data_type: Nullable(String)
+  - name: is_solo_funder
+    description: 1 when this wallet funded exactly one card.
+    data_type: UInt8
+  - name: n_cards_funded
+    description: Distinct cards this wallet funded.
+    data_type: UInt64
+  - name: first_seen_at
+    description: First Transfer leg we ever observed for this wallet. A FLOOR, not a
+      birth date, whenever is_left_censored = 1.
+    data_type: Nullable(Date)
+  - name: last_seen_at
+    description: Most recent Transfer leg observed.
+    data_type: Nullable(Date)
+  - name: first_active_month_nonfee
+    description: First month with at least one non-gas leg - the stricter "first did
+      something economic" reading.
+    data_type: Nullable(Date)
+  - name: first_funded_at
+    description: Date this wallet first funded a card.
+    data_type: Date
+  - name: months_present
+    description: Distinct months with any observed leg. A coarse engagement depth signal
+      that is unaffected by censoring.
+    data_type: UInt64
+  - name: n_legs_lifetime
+    description: All observed Transfer legs, gas receipts included.
+    data_type: UInt64
+  - name: n_legs_nonfee_lifetime
+    description: Observed legs excluding gas receipts.
+    data_type: UInt64
+  - name: days_before_first_funding
+    description: Days from first_seen_at to first_funded_at. Non-negative by construction
+      (the funding transfer is itself a leg this wallet sent). EXACT when
+      is_left_censored = 0, a LOWER BOUND when it is 1.
+    data_type: Nullable(Int32)
+  - name: is_left_censored
+    description: 1 when the wallet was first observed within 7 days of the start of
+      coverage, making it indistinguishable from one active on Celo L1 for years.
+    data_type: UInt8
+  - name: tenure_bucket
+    description: >-
+      unknown | pre_dates_our_window | same_day | 1_7_days | 8_30_days | 31_90_days |
+      91_180_days | over_180_days. Censoring takes precedence over the day count: a
+      censored wallet gets its own label rather than being filed under whatever bucket
+      its floor happens to land in, which would understate tenure and bias every cohort
+      built on this column.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['unknown', 'pre_dates_our_window', 'same_day', '1_7_days', '8_30_days', '31_90_days', '91_180_days', 'over_180_days']
+  - name: is_pre_existing_user
+    description: Blunt headline read - active on Celo well before the card. TRUE for all
+      censored wallets by definition, since they predate the observation window.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: api_celo_gpay_wallet_tenure
+  description: >
+    How long GP card funding wallets had been active on Celo before funding a card, by
+    tenure bucket. Read 'pre_dates_our_window' as "at least this long, unknown how much
+    longer" - those wallets were already transacting when coverage opens at the L2
+    migration, so their true tenure is unmeasurable here and certainly longer than any
+    number this model could print. See fct_celo_gpay_wallet_tenure.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: label
+    description: tenure_bucket from fct_celo_gpay_wallet_tenure.
+    data_type: String
+  - name: value
+    description: Funding wallets in this bucket.
+    data_type: UInt64
+  - name: median_days_before_funding
+    description: Median days on chain before first funding. Exact for uncensored buckets;
+      a lower bound inside 'pre_dates_our_window'.
+    data_type: Nullable(Float64)
+  - name: as_of_date
+    description: Latest first-funding date covered, as a single scalar across buckets.
+    data_type: Nullable(Date)

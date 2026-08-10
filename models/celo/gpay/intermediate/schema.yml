@@ -1090,3 +1090,95 @@ models:
         the base model has been repaired, then rebuild fct_celo_gpay_cardholder_engagement
         and fct_celo_gpay_wallet_share_of_spend_daily, whose horizon is clipped to this
         model's max date.
+
+- name: int_celo_gpay_funder_wallet_monthly_presence
+  description: |
+    One row per (month, funding wallet): earliest and latest Transfer leg that wallet had
+    that month, plus leg counts. The batching-safe substrate for wallet TENURE.
+
+    WHY A MONTHLY PRESENCE TABLE AND NOT A DIRECT min() PER WALLET. Tenure is
+    `min(block_timestamp) per wallet` over all chain history, whose natural shape is a
+    one-row-per-wallet table - but a table model CANNOT be batched. refresh.py re-runs
+    the model per batch and a table materialisation does CREATE-OR-REPLACE each time, so
+    every month would overwrite the last and the "minimum" would silently become the
+    minimum of the final batch only. Folding presence per month into an incremental,
+    partition-per-month table avoids that: each batch writes its own partition, and the
+    min() is taken downstream over ~1k wallets x ~18 months instead of 2.7B raw logs.
+
+    SCOPE IS WIDER THAN THE REST OF THE WALLET TREE ON PURPOSE. The floor is the start of
+    coverage (2025-03), not the GP era (2026-01), because the question is what these
+    wallets did BEFORE Gnosis Pay. And fee legs are COUNTED here, unlike
+    int_celo_gpay_funder_wallet_daily: a CIP-64 gas receipt is not economic activity but
+    it is proof the wallet existed and transacted that month. n_legs_nonfee carries the
+    stricter reading.
+
+    Left-censoring is handled downstream in fct_celo_gpay_wallet_tenure. This model
+    reports what it observed and makes no claim that the first month it saw a wallet is
+    the month that wallet began.
+  columns:
+  - name: month
+    description: Month start (partition key).
+    data_type: Date
+  - name: wallet_address
+    description: The funding wallet (0x-prefixed, lowercase).
+    data_type: String
+  - name: first_seen_at
+    description: Earliest Transfer leg for this wallet in this month.
+    data_type: DateTime
+  - name: last_seen_at
+    description: Latest Transfer leg for this wallet in this month.
+    data_type: DateTime
+  - name: n_legs
+    description: All Transfer legs touching the wallet this month, gas receipts included
+      - this is a presence count, not an activity count.
+    data_type: UInt64
+  - name: n_legs_nonfee
+    description: Legs excluding transfers to the CIP-64 gas sink, for the stricter
+      "did something economic" reading.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [month, wallet_address]
+      semantics: monthly_aggregate
+      invariants:
+      - id: presence-counts-fee-legs-unlike-the-daily-model
+        text: n_legs INCLUDES CIP-64 gas receipts, deliberately and unlike
+          int_celo_gpay_funder_wallet_daily which strips them. Presence asks "did this
+          wallet exist and transact", and a gas receipt proves both. Anyone reconciling
+          this model's counts against the daily model will find a systematic surplus of
+          roughly a third; that is the fee legs and it is correct. Use n_legs_nonfee to
+          compare like with like.
+      - id: first-seen-is-first-seen-by-us
+        text: The floor is the start of celo_execution coverage at the L2 migration
+          (2025-03-26). Celo L1 history does not exist in this warehouse, so a wallet
+          already active then is observed for the first time at the window edge. This
+          model must NOT be read as birth dates; fct_celo_gpay_wallet_tenure flags those
+          rows as left-censored and that flag is where the honesty lives.
+      - id: wallet-universe-follows-the-funder-spine
+        text: The wallet set comes from int_celo_gpay_funder_wallets, which grows as new
+          cards are funded. A wallet added to the spine today has no history in already
+          built partitions, so its early months read as absent until those months are
+          reprocessed. After any material growth in the funder spine, rebuild the full
+          range rather than trusting first_seen_at for the new wallets.
+      hazards: [append-over-populated-duplicates, staged-insert-overwrite-wipe, ch-overcommit-victim, raw-logs-ingestion-holes]
+      validation:
+      - 'no month precedes coverage: min(month) >= toDate(''2025-03-01'')'
+      - 'every funder spine wallet appears: uniqExact(wallet_address) equals int_celo_gpay_funder_wallets cardinality'
+      reprocess_runbook: >-
+        NEVER `dbt run --full-refresh` this - it is the heaviest scan in the tree
+        (all Celo Transfer logs across ~18 months) and OOMs as one query (code 241).
+        Rebuild only via `python scripts/full_refresh/refresh.py --select
+        int_celo_gpay_funder_wallet_monthly_presence --inprocess`, which runs the monthly
+        batches in meta.full_refresh. Scoped batches APPEND, so drop any populated target
+        partition first (macros/db/drop_partition.sql). Then rebuild
+        fct_celo_gpay_wallet_tenure, which is cheap.
+    # HEAVIEST model in this tree: ~18 monthly batches of all-Transfer scanning.
+    full_refresh:
+      start_date: "2025-03-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
