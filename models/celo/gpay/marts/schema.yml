@@ -653,6 +653,9 @@ models:
         envelope; includes the legacy 0xa0dd… onboarding hub).
       mediated — first fund was not a direct EOA→token transfer (e.g. Safe
         execTransaction).
+      mixed — reserved for relationship-level disagreement on
+        fct_celo_gpay_card_funding; first_fund_channel reads per-transfer envelopes
+        so it does not emit mixed today, but the value stays accepted.
       unknown — funding transfer row exists but no matching transactions row.
   columns:
   - name: safe_address
@@ -685,7 +688,7 @@ models:
     data_type: Nullable(String)
     tests:
     - accepted_values:
-        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'unknown']
+        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'mixed', 'unknown']
         config:
           where: "first_fund_channel IS NOT NULL"
   - name: is_funded
@@ -1617,6 +1620,46 @@ models:
   - name: as_of_date
     description: "Date the snapshot is computed as of (max date in the underlying data)."
     data_type: Nullable(Date)
+- name: api_celo_gpay_funding_by_channel
+  description: >
+    Funding relationships by shape channel (cip64_direct_solo / hub / mediated / …).
+    Not a MiniPay identity label. cards = distinct Safes, relationships = (safe, funder,
+    token) rows, amount = summed known-decimal native amount.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: label
+    description: funding_channel value from fct_celo_gpay_card_funding.
+    data_type: String
+  - name: cards
+    description: Distinct card Safes in this channel.
+    data_type: UInt64
+  - name: relationships
+    description: Distinct (safe, funder, token) funding relationships.
+    data_type: UInt64
+  - name: amount
+    description: Sum of total_amount where known (USDT/USDC); NULL amounts skipped.
+    data_type: Float64
+  - name: as_of_date
+    description: Latest funding date this model has observed, as a single scalar across
+      all channels (not a per-channel max).
+    data_type: Nullable(Date)
+- name: api_celo_gpay_first_fund_by_channel
+  description: >
+    Funded cards by first_fund_channel (shape of the card's earliest inbound transfer).
+    Unfunded cards excluded. One row per card, unlike funding_by_channel which is per
+    relationship.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: label
+    description: first_fund_channel from fct_celo_gpay_card_funnel.
+    data_type: String
+  - name: value
+    description: Distinct funded cards whose first fund used this channel.
+    data_type: UInt64
+  - name: as_of_date
+    description: The funnel's observation horizon (observed_through), as a single scalar
+      across all channels (not a per-channel max).
+    data_type: Nullable(Date)
 - name: api_celo_gpay_balances_usd_daily
   description: Daily total net-flow balance (USD) by token. Whitelisted tokens only (USDT/USDC in practice — see scope note).
   meta: {owner: analytics_team, authoritative: false}
@@ -1823,3 +1866,218 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+
+- name: fct_celo_gpay_cardholder_engagement
+  description: |
+    One row per Celo GP card, joining the card's own lifecycle to whether the person
+    behind it is still economically alive on Celo at all.
+
+    THE QUESTION THIS ANSWERS: the card-side tree can tell you a card stopped being
+    used, but not why - and the two possible whys need opposite responses. A holder who
+    left the chain is lost; a holder still transacting daily in their own wallet has
+    simply stopped choosing the card, and that one is winnable. Until this model
+    existed both looked identical (a churned card). Measured 2026-08-10 the split was
+    not close: of cards dormant 7-30 days, 74% of holders were still active in-wallet;
+    dormant 30+, 65%; funded but never spent, 83%.
+
+    CLIPPED TO ONE HORIZON, for the same reason fct_celo_gpay_card_funnel is. The card
+    signal (int_celo_gpay_activity_daily) and the wallet signal
+    (int_celo_gpay_funder_wallet_daily) are separate incremental models built at
+    different times; whichever lags is the binding constraint. observed_through is the
+    LEAST of the two, never today(). If the wallet model lags a day, every holder would
+    otherwise read as newly silent and the table would swing toward "gone".
+
+    MAPPING IS PARTIAL AND SAYS SO. Only solo funders can be attributed unambiguously.
+    Hub- or router-funded cards get wallet_address = NULL and land in a
+    '__wallet_unmapped' segment - a coverage limit, NOT evidence of absence. Never
+    read unmapped as gone.
+  columns:
+  - name: safe_address
+    description: GP card Safe address.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: wallet_address
+    description: The solo funding wallet behind this card; NULL when the card was
+      funded by a hub or a contract router.
+    data_type: Nullable(String)
+  - name: issued_at
+    description: Card provisioning date.
+    data_type: Date
+  - name: first_funded_at
+    description: First inbound action on the card; NULL if never funded.
+    data_type: Nullable(Date)
+  - name: last_payment_at
+    description: Most recent Payment; NULL if the card never spent.
+    data_type: Nullable(Date)
+  - name: wallet_last_active_at
+    description: Most recent non-fee transfer by the funding wallet; NULL when unmapped.
+    data_type: Nullable(Date)
+  - name: observed_through
+    description: The as-of date, taken as the LEAST of the card and wallet models' max
+      dates. Every state column is relative to this, not to today().
+    data_type: Date
+  - name: card_state
+    description: never_funded | funded_never_paid | active | dormant_7_30 |
+      dormant_30plus, relative to observed_through.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['never_funded', 'funded_never_paid', 'active', 'dormant_7_30', 'dormant_30plus']
+  - name: days_since_last_payment
+    description: Days from last Payment to observed_through; NULL if never paid.
+    data_type: Nullable(Int32)
+  - name: days_since_wallet_active
+    description: Days from last non-fee wallet transfer to observed_through; NULL when
+      unmapped.
+    data_type: Nullable(Int32)
+  - name: wallet_active_7d
+    description: Tighter aliveness read. The 2026-08-10 findings were quoted on this
+      horizon; engagement_segment uses the 30d one. Never mix the two in one number.
+    data_type: UInt8
+  - name: wallet_active_30d
+    description: The horizon engagement_segment is built on - a month of silence is a
+      real signal.
+    data_type: UInt8
+  - name: wallet_transfers_recent
+    description: Non-fee wallet transfers in the 30 days to observed_through.
+    data_type: Nullable(UInt64)
+  - name: wallet_out_usd_recent
+    description: Priced wallet outflow in the 30 days to observed_through, ALL transfer
+      sizes. Flow-of-funds; a handful of treasury-scale transfers dominate it. Do not
+      size an opportunity on this column.
+    data_type: Nullable(Float64)
+  - name: wallet_out_usd_recent_retail
+    description: Same window, transfers under $1,000 only. The retail-behaviour number
+      and the one to use for reactivation sizing.
+    data_type: Nullable(Float64)
+  - name: wallet_to_card_usd_recent
+    description: The share of that outflow which reached the GP card.
+    data_type: Nullable(Float64)
+  - name: engagement_segment
+    description: >-
+      The actionable axis. card_active | never_funded | <card_state>__wallet_alive /
+      __wallet_gone / __wallet_unmapped. '__wallet_alive' on a dormant card is the
+      reactivation target; '__wallet_unmapped' is a coverage limit, not absence.
+      never_funded is NOT split on the wallet axis - an unfunded card has no funder, so
+      it can never have a funding wallet, and splitting it would invent a coverage gap
+      that is true by construction.
+    data_type: String
+    tests:
+    - not_null
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: fct_celo_gpay_wallet_share_of_spend_daily
+  description: |
+    Daily split of what cardholders send OUT of their own wallet: how much went to the
+    GP card, and how much went somewhere else. The competitive question, on-chain.
+    Solo funders only (a hub's outflow is GP onboarding, not a user choosing), priced
+    stablecoins only (token_class from the whitelist seed, never a symbol list).
+
+    THE OUTLIER SPLIT IS THE WHOLE POINT, DO NOT DROP IT. Over 2026-08-05..08 the raw
+    comparison was $365k sent elsewhere against $48.9k to the card, which reads as the
+    card capturing 12% of its holders' money. It does not: SIX transfers of $1,000+
+    carried $313.7k of that $365k (largest single $154k - treasury-scale movement by a
+    handful of addresses, not retail behaviour). Excluding them the two sides are
+    ~$51.4k against ~$48.9k, i.e. roughly half. usd_excl_large is the
+    retail-behaviour number, usd_total the flow-of-funds number; they answer different
+    questions and neither is wrong, but mixing them is.
+
+    Medians over that window were $20.00 to the card against $1.35 elsewhere: the card
+    holds the large ticket while the wallet keeps micro-payments - complement rather
+    than cannibalisation. That is one window; re-check before repeating it.
+  columns:
+  - name: date
+    description: Activity date.
+    data_type: Date
+  - name: destination
+    description: to_card (counterparty is a Safe in the card registry) or to_elsewhere.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['to_card', 'to_elsewhere']
+  - name: n_transfers
+    description: Priced stablecoin outbound transfers, gas receipts excluded.
+    data_type: UInt64
+  - name: n_wallets
+    description: Distinct solo funding wallets sending that day.
+    data_type: UInt64
+  - name: usd_total
+    description: All outbound value including large transfers. Flow-of-funds, NOT
+      retail behaviour - read with usd_excl_large.
+    data_type: Float64
+  - name: usd_excl_large
+    description: Outbound value from transfers under $1,000. The retail-behaviour
+      number, and the one api_celo_gpay_wallet_share_of_spend_monthly serves as `value`.
+    data_type: Float64
+  - name: n_transfers_excl_large
+    description: Count behind usd_excl_large.
+    data_type: UInt64
+  - name: n_transfers_large
+    description: Count of transfers at or above $1,000 - typically a handful, and they
+      carry most of usd_total.
+    data_type: UInt64
+  - name: usd_median
+    description: Median ticket size. The honest central measure here, given the skew.
+    data_type: Float64
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: api_celo_gpay_cardholder_engagement
+  description: >
+    Current card population split by engagement segment: for cards not being used, is
+    the holder still active on Celo at all? See fct_celo_gpay_cardholder_engagement for
+    horizon clipping and for why '__wallet_unmapped' is a coverage limit rather than an
+    observation of absence.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: label
+    description: engagement_segment from fct_celo_gpay_cardholder_engagement.
+    data_type: String
+  - name: value
+    description: Cards in this segment.
+    data_type: UInt64
+  - name: wallet_out_usd_retail
+    description: Summed 30-day wallet outflow under $1,000 per transfer - the size of
+      the prize for the reactivation segments.
+    data_type: Float64
+  - name: wallet_out_usd_total
+    description: Same window, all transfer sizes. Published alongside the retail figure
+      because the two diverge by an order of magnitude.
+    data_type: Float64
+  - name: as_of_date
+    description: The horizon the segmentation is computed as of.
+    data_type: Date
+- name: api_celo_gpay_wallet_share_of_spend_monthly
+  description: >
+    Monthly share of cardholder stablecoin outflow reaching the GP card vs going
+    elsewhere. `value` is the RETAIL number (transfers under $1,000); value_all is raw
+    flow including large treasury-scale movements that a handful of addresses dominate.
+    Read fct_celo_gpay_wallet_share_of_spend_daily before quoting either.
+  meta: {owner: analytics_team, authoritative: false}
+  columns:
+  - name: date
+    description: Month start.
+    data_type: Date
+  - name: label
+    description: to_card or to_elsewhere.
+    data_type: String
+  - name: value
+    description: Retail outflow (transfers under $1,000) in USD.
+    data_type: Float64
+  - name: value_all
+    description: All outflow in USD, large transfers included.
+    data_type: Float64
+  - name: transfers
+    description: Outbound transfer count.
+    data_type: UInt64
+  - name: peak_daily_wallets
+    description: Highest single-day distinct sending wallets in the month. Not a
+      monthly unique count - daily figures cannot be summed or maxed into one.
+    data_type: UInt64

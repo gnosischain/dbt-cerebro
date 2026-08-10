@@ -438,3 +438,214 @@ semantic_models:
         - what does it cost to settle celo gp payments
         - celo gp bridge fees
         - celo gp settlement batches
+
+# Wallet-side (funder) layer. The card-side models above stop at the Safe boundary;
+# these describe what the cardholder does with the rest of their money. Registered at
+# candidate tier like the rest of the Celo tree.
+#
+# NOTE FOR ANY METRIC BUILT ON THESE: "active" means a non-fee transfer.
+# int_celo_gpay_funder_wallet_transfers still carries CIP-64 gas receipts
+# (counterparty_class = 'fee_sink'), which are the highest-count counterparty on the
+# chain and carry no economic content; int_celo_gpay_funder_wallet_daily has them
+# removed. Prefer the daily model unless you specifically need the raw legs.
+
+- name: celo_gpay_funder_wallets
+  model: ref('int_celo_gpay_funder_wallets')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: first_funding_channel
+    type: categorical
+    expr: first_funding_channel
+  measures:
+  - name: celo_gpay_funder_wallets__wallet_count
+    agg: count
+    expr: wallet_address
+  - name: celo_gpay_funder_wallets__cards_funded
+    agg: sum
+    expr: n_cards_funded
+  - name: celo_gpay_funder_wallets__funded_usd
+    agg: sum
+    expr: total_funded_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card funding wallets
+        - who funds celo gnosis pay cards
+        - celo gp cardholder wallets
+
+- name: celo_gpay_funder_wallet_transfers
+  model: ref('int_celo_gpay_funder_wallet_transfers')
+  defaults:
+    agg_time_dimension: block_time
+  dimensions:
+  - name: block_time
+    type: time
+    expr: block_time
+    type_params:
+      time_granularity: day
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: counterparty_class
+    type: categorical
+    expr: counterparty_class
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_funder_wallet_transfers__transfers
+    agg: count
+    expr: tx_hash
+  - name: celo_gpay_funder_wallet_transfers__wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_transfers__amount_usd
+    agg: sum
+    expr: amount_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp cardholder wallet transfers
+        - what do celo gp cardholders do off the card
+
+- name: celo_gpay_funder_wallet_daily
+  model: ref('int_celo_gpay_funder_wallet_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: counterparty_class
+    type: categorical
+    expr: counterparty_class
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_funder_wallet_daily__transfers
+    agg: sum
+    expr: n_transfers
+  - name: celo_gpay_funder_wallet_daily__active_wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_daily__amount_usd
+    agg: sum
+    expr: amount_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp cardholder wallet activity
+        - daily active celo gp cardholder wallets
+
+- name: celo_gpay_cardholder_engagement
+  model: ref('fct_celo_gpay_cardholder_engagement')
+  defaults:
+    agg_time_dimension: issued_at
+  dimensions:
+  - name: issued_at
+    type: time
+    expr: issued_at
+    type_params:
+      time_granularity: day
+  - name: card_state
+    type: categorical
+    expr: card_state
+  - name: engagement_segment
+    type: categorical
+    expr: engagement_segment
+  measures:
+  - name: celo_gpay_cardholder_engagement__cards
+    agg: count
+    expr: safe_address
+  - name: celo_gpay_cardholder_engagement__wallets_active_30d
+    agg: sum
+    expr: wallet_active_30d
+  # Retail first: the unsuffixed total is dominated by a few treasury-scale transfers,
+  # so it is flow-of-funds, not behaviour. Both registered; reach for _retail.
+  - name: celo_gpay_cardholder_engagement__wallet_out_usd_retail
+    agg: sum
+    expr: wallet_out_usd_recent_retail
+  - name: celo_gpay_cardholder_engagement__wallet_out_usd_total
+    agg: sum
+    expr: wallet_out_usd_recent
+  - name: celo_gpay_cardholder_engagement__wallet_to_card_usd_recent
+    agg: sum
+    expr: wallet_to_card_usd_recent
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp dormant cards with active holders
+        - celo gp reactivation opportunity
+        - are churned celo gp cardholders still on chain
+
+- name: celo_gpay_wallet_share_of_spend_daily
+  model: ref('fct_celo_gpay_wallet_share_of_spend_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: destination
+    type: categorical
+    expr: destination
+  measures:
+  - name: celo_gpay_wallet_share_of_spend__transfers
+    agg: sum
+    expr: n_transfers
+  # usd_excl_large is the retail-behaviour measure and the one to reach for by
+  # default; usd_total is flow-of-funds and is dominated by a handful of
+  # treasury-scale transfers. Both are registered because they answer different
+  # questions - see the model description before quoting either.
+  - name: celo_gpay_wallet_share_of_spend__usd_retail
+    agg: sum
+    expr: usd_excl_large
+  - name: celo_gpay_wallet_share_of_spend__usd_total
+    agg: sum
+    expr: usd_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp share of cardholder spend
+        - how much of cardholder money reaches the celo gp card
+        - celo gp card vs wallet spending

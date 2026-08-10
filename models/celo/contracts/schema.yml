@@ -76,11 +76,10 @@ models:
     celo_execution.logs for every address in seeds/celo_gpay_settlement_contracts.
     This is the AUTHORITATIVE record of card charges and treasury movement;
     int_celo_gpay_activity infers the same charges from ERC-20 Transfer direction
-    instead. The two agree exactly — 5,165 TokenPullSuccess against 5,165 Payment
-    rows on 2026-08-05, with zero per-day variance on each contract independently
-    (legacy 1,743 = 1,743, current 3,422 = 3,422). That is the only external
-    confirmation the transfer-based classifier has, so it is worth re-running
-    after any change to the activity model.
+    instead. The two agree exactly when bound at the shared watermark
+    least(max(activity.block_time), max(TokenPullSuccess.block_timestamp)) —
+    enforced by celo_gpay_charges_match_payments on this model. That is the only
+    external confirmation the transfer-based classifier has.
 
     Both settlement contracts live here in one model. decode_logs joins a log to
     its ABI on (address, topic0) rather than topic0 alone, so contracts with
@@ -93,6 +92,8 @@ models:
     HEAVY: a full-history decode in one query OOMs (ClickHouse Code 241). Rebuild
     via scripts/full_refresh/refresh.py in the monthly batches declared below,
     never a plain `dbt run --full-refresh`.
+  tests:
+  - celo_gpay_charges_match_payments
   meta:
     owner: analytics_team
     authoritative: true
@@ -113,12 +114,13 @@ models:
           ever emitted resolves to a declared ABI event. The candidate bridge
           0xd11e35ca has emitted no logs at all, so it costs nothing to carry.
       - id: charges-reconcile-with-inferred-payments
-        text: TokenPullSuccess is the authoritative charge. Counted up to
-          int_celo_gpay_activity's own max(block_time) watermark it must equal that
-          model's Payment rows exactly. Compare only inside the watermark — charges
-          land continuously and the activity model is built at a point in time, so
-          an unbounded comparison always shows a spurious surplus (172 of them on
-          2026-08-05, all of which were simply later than the build).
+        text: TokenPullSuccess is the authoritative charge. Count both sides up to
+          least(max(activity.block_time), max(TokenPullSuccess.block_timestamp)) —
+          either model can lag the other, so an activity-only watermark false-fails
+          when settlement decode is behind (8-row surplus on 2026-08-07 when pull_wm
+          trailed act_wm by ~35 min) and a pull-only watermark false-fails the other
+          way. Unbounded comparison always shows a spurious surplus (172 on
+          2026-08-05). Enforced by celo_gpay_charges_match_payments.
       - id: two-abis-one-contract-design
         text: The contracts share zero topic0s, but not because they are unrelated.
           Every event on settlement_current takes an extra indexed `sender` as its
@@ -209,7 +211,7 @@ models:
       - 'duplicate excess: count() - uniqExact((block_timestamp, log_index)) == 0'
       - 'no undecoded logs: countIf(event_name IS NULL) == 0'
       - 'settlement conserves value: per contract, sum(TokenPullSuccess.amount) - sum(SettlementBridged.amount + SettlementTransferred.amount) == 0'
-      - 'charges match inferred payments: countIf(event_name = ''TokenPullSuccess'' AND block_timestamp <= (SELECT max(block_time) FROM int_celo_gpay_activity)) == (SELECT countIf(action = ''Payment'') FROM int_celo_gpay_activity)'
+      - 'charges match inferred payments (shared wm): count(TokenPullSuccess where ts <= least(act_wm, pull_wm)) == count(Payment where ts <= least(act_wm, pull_wm)) — dbt test celo_gpay_charges_match_payments'
       reprocess_runbook: >-
         Never `dbt run --full-refresh` this directly — the single-query scan of the
         whole logs table OOMs (ClickHouse Code 241). Rebuild via

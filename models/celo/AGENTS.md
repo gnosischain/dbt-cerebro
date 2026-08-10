@@ -77,14 +77,13 @@ Read with root AGENTS.md.
   `contracts_celo_gpay_settlement_events` decodes both settlement contracts (ABIs
   fetched 2026-08-06). Its `TokenPullSuccess` is what GP itself records for each card
   charge, so it is a completeness proof from the *operator's* side of the boundary
-  rather than from our own anchor. Counted inside `int_celo_gpay_activity`'s
-  `max(block_time)` it equals that model's `Payment` rows exactly — **5,165 v 5,165**,
-  zero per-day variance, holding independently per contract (1,743 legacy, 3,422
-  current). Always bound the comparison at that watermark: settlement batches land at
-  01:00 and 13:00 UTC and the activity model is built at a point in time, so an
-  unbounded count always shows a spurious surplus (172 on 2026-08-05, every one of
-  them simply later than the build). **Re-run this after any change to the Payment
-  CASE** — it is the only external check the classifier has.
+  rather than from our own anchor. Bound both counts at
+  `least(max(activity.block_time), max(TokenPullSuccess.block_timestamp))` — either
+  model can lag the other mid-build; activity-only watermarks false-fail when
+  settlement decode trails (seen 2026-08-07). Unbounded comparison always shows a
+  spurious surplus. Enforced by `celo_gpay_charges_match_payments` on
+  `contracts_celo_gpay_settlement_events`. **Keep that test green after any change
+  to the Payment CASE** — it is the only external check the classifier has.
 - The decoded layer also carries three things nothing else can see: failed charge
   attempts (`TokenPullFailedWithAmount`, 7 so far — they move no money, so a
   transfer-derived model cannot see them by construction), the treasury leg
@@ -204,6 +203,14 @@ Read with root AGENTS.md.
   $20k daily cap, and no card has come near it. "Remaining allowance" would therefore
   be a constant dressed up as a metric. Revisit only if the cap is ever tiered or a
   card actually hits it.
+- **Do not build a Safe module-exec or "payment submitter" mart.** Relayer
+  `0x5dab2971…` has two jobs: (1) `execTransactionWithRole` on the shared Roles
+  proxy `0x5d4ea13a…` → `AggregateBridge.settle` — already the settlement-batch
+  path (~99.9% of `TokenPullSuccess`); (2) `Spender.spend` on `0x4be4c7e4…`, which
+  fires `ExecutionFromModuleSuccess` on the card Safe and moves USDT/USDC to an
+  EOA. That second path is the entire non-bridge module-exec residue (~1.9k grains)
+  and is already `Withdrawal` in `int_celo_gpay_activity`. Outer call is Spender;
+  the module address on the Safe event is the per-card Roles proxy, not Spender.
 - **CIP-64 is not a MiniPay label.** `transaction_type = 123` is Celo's fee-currency
   envelope; most of the chain uses it. Card funding is classified as a shape in
   `int_celo_gpay_funding_tx_envelopes.funding_channel` /
@@ -239,10 +246,13 @@ Read with root AGENTS.md.
   so a $0 tile would be a plausible-looking lie; the ASOF carry-forward is uncapped
   and the two warn tests on `fct_celo_gpay_balances_safe_daily` are what make it safe.
 - **Celo tests belong in the model's own `schema.yml`, never in `tests/`.** That
-  folder is reserved for platform-wide invariants; a per-project assertion goes next to
-  its model as a `dbt_utils.expression_is_true` (use `config.where` to scope it, as the
-  two valuation tests on `fct_celo_gpay_balances_safe_daily` do). The mastercopy-drift
-  check is deliberately not a test at all — see the manual probe above.
+  folder is reserved for platform-wide invariants. Per-row checks go next to the
+  model as `dbt_utils.expression_is_true` (use `config.where` to scope it, as the
+  two valuation tests on `fct_celo_gpay_balances_safe_daily` do). Cross-model
+  scalars that need `ref()` (today: `celo_gpay_charges_match_payments`) are custom
+  generic tests under `macros/celo/`, still *declared* on the model in schema.yml.
+  The mastercopy-drift check is deliberately not a test at all — see the manual
+  probe above.
 - **`join_use_nulls` is 0 by default.** An unmatched LEFT JOIN row yields `''`
   for a String and `0` for a number, so `right.col IS NULL` never fires and
   `IS NOT NULL` is always true. This has already produced one inert test and one
