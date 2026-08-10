@@ -4,7 +4,7 @@
     "high_risk": 301,
     "models": 1165
   },
-  "inputs_fingerprint": "30504980570122fdd75f8c37d904e91d483a17d62ab3ba34922e742c70e2bf87",
+  "inputs_fingerprint": "0e75162f12ee4371d8c3737c173906a05b7376c1f46950fbe56ee51119b8a8bd",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -1371,7 +1371,7 @@
         "gpay",
         "granularity:last_7d",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1438,7 +1438,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1505,7 +1505,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1572,7 +1572,7 @@
         "gpay",
         "granularity:weekly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1639,7 +1639,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1706,7 +1706,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1773,7 +1773,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1840,7 +1840,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1907,7 +1907,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -1974,7 +1974,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2041,7 +2041,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2108,7 +2108,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2175,7 +2175,7 @@
         "gpay",
         "granularity:weekly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2242,7 +2242,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2309,7 +2309,7 @@
         "gpay",
         "granularity:last_7d",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2376,7 +2376,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2443,7 +2443,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2510,7 +2510,7 @@
         "gpay",
         "granularity:weekly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2577,7 +2577,7 @@
         "gpay",
         "granularity:hourly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2644,7 +2644,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2711,7 +2711,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2778,7 +2778,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2845,7 +2845,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2912,7 +2912,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -2979,7 +2979,7 @@
         "gpay",
         "granularity:all_time",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3046,7 +3046,7 @@
         "gpay",
         "granularity:all_time",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3113,7 +3113,7 @@
         "gpay",
         "granularity:all_time",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3180,7 +3180,7 @@
         "gpay",
         "granularity:all_time",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3247,7 +3247,7 @@
         "gpay",
         "granularity:last_7d",
         "production",
-        "tier0"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3314,7 +3314,7 @@
         "gpay",
         "granularity:daily",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3381,7 +3381,7 @@
         "gpay",
         "granularity:monthly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3448,7 +3448,7 @@
         "gpay",
         "granularity:weekly",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -3515,7 +3515,7 @@
         "gpay",
         "granularity:latest",
         "production",
-        "tier1"
+        "tier3"
       ],
       "unique_key": null
     },
@@ -85246,7 +85246,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "44d07e27d427e0c05de0f31f7e453b773041f2b0268dba739bc67136b85d51f2",
+  "models_hash": "251d00524d565c6fe8c05e9fe391c1da6de107538c348aaf80b136d196b02690",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
