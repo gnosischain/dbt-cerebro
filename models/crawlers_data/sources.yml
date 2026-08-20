@@ -252,3 +252,221 @@ sources:
             description: USD price from CoinGecko.
           - name: ingested_at
             description: Wall-clock timestamp of the insert.
+
+  # Separate source so the schema can be redirected (e.g. to playground_max)
+  # during dev/backfill validation without also redirecting dune_* and the
+  # other crawlers_data tables. Defaults to crawlers_data in prod.
+  #
+  # Redirecting matters here because ipinfo is the one crawlers_data table a
+  # developer can populate themselves: `ip_crawler --source hopr` writes it, and
+  # dev accounts cannot write crawlers_data. Without this, a dev enrichment run
+  # is invisible to dbt.
+  #
+  # NOTE the blast radius: stg_crawlers_data__ipinfo also feeds the p2p models
+  # (int_p2p_discv4_peers, int_p2p_discv5_peers and both topology models). A dev
+  # schema holding only HOPR IPs makes those look devoid of geography, so set
+  # DBT_IPINFO_SCHEMA for HOPR work only and unset it before building p2p.
+  - name: crawlers_data_ipinfo
+    schema: "{{ env_var('DBT_IPINFO_SCHEMA', 'crawlers_data') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: ipinfo
+        freshness: null
+        description: "IP intelligence enrichment from ipinfo.io lookups."
+        columns:
+          - name: ip
+            data_type: String
+          - name: hostname
+            data_type: String
+          - name: city
+            data_type: String
+          - name: region
+            data_type: String
+          - name: country
+            data_type: String
+          - name: loc
+            data_type: String
+          - name: org
+            data_type: String
+          - name: postal
+            data_type: String
+          - name: timezone
+            data_type: String
+          - name: asn
+            data_type: String
+          - name: company
+            data_type: String
+          - name: carrier
+            data_type: String
+          - name: is_bogon
+            data_type: Bool
+          - name: is_mobile
+            data_type: Bool
+          - name: abuse_email
+            data_type: String
+          - name: abuse_phone
+            data_type: String
+          - name: error
+            data_type: String
+          - name: attempts
+            data_type: UInt8
+          - name: success
+            data_type: Bool
+          - name: created_at
+            data_type: DateTime
+          - name: updated_at
+            data_type: DateTime
+
+  # HOPR feeds ingested by click-runner (hopr_network_ingestor, hopr_blokli_ingestor).
+  # Same dev/prod split as crawlers_data_ipinfo above: click-runner writes to
+  # {{HOPR_DATABASE}}, which is crawlers_data in prod. Point DBT_HOPR_SCHEMA at a dev
+  # database to build against a local ingest, and unset it for prod.
+  #
+  # All four are ReplacingMergeTree(ingested_at) and re-running a day supersedes that
+  # day's rows, so every staging model over them reads FINAL -- without it a re-run
+  # silently double-counts. The tables are small enough that FINAL is free.
+  #
+  # Coverage is NOT uniform and the two feeds do not overlap:
+  #   - the prober feeds (hopr_network_*) are dufour only; the prober was never
+  #     ported to v4, so there is no liveness signal for jura.
+  #   - blokli (hopr_blokli_*) serves jura and rotsee but NOT dufour.
+  # rotsee is a testnet -- its ticket price and balances are not real economics.
+  - name: crawlers_data_hopr
+    schema: "{{ env_var('DBT_HOPR_SCHEMA', 'crawlers_data') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: hopr_network_online_hourly
+        freshness: null
+        description: >
+          Hourly count of online HOPR nodes from the network.hoprnet.org dashboard's own
+          history. Backfilled in one call (the API returns the whole series), so it needs
+          no daily run and carries history from 2023-09 that no other feed has. The series
+          is NOT gap-free -- roughly a fifth of expected hours are absent -- so consumers
+          must count observed hours rather than assume 24 per day.
+        columns:
+          - name: network_id
+            data_type: UInt16
+          - name: observed_at
+            data_type: DateTime
+          - name: nodes_online
+            data_type: UInt32
+          - name: ingested_at
+            data_type: DateTime
+      - name: hopr_network_nodes
+        freshness: null
+        description: >
+          Daily per-node quality snapshot from the dashboard prober (dufour only).
+          node_address is the on-chain address and joins directly to decoded
+          HoprChannels source/destination. latency_ms is NULL for nodes the prober
+          cannot reach -- that is the reachability signal, not missing data.
+          availability_1y is currently NULL for every node.
+        columns:
+          - name: snapshot_date
+            data_type: Date
+          - name: network_id
+            data_type: UInt16
+          - name: node_address
+            data_type: String
+          - name: latency_ms
+            data_type: Nullable(Float64)
+          - name: availability_24h
+            data_type: Nullable(Float64)
+          - name: availability_7d
+            data_type: Nullable(Float64)
+          - name: availability_30d
+            data_type: Nullable(Float64)
+          - name: availability_6m
+            data_type: Nullable(Float64)
+          - name: availability_1y
+            data_type: Nullable(Float64)
+          - name: first_seen
+            data_type: Nullable(DateTime)
+          - name: last_seen
+            data_type: Nullable(DateTime)
+          - name: prober_last_run
+            data_type: Nullable(DateTime)
+          - name: ingested_at
+            data_type: DateTime
+      - name: hopr_blokli_nodes
+        freshness: null
+        description: >
+          Per-node identity snapshot from blokli, HOPR's own v4 indexer (jura and rotsee).
+          chain_key is the on-chain node address; packet_key and keyid exist only here.
+          multiaddress carries the announced transport address including a raw IP.
+        columns:
+          - name: snapshot_date
+            data_type: Date
+          - name: network
+            data_type: LowCardinality(String)
+          - name: keyid
+            data_type: UInt32
+          - name: chain_key
+            data_type: String
+          - name: packet_key
+            data_type: String
+          - name: safe_address
+            data_type: String
+          - name: multiaddress
+            data_type: String
+          - name: multiaddress_count
+            data_type: UInt8
+          - name: ingested_at
+            data_type: DateTime
+      - name: hopr_blokli_network_snapshot
+        freshness: null
+        description: >
+          Daily network-level snapshot from blokli: live protocol parameters (ticket
+          price, minimum winning probability, key binding fee, closure grace period) plus
+          account/safe/channel counts and balances. The only source of jura economics and
+          staked balances that needs no balance indexing. Forward-only -- no history
+          before the ingestor first ran.
+        columns:
+          - name: snapshot_date
+            data_type: Date
+          - name: network
+            data_type: LowCardinality(String)
+          - name: chain_id
+            data_type: UInt32
+          - name: block_number
+            data_type: UInt64
+          - name: api_version
+            data_type: String
+          - name: ticket_price_wxhopr
+            data_type: Nullable(Float64)
+          - name: min_ticket_winning_probability
+            data_type: Float64
+          - name: key_binding_fee_wxhopr
+            data_type: Nullable(Float64)
+          - name: channel_closure_grace_period_s
+            data_type: UInt32
+          - name: account_count
+            data_type: UInt32
+          - name: safes_count
+            data_type: UInt32
+          - name: safes_balance_wxhopr
+            data_type: Nullable(Float64)
+          - name: channels_total
+            data_type: UInt32
+          - name: channels_balance_wxhopr
+            data_type: Nullable(Float64)
+          - name: channels_open
+            data_type: UInt32
+          - name: channels_open_balance_wxhopr
+            data_type: Nullable(Float64)
+          - name: channels_pendingtoclose
+            data_type: UInt32
+          - name: channels_pendingtoclose_balance_wxhopr
+            data_type: Nullable(Float64)
+          - name: channels_closed
+            data_type: UInt32
+          - name: channels_closed_balance_wxhopr
+            data_type: Nullable(Float64)
+          - name: ingested_at
+            data_type: DateTime
+
+      # ──────────────── ProbeLab rollups ────────────────
+      # ProbeLab rollup tables use Nullable timestamps — exempt from freshness

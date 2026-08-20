@@ -1,0 +1,939 @@
+version: 2
+
+models:
+  - name: int_hopr_channels_events
+    description: >
+      Normalized HOPR payment-channel events across both live networks. Reconciles
+      three differences between the deployments: (1) dufour emits typed scalars
+      while jura emits the raw packed storage word (balance uint96 | ticketIndex
+      uint48 | closureTime uint32 | epoch uint24 | status uint8, low bits first),
+      unpacked here and verified against blokli's API to the exact wei;
+      (2) dufour's ChannelOpened carries no channelId, so it is derived as
+      keccak256(source || destination) -- verified against 52/52 real events;
+      (3) source/destination appear only on ChannelOpened, so they are filled
+      across each (network, channel_id) partition, which is sound because
+      channel_id is a pure function of the endpoint pair and therefore invariant
+      across channel reopens.
+      Materialized as a table rather than an incremental append: the expensive
+      log scan already happened upstream, so a full rebuild is cheap and avoids
+      the append-watermark and append-over-populated-partition hazards.
+    columns:
+      - name: network
+        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: channel_id
+        description: >
+          Channel identifier, keccak256(abi.encodePacked(source, destination)).
+          Derived for dufour ChannelOpened, taken from the event elsewhere.
+        data_type: String
+        tests: [not_null]
+      - name: event_name
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ChannelOpened', 'ChannelBalanceIncreased',
+                       'ChannelBalanceDecreased', 'TicketRedeemed',
+                       'OutgoingChannelClosureInitiated', 'ChannelClosed']
+      - name: balance_wei
+        description: >
+          Channel balance AFTER the event, in wei. NULL where the event carries no
+          balance observation (dufour ChannelOpened and ChannelClosed) -- must stay
+          NULL so the delta window does not diff against a fabricated zero.
+        data_type: Nullable(UInt256)
+      - name: redeemed_wei
+        description: >
+          Value paid out to the destination node on a ticket redemption, derived as
+          the drop in balance on ChannelBalanceDecreased. Scoped to that event
+          because a channel closing also drops the balance but returns funds to
+          the source instead.
+        data_type: Nullable(UInt256)
+      - name: ticket_index
+        description: >
+          Channel's ticket index after the event. NOT a ticket count -- it advances
+          by a ticket's index RANGE, so jura channels reach millions within a week.
+          Never aggregate as a volume.
+        data_type: Nullable(UInt64)
+      - name: channel_status
+        description: Decoded ChannelStatus; 'unknown' on dufour, which does not emit it
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['CLOSED', 'OPEN', 'PENDING_TO_CLOSE', 'unknown', 'unexpected']
+      - name: packing_overflow_check
+        description: >
+          Guard on the jura bit layout itself: the packed struct occupies bits
+          0..207, so anything at bit 208 or above must be zero. A non-zero value
+          means the Channel struct changed and the unpacking offsets are stale.
+        data_type: Nullable(UInt256)
+        tests:
+          - accepted_values:
+              values: [0]
+              config:
+                where: "packing_overflow_check IS NOT NULL"
+
+  - name: int_hopr_nodes
+    description: >
+      HOPR node dimension, one row per (network, node_address). Turns three
+      previously dead-end decode streams into something usable: before it, only
+      contracts_hopr_Channels_events had any consumer, while Announcements,
+      NodeSafeRegistry and NodeStakeFactory were decoded but referenced by nothing.
+      Joins node identity to its Safe (operator), its announced IP (geo/ASN/hosting
+      via the same stg_crawlers_data__ipinfo view the p2p models use), its declared
+      class, and its channel earnings as a relay destination.
+      The operator dimension is the point: safe_address is what makes
+      nodes-per-operator computable, the one HOPR decentralisation metric that is
+      not a vanity count.
+      Also carries per-node liveness from the network.hoprnet.org prober. That matters
+      because on-chain presence is cumulative and never expires: without it this model
+      cannot tell a node running today from one that registered in 2023 and vanished,
+      and most of the rows here are the latter. liveness_source says which case each row
+      is. dufour only -- the prober was never ported to jura.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [network, node_address]
+        semantics: dimension
+        ground_truth: >-
+          On-chain HoprAnnouncements / HoprNodeSafeRegistry / HoprNodeStakeFactory
+          events, plus the hopr_node_registry seed for class labels and
+          crawlers_data.ipinfo for geography.
+        invariants:
+        - id: one-row-per-network-node
+          text: >-
+            Grain is (network, node_address); count() must equal
+            uniqExact((network, node_address)). A duplicate would double-count a
+            node in every operator-concentration or geography aggregate.
+        - id: join-use-nulls-required
+          text: >-
+            join_use_nulls = 1 must stay set in the pre_hook. Every enrichment is a
+            LEFT JOIN and ClickHouse otherwise fills unmatched rows with the column
+            TYPE DEFAULT ('' for String), not NULL. Without it every unclassified node
+            reads as classified, and every node reports geo enrichment whether or not
+            ipinfo matched. Both failures are silent.
+        - id: geo-coverage-is-partial-and-explicit
+          text: >-
+            ipinfo coverage of HOPR IPs depends on ip_crawler having been pointed at them
+            IN THE DATABASE BEING READ, and the two databases differ. crawlers_data is
+            populated by the nebula pipeline for a different node set, so it contains HOPR
+            IPs only incidentally; playground_max is where ip_crawler's `hopr` preset has
+            been run. Until that preset runs against crawlers_data, expect geo_source to be
+            mostly 'unenriched' on a prod build and mostly 'ipinfo' in dev -- that gap is
+            missing ingestion, not a regression in this model. Coverage also lags
+            newly-announced IPs between crawler runs. Never filter unenriched nodes out of
+            counts, and never read a NULL ip_country as "no country".
+        - id: registered-is-not-alive
+          text: >-
+            count() here is "nodes that EVER registered", never "network size" -- on-chain
+            presence is cumulative and never expires, so nodes that stopped running years
+            ago still count. It runs several times the live network.
+
+            Judging which rows are alive takes two signals, not one. liveness_source =
+            'prober' with is_reachable is direct evidence of life, but the prober's roster
+            is not the population of record: some unprobed nodes still earn on chain, so
+            last_channel_activity_at is the second signal and neither alone is sufficient.
+            fct_hopr_network_health_daily holds registered and online side by side.
+        - id: prober-source-must-exist-in-target-database
+          text: >-
+            This model reads stg_crawlers_data__hopr_network_nodes, so it depends on
+            click-runner's HOPR tables existing in whatever database the source resolves
+            to (crawlers_data by default, DBT_HOPR_SCHEMA to override). A ClickHouse view
+            over a missing table fails to CREATE rather than returning nothing, so if
+            those tables are absent the build errors instead of degrading.
+            The whole HOPR set is still development-only, so nothing is live yet -- but
+            the first production build will fail unless the tables exist in crawlers_data.
+            A single run of each click-runner HOPR ingestor creates them (CREATE TABLE IF
+            NOT EXISTS); the cron does not have to be deployed first. Same applies to
+            fct_hopr_network_health_daily, the api_hopr_* views and the four
+            stg_crawlers_data__hopr_* views.
+        - id: safe-link-only-from-registry
+          text: >-
+            NodeSafeRegistry is the ONLY source linking a node to a Safe.
+            NewHoprNodeStakeSafe carries just `instance` (the Safe address) and no
+            node address, so it can only date a Safe's creation, never attribute it.
+        - id: deregistration-event-name-differs-per-network
+          text: >-
+            dufour emits DergisteredNodeSafe (a typo in the deployed contract) and
+            jura emits DeregisteredNodeSafe. Matching one spelling silently
+            under-counts deregistrations on the other network, inflating
+            is_registered.
+        hazards: [ch-left-join-nulls, decode-watermark-late-logs, stale-snapshot-caveat]
+        validation:
+        - 'count() - uniqExact((network, node_address)) == 0'
+        - 'countIf(node_class = ''cover_traffic'') == 10 AND countIf(node_class = ''gnosisvpn_exit'') == 7'
+        - 'geo honesty: countIf(geo_source = ''ipinfo'' AND ip_country IS NULL) == 0'
+        - 'liveness honesty: countIf(liveness_source != ''prober'' AND latency_ms IS NOT NULL) == 0'
+        - 'every classified node resolves a safe: countIf(node_class != ''unclassified'' AND safe_address IS NULL) == 0'
+        reprocess_runbook: >-
+          Plain `dbt run --select int_hopr_nodes` - it is a small table over
+          already-decoded inputs, so a full rebuild is seconds and there is no
+          watermark to respect. Rebuild after any of its upstreams change, and after
+          reseeding hopr_node_registry. If geo coverage jumps or collapses, check
+          crawlers_data.ipinfo first rather than this model.
+    columns:
+      - name: network
+        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: node_address
+        description: Node chain key, lowercased with 0x prefix. Join key to channel endpoints and to the prober feed.
+        data_type: String
+        tests: [not_null]
+      - name: safe_address
+        description: >
+          Currently bound HOPR Safe (the operator). NULL for nodes never registered.
+          Group by this for nodes-per-operator concentration.
+        data_type: Nullable(String)
+      - name: is_registered
+        description: 1 if the latest NodeSafeRegistry event for this node was a registration.
+        data_type: UInt8
+      - name: first_registered_at
+        description: First RegisteredNodeSafe timestamp for this node.
+        data_type: Nullable(DateTime)
+      - name: last_deregistered_at
+        description: Most recent deregistration (either spelling), NULL if never deregistered.
+        data_type: Nullable(DateTime)
+      - name: safe_created_at
+        description: When the bound Safe was created, from NewHoprNodeStakeSafe.
+        data_type: Nullable(DateTime)
+      - name: packet_pub_key
+        description: Latest announced ed25519 packet public key from KeyBinding.
+        data_type: Nullable(String)
+      - name: announced_multiaddr
+        description: Latest announced transport multiaddress, e.g. /ip4/34.159.20.69/tcp/9024.
+        data_type: Nullable(String)
+      - name: announced_ip
+        description: IPv4 extracted from announced_multiaddr; NULL for /dns4/ and /ip6/ forms.
+        data_type: Nullable(String)
+      - name: announcement_count
+        description: Number of AddressAnnouncement events; a node re-announces when its address changes.
+        data_type: UInt64
+      - name: first_announced_at
+        description: First AddressAnnouncement timestamp.
+        data_type: Nullable(DateTime)
+      - name: last_announced_at
+        description: Most recent AddressAnnouncement timestamp.
+        data_type: Nullable(DateTime)
+      - name: node_class
+        description: >
+          Declared class from the hopr_node_registry seed, sourced from HOPR's own
+          repos rather than inferred: cover_traffic, gnosisvpn_exit, or unclassified.
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cover_traffic', 'gnosisvpn_exit', 'unclassified']
+      - name: node_label
+        description: Human label from the seed, e.g. "GnosisVPN UK" or "CT blue 3".
+        data_type: Nullable(String)
+      - name: declared_city
+        description: City the product advertises for this node. NOT verified geography.
+        data_type: Nullable(String)
+      - name: declared_country
+        description: Country the product advertises for this node. NOT verified geography.
+        data_type: Nullable(String)
+      - name: ip_country
+        description: Country resolved from the announced IP via ipinfo. NULL unless geo_source = 'ipinfo'.
+        data_type: Nullable(String)
+      - name: ip_city
+        description: City resolved from the announced IP via ipinfo.
+        data_type: Nullable(String)
+      - name: ip_latitude
+        description: >
+          Latitude of the announced IP, split out of ipinfo's "lat,lon" string. A CITY
+          CENTROID, not the machine -- every node in a city shares it, and IP geolocation
+          does not resolve a host more precisely than that. NULL rather than 0 where loc is
+          missing or malformed, because 0,0 is a real place in the Gulf of Guinea and would
+          plot every unlocated node there.
+        data_type: Nullable(Float64)
+      - name: ip_longitude
+        description: Longitude of the announced IP. Same city-centroid caveat as ip_latitude.
+        data_type: Nullable(Float64)
+      - name: ip_org
+        description: Owning organisation of the announced IP, e.g. "AS8767 M-net Telekommunikations GmbH".
+        data_type: Nullable(String)
+      - name: ip_asn
+        description: ASN of the announced IP where ipinfo provides it.
+        data_type: Nullable(String)
+      - name: hosting_provider
+        description: >
+          Bucketed provider from stg_crawlers_data__ipinfo (AWS, Google, Hetzner,
+          'Hosting/CDN (Other)', 'Public ISP (Home/Office)', 'Unknown', ...). This is the
+          home-vs-datacenter signal for HOPR decentralisation.
+
+          'Unknown' means the org string matched no rule -- do not read it as residential,
+          and do not fold it into either side of a home-vs-datacenter split. dufour nodes
+          are overwhelmingly datacenter-hosted -- Contabo and Hetzner dominate, with the
+          rest spread across the hyperscalers -- and the jura exits all sit in Google
+          Cloud. Budget-VPS hosters used to fall through the classifier's residential
+          default, which materially overstated home hosting; see the
+          stg_crawlers_data__ipinfo column doc for that contract.
+        data_type: Nullable(String)
+      - name: ip_is_mobile
+        description: Whether ipinfo flags the announced IP as a mobile network.
+        data_type: Nullable(Bool)
+      - name: geo_source
+        description: >
+          Enrichment provenance, so partial coverage is never mistaken for absence:
+          'ipinfo' (resolved), 'unenriched' (has an IPv4 but ipinfo has no row),
+          'no_ipv4' (announced a dns4/ip6 address, or never announced).
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['ipinfo', 'unenriched', 'no_ipv4']
+      - name: latency_ms
+        description: >
+          Round-trip time the prober last measured, milliseconds. NULL wherever
+          liveness_source is not 'prober', and also for a probed-but-unreachable node.
+        data_type: Nullable(Float64)
+      - name: is_reachable
+        description: >
+          Whether the prober reached the node in its latest snapshot. NULL, never false,
+          where the node was not probed at all -- unmeasured is not down.
+        data_type: Nullable(Bool)
+      - name: availability_24h
+        description: Fraction of the last 24 hours the node was up, in [0,1].
+        data_type: Nullable(Float64)
+      - name: availability_7d
+        description: Fraction of the last 7 days the node was up, in [0,1].
+        data_type: Nullable(Float64)
+      - name: availability_30d
+        description: Fraction of the last 30 days the node was up, in [0,1].
+        data_type: Nullable(Float64)
+      - name: prober_snapshot_date
+        description: >
+          Date of the prober snapshot these liveness columns come from. Check it before
+          calling any of them current -- the ingestor stopping leaves the last snapshot
+          in place indefinitely.
+        data_type: Nullable(Date)
+      - name: liveness_source
+        description: >
+          Liveness provenance, mirroring geo_source so unmeasured never reads as down:
+          'prober' (measured), 'not_probed' (the prober's roster does not include this
+          node), 'no_prober_for_network' (no prober covers this network at all -- jura,
+          because it was never ported to v4, so its nodes are unmeasurable rather than
+          unreachable).
+
+          'not_probed' IS NOT A SYNONYM FOR DEAD. The roster is not the population of
+          record: a substantial minority of unprobed nodes still show on-chain channel
+          activity, some within the last day. Absence correlates with dormancy and does
+          not establish it, so use last_channel_activity_at to judge whether a node is
+          alive and treat this column purely as "did the prober look at it". Rolling
+          'not_probed' into an inactive bucket writes off nodes that are still earning.
+        data_type: String
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['prober', 'not_probed', 'no_prober_for_network']
+      - name: earned_wei
+        description: Value paid to this node as a relay destination, in wei.
+        data_type: UInt256
+      - name: earned_wxhopr
+        description: earned_wei scaled to wxHOPR.
+        data_type: Decimal(38, 18)
+      - name: tickets_earned
+        description: TicketRedeemed events on channels terminating at this node.
+        data_type: UInt64
+      - name: channels_as_destination
+        description: Distinct channels where this node is the destination (it relays and is paid).
+        data_type: UInt64
+      - name: channels_as_source
+        description: Distinct channels where this node is the source (it funds and pays).
+        data_type: UInt64
+      - name: channels_opened
+        description: ChannelOpened events initiated by this node as source.
+        data_type: UInt64
+      - name: first_channel_activity_at
+        description: First channel event involving this node.
+        data_type: Nullable(DateTime)
+      - name: last_channel_activity_at
+        description: Most recent channel event involving this node.
+        data_type: Nullable(DateTime)
+
+  - name: fct_hopr_network_daily
+    description: >
+      Daily HOPR channel activity per network, split by is_cover_traffic. THE SPLIT
+      IS THE POINT: on dufour, nearly every ChannelOpened event comes from the ten
+      cover-traffic nodes HOPR publishes in ct-research -- the overwhelming majority
+      in every year dufour has been live -- and the config's 48-hour channel max_age
+      is what generates almost all observed churn. Cover traffic is HOPR paying node runners in proportion to
+      stake -- a staking rewards programme -- so summing across the split would
+      present a rewards schedule as user demand. jura carries no cover traffic.
+    columns:
+      - name: network
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: activity_date
+        data_type: Date
+        tests: [not_null]
+      - name: is_cover_traffic
+        description: 1 where the channel source is a known HOPR cover-traffic node
+        data_type: UInt8
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+      - name: redeemed_wxhopr
+        description: Value redeemed by relayers, reconstructed from balance diffs
+        data_type: Decimal(38, 18)
+      - name: tickets_redeemed
+        data_type: UInt64
+        tests: [not_null]
+
+  - name: fct_hopr_network_health_daily
+    description: >
+      Daily HOPR network health per network: how many nodes have ever registered
+      on-chain, versus how many are actually up.
+
+      THE GAP BETWEEN THOSE IS THE POINT. On-chain registration is cumulative and never
+      expires, so a node that ran once in 2023 and vanished still counts in
+      nodes_registered_cumulative forever; the prober and the dashboard's online series
+      measure the live network. The two have diverged every year -- roughly 1.6x apart
+      in 2023 and 3.5x by 2026, as registrations accumulate while the live network
+      shrinks. Both columns sit side by side specifically so a chart cannot show one
+      while implying the other, and neither should ever be labelled "network size"
+      without saying which it is.
+
+      Coverage is asymmetric. nodes_online_* reaches back to 2023-09 from the dashboard
+      history; the prober columns start only when click-runner's hopr-network ingestor
+      first ran and are NULL before that, meaning unmeasured, never zero. Both prober
+      feeds are dufour-only, so jura carries registration counts and nothing else --
+      jura's missing liveness is the prober never having been ported to v4, not jura
+      being down.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [network, date]
+        semantics: daily_snapshot
+        ground_truth: >-
+          Cumulative registrations from decoded HoprAnnouncements KeyBinding events;
+          liveness from the network.hoprnet.org dashboard history and prober, ingested
+          by click-runner into the crawlers_data_hopr source.
+        invariants:
+        - id: one-row-per-network-date
+          text: >-
+            Grain is (network, date); count() must equal uniqExact((network, date)).
+            The date spine is a UNION DISTINCT of the three inputs' own dates, so a
+            duplicate means an input started emitting more than one row per day.
+        - id: registered-and-online-are-not-interchangeable
+          text: >-
+            nodes_registered_cumulative counts nodes that ever key-bound and never
+            decrements. nodes_online_avg counts nodes up on the day. Presenting the
+            first as network size overstates HOPR several-fold, and the factor grows
+            every year. Any single "node count" on a dashboard must name which one.
+        - id: bare-hex-vs-prefixed-address-join
+          text: >-
+            The registrations CTE joins decoded events to contracts_hopr_registry.
+            execution.logs carries addresses as BARE hex while the registry stores them
+            0x-prefixed, so the join must strip the prefix
+            (lower(contract_address) = replaceAll(r.address, '0x', '')). Joining raw
+            matches nothing, yields a cumulative count of zero for every date, and
+            still builds green -- this exact failure happened during development.
+        - id: hours-observed-is-load-bearing
+          text: >-
+            The dashboard's hourly history is missing a substantial share of its hours,
+            so a day can rest on anything from one observation to twenty-four. Read
+            nodes_online_avg together with hours_observed and drop or flag thin days;
+            averaging them as equal to full days silently overweights sparse periods.
+        - id: null-means-unmeasured
+          text: >-
+            NULL in any prober column means no measurement existed for that day, never
+            zero nodes. coalescing them to 0 would invent an outage across the whole
+            span before the ingestor started.
+        hazards: [ch-left-join-nulls, stale-snapshot-caveat, decode-watermark-late-logs]
+        validation:
+        - 'count() - uniqExact((network, date)) == 0'
+        - 'registrations are non-zero: max(nodes_registered_cumulative) > 0'
+        - 'cumulative never decreases: no row where nodes_registered_cumulative < previous within network'
+        - 'online implies observation: countIf(nodes_online_avg IS NOT NULL AND hours_observed = 0) == 0'
+        reprocess_runbook: >-
+          Plain `dbt run --select fct_hopr_network_health_daily` - it is a small table
+          rebuilt whole with no watermark. Rebuild after the click-runner HOPR ingestors
+          run or after any Announcements decode change. Set DBT_HOPR_SCHEMA to the
+          database holding the click-runner tables when building outside prod.
+    columns:
+      - name: network
+        description: HOPR network; dufour, or jura for registration counts only.
+        data_type: String
+        tests: [not_null]
+      - name: date
+        description: Calendar day, UTC.
+        data_type: Date
+        tests: [not_null]
+      - name: nodes_registered_new
+        description: >
+          Nodes whose first KeyBinding fell on this date. KeyBinding is the act of
+          joining the network; AddressAnnouncement repeats whenever a node re-announces
+          an address, so it dates announcements rather than registrations.
+        data_type: UInt64
+      - name: nodes_registered_cumulative
+        description: >
+          Running total of nodes ever registered on this network up to and including
+          this date. Never decrements -- deregistration and abandonment are invisible
+          to it. This is NOT the live network size.
+        data_type: UInt64
+      - name: nodes_online_avg
+        description: >
+          Mean of the dashboard's hourly online count across the hours observed that
+          day. NULL where the dashboard history has no hours at all. Always read with
+          hours_observed.
+        data_type: Nullable(Float64)
+      - name: nodes_online_min
+        description: Lowest hourly online count observed that day.
+        data_type: Nullable(UInt32)
+      - name: nodes_online_max
+        description: Highest hourly online count observed that day.
+        data_type: Nullable(UInt32)
+      - name: hours_observed
+        description: >
+          Distinct hours the dashboard actually recorded that day, 0 to 24. The history
+          is far from complete, so this is how a consumer tells a well-observed day from
+          a single-sample one. Zero means the online columns are NULL.
+        data_type: UInt64
+      - name: nodes_probed
+        description: >
+          Nodes the prober attempted that day. NULL before the ingestor started and for
+          every jura row. Consistently far below nodes_registered_cumulative, because
+          the prober tracks the live set rather than the historical registry.
+        data_type: Nullable(UInt64)
+      - name: nodes_reachable
+        description: Nodes the prober actually reached, i.e. that returned a latency.
+        data_type: Nullable(UInt64)
+      - name: nodes_high_availability
+        description: >
+          Nodes up at least 90% of the last 24 hours. Kept apart from nodes_reachable
+          because a node can answer one probe while being down most of the day.
+        data_type: Nullable(UInt64)
+      - name: avg_latency_ms
+        description: Mean round-trip time across reachable nodes, milliseconds.
+        data_type: Nullable(Float64)
+      - name: p50_latency_ms
+        description: >
+          Median round-trip time across reachable nodes. Materially below the mean --
+          a long tail of slow nodes pulls the average up, so the median is the better
+          headline.
+        data_type: Nullable(Float64)
+      - name: avg_availability_24h
+        description: Mean 24-hour availability across all probed nodes, in [0,1].
+        data_type: Nullable(Float64)
+
+  - name: api_gnosisvpn_exit_activity_daily
+    description: >
+      GnosisVPN traffic by exit node and country, per day -- the one HOPR series
+      that is about product demand rather than protocol plumbing. Works because
+      the exit-node roster is committed to git (gnosis/gnosis_vpn
+      linux/resources/config-jura.toml) with an address, city and country per
+      destination. Scoped to jura, which carries no cover traffic.
+      Two caveats consumers must carry: tickets are probabilistic payments, so
+      they are proportional to relayed volume in expectation but are NOT a
+      bandwidth measurement (real bytes live only in node-local Prometheus
+      metrics); and channel counts track how many clients are running, not usage,
+      because the client auto-maintains channels toward target_open_channels.
+      The city/country labels are product metadata, not verified geography -- the
+      announced IPs for these nodes cluster in one 185.9.1.0/24 block plus Google
+      Cloud ranges.
+    columns:
+      - name: activity_date
+        data_type: Date
+        tests: [not_null]
+      - name: country_code
+        description: ISO-3166 alpha-2 of the exit node's advertised location
+        data_type: LowCardinality(String)
+        tests: [not_null]
+      - name: tickets_redeemed
+        description: Redeemed tickets on channels terminating at this exit
+        data_type: UInt64
+        tests: [not_null]
+      - name: unique_counterparty_nodes
+        description: >
+          Distinct nodes funding channels toward this exit. An upper bound on
+          running clients, not a user count -- one operator can run many nodes.
+        data_type: UInt64
+
+  # ─────────────────────────── served endpoints (api_*) ───────────────────────────
+  # Contract surface for metrics-dashboard and the Cerebro API/MCP. Everything below
+  # carries production + api: + granularity: + tier and a fully typed column schema,
+  # which is what check_api_tags.py enforces. Renaming any of these means grepping the
+  # metrics-dashboard SQL by FROM/JOIN, not by filename.
+  #
+  # api_gnosisvpn_exit_activity_daily above is deliberately NOT one of these: it keeps
+  # meta.api.exclude_from_api while GnosisVPN is in closed beta, because publishing an
+  # endpoint contract over a week-old product surface would commit us to it. GnosisVPN
+  # stays visible through the gnosisvpn_exit_nodes counts and jura rows below.
+
+  - name: api_hopr_network_health_daily
+    description: >
+      Daily nodes-ever-registered versus nodes-actually-online per network. The two are
+      not interchangeable: registration is cumulative and never expires, so the registry
+      figure runs several times the live network and the gap has widened every year.
+      Never label either "network size" without saying which. Read nodes_online_avg with
+      hours_observed -- the upstream hourly history has real gaps. NULL prober columns
+      mean unmeasured, never zero; prober coverage is dufour-only.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; dufour, or jura for registration counts only.
+        data_type: String
+        tests: [not_null]
+      - name: date
+        description: Calendar day, UTC.
+        data_type: Date
+        tests: [not_null]
+      - name: nodes_registered_new
+        description: Nodes whose first on-chain KeyBinding fell on this date.
+        data_type: UInt64
+      - name: nodes_registered_cumulative
+        description: >
+          Running total of nodes ever registered. Never decrements -- abandonment is
+          invisible to it. NOT the live network size.
+        data_type: UInt64
+      - name: nodes_online_avg
+        description: >
+          Mean of the dashboard's hourly online count across observed hours. The live
+          network size. NULL where no hours were recorded.
+        data_type: Nullable(Float64)
+      - name: nodes_online_min
+        description: Lowest hourly online count that day.
+        data_type: Nullable(UInt32)
+      - name: nodes_online_max
+        description: Highest hourly online count that day.
+        data_type: Nullable(UInt32)
+      - name: hours_observed
+        description: >
+          Distinct hours actually recorded, 0-24. Load-bearing: a day can rest on one
+          observation or twenty-four, so thin days are not comparable to full ones.
+        data_type: UInt64
+      - name: nodes_probed
+        description: Nodes the prober attempted. NULL before the ingestor started, and for jura.
+        data_type: Nullable(UInt64)
+      - name: nodes_reachable
+        description: Nodes the prober actually reached.
+        data_type: Nullable(UInt64)
+      - name: nodes_high_availability
+        description: Nodes up at least 90% of the last 24 hours.
+        data_type: Nullable(UInt64)
+      - name: avg_latency_ms
+        description: Mean round-trip time across reachable nodes, milliseconds.
+        data_type: Nullable(Float64)
+      - name: p50_latency_ms
+        description: >
+          Median round-trip time. Materially below the mean -- a tail of slow nodes pulls
+          the average up, so prefer this as the headline.
+        data_type: Nullable(Float64)
+      - name: avg_availability_24h
+        description: Mean 24-hour availability across probed nodes, in [0,1].
+        data_type: Nullable(Float64)
+
+  - name: api_hopr_channel_activity_daily
+    description: >
+      Daily payment-channel activity per network, SPLIT BY is_cover_traffic. The split is
+      the contract: on dufour nearly every event is HOPR paying its own node runners in
+      proportion to stake, so a total across the split presents a rewards schedule as user
+      demand. Consumers must split or filter. tickets_redeemed is the trustworthy volume
+      measure; channels_opened is not comparable across years.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; dufour or jura.
+        data_type: String
+        tests: [not_null]
+      - name: date
+        description: >
+          Calendar day, UTC. Named `date` rather than `activity_date` so the daily
+          endpoint exposes its grain under the required name, and so it joins
+          api_hopr_network_health_daily on (network, date) with no rename.
+        data_type: Date
+        tests: [not_null]
+      - name: is_cover_traffic
+        description: >
+          1 where the channel source is a known HOPR cover-traffic node. A DIMENSION,
+          never a measure -- always split or filter on it.
+        data_type: UInt8
+        tests: [not_null]
+      - name: channels_opened
+        description: Channels opened.
+        data_type: UInt64
+      - name: channels_closed
+        description: Channels closed.
+        data_type: UInt64
+      - name: closures_initiated
+        description: Outgoing closures initiated but not yet final.
+        data_type: UInt64
+      - name: tickets_redeemed
+        description: Ticket redemptions. The trustworthy, time-stable volume metric.
+        data_type: UInt64
+      - name: fundings
+        description: Channel balance increases.
+        data_type: UInt64
+      - name: redeemed_wxhopr
+        description: wxHOPR paid to relayers, reconstructed from channel balance diffs.
+        data_type: Decimal(38, 18)
+      - name: funded_wxhopr
+        description: wxHOPR pushed into channels.
+        data_type: Decimal(38, 18)
+      - name: active_channels
+        description: Distinct channels seen that day. A per-day distinct count, so max not sum.
+        data_type: UInt64
+      - name: unique_source_nodes
+        description: Distinct paying nodes.
+        data_type: UInt64
+      - name: unique_destination_nodes
+        description: Distinct relaying nodes.
+        data_type: UInt64
+      - name: events
+        description: Total decoded channel events.
+        data_type: UInt64
+
+  - name: api_hopr_nodes_by_country_latest
+    description: >
+      Current node counts per network per country. Nodes with no resolvable IPv4 or no
+      ipinfo row appear as country_code 'UNKNOWN' with geo_resolved = 0 -- they are a row,
+      never a filter, because dropping them shrinks the denominator of every share a chart
+      computes. live_nodes counts only prober-reached nodes and is 0 for jura because
+      nothing measures it, not because jura is down.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; dufour or jura.
+        data_type: String
+        tests: [not_null]
+      - name: as_of_date
+        description: >
+          When this snapshot is current, anchored to the newest on-chain evidence it
+          contains rather than to today() -- so a stale build cannot read as live. Point-in-
+          time endpoints must publish this; see the stale-snapshot-caveat lesson.
+        data_type: Date
+      - name: country_code
+        description: ISO country code from ipinfo, or 'UNKNOWN' for unresolved nodes.
+        data_type: String
+        tests: [not_null]
+      - name: geo_resolved
+        description: 1 where the country came from ipinfo, 0 for the UNKNOWN bucket.
+        data_type: UInt8
+      - name: nodes
+        description: Nodes ever registered with this country.
+        data_type: UInt64
+      - name: live_nodes
+        description: >
+          Of those, nodes the prober reached. dufour only -- 0 for jura means unmeasured.
+        data_type: UInt64
+      - name: cover_traffic_nodes
+        description: Declared HOPR cover-traffic nodes here.
+        data_type: UInt64
+      - name: gnosisvpn_exit_nodes
+        description: Declared GnosisVPN exit nodes here.
+        data_type: UInt64
+      - name: distinct_operators
+        description: Distinct staking Safes -- the non-vanity decentralisation count.
+        data_type: UInt64
+      - name: distinct_hosts
+        description: Distinct announced IPs. Below nodes wherever nodes share a machine.
+        data_type: UInt64
+
+  - name: api_hopr_nodes_hosting_latest
+    description: >
+      Current node counts per network per hosting provider, with the host-concentration
+      figures. 'Unknown' means the org string matched no rule in the shared ipinfo
+      classifier -- it is NOT residential and must not be folded into either side of a
+      home-vs-datacenter split. 'NO_IPV4' and 'UNRESOLVED' are published for the same
+      reason. nodes / distinct_hosts is the honest concentration read.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; dufour or jura.
+        data_type: String
+        tests: [not_null]
+      - name: as_of_date
+        description: >
+          When this snapshot is current, anchored to the newest on-chain evidence it
+          contains rather than to today() -- so a stale build cannot read as live. Point-in-
+          time endpoints must publish this; see the stale-snapshot-caveat lesson.
+        data_type: Date
+      - name: hosting_provider
+        description: >
+          Provider bucket from stg_crawlers_data__ipinfo, plus 'NO_IPV4' (never announced
+          an IPv4) and 'UNRESOLVED' (has one, ipinfo has no row). 'Unknown' is a real
+          classifier outcome, not a gap.
+        data_type: String
+        tests: [not_null]
+      - name: nodes
+        description: Nodes ever registered on this provider.
+        data_type: UInt64
+      - name: live_nodes
+        description: Of those, nodes the prober reached. dufour only.
+        data_type: UInt64
+      - name: distinct_hosts
+        description: Distinct announced IPs on this provider.
+        data_type: UInt64
+      - name: distinct_operators
+        description: Distinct staking Safes on this provider.
+        data_type: UInt64
+      - name: cover_traffic_nodes
+        description: Declared HOPR cover-traffic nodes on this provider.
+        data_type: UInt64
+      - name: gnosisvpn_exit_nodes
+        description: Declared GnosisVPN exit nodes on this provider.
+        data_type: UInt64
+
+  - name: api_hopr_node_locations_latest
+    description: >
+      Current nodes aggregated to a plottable point: one row per (network, country, city)
+      with coordinates. DELIBERATELY INCOMPLETE -- nodes without coordinates cannot be
+      plotted and are excluded here, so a map built on this alone under-counts the network.
+      Publish the 'UNKNOWN' residual from api_hopr_nodes_by_country_latest alongside any
+      map. Coordinates are ipinfo city centroids, not machine locations: every node in a
+      city collapses to one point, which is the honest resolution for IP geolocation.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; dufour or jura.
+        data_type: String
+        tests: [not_null]
+      - name: as_of_date
+        description: >
+          When this snapshot is current, anchored to the newest on-chain evidence it
+          contains rather than to today() -- so a stale build cannot read as live. Point-in-
+          time endpoints must publish this; see the stale-snapshot-caveat lesson.
+        data_type: Date
+      - name: country_code
+        description: ISO country code from ipinfo.
+        data_type: String
+      - name: city
+        description: City name from ipinfo, or 'UNKNOWN_CITY' where only a country resolved.
+        data_type: String
+      - name: latitude
+        description: City centroid latitude. Not the machine's position.
+        data_type: Nullable(Float64)
+      - name: longitude
+        description: City centroid longitude. Not the machine's position.
+        data_type: Nullable(Float64)
+      - name: nodes
+        description: Nodes at this point.
+        data_type: UInt64
+      - name: live_nodes
+        description: Of those, nodes the prober reached. dufour only.
+        data_type: UInt64
+      - name: distinct_hosts
+        description: Distinct announced IPs at this point.
+        data_type: UInt64
+      - name: distinct_operators
+        description: Distinct staking Safes at this point.
+        data_type: UInt64
+      - name: cover_traffic_nodes
+        description: Declared HOPR cover-traffic nodes at this point.
+        data_type: UInt64
+      - name: gnosisvpn_exit_nodes
+        description: Declared GnosisVPN exit nodes at this point.
+        data_type: UInt64
+      - name: top_hosting_provider
+        description: Most common provider at this point, for a map tooltip.
+        data_type: Nullable(String)
+
+  - name: api_hopr_protocol_params_daily
+    description: >
+      Daily protocol parameters and staked/locked wxHOPR from blokli, HOPR's own v4
+      indexer. JURA ONLY -- blokli has no dufour endpoint, and rotsee is filtered out as a
+      testnet. payout_per_winning_ticket_wxhopr is the figure worth showing: HOPR pays
+      probabilistically, so ticket price alone means nothing and is not comparable across
+      networks running different winning probabilities. FORWARD-ONLY -- history starts when
+      the click-runner ingestor first ran and earlier days cannot be recovered.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: network
+        description: HOPR network; jura in practice (rotsee excluded as testnet).
+        data_type: String
+        tests: [not_null]
+      - name: date
+        description: Snapshot date.
+        data_type: Date
+        tests: [not_null]
+      - name: ticket_price_wxhopr
+        description: Price of a single ticket. Near-meaningless without the win probability.
+        data_type: Nullable(Float64)
+      - name: min_ticket_winning_probability
+        description: Minimum probability with which a ticket wins, in [0,1].
+        data_type: Float64
+      - name: payout_per_winning_ticket_wxhopr
+        description: >
+          ticket_price / min_win_probability -- what a winning ticket is actually worth,
+          and the only cross-network-comparable economic figure here.
+        data_type: Nullable(Float64)
+      - name: key_binding_fee_wxhopr
+        description: Fee to bind a packet key to a chain key.
+        data_type: Nullable(Float64)
+      - name: channel_closure_grace_period_s
+        description: Seconds a channel stays pending-to-close before it can be finalised.
+        data_type: UInt32
+      - name: account_count
+        description: Accounts (nodes) blokli knows on this network.
+        data_type: UInt32
+      - name: safes_count
+        description: Distinct staking Safes.
+        data_type: UInt32
+      - name: safes_balance_wxhopr
+        description: wxHOPR held in Safes -- staked but not yet in channels.
+        data_type: Nullable(Float64)
+      - name: channels_total
+        description: Channels in any state.
+        data_type: UInt32
+      - name: channels_open
+        description: Channels currently open.
+        data_type: UInt32
+      - name: channels_open_balance_wxhopr
+        description: wxHOPR locked in open channels -- the network's working capital.
+        data_type: Nullable(Float64)
+      - name: channels_pendingtoclose
+        description: Channels closing but still inside the grace period.
+        data_type: UInt32
+      - name: channels_pendingtoclose_balance_wxhopr
+        description: wxHOPR still locked in pending-to-close channels.
+        data_type: Nullable(Float64)
+      - name: total_wxhopr_committed
+        description: >
+          safes_balance + channels_open_balance. The closest thing to a TVL for HOPR, and
+          it needs no balance indexing.
+        data_type: Nullable(Float64)
+
+seeds:
+  - name: hopr_node_registry
+    description: >
+      Node classification, sourced from HOPR's own repos rather than inferred.
+      cover_traffic comes from ct-research ct-app/.configs/core_prod_config.yaml
+      (sessions.green_destinations + blue_destinations); gnosisvpn_exit from
+      gnosis_vpn linux/resources/config-jura.toml, which also supplies city and
+      country. Nodes absent from this seed are deliberately left unclassified
+      rather than guessed at.
+    columns:
+      - name: node_address
+        description: Node chain key, lowercased with 0x prefix
+        tests: [not_null, unique]
+      - name: node_class
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cover_traffic', 'gnosisvpn_exit']
