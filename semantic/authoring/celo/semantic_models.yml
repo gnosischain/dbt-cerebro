@@ -1,0 +1,723 @@
+semantic_models:
+# Celo GP pipeline, registered at `candidate` tier for coverage and docs rather
+# than public metric routing. Dimensions and measures reference only columns
+# DECLARED in models/celo/**/schema.yml, since the registry validator resolves
+# exprs against declared columns.
+#
+# No measure is registered on any *_raw integer column (amount_raw, balance_raw,
+# total_amount_raw). Those are exact unscaled token words, so summing them across
+# tokens with different decimals produces a number with no unit. The human-unit
+# siblings (amount, balance, total_amount) carry the aggregatable value and are
+# deliberately NULL for unknown-decimals tokens rather than guessed.
+
+- name: celo_gpay_safe_registry
+  model: ref('int_celo_gpay_safe_registry')
+  defaults:
+    agg_time_dimension: module_enabled_at
+  dimensions:
+  - name: module_enabled_at
+    type: time
+    expr: module_enabled_at
+    type_params:
+      time_granularity: day
+  - name: contract_type
+    type: categorical
+    expr: contract_type
+  measures:
+  - name: celo_gpay_safe_registry__card_count
+    agg: count
+    expr: address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card safes
+        - provisioned celo gnosis pay cards
+
+- name: celo_gpay_roles_modules
+  model: ref('int_celo_gpay_roles_modules')
+  defaults:
+    agg_time_dimension: first_seen_at
+  dimensions:
+  - name: first_seen_at
+    type: time
+    expr: first_seen_at
+    type_params:
+      time_granularity: day
+  - name: contract_type
+    type: categorical
+    expr: contract_type
+  measures:
+  - name: celo_gpay_roles_modules__module_count
+    agg: count
+    expr: address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp roles module proxies
+        - zodiac roles modules on celo
+
+# int_celo_gpay_module_mastercopies is deliberately NOT exposed as a semantic model.
+# The roles_pilot mastercopy is shared with unrelated projects, so ~301 of its 3491
+# rows are other projects' proxies: any count() measure over it answers a GP question
+# with a non-GP number, and no dimension available here can correct that (the fix is
+# an intersection with int_celo_gpay_roles_modules). It is an internal identity
+# cross-check used by the manual mastercopy-drift probe in models/celo/AGENTS.md, not a
+# business entity. Do not re-add a proxy_count measure — and if the bridge/generation
+# question is ever resolved, expose the GP-only derivation instead of this raw table.
+
+- name: celo_gpay_safe_events_native
+  model: ref('int_celo_gpay_safe_events_native')
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: event_kind
+    type: categorical
+    expr: event_kind
+  measures:
+  - name: celo_gpay_safe_events_native__event_count
+    agg: count
+    expr: safe_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp safe owner changes
+        - safe setup and owner events on celo
+
+- name: celo_gpay_safe_transfers_alltoken
+  model: ref('int_celo_gpay_safe_transfers_alltoken')
+  defaults:
+    agg_time_dimension: block_date
+  dimensions:
+  - name: block_date
+    type: time
+    expr: block_date
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_safe_transfers_alltoken__amount
+    agg: sum
+    expr: amount
+  - name: celo_gpay_safe_transfers_alltoken__amount_usd
+    agg: sum
+    expr: amount_usd
+  - name: celo_gpay_safe_transfers_alltoken__transfer_rows
+    agg: count
+    expr: safe_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card all-token transfers
+        - every token a celo gp card touched
+
+- name: celo_gpay_card_balances_alltoken_daily
+  model: ref('fct_celo_gpay_card_balances_alltoken_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: token_address
+    type: categorical
+    expr: token_address
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  measures:
+  # Deliberately NOT sum(balance). This model is SPARSE (a row only on days a
+  # balance changed) and `balance` is a running total, so summing it is wrong in
+  # both directions: across dates it re-counts the same running balance every day,
+  # and on a single date it silently drops every card that had no flow that day
+  # (measured 2026-08-04: 11,574 vs a true 25,677 — a 55% undercount). It also
+  # adds nothing summable over the dense model, because `balance` is NULL by design
+  # for tokens whose decimals are unknown, which is the only content this model has
+  # beyond fct_celo_gpay_balances_safe_daily (19 such keys, all NULL).
+  # For a total balance use api_celo_gpay_total_balance, which is a single latest-day
+  # row and therefore cannot be mis-aggregated. Per-safe / per-token balances are
+  # deliberately NOT exposed as a summable measure yet: the correct base is the DENSE
+  # fct_celo_gpay_balances_safe_daily (913 keys x 69 days, latest day verified equal to
+  # the true carry-forward total of 25,676.93 to the cent), but a running balance may
+  # be summed ACROSS cards and never ACROSS days, and a date-unfiltered sum over it
+  # would overcount ~69x. MetricFlow expresses that with non_additive_dimension
+  # (window_choice: max); this repo does not build a MetricFlow manifest
+  # (target/semantic_manifest.json is empty — the registry is custom), so that
+  # construct is unverified here. Confirm the query builder honours it before adding
+  # the measure, or add a latest-state mart where sum() is safe by construction.
+  - name: celo_gpay_card_balances_alltoken_daily__token_positions
+    agg: count
+    expr: token_address
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card all-token positions
+        - what tokens celo gp cards hold
+
+- name: celo_gpay_card_funding
+  model: ref('fct_celo_gpay_card_funding')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: last_funded_at
+    type: time
+    expr: last_funded_at
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: funder
+    type: categorical
+    expr: funder
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  # Shape classification (envelope + call pattern + fan-out), NOT an identity.
+  # cip64_direct_solo is MiniPay-shaped; do not treat every CIP-64 funder as MiniPay.
+  - name: funding_channel
+    type: categorical
+    expr: funding_channel
+  # funder_n_cards_funded / funder_n_funding_transfers are per-FUNDER attributes
+  # repeated on every (safe, funder, token) row, so they are exposed as reportable
+  # facts rather than measures — summing them across rows multiplies one funder's
+  # fan-out by their row count.
+  measures:
+  - name: celo_gpay_card_funding__total_amount
+    agg: sum
+    expr: total_amount
+  - name: celo_gpay_card_funding__n_transfers
+    agg: sum
+    expr: n_transfers
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - who funds celo gp cards
+        - celo gp card funding relationships
+        - celo gp funding channel
+        - minipay shaped card funding
+
+- name: celo_sorted_oracles_rates
+  model: ref('int_celo_sorted_oracles_rates')
+  defaults:
+    agg_time_dimension: block_timestamp
+  dimensions:
+  - name: block_timestamp
+    type: time
+    expr: block_timestamp
+    type_params:
+      time_granularity: day
+  - name: rate_feed_id
+    type: categorical
+    expr: rate_feed_id
+  - name: feed_label
+    type: categorical
+    expr: feed_label
+  measures:
+  - name: celo_sorted_oracles_rates__rate
+    agg: average
+    expr: rate
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - mento sorted oracles rate
+        - celo xaut rate feed
+
+- name: celo_token_prices_daily
+  model: ref('int_celo_token_prices_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: symbol
+    type: categorical
+    expr: symbol
+  measures:
+  - name: celo_token_prices_daily__price
+    agg: average
+    expr: price
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo token price
+        - usd price of a celo token
+
+# The per-card funnel atom. Authored (rather than grandfathered like the funnel's
+# cohort rollup and API view) because it is the one grain where the semantic layer can
+# answer funnel questions without the caller writing SQL.
+#
+# CONVERSION RATES ASKED OF THIS MODEL ARE UNCENSORED. funded_cards / cards over the
+# whole table divides by a denominator full of cards issued days ago that have not had
+# time to convert, so it tracks issuance velocity as much as behaviour and reads far
+# below the true rate. The observation_days dimension exists so a query can filter to
+# cards old enough to judge; for a rate that is already age-normalised and cohorted,
+# read fct_celo_gpay_funnel_cohorts_monthly instead.
+- name: celo_gpay_card_funnel
+  model: ref('fct_celo_gpay_card_funnel')
+  defaults:
+    agg_time_dimension: issued_at
+  dimensions:
+  - name: issued_at
+    type: time
+    expr: issued_at
+    type_params:
+      time_granularity: day
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: first_spend_at
+    type: time
+    expr: first_spend_at
+    type_params:
+      time_granularity: day
+  - name: safe_address
+    type: categorical
+    expr: safe_address
+  - name: is_funded
+    type: categorical
+    expr: is_funded
+  - name: is_activated
+    type: categorical
+    expr: is_activated
+  # Shape of the card's first fund (NULL if never funded). Not MiniPay identity.
+  - name: first_fund_channel
+    type: categorical
+    expr: first_fund_channel
+  # Categorical rather than a measure: it is the eligibility filter for any rate, so it
+  # needs to be groupable and filterable, and averaging it means nothing.
+  - name: observation_days
+    type: categorical
+    expr: observation_days
+  measures:
+  - name: celo_gpay_card_funnel__cards
+    agg: count_distinct
+    expr: safe_address
+  - name: celo_gpay_card_funnel__funded_cards
+    agg: sum
+    expr: toUInt8(is_funded)
+  - name: celo_gpay_card_funnel__activated_cards
+    agg: sum
+    expr: toUInt8(is_activated)
+  # Averages over converters only — NULL lags are skipped, so these describe the cards
+  # that made it, not the cohort. Biased low for recently issued cards, whose slow
+  # converters have not converted yet.
+  - name: celo_gpay_card_funnel__avg_days_issue_to_fund
+    agg: average
+    expr: days_issue_to_fund
+  - name: celo_gpay_card_funnel__avg_days_fund_to_spend
+    agg: average
+    expr: days_fund_to_spend
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card funnel
+        - how many celo gp cards get funded
+        - how long until a celo gp card is funded
+        - celo gp card activation lag
+        - celo gp first fund channel
+
+# Settlement batches. Every measure here is additive over transactions, which is what
+# makes this safe to expose where the monthly cost view is not.
+#
+# There is no charge-to-settlement lag to ask about: the sweep is atomic, so the answer
+# is always zero. And do NOT split charged_amount by token — settlement_legacy reports
+# the wrong token on every pull, which is why no token dimension is offered here.
+- name: celo_gpay_settlement_batches
+  model: ref('fct_celo_gpay_settlement_batches')
+  defaults:
+    agg_time_dimension: batch_time
+  dimensions:
+  - name: batch_time
+    type: time
+    expr: batch_time
+    type_params:
+      time_granularity: day
+  - name: settlement_label
+    type: categorical
+    expr: settlement_label
+  - name: settlement_contract
+    type: categorical
+    expr: settlement_contract
+  measures:
+  - name: celo_gpay_settlement_batches__batches
+    agg: count_distinct
+    expr: transaction_hash
+  - name: celo_gpay_settlement_batches__charges
+    agg: sum
+    expr: n_charges
+  - name: celo_gpay_settlement_batches__failed_charges
+    agg: sum
+    expr: n_failed_charges
+  - name: celo_gpay_settlement_batches__settled_usd
+    agg: sum
+    expr: settled_usd
+  - name: celo_gpay_settlement_batches__bridge_fee_celo
+    agg: sum
+    expr: native_fee_celo
+  - name: celo_gpay_settlement_batches__bridge_fee_usd
+    agg: sum
+    expr: native_fee_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp settlement cost
+        - what does it cost to settle celo gp payments
+        - celo gp bridge fees
+        - celo gp settlement batches
+
+# Wallet-side (funder) layer. The card-side models above stop at the Safe boundary;
+# these describe what the cardholder does with the rest of their money. Registered at
+# candidate tier like the rest of the Celo tree.
+#
+# NOTE FOR ANY METRIC BUILT ON THESE: "active" means a non-fee transfer.
+# int_celo_gpay_funder_wallet_transfers still carries CIP-64 gas receipts
+# (counterparty_class = 'fee_sink'), which are the highest-count counterparty on the
+# chain and carry no economic content; int_celo_gpay_funder_wallet_daily has them
+# removed. Prefer the daily model unless you specifically need the raw legs.
+
+- name: celo_gpay_funder_wallets
+  model: ref('int_celo_gpay_funder_wallets')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: first_funding_channel
+    type: categorical
+    expr: first_funding_channel
+  measures:
+  - name: celo_gpay_funder_wallets__wallet_count
+    agg: count
+    expr: wallet_address
+  - name: celo_gpay_funder_wallets__cards_funded
+    agg: sum
+    expr: n_cards_funded
+  - name: celo_gpay_funder_wallets__funded_usd
+    agg: sum
+    expr: total_funded_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp card funding wallets
+        - who funds celo gnosis pay cards
+        - celo gp cardholder wallets
+
+- name: celo_gpay_funder_wallet_transfers
+  model: ref('int_celo_gpay_funder_wallet_transfers')
+  defaults:
+    agg_time_dimension: block_time
+  dimensions:
+  - name: block_time
+    type: time
+    expr: block_time
+    type_params:
+      time_granularity: day
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: counterparty_class
+    type: categorical
+    expr: counterparty_class
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_funder_wallet_transfers__transfers
+    agg: count
+    expr: tx_hash
+  - name: celo_gpay_funder_wallet_transfers__wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_transfers__amount_usd
+    agg: sum
+    expr: amount_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp cardholder wallet transfers
+        - what do celo gp cardholders do off the card
+
+- name: celo_gpay_funder_wallet_daily
+  model: ref('int_celo_gpay_funder_wallet_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: direction
+    type: categorical
+    expr: direction
+  - name: counterparty_class
+    type: categorical
+    expr: counterparty_class
+  - name: token_symbol
+    type: categorical
+    expr: token_symbol
+  - name: token_class
+    type: categorical
+    expr: token_class
+  measures:
+  - name: celo_gpay_funder_wallet_daily__transfers
+    agg: sum
+    expr: n_transfers
+  - name: celo_gpay_funder_wallet_daily__active_wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_daily__amount_usd
+    agg: sum
+    expr: amount_usd
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp cardholder wallet activity
+        - daily active celo gp cardholder wallets
+
+- name: celo_gpay_cardholder_engagement
+  model: ref('fct_celo_gpay_cardholder_engagement')
+  defaults:
+    agg_time_dimension: issued_at
+  dimensions:
+  - name: issued_at
+    type: time
+    expr: issued_at
+    type_params:
+      time_granularity: day
+  - name: card_state
+    type: categorical
+    expr: card_state
+  - name: engagement_segment
+    type: categorical
+    expr: engagement_segment
+  measures:
+  - name: celo_gpay_cardholder_engagement__cards
+    agg: count
+    expr: safe_address
+  - name: celo_gpay_cardholder_engagement__wallets_active_30d
+    agg: sum
+    expr: wallet_active_30d
+  # Retail first: the unsuffixed total is dominated by a few treasury-scale transfers,
+  # so it is flow-of-funds, not behaviour. Both registered; reach for _retail.
+  - name: celo_gpay_cardholder_engagement__wallet_out_usd_retail
+    agg: sum
+    expr: wallet_out_usd_recent_retail
+  - name: celo_gpay_cardholder_engagement__wallet_out_usd_total
+    agg: sum
+    expr: wallet_out_usd_recent
+  - name: celo_gpay_cardholder_engagement__wallet_to_card_usd_recent
+    agg: sum
+    expr: wallet_to_card_usd_recent
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp dormant cards with active holders
+        - celo gp reactivation opportunity
+        - are churned celo gp cardholders still on chain
+
+- name: celo_gpay_wallet_share_of_spend_daily
+  model: ref('fct_celo_gpay_wallet_share_of_spend_daily')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: destination
+    type: categorical
+    expr: destination
+  measures:
+  - name: celo_gpay_wallet_share_of_spend__transfers
+    agg: sum
+    expr: n_transfers
+  # usd_excl_large is the retail-behaviour measure and the one to reach for by
+  # default; usd_total is flow-of-funds and is dominated by a handful of
+  # treasury-scale transfers. Both are registered because they answer different
+  # questions - see the model description before quoting either.
+  - name: celo_gpay_wallet_share_of_spend__usd_retail
+    agg: sum
+    expr: usd_excl_large
+  - name: celo_gpay_wallet_share_of_spend__usd_total
+    agg: sum
+    expr: usd_total
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp share of cardholder spend
+        - how much of cardholder money reaches the celo gp card
+        - celo gp card vs wallet spending
+
+# Wallet tenure. Note for any metric built here: days_before_first_funding is EXACT only
+# where is_left_censored = 0. Censored wallets predate celo_execution's coverage (the
+# 2025-03-26 L2 migration), so their value is a lower bound — split on the flag before
+# averaging, and report the censored share beside any median.
+- name: celo_gpay_wallet_tenure
+  model: ref('fct_celo_gpay_wallet_tenure')
+  defaults:
+    agg_time_dimension: first_funded_at
+  dimensions:
+  - name: first_funded_at
+    type: time
+    expr: first_funded_at
+    type_params:
+      time_granularity: day
+  - name: tenure_bucket
+    type: categorical
+    expr: tenure_bucket
+  measures:
+  - name: celo_gpay_wallet_tenure__wallets
+    agg: count
+    expr: wallet_address
+  - name: celo_gpay_wallet_tenure__pre_existing_wallets
+    agg: sum
+    expr: is_pre_existing_user
+  - name: celo_gpay_wallet_tenure__left_censored_wallets
+    agg: sum
+    expr: is_left_censored
+  - name: celo_gpay_wallet_tenure__months_present
+    agg: sum
+    expr: months_present
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - celo gp wallet tenure
+        - were celo gnosis pay users already on celo
+        - is celo gp acquiring users or cross selling
+        - how long were celo gp cardholders on chain before the card
+
+- name: celo_gpay_funder_wallet_monthly_presence
+  model: ref('int_celo_gpay_funder_wallet_monthly_presence')
+  defaults:
+    agg_time_dimension: month
+  dimensions:
+  - name: month
+    type: time
+    expr: month
+    type_params:
+      time_granularity: month
+  measures:
+  - name: celo_gpay_funder_wallet_presence__wallets
+    agg: count_distinct
+    expr: wallet_address
+  - name: celo_gpay_funder_wallet_presence__legs
+    agg: sum
+    expr: n_legs
+  - name: celo_gpay_funder_wallet_presence__legs_nonfee
+    agg: sum
+    expr: n_legs_nonfee
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - celo gp cardholder wallets active per month
+        - celo gp wallet presence before launch

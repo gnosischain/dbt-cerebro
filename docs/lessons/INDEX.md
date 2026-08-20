@@ -93,6 +93,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   token maps from an independent source (address-sorted swap tokens == Vault order).
 - [unpriced-wrapper-token](unpriced-wrapper-token.md) `remediated` — every new
   wrapper/vault token needs a price path or it reads $0 everywhere.
+- [circular-completeness-proof](circular-completeness-proof.md) `remediated` — proving an
+  anchored population complete using its own anchor always returns 100%; a second Celo
+  GP settlement bridge (~13% of cards, ~34% of transfers, front-loaded) stayed invisible
+  for months. Enumerate from the entity side. Anchor set now seeded; population verified
+  against GP's own decoded charge record (5,165 = 5,165), not against itself.
 - [derived-seed-regen-unsafe](derived-seed-regen-unsafe.md) `remediated` — running the
   documented "regenerate the signature seeds" command corrupted every topic0 (hex prefix
   sliced by position, broken by the web3 v7 upgrade) and would have deleted 24 in-use
@@ -103,6 +108,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   event_signatures/contracts_abi; every decode_logs model then appended ZERO rows,
   all green, mimicking a date-cap. Verify row count + chain distribution after any
   seed deploy; seeds batch added to scheduled tests (pending deploy).
+- [event-field-can-lie](event-field-can-lie.md) `documented` — a contract emitted the wrong
+  token on every one of its 1,752 charge events, consistently enough to look like a
+  contract that only handled one token. Decoding succeeded, the address was valid, and
+  contract-level value conservation still balanced. Ground-truth a decoded field against
+  the token's own Transfer logs, and check conservation at the grain you intend to publish.
 - [classifier-unsafe-default](classifier-unsafe-default.md) `remediated` — the ipinfo
   org classifier's ELSE branch defaulted every unknown provider to residential; blast
   radius measured via int_hopr_nodes. Unknown must be explicit ('Unknown'), never a

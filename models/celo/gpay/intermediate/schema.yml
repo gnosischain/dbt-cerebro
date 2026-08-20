@@ -3,13 +3,14 @@ version: 2
 models:
 - name: int_celo_gpay_wallet_events
   description: |
-    Thin pass-through of the unified, append-only wallet-lifecycle event
-    log (issued_at + add_owner + remove_owner) — see sources.yml for the
-    full history of why this replaced two separate, mutable-row tables.
-    Full table rebuild (bounded by card count, not transaction volume —
-    same reasoning as int_celo_gpay_wallets, no incremental treatment
-    needed). Consumed by int_celo_gpay_wallets.sql (issued_at only) and
-    int_celo_gpay_safe_current_owners.sql (the full fold).
+    Unified, append-only wallet-lifecycle event log (issued_at + add_owner +
+    remove_owner) for GP card Safes, derived NATIVELY from celo_execution via
+    int_celo_gpay_safe_events_native, gated to int_celo_gpay_safe_registry.
+    Full table rebuild (bounded by card count, not transaction volume).
+    Consumed by int_celo_gpay_wallets.sql (issued_at only) and
+    int_celo_gpay_safe_current_owners.sql (the full fold). Replaces the old
+    Dune-fed crawlers_data.celo_gpay_wallet_events source, retired with the MVP
+    — nothing in this tree reads crawlers_data any more.
   columns:
   - name: safe_address
     description: The GP card Safe this event is about.
@@ -45,6 +46,26 @@ models:
     0x0000000000000000000000000000000000000002 as the current owner for
     Safes where GP's provisioning flow disabled owner-based signing — that
     is not a bug, it correctly reflects the on-chain state.
+
+    CONSUMER WARNING: as of 2026-08-03 that is the state for EVERY card — every
+    row carries the sentinel and no real EOA, because GP's provisioning flow swaps
+    the owner out within seconds of SafeSetup on every card. So this model
+    currently carries no user-identifying information at all; anything that needs
+    a per-user address must read int_celo_gpay_wallets.owner_address (the initial
+    SafeSetup owner, one distinct value per card). Still true at 1817/1817 cards on
+    2026-08-05.
+
+    EXPOSURE CLOSED OUT 2026-08-05. The model is kept — it is correct, cheap, and
+    becomes meaningful the moment GP adopts owner-based signing — but it is no longer
+    reachable as an owner identity:
+      * owner_address's `address` entity binding is SUPPRESSED in
+        semantic/entity_dictionary.yml. It had generated a join to
+        api_execution_account_profile_latest under which all 1817 cards resolved to
+        the same non-existent account.
+      * no semantic model / measures (registered in scaffold_gate.allow with that
+        rationale), so it cannot be aggregated into a headline.
+    safe_address keeps its `safe` binding, which is a real card. Reverse both only
+    when a query of "who currently signs for this card" would return a real EOA.
   columns:
   - name: safe_address
     description: GP card Safe address.
@@ -63,12 +84,12 @@ models:
   description: |
     Canonical Celo GP card Safe list, reconstructed from
     int_celo_gpay_wallet_events (action='issued_at') rather than read from
-    a per-safe snapshot table — see sources.yml for why the earlier
-    mutable-row wallets table was replaced with an append-only event log.
+    a per-safe snapshot table: the retired MVP used a mutable-row wallets table
+    fed from Dune, which an append-only event log replaces.
     first_spend_at/is_activated are derived here directly from
-    crawlers_data.celo_gpay_transfers (not from an ingested event) — see
-    this model's own header comment for why that read goes straight to the
-    source rather than through int_celo_gpay_activity (would create a
+    int_celo_gpay_safe_transfers_alltoken (a transfer to the settlement bridge) —
+    see this model's own header comment for why that read goes straight to that
+    model rather than through int_celo_gpay_activity (would create a
     circular dbt ref) and why a full scan of the transfers table on every
     rebuild is acceptable (Gnosis Chain's own int_execution_gpay_wallets
     already does an equivalent full scan of the much larger execution.logs,
@@ -85,6 +106,9 @@ models:
   - name: safe_address
     description: GP card Safe address on Celo (0x-prefixed, lowercase). The fund holder.
     data_type: String
+    tests:
+      - unique
+      - not_null
   - name: owner_address
     description: >
       SafeSetup owner / signer key (first owner encountered). For MiniPay
@@ -117,44 +141,268 @@ models:
     owner: analytics_team
     authoritative: false
 
+- name: int_celo_gpay_roles_modules
+  description: |
+    GP-specific Zodiac Roles module proxies on Celo, discovered natively from
+    celo_execution.logs: an EnabledModule(<GP AggregateBridge>) event emitted BY a
+    Roles proxy is a GP-only fingerprint set at card provisioning. Replaces
+    the roles_with_bridge CTE of Dune query 7808895. Raw topic slicing, not
+    the decode macro — this registry is itself an input to the decoded layer
+    (see model header). Full rebuild every run; bounded by card count.
+
+    The fingerprint matches ANY settlement contract seeded in
+    celo_gpay_settlement_contracts (status active or migrating), not a single
+    hardcoded address — both live bridges are GP's and are unioned. 1815 modules on
+    2026-08-05: 1580 on settlement_current 0xc07cd8c2…, 235 on settlement_legacy
+    0xc4df5cac…. See int_celo_gpay_safe_registry for the impact of the period when
+    only the current contract counted.
+  columns:
+  - name: address
+    description: Roles module proxy address (0x-prefixed, lowercase).
+    data_type: String
+  - name: contract_type
+    description: Always 'RolesModProxy'.
+    data_type: String
+  - name: first_seen_at
+    description: >-
+      First EnabledModule(bridge) event for this proxy, i.e. card provisioning time.
+      Migration does NOT reset it: a card that later wires a second bridge emits
+      another EnabledModule from the same proxy, and the min() keeps the original.
+    data_type: DateTime
+  - name: wired_settlements
+    description: >-
+      Sorted distinct settlement contracts this Roles module has wired, and the
+      migration tracker for GP's planned move off the legacy contract. One element is the normal
+      state; TWO elements means that card has migrated and its payment history spans
+      both bridges. Zero modules had two on 2026-08-05, i.e. migration had not
+      started. Read migration state from here — never from a per-card generation
+      column, which cannot represent a card that moved.
+    data_type: Array(String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_safe_registry
+  description: |
+    GP card Safes on Celo, discovered natively: a Safe that emits
+    EnabledModule(<GP Roles proxy>) has been provisioned as a GP card
+    (replaces the fp CTE of Dune query 7808895). Confirmed pre-spend, so this
+    also covers created-but-never-funded cards. address/contract_type columns
+    follow the whitelist shape the decode macros expect via contract_address_ref.
+
+    Cardinality is 1:1 with int_celo_gpay_roles_modules and grows continuously
+    with issuance (1815 on 2026-08-05); first card 2026-03-31.
+
+    POPULATION = THE UNION OVER EVERY IN-SCOPE SETTLEMENT CONTRACT, seeded in
+    celo_gpay_settlement_contracts. Two AggregateBridges are live at once and both
+    are Gnosis Pay's (confirmed by GP 2026-08-05): settlement_legacy 0xc4df5cac… from
+    2026-03-31, which GP will migrate onto settlement_current 0xc07cd8c2… (from
+    2026-05-28) at an unannounced date. They are ONE card program, so they are unioned
+    here. They share no event signatures and so need two ABIs to decode, but that is
+    because the current one adds an indexed `sender` to every event, not because the
+    contracts are unrelated — both are AggregateBridge with identical function
+    selectors (established when the ABIs were fetched on 2026-08-06). Two generations
+    of one design; the legacy/current labels describe lifecycle, not a published
+    release lineage.
+
+    Until 2026-08-05 this registry keyed on the current contract alone and therefore omitted 235 real
+    cards and 1743 settlement transfers — roughly 34% of all settlement traffic and
+    13% of cards. The distortion was worst in shape, not level: March/April/May were
+    ~100% missing, so the tree showed payments starting in June and rising 4 -> 266
+    -> 2533, when the program had in fact been running steadily since March at
+    4 -> 225 -> 472 -> 759 -> 3008. Any historical Celo GP figure produced before
+    2026-08-05 is understated and reshaped; restate rather than splice.
+
+    Which bridge a payment settled to is a per-TRANSFER fact
+    (int_celo_gpay_activity.settlement_address), never a per-card generation column
+    — a migrating card keeps its legacy history and gains current-contract payments, so a card-level
+    attribute would go stale on migration day. int_celo_gpay_roles_modules
+    .wired_settlements is the migration tracker: a module listing both addresses has
+    migrated. Zero had as of 2026-08-05.
+
+    A third AggregateBridge 0xd11e35ca… is deployed but never used and NOT confirmed
+    GP-owned; it sits in the seed as status='planned', excluded from discovery.
+    Flipping it to 'active' is the whole change needed if it goes live.
+
+    Completeness is now proven non-circularly, from settlement traffic on BOTH
+    bridges: 507 current-contract spenders + 155 legacy spenders, zero missing from this registry
+    (2026-08-05). The earlier "483 senders, all present" proof was circular — it
+    defined the spender population using this model's own single bridge address, so
+    it could not have detected a second one. Any future proof must start from the
+    seed, not from one address.
+  columns:
+  - name: address
+    description: GP card Safe address (0x-prefixed, lowercase).
+    data_type: String
+    tests:
+      - unique
+      - not_null
+  - name: contract_type
+    description: Always 'SafeProxy'.
+    data_type: String
+  - name: module_enabled_at
+    description: When the GP Roles module was enabled on this Safe (provisioning time).
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [address]
+      semantics: dimension
+      invariants:
+      - id: settlement-contracts-are-a-seeded-set
+        text: The card population is the union over every settlement contract in
+          celo_gpay_settlement_contracts with status active or migrating. Never
+          hardcode a bridge address in this tree and never narrow the set to one —
+          doing exactly that omitted 235 cards and a third of all settlement traffic
+          until 2026-08-05, and made a product that had run since March look like it
+          launched in June. Adding GP's migration target must be a seed edit only.
+          See docs/lessons/circular-completeness-proof.md.
+      - id: discovery-and-classification-widen-together
+        text: This registry decides which Safes exist; int_celo_gpay_activity decides
+          what their transfers mean. Both read the same seed and must change in the
+          same run. Widening discovery alone admits cards whose settlement transfers
+          then fall through to the catch-all and book as Withdrawals, which inflates
+          withdrawals while still under-reporting payments — strictly worse than
+          omitting those cards.
+      - id: bridge-is-a-transfer-fact-not-a-card-attribute
+        text: GP will migrate the legacy cards onto the current contract, so a card can settle to different
+          bridges over its life. Membership therefore belongs on the transfer
+          (int_celo_gpay_activity.settlement_address), never as a per-card
+          generation column, which would go stale the day that card moves. Migration
+          state is readable from int_celo_gpay_roles_modules.wired_settlements — a
+          module listing two addresses has migrated; zero had on 2026-08-05.
+      hazards: [circular-completeness-proof]
+      validation:
+      - 'cardinality matches its fingerprint source: count() == (SELECT count() FROM int_celo_gpay_roles_modules)'
+      - 'no settlement contract is enrolled as a card: zero rows join celo_gpay_settlement_contracts'
+      - 'non-circular completeness: every sender of a Transfer INTO any seeded bridge is present here (start from the seed, never from one address)'
+      notes: >-
+        Full rebuild, bounded by card count. Covers both live settlement generations
+        as of 2026-08-05; the impact of the period when it did not, and the reasoning
+        behind the seeded-set design, are in
+        docs/lessons/circular-completeness-proof.md.
+
+- name: int_celo_gpay_safe_events_native
+  description: |
+    Safe lifecycle events (SafeSetup / AddedOwner / RemovedOwner) for GP card
+    Safes on Celo, decoded through the multichain decode pipeline
+    (chain='celo', ABI resolved from the Safe v1.3.0 L2 singleton row of the
+    celo partition of event_signatures). SafeSetup rows are exploded one row
+    per owner. Incremental append on monthly partitions, mirroring Gnosis
+    Chain's int_execution_safes_owner_events: the output is bounded by card
+    count, but a full rebuild re-scans celo_execution.logs across the whole GP
+    era in one query and OOMs (CH code 241) now that the Celo backfill has
+    landed. Rebuild through scripts/full_refresh/refresh.py in the monthly
+    batches declared in meta.full_refresh below; decode_logs honors the
+    start_month/end_month vars the runner passes.
+  columns:
+  - name: safe_address
+    description: GP card Safe address (0x-prefixed, lowercase).
+    data_type: String
+  - name: event_kind
+    description: "safe_setup | added_owner | removed_owner."
+    data_type: String
+  - name: owner
+    description: Owner address this event is about (one row per owner for safe_setup).
+    data_type: String
+  - name: threshold
+    description: Signing threshold from SafeSetup; null for owner-delta events.
+    data_type: Nullable(UInt32)
+  - name: block_timestamp
+    description: On-chain timestamp of the event.
+    data_type: DateTime
+  - name: block_number
+    description: Block number of the event.
+    data_type: UInt64
+  - name: transaction_hash
+    description: Transaction hash (0x-prefixed).
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [transaction_hash, log_index, owner]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-owner-per-event
+        text: One row per (Safe lifecycle log, owner). A SafeSetup with N decoded owners
+          yields N rows; a setup whose owners array failed to decode yields exactly one
+          row with a NULL owner so the card still counts as issued. owner is therefore
+          part of the grain and, since 2026-08-05, part of the ReplacingMergeTree
+          order_by — without it a multi-owner SafeSetup collapsed to a single row on
+          merge, losing co-owners with no error. Harmless to date (all 1503 setups are
+          single-owner, so both keys count 1503), and Gnosis
+          int_execution_safes_owner_events still carries the narrow shape. Note that an
+          order_by change only lands when the table is RECREATED, and this model must
+          never be plain-full-refreshed, so the deployed table keeps the old key until a
+          staged rebuild through scripts/full_refresh/refresh.py.
+      - id: watermark-skips-late-logs
+        text: Append-only off the decode_logs block_number watermark, so logs landing in
+          celo_execution below the high-water mark are never decoded. Now that the
+          backfill is complete the live trigger is registry growth — a Safe newly
+          discovered by int_celo_gpay_safe_registry whose SafeSetup predates the
+          watermark, or any gap-repair of raw logs below it. Those
+          months must be re-decoded explicitly or the card silently disappears from
+          int_celo_gpay_wallets.
+      hazards: [decode-watermark-late-logs, append-over-populated-duplicates, ch-overcommit-victim, raw-logs-ingestion-holes]
+      validation:
+      - 'duplicate excess: count() - uniqExact((transaction_hash, log_index, owner)) == 0'
+      - 'every registry Safe has a safe_setup row: countIf(event_kind = ''safe_setup'') matches int_celo_gpay_safe_registry cardinality'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` this directly — the single-query scan of the GP-era
+        logs OOMs (ClickHouse Code 241). Rebuild via scripts/full_refresh/refresh.py in
+        the monthly batches declared below. Because the strategy is append, drop the
+        target partitions first (macros/db/drop_partition.sql) if they already hold rows,
+        then rebuild int_celo_gpay_wallet_events, int_celo_gpay_wallets and
+        int_celo_gpay_safe_current_owners downstream.
+    # HEAVY: scans the GP-era slice of celo_execution.logs. batch_months=1 rather
+    # than the 3 its Gnosis twin uses — the Celo GP era is only a few months long,
+    # and the un-batched rebuild already OOMed at 230s, so keep the window tight.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+
 - name: int_celo_gpay_activity
   description: |
-    Per-transfer classified Celo GP activity. Classification happens HERE,
-    not upstream in Dune — Dune only supplies raw whitelisted-token transfers
-    touching a GP Safe (crawlers_data.celo_gpay_transfers: sender, receiver,
-    token, amount). This mirrors int_execution_gpay_activity on Gnosis Chain,
-    which also classifies from raw log data rather than a pre-classified
-    source, so fixing/extending classification is a dbt edit + re-run here,
-    not a Dune query edit + re-backfill.
-    Actions: Payment (Safe -> AggregateBridge settlement), Withdrawal (Safe
-    -> anything else, including hypothetically another GP Safe), Reversal
-    (AggregateBridge -> Safe; a processor-side refund of a failed/disputed
-    charge), Top-up (anything else -> Safe, e.g. a MiniPay funding wallet).
-    No Cashback action exists; the GNO cashback program is Gnosis Chain only.
-    CASE ordering in the model checks sender-based branches (Payment/
-    Withdrawal) before receiver-based branches (Reversal/Top-up) — required
-    so a hypothetical Safe-to-Safe transfer classifies as a Withdrawal from
-    the sending Safe, not a Top-up to the receiving Safe (safe_address always
-    resolves to sender when sender is a Safe, so action must agree).
-    Rows where neither sender nor receiver matches int_celo_gpay_wallets are
-    dropped, not guessed at — observed in practice (2026-07-02 test backfill,
-    3 rows) as a real race between crawlers_data.celo_gpay_transfers and
-    int_celo_gpay_wallets, which are each independently derived from the same
-    live, continuously-indexing Dune spine rather than one consistent
-    snapshot: a brand-new Safe's transfer can be extracted moments before
-    that same Safe lands in the wallets snapshot.
-    materialized='incremental' with incremental_strategy='insert_overwrite'
-    and apply_monthly_incremental_filter (same macro/pattern already used by
-    Gnosis Chain's int_execution_gpay_activity_daily and
-    int_execution_gpay_wallet_owners) — recomputes the whole current
-    calendar-month partition every run, not just literally-new rows. This is
-    what preserves the self-healing behavior above under incremental
-    materialization: a Safe recognized a few seconds/minutes late (the only
-    lag actually observed) gets correctly reclassified on the next run as
-    long as it's within the same month. int_celo_gpay_wallets itself stays a
-    full rebuild regardless (see that model's own doc) — only this
-    per-transfer model needs incrementality, since it's the one whose row
-    count scales with transaction volume, not signup volume.
+    Per-transfer classified Celo GP activity. Classification happens HERE, not
+    upstream — the single transfer base int_celo_gpay_safe_transfers_alltoken
+    supplies transfers touching a GP card Safe (restricted here to whitelisted
+    tokens via token_symbol IS NOT NULL, which drops CELO gas dust and spoof
+    tokens). The base already resolves the card side (safe_address / direction /
+    counterparty), so classification reads those directly (mirrors
+    int_execution_gpay_activity on Gnosis Chain classifying from raw logs).
+    "Bridge" here means ANY settlement contract seeded in
+    celo_gpay_settlement_contracts (status active or migrating) — two are live and
+    both are GP's. This set and int_celo_gpay_safe_registry MUST widen together:
+    the registry decides which Safes exist, this model decides what their transfers
+    mean, and widening discovery alone would book their settlement transfers as
+    Withdrawals via the catch-all.
+    Actions: Payment (card -> bridge in a STABLECOIN), Other (card -> bridge in a
+    non-stablecoin whitelisted token — rare, excluded from payment metrics),
+    Withdrawal (card -> anywhere else), Reversal (bridge -> card refund), Top-up
+    (anything else -> card), and Cashback (a configured rewards disburser -> card
+    in an RWA reward token). The token_class='STABLECOIN' gate on Payment keeps
+    CELO/reward tokens out of card spend. Cashback is COMPILED OUT until the model's
+    cashback_sources list is populated (cashback not paid yet), so reward
+    inflows currently fall through to Top-up — a safe no-op scaffold.
+    A Safe-to-Safe transfer would appear twice in the base (out + in); the model
+    collapses to the sender ('out') side so each transfer is one row (a Withdrawal),
+    matching prior sender-priority semantics. (No card-to-card transfers occur in
+    practice on Celo GP.)
+    materialized='incremental' insert_overwrite with apply_monthly_incremental_filter
+    recomputes the whole current calendar-month partition every run, so a card
+    recognized slightly late is reclassified within the month. A staged run with
+    start_month set switches to append instead, so those batches must target empty
+    months. int_celo_gpay_wallets stays a full rebuild; only this per-transfer model
+    scales with tx volume.
   columns:
   - name: tx_hash
     description: Transaction hash.
@@ -169,17 +417,37 @@ models:
     description: The GP card Safe side of this transfer.
     data_type: String
   - name: action
-    description: "Payment | Withdrawal | Reversal | Top-up."
+    description: "Payment | Other | Withdrawal | Reversal | Top-up | Cashback."
     data_type: String
+    tests:
+      - accepted_values:
+          values: ['Payment', 'Other', 'Withdrawal', 'Reversal', 'Top-up', 'Cashback']
   - name: direction
     description: "'out' if the Safe is the sender, 'in' otherwise."
     data_type: String
   - name: token_symbol
-    description: USDT or USDC.
+    description: >
+      Whitelist symbol from celo_tokens_whitelist (USDT, USDC, USDm or XAUt0).
+      Only USDT and USDC occur in the data as of 2026-08-03.
+    data_type: String
+  - name: token_address
+    description: Transferred token contract address (0x-prefixed, lowercase). Part of the
+      grain, so it disambiguates two different tokens moving between the same pair in one tx.
     data_type: String
   - name: counterparty
     description: The non-Safe side of the transfer (settlement contract, funding wallet, another Safe, etc).
     data_type: String
+  - name: settlement_address
+    description: >-
+      Which settlement contract this transfer used, for Payment / Other / Reversal
+      rows; NULL for Top-up and Withdrawal, which do not touch a bridge. This is the
+      bridge dimension — slice payments by it to separate the legacy cohort GP is
+      migrating from the current cohort, or to watch the migration land.
+
+      Deliberately a per-TRANSFER fact rather than a per-card generation column: a
+      migrating card keeps its legacy payments and gains current-contract ones, so any card-level
+      attribute would be wrong from migration day onward.
+    data_type: Nullable(String)
   - name: amount
     description: Token-native transfer amount.
     data_type: Float64
@@ -189,6 +457,60 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [safe_address, block_time, tx_hash, token_address, counterparty, action]
+      semantics: event_stream
+      invariants:
+      - id: one-row-per-transfer-sender-side
+        text: One row per classified transfer. The upstream base carries both Safe sides
+          of a Safe-to-Safe transfer; this model keeps the sender ('out') side so each
+          transfer is a single row (a Withdrawal). The grain omits log_index, so two
+          transfers of the same token to the same counterparty in one tx collapse under
+          ReplacingMergeTree — acceptable only while no such pattern exists on Celo GP.
+      - id: whitelisted-subset-only
+        text: Restricted to whitelisted tokens via token_symbol IS NOT NULL, which drops
+          CELO gas dust and spoof tokens. Anything unpriced or unknown-decimals belongs
+          upstream in int_celo_gpay_safe_transfers_alltoken, never here. This gate is
+          only as good as the upstream NULL, so that model must keep join_use_nulls = 1
+          in its pre_hook — otherwise a whitelist miss arrives as an empty-string symbol
+          and every non-whitelisted transfer silently classifies (observed as 19 stray
+          Top-ups before the 2026-07-30 fix).
+      - id: payment-requires-stablecoin
+        text: Payment is card -> settlement contract in a STABLECOIN. The same flow in a
+          non-stablecoin whitelisted token is 'Other' and must stay out of payment
+          metrics. Cashback is compiled out until the model's cashback_sources list is
+          populated, so reward inflows currently classify as Top-up.
+      - id: current-month-reclassified
+        text: insert_overwrite plus apply_monthly_incremental_filter recomputes the whole
+          current calendar-month partition each run, so a Safe recognised late in the
+          month is reclassified within that month. Earlier months are not revisited.
+      - id: scoped-append-into-empty-months-only
+        text: With start_month set the strategy is append, which is correct only into
+          empty months (refresh.py writes non-overlapping monthly batches). Re-running
+          a scoped window over a populated month appends a second copy, and the marts
+          read this table without FINAL, so count() - uniqExact(grain) per month must
+          stay 0. Same contract as the upstream int_celo_gpay_safe_transfers_alltoken.
+      hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates, ch-overcommit-victim, stale-snapshot-caveat, ch-partition-cap, ch-left-join-nulls]
+      validation:
+      - 'no unwhitelisted rows: countIf(token_symbol IS NULL) == 0 AND countIf(token_symbol = '''') == 0'
+      - "action distribution is stable month over month (a Payment -> Top-up shift means the settlement address or whitelist changed)"
+      - 'duplicate excess per month: count() - uniqExact((safe_address, block_time, tx_hash, token_address, counterparty, action)) == 0'
+      reprocess_runbook: >-
+        Rebuild the upstream base for the affected months first
+        (int_celo_gpay_safe_transfers_alltoken — see its runbook), then DROP each
+        affected month partition here before re-running this model scoped to those
+        months via scripts/full_refresh/refresh.py. The drop is required: scoped runs
+        append rather than REPLACE, so re-running over a populated month duplicates it.
+        Finally rebuild int_celo_gpay_activity_daily and the api_celo_gpay_* marts.
+    # Staged rebuild in 3-month batches, matching int_execution_gpay_activity on
+    # Gnosis Chain. Reads the card-filtered transfer base rather than raw logs, so
+    # the window can be wider than the base model's 1 month. Scoped batches append
+    # (see the model header): a 3-month batch is partition-aligned today, but append
+    # removes the dependence on that, so changing batch_months or the partition grain
+    # can never turn a stage into a REPLACE PARTITION wipe.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 3
 
 - name: int_celo_gpay_activity_daily
   description: |
@@ -206,7 +528,9 @@ models:
     description: "Payment | Withdrawal | Reversal | Top-up."
     data_type: String
   - name: token_symbol
-    description: USDT or USDC.
+    description: >
+      Whitelist symbol (USDT, USDC, USDm or XAUt0); only USDT and USDC occur in
+      the data as of 2026-08-03.
     data_type: String
   - name: amount
     description: Sum of token-native amount for the day.
@@ -220,29 +544,641 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, safe_address, action, token_symbol, token_address]
+      semantics: aggregate
+      invariants:
+      - id: order-by-must-cover-the-whole-grain
+        text: This is a ReplacingMergeTree, so it dedupes on the ORDER BY key, and the
+          key must therefore list every GROUP BY column. token_address was grouped but
+          NOT ordered until 2026-08-05, which meant two tokens sharing a symbol would
+          silently merge into one row and lose a day of activity. No symbol currently
+          maps to more than one address, so nothing was ever lost — a token migration
+          reusing a symbol is the case that would have triggered it. Never add a GROUP
+          BY column here without adding it to order_by.
+      - id: current-month-is-recomputed-every-run
+        text: insert_overwrite via apply_monthly_incremental_filter replaces the whole
+          current calendar month on each run, so a Safe recognised late in the month is
+          reclassified within it. Closed months are never revisited — reprocessing one
+          means dropping its partition first, not re-running the model.
+      - id: amount-usd-skips-nulls
+        text: amount_usd is SUM over a nullable input, so an unpriced transfer is skipped
+          rather than counted as zero. A day whose tokens are all unpriced yields NULL,
+          not 0, and downstream KPI models must coalesce at the point of display rather
+          than pretend the flow did not happen.
+      validation:
+      - 'duplicate excess: count() - uniqExact((date, safe_address, action, token_symbol, token_address)) == 0'
+      - 'grain is covered by order_by: every GROUP BY column appears in the ReplacingMergeTree key'
+      - 'symbol/address are 1:1: no token_symbol maps to more than one token_address'
+      notes: >-
+        Bounded by card count x days x actions. Scope inherits every limitation of
+        int_celo_gpay_activity, including the single-settlement-generation card
+        universe — see int_celo_gpay_safe_registry.
 
-- name: int_celo_gpay_balances_daily
+- name: int_celo_gpay_safe_transfers_alltoken
   description: |
-    Cumulative net-flow balance per Safe/token ((Top-up + Reversal) minus
-    (Payment + Withdrawal), running total since the Safe's first activity).
-    Not a real balance snapshot — see model header comment for why net-flow-
-    since-inception is sufficient here (no pre-launch opening-balance problem).
+    Deterministic all-token ERC-20 Transfer activity touching a GP card Safe on
+    either side (int_celo_gpay_safe_registry) — NO token whitelist, NO
+    counterparty labeling. Base for the deterministic Tier-1 enrichment
+    (all-token balances, funding-relationship) AND the base that
+    int_celo_gpay_activity classifies (whitelisted subset). `amount`/`amount_usd`
+    are set only for whitelisted tokens (celo_tokens_whitelist, address-gated, so
+    spoof tokens are excluded); `amount_raw` is always the exact integer. A
+    Safe-to-Safe transfer yields two rows
+    (one per Safe-side) by design. Incremental (insert_overwrite); the backfill
+    is complete, so plain daily incremental is the correct path. Scans all Celo
+    Transfer logs filtered to registry Safes — heavy on full-refresh (rebuild via
+    scripts/full_refresh/refresh.py in monthly batches, never a plain
+    --full-refresh), bounded per-month incrementally.
   columns:
-  - name: date
-    description: Balance-as-of date. Rows exist only on days with flow activity.
+  - name: block_date
+    description: UTC date of the transfer's block; the monthly incremental partition key derives from it.
     data_type: Date
   - name: safe_address
-    description: GP card Safe address.
+    description: The GP card Safe side of this transfer (0x-prefixed, lowercase).
+    data_type: String
+  - name: direction
+    description: "'in' if the Safe received, 'out' if it sent."
+    data_type: String
+  - name: counterparty
+    description: The other side of the transfer — RAW address, deliberately unlabeled.
+    data_type: String
+  - name: token_address
+    description: Transferred token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.
     data_type: String
   - name: token_symbol
-    description: USDT or USDC.
+    description: Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: >-
+      Exact integer transfer amount (unscaled). Always populated. uint256 on-chain,
+      so it is unsigned here — consumers that need signed arithmetic must guard the
+      cast (see fct_celo_gpay_card_balances_alltoken_daily).
+    data_type: UInt256
+    tests:
+    # An amount above Int256 max (2^255-1) sign-flips under toInt256 and turns an
+    # inflow into a large outflow. The downstream models guard the cast, but the guard
+    # excludes the transfer silently, so this is the loud half. Dormant: max is 3.0e9
+    # against a 5.8e76 bound, and a real ERC-20 cannot reach it — but a spoof token
+    # picks its own mint amount, and two already reach these cards. Same class as
+    # EXECUTIONTRANSFERS-C03. WARN: it is an upstream artefact, not a defect here.
+    # Column-level expression_is_true prepends the column name, so this reads
+    # "amount_raw <= <Int256 max>".
+    - dbt_utils.expression_is_true:
+        name: celo_gpay_transfer_amount_fits_int256
+        expression: "<= toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819967')"
+        config:
+          severity: warn
+  - name: amount
+    description: Human-unit amount; NULL for unknown-decimals tokens (no guessing).
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: USD value at the transfer date (whitelisted tokens only); NULL when unpriced.
+    data_type: Nullable(Float64)
+  - name: token_class
+    description: Whitelist token_class (STABLECOIN / RWA); NULL for non-whitelisted tokens.
+    data_type: Nullable(String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [safe_address, block_time, tx_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: two-rows-per-safe-to-safe
+        text: One row per (transfer, Safe-side). A transfer between two registry Safes
+          yields exactly two rows ('out' for the sender, 'in' for the receiver); a
+          transfer with one registry side yields one. Deduping across sides here would
+          erase a Safe's own footprint — int_celo_gpay_activity collapses to the sender
+          side for its per-transfer grain instead.
+      - id: raw-amount-always-exact
+        text: amount_raw is the exact unscaled integer for EVERY token. amount,
+          amount_usd, token_symbol and token_class are populated ONLY for
+          address-gated celo_tokens_whitelist tokens and are NULL otherwise — NULL
+          means "unknown decimals / unpriced", never zero. A spoof token reusing a
+          whitelisted symbol must stay NULL because the whitelist keys on address.
+          Delivering that NULL requires join_use_nulls = 1 in the pre_hook, because the
+          whitelist seed columns are non-nullable — at the ClickHouse default a
+          non-whitelisted token leaves the LEFT JOIN with an empty-string symbol and
+          decimals = 0, which reads amount_raw as human units and turns the downstream
+          `token_symbol IS NOT NULL` whitelist gate into a no-op.
+      - id: scoped-append-into-empty-months-only
+        text: With start_month set the strategy is append, which is correct only into
+          empty months (refresh.py writes non-overlapping monthly batches). Re-running
+          a scoped window over a populated month appends a second copy and marts read
+          this table without FINAL, so count() - uniqExact(grain) per month must stay 0.
+      hazards: [staged-insert-overwrite-wipe, append-over-populated-duplicates, ch-overcommit-victim, late-start-mis-staging, ch-left-join-nulls]
+      validation:
+      - 'duplicate excess per month: count() - uniqExact((safe_address, block_time, tx_hash, log_index)) == 0'
+      - 'whitelist miss is NULL, never the type default: countIf(token_symbol = '''') == 0 AND countIf(token_class = '''') == 0'
+      - 'unknown-decimals tokens carry no human amount: countIf(token_symbol IS NULL AND amount IS NOT NULL) == 0'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` directly (single-query OOM on the all-Transfer
+        scan). To rebuild a month, first drop that month's partition with the
+        drop_partition macro (macros/db/drop_partition.sql) because the scoped path
+        appends, then re-run scoped via scripts/full_refresh/refresh.py so
+        start_month/end_month bound the scan to one month. Then rebuild
+        int_celo_gpay_activity and the card_* marts downstream.
+    # HEAVY: scans ALL Celo Transfer logs. Full-refresh in monthly batches via
+    # scripts/full_refresh/refresh.py (passes start_month/end_month, honored in
+    # the model). Never `dbt run --full-refresh` this directly (single-query OOM).
+    # batch_months=1: one month of ALL Celo Transfers is already large once the
+    # backfill lands, so keep batches at 1 month to bound memory (drop to
+    # day-level only if a single month ever OOMs). Batches APPEND (start_month is
+    # set), so each batch must target a month that is empty or freshly dropped.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 1
+
+- name: int_celo_gpay_funding_tx_envelopes
+  description: |
+    One row per inbound ERC-20 transfer onto a GP card Safe, with the funding
+    transaction's envelope attached and a label-free funding_channel.
+
+    funding_channel is a SHAPE classification, not an identity. CIP-64
+    (transaction_type 123) is Celo's fee-currency envelope and is used by most
+    of the chain — it is necessary for MiniPay-style fee abstraction but not a
+    MiniPay ID. Measured 2026-08-07: ~64% of all Celo txs and ~79% of calls to
+    USDT/USDC were type 123; the discriminative signal for card funding is the
+    composite of envelope + call shape + funder fan-out. feeCurrency is not in
+    celo_execution.transactions.
+
+    Channel values (assigned in this priority order):
+
+      unknown — no matching row in celo_execution.transactions for the transfer's
+        tx hash (should be rare once the funding window is fully indexed).
+      mediated — the funding tx is NOT a direct EOA call of token.transfer()
+        (from != funder, or to != token, or selector != transfer). Typical cases
+        are Gnosis Safe execTransaction (0x6a761202) and routers.
+      hub — the call IS a direct EOA transfer, but this funder funds two or more
+        cards. Fan-out wins over envelope: even all-CIP-64 multi-card funders are
+        hub. Includes the legacy 0xa0dd… onboarding hub (~250 cards, type 0).
+      cip64_direct_solo — CIP-64 (type 123) + funder EOA called token.transfer()
+        + that funder funds exactly one card. MiniPay-shaped; do not rename to
+        "minipay" without an off-chain identity source.
+      other_direct — same direct EOA transfer() shape and solo fan-out, but the
+        envelope is not CIP-64 (type 0/2 — typically CELO gas).
+
+    Consumed by fct_celo_gpay_card_funding (relationship-level channel, with
+    mixed when transfers disagree) and fct_celo_gpay_card_funnel
+    (first_fund_channel = channel of the card's earliest inbound transfer).
+    Full-table rebuild; bounded by inbound transfer count (~6k).
+  columns:
+  - name: block_date
+    description: UTC date of the transfer's block.
+    data_type: Date
+  - name: block_time
+    description: On-chain timestamp of the transfer.
+    data_type: DateTime
+  - name: tx_hash
+    description: Funding transaction hash (0x-prefixed, lowercase).
     data_type: String
-  - name: balance
-    description: Cumulative net token-native balance as of this date.
-    data_type: Float64
-  - name: balance_usd
-    description: Cumulative net USD balance as of this date.
+  - name: log_index
+    description: Log index of the Transfer event within the transaction.
+    data_type: UInt32
+  - name: safe_address
+    description: The GP card Safe that received the transfer (0x-prefixed, lowercase).
+    data_type: String
+  - name: funder
+    description: RAW inbound sender address from the Transfer event, deliberately unlabeled.
+    data_type: String
+  - name: token_address
+    description: Token contract address (0x-prefixed, lowercase).
+    data_type: String
+  - name: token_symbol
+    description: Whitelist symbol; NULL for non-whitelisted tokens.
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Exact unscaled transfer amount (uint256).
+    data_type: UInt256
+  - name: amount
+    description: Human-unit amount; NULL when decimals unknown.
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: USD value at transfer date; NULL when unpriced.
+    data_type: Nullable(Float64)
+  - name: transaction_type
+    description: >-
+      Envelope from celo_execution.transactions. 123 = CIP-64 fee-currency (not
+      MiniPay-specific). NULL when the tx hash did not join.
+    data_type: Nullable(UInt32)
+  - name: is_direct_eoa_transfer
+    description: >-
+      1 when the funding tx has from=funder, to=token, and selector transfer
+      (0xa9059cbb) — i.e. the funder EOA signed a direct ERC-20 transfer.
+    data_type: UInt8
+  - name: funder_n_cards_funded
+    description: Distinct cards this funder funds across all inbound transfers.
+    data_type: UInt64
+  - name: funding_channel
+    description: >-
+      Shape classification for this transfer. See model description for the
+      channel glossary. Not an identity label.
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['cip64_direct_solo', 'other_direct', 'hub', 'mediated', 'unknown']
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_module_mastercopies
+  description: |
+    Deterministic mastercopy allowlist: GP Zodiac module proxies created via the
+    canonical ModuleProxyFactory from the Roles/Delay mastercopies GP provisions
+    from. A CROSS-CHECK only (NOT a card-inclusion source) — verified on-chain to
+    be a subset of the bridge-fingerprint universe (int_celo_gpay_safe_registry).
+
+    Two Roles mastercopies are in play and both are needed for full coverage
+    (verified 2026-08-04): roles_patched (0x732b9e9f…, current, source of every
+    card since 2026-06-10, grows with issuance, 1452 proxies) and roles_pilot
+    (0x9646fdad…, a CLOSED cohort used 2026-01-15..2026-06-12, 587 proxies).
+    With both, the allowlist covers 100% of the fingerprint Safes; with
+    roles_patched alone it silently missed the 51-card pilot cohort.
+
+    DO NOT AGGREGATE THIS TABLE AS A GP CARD COUNT. roles_pilot is SHARED with
+    unrelated projects, so of its 587 proxies only 286 are GP (51 wired the current
+    settlement contract and are visible to int_celo_gpay_roles_modules; 235 wired the
+    earlier 0xc4df5cac… bridge and are the unmodelled generation). The remaining ~301
+    belong to other projects entirely. That is the structural reason this model can
+    never become an inclusion source, and why row counts here are not card counts.
+    The GP subset is always the intersection with int_celo_gpay_roles_modules.
+
+    The invariant worth checking against this model is fingerprint ⊆ mastercopy —
+    every GP Roles proxy traces to a mastercopy here (held at 100% on 2026-08-04).
+    It is intentionally a MANUAL probe rather than a dbt test, because a new
+    mastercopy is legitimate GP activity, not a data defect. The query, and why the
+    reverse direction must never be asserted, are in models/celo/AGENTS.md. Rows mean
+    GP began issuing from a mastercopy this repo does not know — which has twice
+    coincided with a new settlement contract, so treat it as a prompt to re-derive the
+    card universe.
+  columns:
+  - name: proxy_address
+    description: The GP module proxy address (0x-prefixed, lowercase).
+    data_type: String
+    tests:
+      - unique
+      - not_null
+  - name: module_type
+    description: >
+      roles_patched (0x732b9e9f…, GP-exclusive, current) | roles_pilot
+      (0x9646fdad…, shared with other projects, pilot cohort) | delay_patched
+      (0x22d903fd…, GP-exclusive). Nullable by construction of the CASE, but the
+      WHERE clause admits only these three so it is never NULL in practice.
+    data_type: String
+  - name: created_at
+    description: ModuleProxyCreation block timestamp (first seen).
+    data_type: DateTime
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: int_celo_gpay_funder_wallets
+  description: |
+    The card <-> funding-wallet identity spine: one row per EOA that has directly
+    funded a GP card Safe.
+
+    WHY IT EXISTS: on Celo the Safe owner is useless as identity. GP's provisioning
+    flow disables owner-based signing, so int_celo_gpay_safe_current_owners returns
+    the dead sentinel 0x..02 for every card, and the funder equals the owner in ZERO
+    cases (verified 2026-08-10 across all 1,015 solo-funded cards). The funding EOA is
+    the only on-chain link between a card and the person behind it.
+
+    SCOPE is direct EOA funders (is_direct_eoa_transfer = 1). Contract-mediated
+    funders are Safes/routers, not people's wallets, and are excluded rather than
+    flagged. Hubs are kept but flagged - filter is_solo_funder for user behaviour.
+
+    NOT AN IDENTITY LABEL. "The wallet that funded this card" is the whole claim. It
+    is NOT a MiniPay tag: there is no MiniPay marker on Celo and CIP-64 is a
+    chain-wide fee envelope (models/celo/AGENTS.md).
+  columns:
+  - name: wallet_address
+    description: Funding EOA (0x-prefixed, lowercase).
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: n_cards_funded
+    description: Distinct card Safes this wallet has directly funded.
+    data_type: UInt64
+  - name: is_solo_funder
+    description: 1 when the wallet funded exactly one card, so its off-card behaviour
+      is attributable to that cardholder without ambiguity.
+    data_type: UInt8
+  - name: card_safe_address
+    description: The funded card, for solo funders only. NULL for hubs by design - an
+      arbitrary pick among many cards would be misleading.
+    data_type: Nullable(String)
+  - name: n_funding_transfers
+    description: Inbound funding transfers this wallet has made across all cards.
+    data_type: UInt64
+  - name: first_funded_at
+    description: First direct funding transfer by this wallet.
+    data_type: DateTime
+  - name: last_funded_at
+    description: Most recent direct funding transfer by this wallet.
+    data_type: DateTime
+  - name: first_funding_channel
+    description: Shape channel of this wallet's earliest funding transfer. A shape, not
+      an identity - see fct_celo_gpay_card_funding for the glossary.
+    data_type: String
+  - name: total_funded_usd
+    description: Summed amount_usd of this wallet's funding transfers; unpriced legs
+      are excluded from the sum rather than counted as 0.
     data_type: Float64
   meta:
     owner: analytics_team
     authoritative: false
+
+- name: int_celo_gpay_funder_wallet_transfers
+  description: |
+    All-token ERC-20 Transfer activity touching a GP card FUNDING WALLET on either
+    side, with the counterparty classified against the GP universe. The wallet-side
+    twin of int_celo_gpay_safe_transfers_alltoken: that model sees what the card does,
+    this one sees what the cardholder does with the rest of their money. On
+    2026-08-05..08 the card boundary hid roughly ten times more transfer activity than
+    it showed (18,157 wallet legs vs 1,674 card actions for the same people).
+
+    Grain is (transfer, wallet-side): a transfer between two cardholder wallets
+    yields two rows, one per side's own footprint. Do not dedupe across sides.
+
+    amount / amount_usd / token_symbol / token_class are populated only for
+    whitelisted (address-gated) tokens; everything else keeps amount_raw and leaves
+    the rest NULL rather than guessing a decimal scale.
+
+    The floor is the GP era (2026-01-01), not the wallet's whole life. Wallet TENURE
+    needs history back to the L2 migration and is deliberately not modelled here.
+  columns:
+  - name: block_date
+    description: Transfer date (partition key).
+    data_type: Date
+  - name: block_time
+    description: Transfer block timestamp.
+    data_type: DateTime
+  - name: tx_hash
+    description: Transaction hash (0x-prefixed, lowercase).
+    data_type: String
+  - name: log_index
+    description: Log index within the block.
+    data_type: UInt32
+  - name: wallet_address
+    description: The funding wallet whose footprint this row belongs to.
+    data_type: String
+  - name: direction
+    description: "'in' or 'out', from the wallet's perspective."
+    data_type: String
+    tests:
+    - accepted_values:
+        values: ['in', 'out']
+  - name: counterparty
+    description: The other side of the transfer (0x-prefixed, lowercase).
+    data_type: String
+  - name: counterparty_class
+    description: >-
+      fee_sink (the CIP-64 gas recipient 0x..0ce106a5 - highest-count counterparty on
+      the chain and pure noise, $10.30 across 3,799 legs in a 3-day sample; excluded
+      from int_celo_gpay_funder_wallet_daily) | zero_address (mint/burn) | gp_card (a
+      Safe in int_celo_gpay_safe_registry) | cardholder_wallet (another funding wallet)
+      | other. 'other' is honestly unknown and must never be presented as "merchants"
+      or "P2P".
+    data_type: String
+    tests:
+    - not_null
+    - accepted_values:
+        values: ['fee_sink', 'zero_address', 'gp_card', 'cardholder_wallet', 'other']
+  - name: token_address
+    description: ERC-20 contract address (0x-prefixed, lowercase).
+    data_type: String
+  - name: token_symbol
+    description: Whitelisted tokens only; NULL otherwise (never guessed).
+    data_type: Nullable(String)
+  - name: token_class
+    description: STABLECOIN / RWA from celo_tokens_whitelist; NULL for non-whitelisted.
+    data_type: Nullable(String)
+  - name: amount_raw
+    description: Exact integer transfer amount as emitted.
+    data_type: UInt256
+  - name: amount
+    description: Human units; NULL when decimals are unknown.
+    data_type: Nullable(Float64)
+  - name: amount_usd
+    description: Priced at the transfer date via the Celo price hub; NULL when unpriced
+      (visibly unpriced, never 0).
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [wallet_address, tx_hash, log_index]
+      semantics: event_stream
+      invariants:
+      - id: two-rows-per-wallet-to-wallet-transfer
+        text: Grain is (transfer, wallet-side). A transfer between two cardholder wallets
+          produces an 'out' row and an 'in' row, which is correct - each wallet's
+          footprint sees its own side. Deduping to one row per transfer would erase one
+          participant. Aggregations across all wallets must therefore pick a direction,
+          not sum both.
+      - id: fee-sink-must-stay-classified-not-dropped
+        text: The CIP-64 fee recipient is the single highest-count counterparty of any
+          Celo wallet and carries no economic content. It is classified here and filtered
+          in int_celo_gpay_funder_wallet_daily rather than dropped at the base, so the
+          base stays reconstructable against raw logs. Any new model reading this table
+          directly MUST repeat the counterparty_class != 'fee_sink' filter or every
+          transfer count roughly doubles and every counterparty ranking is meaningless.
+      - id: null-for-unknown-token
+        text: Non-whitelisted tokens keep amount_raw with amount/amount_usd NULL. The
+          pre_hook sets join_use_nulls = 1 because at the ClickHouse default the
+          whitelist LEFT JOIN yields decimals = 0 and amount silently becomes the raw
+          integer word read as human units (docs/lessons/ch-left-join-nulls.md).
+      hazards: [append-over-populated-duplicates, staged-insert-overwrite-wipe, ch-overcommit-victim, raw-logs-ingestion-holes]
+      validation:
+      - 'fee sink is classified: countIf(counterparty_class = ''fee_sink'') > 0 on any month with activity'
+      - 'card side reconciles: gp_card outbound legs match int_celo_gpay_activity Top-ups for solo-funded cards'
+      reprocess_runbook: >-
+        Never `dbt run --full-refresh` this directly - the single-query all-Transfer scan
+        OOMs (ClickHouse Code 241). Rebuild via scripts/full_refresh/refresh.py in the
+        monthly batches declared below. The scoped path appends rather than REPLACEs, so
+        drop any populated target partition first (macros/db/drop_partition.sql), then
+        rebuild int_celo_gpay_funder_wallet_daily and the two wallet-side marts.
+    # HEAVY: scans all Celo Transfer logs in the GP era, same hazard profile as
+    # int_celo_gpay_safe_transfers_alltoken. Keep batch_months at 1.
+    full_refresh:
+      start_date: "2026-01-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
+
+- name: int_celo_gpay_funder_wallet_daily
+  description: |
+    Daily funding-wallet activity at (date, wallet, direction, counterparty_class,
+    token) grain, folded off int_celo_gpay_funder_wallet_transfers.
+
+    FEE LEGS ARE EXCLUDED HERE, ON PURPOSE, AND THIS IS THE MODEL DOWNSTREAM SHOULD
+    USE. A CIP-64 fee Transfer is the gas receipt of an action, not an action; counting
+    it makes one payment look like two. "Active" in the wallet-side tree therefore
+    means: moved a token that was not a gas fee.
+  columns:
+  - name: date
+    description: Activity date (partition key).
+    data_type: Date
+  - name: wallet_address
+    description: The funding wallet.
+    data_type: String
+  - name: direction
+    description: "'in' or 'out', from the wallet's perspective."
+    data_type: String
+  - name: counterparty_class
+    description: As int_celo_gpay_funder_wallet_transfers, minus fee_sink.
+    data_type: String
+  - name: token_symbol
+    description: Whitelisted tokens only; NULL otherwise.
+    data_type: Nullable(String)
+  - name: token_class
+    description: STABLECOIN / RWA; NULL for non-whitelisted tokens.
+    data_type: Nullable(String)
+  - name: n_transfers
+    description: Non-fee transfers on this day for this grain. The activity signal -
+      use this, not amount_usd, to decide whether a wallet was active.
+    data_type: UInt64
+  - name: n_counterparties
+    description: Distinct counterparties on this day for this grain.
+    data_type: UInt64
+  - name: amount_usd
+    description: Summed priced value; unpriced legs excluded from the sum, so 0 can
+      mean "active but unvalued".
+    data_type: Float64
+  - name: n_transfers_unpriced
+    description: How many of n_transfers carried no USD value, so amount_usd = 0 can be
+      distinguished from a genuinely zero-value day.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [date, wallet_address, direction, counterparty_class, token_symbol]
+      semantics: daily_aggregate
+      invariants:
+      - id: fee-legs-excluded-by-definition
+        text: This model exists to be the fee-free view of the wallet transfer base. Its
+          row counts are therefore intentionally LOWER than the base's for the same day,
+          and the difference is exactly the CIP-64 gas receipts (roughly a third of all
+          legs). Reconciling this model against the base without re-applying
+          counterparty_class != 'fee_sink' will always show a spurious shortfall. Never
+          "fix" that by removing the filter - "active" across the wallet-side tree means
+          moved a token that was not a gas fee, and fct_celo_gpay_cardholder_engagement
+          depends on that definition.
+      - id: zero-usd-is-not-zero-activity
+        text: amount_usd sums only priced (whitelisted) legs, so a grain with
+          n_transfers > 0 and amount_usd = 0 means "active but unvalued", not "moved
+          nothing". n_transfers_unpriced distinguishes the two. Any activity or
+          aliveness signal must read n_transfers, never amount_usd.
+      - id: direction-is-per-wallet-side
+        text: Inherited from the base's (transfer, wallet-side) grain - a transfer
+          between two cardholder wallets contributes to both an 'out' and an 'in' row.
+          Summing across both directions double-counts that value; pick a direction.
+      hazards: [ch-left-join-nulls, raw-logs-ingestion-holes]
+      validation:
+      - 'no fee legs survive: countIf(counterparty_class = ''fee_sink'') == 0'
+      - 'unpriced accounting: countIf(amount_usd = 0 AND n_transfers > n_transfers_unpriced) is 0 or explainable by genuinely zero-value transfers'
+      reprocess_runbook: >-
+        Cheap: reads int_celo_gpay_funder_wallet_transfers, never raw logs. Monthly
+        insert_overwrite, so a plain `dbt run -s int_celo_gpay_funder_wallet_daily` repairs
+        the current month and a targeted rebuild repairs any other. Always rebuild it AFTER
+        the base model has been repaired, then rebuild fct_celo_gpay_cardholder_engagement
+        and fct_celo_gpay_wallet_share_of_spend_daily, whose horizon is clipped to this
+        model's max date.
+
+- name: int_celo_gpay_funder_wallet_monthly_presence
+  description: |
+    One row per (month, funding wallet): earliest and latest Transfer leg that wallet had
+    that month, plus leg counts. The batching-safe substrate for wallet TENURE.
+
+    WHY A MONTHLY PRESENCE TABLE AND NOT A DIRECT min() PER WALLET. Tenure is
+    `min(block_timestamp) per wallet` over all chain history, whose natural shape is a
+    one-row-per-wallet table - but a table model CANNOT be batched. refresh.py re-runs
+    the model per batch and a table materialisation does CREATE-OR-REPLACE each time, so
+    every month would overwrite the last and the "minimum" would silently become the
+    minimum of the final batch only. Folding presence per month into an incremental,
+    partition-per-month table avoids that: each batch writes its own partition, and the
+    min() is taken downstream over ~1k wallets x ~18 months instead of 2.7B raw logs.
+
+    SCOPE IS WIDER THAN THE REST OF THE WALLET TREE ON PURPOSE. The floor is the start of
+    coverage (2025-03), not the GP era (2026-01), because the question is what these
+    wallets did BEFORE Gnosis Pay. And fee legs are COUNTED here, unlike
+    int_celo_gpay_funder_wallet_daily: a CIP-64 gas receipt is not economic activity but
+    it is proof the wallet existed and transacted that month. n_legs_nonfee carries the
+    stricter reading.
+
+    Left-censoring is handled downstream in fct_celo_gpay_wallet_tenure. This model
+    reports what it observed and makes no claim that the first month it saw a wallet is
+    the month that wallet began.
+  columns:
+  - name: month
+    description: Month start (partition key).
+    data_type: Date
+  - name: wallet_address
+    description: The funding wallet (0x-prefixed, lowercase).
+    data_type: String
+  - name: first_seen_at
+    description: Earliest Transfer leg for this wallet in this month.
+    data_type: DateTime
+  - name: last_seen_at
+    description: Latest Transfer leg for this wallet in this month.
+    data_type: DateTime
+  - name: n_legs
+    description: All Transfer legs touching the wallet this month, gas receipts included
+      - this is a presence count, not an activity count.
+    data_type: UInt64
+  - name: n_legs_nonfee
+    description: Legs excluding transfers to the CIP-64 gas sink, for the stricter
+      "did something economic" reading.
+    data_type: UInt64
+  meta:
+    owner: analytics_team
+    authoritative: false
+    agent:
+      grain: [month, wallet_address]
+      semantics: monthly_aggregate
+      invariants:
+      - id: presence-counts-fee-legs-unlike-the-daily-model
+        text: n_legs INCLUDES CIP-64 gas receipts, deliberately and unlike
+          int_celo_gpay_funder_wallet_daily which strips them. Presence asks "did this
+          wallet exist and transact", and a gas receipt proves both. Anyone reconciling
+          this model's counts against the daily model will find a systematic surplus of
+          roughly a third; that is the fee legs and it is correct. Use n_legs_nonfee to
+          compare like with like.
+      - id: first-seen-is-first-seen-by-us
+        text: The floor is the start of celo_execution coverage at the L2 migration
+          (2025-03-26). Celo L1 history does not exist in this warehouse, so a wallet
+          already active then is observed for the first time at the window edge. This
+          model must NOT be read as birth dates; fct_celo_gpay_wallet_tenure flags those
+          rows as left-censored and that flag is where the honesty lives.
+      - id: wallet-universe-follows-the-funder-spine
+        text: The wallet set comes from int_celo_gpay_funder_wallets, which grows as new
+          cards are funded. A wallet added to the spine today has no history in already
+          built partitions, so its early months read as absent until those months are
+          reprocessed. After any material growth in the funder spine, rebuild the full
+          range rather than trusting first_seen_at for the new wallets.
+      hazards: [append-over-populated-duplicates, staged-insert-overwrite-wipe, ch-overcommit-victim, raw-logs-ingestion-holes]
+      validation:
+      - 'no month precedes coverage: min(month) >= toDate(''2025-03-01'')'
+      - 'every funder spine wallet appears: uniqExact(wallet_address) equals int_celo_gpay_funder_wallets cardinality'
+      reprocess_runbook: >-
+        NEVER `dbt run --full-refresh` this - it is the heaviest scan in the tree
+        (all Celo Transfer logs across ~18 months) and OOMs as one query (code 241).
+        Rebuild only via `python scripts/full_refresh/refresh.py --select
+        int_celo_gpay_funder_wallet_monthly_presence --inprocess`, which runs the monthly
+        batches in meta.full_refresh. Scoped batches APPEND, so drop any populated target
+        partition first (macros/db/drop_partition.sql). Then rebuild
+        fct_celo_gpay_wallet_tenure, which is cheap.
+    # HEAVIEST model in this tree: ~18 monthly batches of all-Transfer scanning.
+    full_refresh:
+      start_date: "2025-03-01"
+      batch_months: 1
+      incremental:
+        enabled: true
+        date_column: block_timestamp
+        batch_days: 1
