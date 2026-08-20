@@ -99,3 +99,105 @@ models:
     description: ClickHouse server clock at query time.
   - name: lag_seconds
     description: Seconds between `newest_block_timestamp` and `server_now`. Higher = staler data.
+
+- name: api_execution_live_trades_minute_2h
+  description: >
+    Minute-grain DEX activity over the last 2 hours of cached live trades,
+    stacked by protocol. Feeds a realtime "last 2h minute-by-minute" chart.
+    `trade_count` is swap-event count (per hop); `volume_usd` sums per-hop
+    conservative notionals (daily prices, same as the hourly chart). Anchored
+    on `max(block_timestamp)` in `int_live__dex_trades_raw` with a 60-second
+    reorg buffer. Minutes with no swaps for a protocol are absent (sparse).
+  columns:
+  - name: date
+    description: Minute bucket (start of minute, UTC). Name matches the dashboard's `xField` convention.
+    tests: [not_null]
+  - name: label
+    description: DEX protocol (Uniswap V3, Balancer V2, Balancer V3, Swapr V3). Stacked series field.
+    tests: [not_null]
+  - name: trade_count
+    description: Number of swap events in that (minute, protocol).
+    tests: [not_null]
+  - name: volume_usd
+    description: Sum of per-swap `amount_usd` for that (minute, protocol), rounded to whole USD. NULL-priced swaps contribute nothing.
+
+- name: api_execution_live_gpay_activity
+  description: >
+    Dashboard-facing feed of recent Gnosis Pay Payments and Fiat Top Ups on
+    Gnosis Chain. Reads from `int_live__gpay_activity_raw` (last 30 minutes
+    of cached data, HWM-anchored, 60-second reorg buffer). No LIMIT — callers
+    should paginate. Balances / retention / Celo are out of scope.
+  columns:
+  - name: block_timestamp
+    tests: [not_null]
+  - name: block_number
+    tests: [not_null]
+  - name: transaction_hash
+    tests: [not_null]
+  - name: wallet_address
+    description: GP Safe that paid or received the top-up.
+    tests: [not_null]
+  - name: action
+    description: "'Payment' (Safe → merchant) or 'Fiat Top Up' (mint → Safe for EURe/GBPe)."
+    tests: [not_null]
+  - name: symbol
+    description: Token symbol from `tokens_whitelist`.
+  - name: token_address
+  - name: amount
+    description: Decimal-normalized token amount.
+  - name: amount_usd
+    description: USD notional via daily token prices (stables ≈ peg).
+
+- name: api_execution_live_gpay_stats
+  description: >
+    One-row summary for the live GP pulse header tiles. Counts payments and
+    top-ups, sums USD volumes, and counts unique wallets. Reads from
+    `api_execution_live_gpay_activity` so tiles match the feed population.
+  columns:
+  - name: payment_count
+    description: Number of Payment rows in the feed window.
+  - name: topup_count
+    description: Number of Fiat Top Up rows in the feed window.
+  - name: payment_volume_usd
+    description: Sum of Payment `amount_usd` in the feed window.
+  - name: topup_volume_usd
+    description: Sum of Fiat Top Up `amount_usd` in the feed window.
+  - name: unique_payers
+    description: Distinct Safes that made at least one Payment.
+  - name: unique_wallets
+    description: Distinct Safes across Payments and Fiat Top Ups.
+
+- name: api_execution_live_gpay_minute_2h
+  description: >
+    Minute-grain Gnosis Pay Payments and Fiat Top Ups over the last 2 hours.
+    `label` is the action (`Payment` / `Fiat Top Up`) for stacked series.
+    Anchored on `int_live__gpay_activity_raw` HWM with a 60-second reorg buffer.
+  columns:
+  - name: date
+    description: Minute bucket (start of minute, UTC).
+    tests: [not_null]
+  - name: label
+    description: "Action name ('Payment' or 'Fiat Top Up')."
+    tests: [not_null]
+  - name: event_count
+    description: Number of classified events in that (minute, action).
+    tests: [not_null]
+  - name: volume_usd
+    description: Sum of `amount_usd` for that (minute, action), rounded to whole USD.
+
+- name: api_execution_live_gpay_freshness
+  description: >
+    One-row freshness indicator for the live GP pulse. Reports both the
+    newest `execution_live.logs` timestamp (source lag) and the newest row
+    in `int_live__gpay_activity_raw` (pipeline lag).
+  columns:
+  - name: newest_source_timestamp
+    description: Newest block timestamp in `execution_live.logs`.
+  - name: newest_gpay_timestamp
+    description: Newest block timestamp in `int_live__gpay_activity_raw`.
+  - name: server_now
+    description: ClickHouse server clock at query time.
+  - name: source_lag_seconds
+    description: Seconds between newest source log and server clock.
+  - name: gpay_lag_seconds
+    description: Seconds between newest GP activity row and server clock.
