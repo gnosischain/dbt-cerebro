@@ -1,0 +1,296 @@
+version: 2
+
+models:
+  - name: stg_governance__snapshot_space
+    description: >
+      Current GnosisDAO Snapshot space (gnosis.eth) metadata + voting-power
+      strategy set. Deduped to the latest ingest via FINAL. One row.
+    columns:
+      - name: space_id
+        description: Snapshot space id (gnosis.eth).
+        data_type: String
+        tests: [not_null, unique]
+      - name: followers_count
+        description: Authoritative current follower total (use this, not snapshot_follows, for the headline).
+        data_type: UInt32
+      - name: strategy_names
+        description: Space-level strategy names, ordered. Per-proposal strategy sets may differ.
+        data_type: Array(String)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_proposals
+    description: >
+      One row per Snapshot proposal (latest version via FINAL), with GIP number
+      parsed from the title and choices/scores arrays extracted from raw_json.
+    columns:
+      - name: id
+        description: Snapshot proposal id (0x hash or older IPFS CID).
+        data_type: String
+        tests: [not_null, unique]
+      - name: gip_number
+        description: >
+          GIP identity from a leading title match (parse_gip_number); NULL for
+          non-GIP proposals and mid-title mentions.
+        data_type: Nullable(UInt32)
+      - name: state
+        description: pending | active | closed.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pending', 'active', 'closed']
+      - name: choices
+        description: Ballot choice labels, positionally aligned to `scores`.
+        data_type: Array(String)
+      - name: scores
+        description: Per-choice voting-power totals, aligned to `choices`.
+        data_type: Array(Float64)
+      - name: scores_state
+        description: pending | final (only 'final' scores are safe to report).
+        data_type: String
+      - name: discussion
+        description: Proposal-authored forum URL (Snapshot's own field). Empty for ~61% of proposals.
+        data_type: String
+      - name: discussion_topic_id
+        description: >
+          Forum topic id parsed from `discussion`. NULL when discussion is empty,
+          points elsewhere (another proposal, an unrelated domain), or has no
+          numeric topic segment. Of 89 that parse, 43 have no corroborating
+          pasted-post link at all -- a genuine additional coverage source, not
+          just a corroboration signal (see api_governance_forum_topic_proposal_links,
+          which unions both signals rather than treating one as primary).
+        data_type: Nullable(UInt32)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_votes
+    description: >
+      One latest vote per (proposal_id, voter). Raw may hold multiple vote ids
+      per voter (revotes on open proposals); this model keeps the most recent by
+      vote timestamp. vp_by_strategy is positional to the proposal's strategies.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [proposal_id, voter]
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id this vote belongs to.
+        data_type: String
+        tests: [not_null]
+      - name: voter
+        description: Voter address (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: vp
+        description: Total voting power of this vote.
+        data_type: Float64
+      - name: vp_by_strategy
+        description: Voting power split across the proposal's strategies (positional).
+        data_type: Array(Float64)
+      - name: reason
+        description: Free-text voter rationale (may be empty).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_follows
+    description: >
+      One row per follower observed (deduped via FINAL). Cannot detect
+      unfollows — use snapshot_space.followers_count for the current total.
+    columns:
+      - name: follower
+        description: Follower address (lowercased).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_categories
+    description: Discourse category tree (deduped via FINAL).
+    columns:
+      - name: id
+        description: Category id.
+        data_type: UInt32
+        tests: [not_null, unique]
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_topics
+    description: >
+      One row per Discourse topic (deduped via FINAL), with GIP identity from
+      a leading title match and governance phase derived from the tags string.
+    columns:
+      - name: id
+        description: Topic id.
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: gip_number
+        description: >
+          GIP identity from a leading title match (parse_gip_number); NULL for
+          non-GIP topics and mid-title mentions.
+        data_type: Nullable(UInt32)
+      - name: phase
+        description: "phase-1 | phase-2 | phase-3 | none (from tags)."
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['phase-1', 'phase-2', 'phase-3', 'none']
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_posts
+    description: >
+      One row per Discourse post (every comment/reply), deduped via FINAL.
+      `cooked` is the rendered HTML body; snapshot_proposal_id links the
+      discussion to its Snapshot vote when a 0x link is present in the body.
+    columns:
+      - name: id
+        description: Global post id.
+        data_type: UInt64
+        tests: [not_null, unique]
+      - name: topic_id
+        description: Topic this post belongs to.
+        data_type: UInt32
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Snapshot proposal id (0x) extracted from the post body, else NULL.
+        data_type: Nullable(String)
+      - name: raw
+        description: >
+          Raw markdown source (via include_raw=1), alongside `cooked`. Empty
+          for a small number of system/action posts (post_type != regular).
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__snapshot_delegations
+    description: >
+      One row per DelegateRegistry event (chain_id, tx_hash, log_index) for
+      the gnosis.eth space on Ethereum mainnet (chain 1) and Gnosis Chain
+      (chain 100). Sourced from rpc_log_indexer.v_delegate_events_gnosis;
+      SetDelegate/ClearDelegate remapped to set/clear. Use
+      int_governance_current_delegations to resolve current state -- this
+      is the raw event log.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [chain_id, tx_hash, log_index]
+    columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain. Snapshot reads both registries.
+        data_type: UInt64
+        tests: [not_null]
+      - name: action
+        description: set | clear (remapped from SetDelegate | ClearDelegate).
+        data_type: LowCardinality(String)
+        tests:
+          - accepted_values:
+              values: ['set', 'clear']
+      - name: delegator
+        description: Address delegating their voting power (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: delegate
+        description: Address receiving the delegation (lowercased). Present on both set and clear events.
+        data_type: String
+        tests: [not_null]
+      - name: block_number
+        data_type: UInt64
+      - name: log_index
+        description: Event log position; combined with block_number for ordering (block_time ties within a tx).
+        data_type: UInt32
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_users
+    description: Public Discourse user directory (deduped via FINAL).
+    columns:
+      - name: id
+        description: User id.
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: username
+        description: Discourse username.
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_likes
+    description: >
+      One row per (post, liker) with the like's OWN timestamp, from
+      /user_actions.json. This is the only source that can answer "how many
+      likes did this post get DURING the voting window" -- forum_posts.like_count
+      is a scalar frozen at the topic's last bump, with no timestamp and no
+      actor. Hidden and deleted edges are KEPT so totals stay reconcilable
+      against forum_posts; filter downstream where the intent is explicit.
+      Unlikes are not representable (a row simply stops being re-observed).
+      Captures ~74% of the directory's likes_given total -- /user_actions.json
+      404s for 673 of 1169 users whose profile endpoint is a healthy 200.
+    columns:
+      - name: post_id
+        description: Discourse post that was liked.
+        data_type: UInt64
+        tests: [not_null]
+      - name: acting_username
+        description: >
+          Lowercased username of the LIKER, authoritative (it is the crawled
+          key). The payload's target_* fields echo the acting user rather than
+          the post author, so they are not stored -- join forum_posts on post_id
+          for the author.
+        data_type: String
+        tests: [not_null]
+      - name: created_at
+        description: When the like was given. The whole point of this table.
+        data_type: DateTime
+      - name: hidden
+        data_type: UInt8
+      - name: deleted
+        data_type: UInt8
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: stg_governance__forum_polls
+    description: >
+      One row per (post, poll, option) with its vote count and a direction.
+      option_votes = -1 (WITHHELD, because the poll's results policy hides counts)
+      is mapped to NULL so a sum cannot read a hidden live temperature check as
+      unanimous-nothing; genuine zeros survive as 0. Direction reuses
+      classify_choice_polarity -- the same macro that labels Snapshot choices, so
+      a poll's "In Favour" and a ballot's "For" mean the same thing. option_html
+      is rendered HTML, so tags are stripped before matching. close_at stays
+      Nullable and is a schedule, not evidence of closure.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: poll_name
+        description: A post can host several named polls ("poll", "poll2").
+        data_type: String
+        tests: [not_null]
+      - name: option_id
+        description: >
+          Discourse md5 of the option TEXT -- NOT globally unique. The same
+          "In Favour" id recurs across unrelated topics, so it identifies an
+          option only within a poll and must never be joined on alone.
+        data_type: String
+      - name: option_polarity
+        description: Direction of the option, from the shared classify_choice_polarity macro.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['for', 'against', 'abstain', 'other']
+      - name: option_votes
+        description: NULL when withheld by the poll's results policy; 0 is a real zero.
+        data_type: Nullable(Int32)
+      - name: votes_withheld
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false

@@ -4945,3 +4945,199 @@ relationships:
   aggregate_then_join_only: false
   allow_any_join: false
   quality_tier: approved
+
+# ---------- Governance (added 2026-07-28) ----------
+# The governance domain had NO time-spine bridges at all, so all 11 of its approved
+# metric roots raised approved_root_missing_time_spine and none could compose on a
+# shared time axis with other sectors (e.g. governance turnout against execution
+# activity by month). 9 of the 11 predate the consensus/contestation work; fixing only
+# the 2 new ones would have left the domain half-wired, so all 11 are bridged here.
+#
+# Per-proposal and per-actor roots are one_to_many with aggregate_then_join_only: true --
+# many proposals or delegates share a date, and the spine is wanted for the time axis,
+# not for row-level joins. The two genuine one-row-per-period rollups
+# (electorate_monthly, turnout_monthly) are one_to_one and joinable at row level.
+# right_keys on the daily roots are DateTime, which the existing daily bridges already
+# do (block_timestamp, slot_timestamp, became_owner_at).
+
+- name: daily_spine_to_governance_proposals_latest
+  left_model: dim_time_spine_daily
+  right_model: api_governance_proposals_latest
+  left_keys: [day]
+  right_keys: [created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_proposal_direction
+  left_model: dim_time_spine_daily
+  right_model: api_governance_proposal_direction
+  left_keys: [day]
+  right_keys: [created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_turnout_latest
+  left_model: dim_time_spine_daily
+  right_model: api_governance_turnout_latest
+  left_keys: [day]
+  right_keys: [created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_whale_concentration
+  left_model: dim_time_spine_daily
+  right_model: api_governance_whale_concentration
+  left_keys: [day]
+  right_keys: [created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_delegates_latest
+  left_model: dim_time_spine_daily
+  right_model: api_governance_delegates_latest
+  left_keys: [day]
+  right_keys: [last_delegation_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_delegation_graph
+  left_model: dim_time_spine_daily
+  right_model: api_governance_delegation_graph
+  left_keys: [day]
+  right_keys: [delegated_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: weekly_spine_to_governance_forum_activity
+  left_model: dim_time_spine_weekly
+  right_model: api_governance_forum_activity_weekly
+  left_keys: [week]
+  right_keys: [date]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: week
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_governance_activity
+  left_model: dim_time_spine_monthly
+  right_model: api_governance_activity_monthly
+  left_keys: [month]
+  right_keys: [date]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_governance_power_source
+  left_model: dim_time_spine_monthly
+  right_model: api_governance_power_source_monthly
+  left_keys: [month]
+  right_keys: [date]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_governance_electorate
+  left_model: dim_time_spine_monthly
+  right_model: api_governance_electorate_monthly
+  left_keys: [month]
+  right_keys: [date]
+  cardinality: one_to_one
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_discussion_phases
+  left_model: dim_time_spine_daily
+  right_model: api_governance_discussion_phases
+  left_keys: [day]
+  right_keys: [proposal_created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: daily_spine_to_governance_poll_vs_vote
+  left_model: dim_time_spine_daily
+  right_model: api_governance_poll_vs_vote
+  left_keys: [day]
+  right_keys: [proposal_created_at]
+  cardinality: one_to_many
+  join_semantics: left
+  via_entity: day
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: true
+  allow_any_join: false
+  quality_tier: approved
+
+- name: monthly_spine_to_governance_turnout_monthly
+  left_model: dim_time_spine_monthly
+  right_model: api_governance_turnout_monthly
+  left_keys: [month]
+  right_keys: [date]
+  cardinality: one_to_one
+  join_semantics: left
+  via_entity: month
+  preferred_bridge: true
+  safe_for_dimension_enrichment: true
+  aggregate_then_join_only: false
+  allow_any_join: false
+  quality_tier: approved

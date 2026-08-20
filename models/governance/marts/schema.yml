@@ -1,0 +1,582 @@
+version: 2
+
+models:
+  - name: api_governance_kpis_latest
+    description: >
+      Single-row headline governance KPIs for number tiles: proposal/GIP/vote
+      counts, unique voters, followers, proposals passed, pass rate, and average
+      voters per closed GIP proposal (avg_voters_per_gip_proposal).
+    columns:
+      - name: total_proposals
+        data_type: UInt64
+      - name: unique_voters
+        data_type: UInt64
+      - name: gip_pass_rate
+        description: GIP-only passed / (passed + rejected + no_consensus + below_quorum). Excludes 'decided' selections.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the date of the latest vote ingested.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_activity_monthly
+    description: >
+      Monthly governance activity, long format (date, metric, value) for
+      proposals_created, votes_cast, unique_voters.
+    columns:
+      - name: date
+        data_type: Date
+      - name: metric
+        data_type: String
+      - name: value
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposals_latest
+    description: >
+      Proposal browse table (one row per Snapshot proposal) with outcome,
+      category, quorum, and vote aggregates. Filter is_gip = 1 for GIPs only.
+    columns:
+      - name: id
+        data_type: String
+        tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: outcome
+        data_type: String
+      - name: is_gip
+        data_type: Bool
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_gip_funnel
+    description: >
+      Nested GIP conversion funnel: discussed on forum -> discussed AND reached
+      Snapshot vote -> discussed AND reached vote AND (has_passed OR has_decided).
+    columns:
+      - name: stage
+        data_type: String
+      - name: gip_count
+        data_type: UInt64
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_forum_activity_weekly
+    description: Weekly forum activity long format (date, metric, value).
+    columns:
+      - name: date
+        data_type: Date
+      - name: metric
+        description: topics_created | posts_created | active_users.
+        data_type: String
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_top_voters
+    description: >
+      Top 200 voters by proposals voted, with cumulative and average voting
+      power. total_vp_cast is participation-weighted, not a balance.
+    columns:
+      - name: voter
+        data_type: String
+        tests: [not_null]
+      - name: proposals_voted
+        data_type: UInt64
+      - name: as_of_date
+        description: Snapshot freshness for this leaderboard — the date of the latest vote ingested.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_power_source_monthly
+    description: >
+      Monthly voting power by source (Staked GNO / GNO holdings / Delegated),
+      long format (date, label, value). Empty until proposals carry `strategies`.
+    columns:
+      - name: date
+        data_type: Date
+      - name: label
+        description: Power source bucket.
+        data_type: String
+      - name: value
+        description: Summed voting power for the source that month.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposal_choices
+    description: >
+      Per-choice vote breakdown, long format (one row per proposal x choice),
+      for the per-proposal For/Against/Abstain (or ranked-choice) bar with a
+      quorum reference line. Works for any ballot shape, not just binary.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: choice
+        description: Ballot option label.
+        data_type: String
+      - name: score
+        description: Voting power this choice received.
+        data_type: Float64
+      - name: pct
+        description: Share of scores_total this choice received. Null if scores_total is 0.
+        data_type: Nullable(Float64)
+      - name: is_winner
+        description: True for the row matching the proposal's winning_choice.
+        data_type: Bool
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_forum_topic_proposal_links
+    description: >
+      Forum discussion <-> Snapshot vote cross-links, topic grain. Unions two
+      independent signals -- a pasted proposal/0x URL in a post
+      (via_forum_post) and the proposal's own authored `discussion` field
+      (via_discussion) -- so a link found by only one method still gets its
+      own row (43 discussion-only rows verified; not merely a corroboration
+      decoration on the post-link source). Includes topics where
+      title-parsing found no GIP number but a linked proposal recovers the
+      connection (recovered_via_link).
+    columns:
+      - name: topic_id
+        data_type: UInt32
+        tests: [not_null]
+      # proposal_id / snapshot_proposal_id are both real columns of this model but were
+      # never declared here. The semantic layer declares an entity `proposal` with
+      # expr: proposal_id, and the registry validator resolves entity exprs against
+      # DECLARED columns -- so the omission surfaced as a hard
+      # entity_expr_unknown_column error rather than a doc gap. Declared 2026-07-28.
+      - name: proposal_id
+        description: >
+          Snapshot proposal id this topic links to. Same value as
+          snapshot_proposal_id; kept as the semantic layer's `proposal` entity key.
+        data_type: String
+      - name: snapshot_proposal_id
+        description: Snapshot proposal id (0x form) resolved from either link signal.
+        data_type: String
+      - name: proposal_matched
+        description: True when the linked snapshot_proposal_id exists in int_governance_proposals.
+        data_type: Bool
+      - name: recovered_via_link
+        description: True when the topic's own title has no GIP number but a linked proposal does.
+        data_type: Bool
+      - name: via_forum_post
+        description: True when a post in this topic pastes this proposal's own 0x URL.
+        data_type: Bool
+      - name: via_discussion
+        description: True when this proposal's own authored `discussion` field points at this topic.
+        data_type: Bool
+      - name: corroborated_by_discussion
+        description: >
+          via_forum_post AND via_discussion -- both signals agree. False does
+          NOT mean disagreement; most false rows are one signal without the
+          other (see via_forum_post/via_discussion individually). A small
+          number of topics carry rows for two different proposals (typically
+          a multi-ballot GIP redo, e.g. GIP-134), each independently flagged.
+        data_type: Bool
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest forum topic.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_whale_concentration
+    description: >
+      Per-proposal voting-power concentration: share of total vp cast by the
+      top 1 / 5 / 10 voters. Reveals whale-decided votes a raw voter count
+      would hide. NULL shares on zero-vote proposals.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: top1_share
+        description: Share of total_vp cast by the single largest voter.
+        data_type: Nullable(Float64)
+      - name: top10_share
+        description: Share of total_vp cast by the top 10 voters by vp.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the date of the latest vote ingested.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_top_proposers
+    description: >
+      Top 50 proposal authors by count, with outcome record. enactment_rate
+      is (passed + decided) / closed proposals — distinct from gip_pass_rate
+      on KPIs (pass/fail only, excludes selection ballots).
+    columns:
+      - name: author
+        data_type: String
+        tests: [not_null]
+      - name: proposals_authored
+        data_type: UInt64
+      - name: enactment_rate
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Snapshot freshness for this leaderboard — the creation date of the newest proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_turnout_latest
+    description: >
+      Per-GIP turnout browse table (is_gip=1 only): total_vp cast / eligible
+      GNO supply (circulating on both chains + staked, conditionally). See
+      int_governance_turnout for the full methodology, the GIP-only scoping
+      rationale, and its historical-precision caveat.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: includes_staked_gno
+        description: True when this proposal's own strategies included staked GNO in the eligible pool.
+        data_type: Bool
+      - name: eligible_supply
+        data_type: Float64
+      - name: turnout
+        description: total_vp / eligible_supply. NULL if eligible_supply is 0.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest scored GIP proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_delegates_latest
+    description: >
+      Delegate leaderboard: how many distinct gnosis.eth holders currently
+      delegate to each address across both DelegateRegistry chains (1 and
+      100). A holder active on both chains counts once (uniqExact). See
+      int_governance_current_delegations for how "current" is resolved.
+      Delegation here is a separate on-chain relationship from the per-vote
+      power-source split in int_governance_vote_power_source.
+    columns:
+      - name: delegate
+        data_type: String
+        tests: [not_null, unique]
+      - name: delegator_count
+        description: Distinct delegators (uniqExact) — dual-chain holders count once.
+        data_type: UInt64
+      - name: first_delegation_at
+        data_type: DateTime
+      - name: last_delegation_at
+        data_type: DateTime
+      - name: as_of_date
+        description: Snapshot freshness for this leaderboard — the date of the most recent active delegation.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_delegation_graph
+    description: >
+      Current delegator -> delegate edges (one row per active delegation per
+      chain), for a delegation-network visual. chain_id separates the two
+      registries; tx_hash lets a reader verify any edge on-chain.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [chain_id, delegator]
+    columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain.
+        data_type: UInt64
+        tests: [not_null]
+      - name: delegator
+        data_type: String
+        tests: [not_null]
+      - name: delegate
+        data_type: String
+        tests: [not_null]
+      - name: delegated_at
+        data_type: DateTime
+      - name: tx_hash
+        data_type: String
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the date of the most recent active delegation.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_turnout_monthly
+    description: >
+      Monthly turnout trend (is_gip=1 only): a simple average of per-GIP
+      turnout ratios, NOT population-weighted by eligible supply. Directional
+      trend only -- use api_governance_turnout_latest for exact per-proposal
+      figures. A month with no real GIP shows no row (rather than a
+      misleading 0%), since the underlying model excludes non-GIP proposals.
+    columns:
+      - name: date
+        description: Month start.
+        data_type: Date
+      - name: avg_turnout
+        data_type: Nullable(Float64)
+      - name: proposals
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposal_direction
+    description: >
+      Per-proposal voting direction measured twice -- once by headcount, once by
+      voting power -- plus the gap between them. Powers the "whales versus
+      everyone else" view. Shares are over DECISIVE votes (for + against),
+      excluding abstain so an abstain-heavy ballot never reads as consensus;
+      abstain is exposed separately. Only choice_kind='single' (96.8% of
+      proposals) is directional -- ranked-choice rows appear with NULL shares
+      and directional = 0. Filter voters >= 30 before ranking (a divergence over
+      a handful of voters is noise) and is_gip = 1 for any aggregate (119 of 253
+      proposals are non-GIP spam).
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null, unique]
+      - name: created_at
+        description: Proposal creation time. Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: directional
+        description: False for ranked-choice and for proposals with no decodable decisive votes.
+        data_type: Bool
+      - name: against_share_by_head
+        description: against_voters / decisive_voters. NULL when there are no decisive votes.
+        data_type: Nullable(Float64)
+      - name: against_share_by_vp
+        description: against_vp / decisive_vp. NULL when there is no decisive voting power.
+        data_type: Nullable(Float64)
+      - name: head_minus_weight_against
+        description: >
+          against_share_by_head minus against_share_by_vp. POSITIVE = small
+          holders were more opposed than capital; NEGATIVE = capital was more
+          opposed than the crowd. The sharpest available read on whether a
+          decision had broad consent or merely sufficient weight.
+        data_type: Nullable(Float64)
+      - name: margin_by_vp
+        description: abs(for_vp - against_vp) / decisive_vp. 0 = dead heat, 1 = unanimous.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Snapshot freshness for this point-in-time endpoint — the creation date of the newest proposal.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_electorate_monthly
+    description: >
+      Electorate size per month measured two ways at once: how many PEOPLE voted
+      and how much CAPITAL voted. The divergence between the two lines is the
+      finding -- raw vote counts fell ~98.7% from 2022 to 2026, but median voting
+      power per GIP is HIGHER now (137k vs 102k) and median voters per GIP (68)
+      is back at the pre-airdrop baseline (79 in 2020). 2022 was an
+      airdrop-farming bubble, not a healthy norm. Never publish the raw
+      vote-count decline alone. GIP-only; months with no GIP are absent rather
+      than zero. Medians, not means -- per-proposal participation is heavily
+      skewed (max 1,196 voters).
+    columns:
+      - name: date
+        description: Month start. Months without a GIP proposal are absent.
+        data_type: Date
+        tests: [not_null, unique]
+      - name: median_voters_per_proposal
+        data_type: UInt64
+      - name: median_vp_per_proposal
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_vote_trajectory
+    description: >
+      How opinion FORMED across a voting window: one row per (proposal, hour
+      since voting opened) with cumulative against-share by headcount and by
+      voting power. Viable because the median proposal spreads 100 votes over 50
+      distinct active hours in a 168h window. Intended use is to overlay forum
+      post timestamps and find where the against-share inflects -- a COINCIDENCE
+      DETECTOR, not a causal claim; label any UI "posts near an inflection",
+      never "posts that caused". Both curves are exposed because a jump in
+      voting power without a jump in headcount means one whale moved. Hours with
+      no votes are absent, not zero -- do not read a gap as flat support. Filter
+      on proposal_total_votes before drawing.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: hour_offset
+        description: Hours since start_at, floored at 0 so clock-skewed votes land in hour 0.
+        data_type: UInt32
+      - name: turnout_progress
+        description: Share of the proposal's eventual turnout that had arrived by this hour.
+        data_type: Nullable(Float64)
+      - name: cum_against_share_by_vp
+        data_type: Nullable(Float64)
+      - name: delta_against_share_by_vp
+        description: >
+          Hour-over-hour movement in the voting-power against-share. Large
+          absolute values are the inflection candidates. NULL in a proposal's
+          first bucket.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_discussion_phases
+    description: >
+      Discussion and endorsement per proposal per lifecycle phase: before the
+      proposal existed, after it existed but before voting opened, during the
+      vote, and after it closed. Rows exist for any (proposal, phase) with
+      either posts or likes, so a phase where people only clicked like is still
+      present -- an ABSENT row means nothing happened, a zero means the phase had
+      activity of the other kind. Coverage is 137 of 253 proposals (54%),
+      effectively all GIPs; filter is_gip = 1 for aggregates.
+      CAUTION on cross-phase comparison: pre_discussion and post_close are
+      UNBOUNDED windows while voting is typically 7 days, so comparing raw post
+      counts across phases is not like-for-like. Compare per-proposal or
+      per-day.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: proposal_created_at
+        description: >
+          Proposal creation time. Declared so the daily time-spine bridge can
+          resolve it -- the registry validator checks relationship keys against
+          DECLARED columns, not the model's actual SQL columns.
+        data_type: DateTime
+      - name: phase
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: posts
+        data_type: UInt64
+      - name: participants
+        description: Distinct forum user_ids posting in this phase.
+        data_type: UInt64
+      - name: likes_given_in_phase
+        description: >
+          Likes counted by the LIKE's own timestamp -- exact, and the real
+          "endorsement during the vote" figure. PREFER THIS.
+        data_type: UInt64
+      - name: likes_on_posts_written_in_phase
+        description: >
+          Sum of the current like_count of posts WRITTEN in this phase.
+          Approximate: a like given today on a 2023 post lands in 2023. Kept only
+          so likes_given_in_phase can be reconciled against forum_posts, which is
+          the only figure the mini-app can currently show. If the two diverge
+          sharply, this is the one that is wrong.
+        data_type: UInt64
+      - name: distinct_likers
+        data_type: UInt64
+      - name: question_share
+        description: >
+          Share of posts in this phase asking something rather than asserting,
+          measured on quote-stripped text. NULL when the phase has no posts.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: >
+          Latest forum activity this endpoint reflects, taken as the later of the
+          newest linked-topic post and the newest like. It is a data-freshness
+          anchor for the whole view, NOT a per-row date -- every row carries the
+          same value. It tracks the linked-topic subset, so it can legitimately
+          trail the forum as a whole.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_poll_vs_vote
+    description: >
+      The forum's headcount verdict against the token verdict on the SAME question.
+      The only comparison in the layer between two genuinely SEPARATE populations --
+      a forum temperature check (one person one vote, no token needed) and the
+      Snapshot ballot that followed. head_minus_weight_against on
+      api_governance_proposal_direction compares headcount to capital within ONE
+      ballot, i.e. the same voters weighted twice; here the voters are different people.
+      It sometimes reverses outright: GIP-120 forum 58% against -> Snapshot 0.05%
+      against by VP; GIP-128 37% -> 0.01%; GIP-119 the opposite at 13% -> 98.7%.
+      A blended contestation score would hide that those are opposite phenomena.
+      FILTER is_pre_vote_check for the honest subset (130 of 142 pairs). 2 polls ran
+      during voting and 10 AFTER the ballot closed -- a post-close poll is a
+      retrospective, not a temperature check. Those rows are kept with their phase
+      exposed so the exclusion is visible rather than silent.
+      GRAIN (poll, proposal), MANY-TO-MANY both ways -- a topic hosts several named
+      polls and links to several proposals when a GIP is re-balloted, so GIP-120
+      legitimately appears more than once. Never aggregate without deciding which
+      poll you mean. Poll totals are small (roughly 10-65 votes): directional, not precise.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: proposal_created_at
+        description: Declared so the daily time-spine bridge can resolve it.
+        data_type: DateTime
+      - name: poll_name
+        description: Exposed because the grain is many-to-many; part of the poll's identity.
+        data_type: String
+      - name: poll_phase
+        description: >
+          Where the poll sits in this proposal's lifecycle. 'pre_discussion' is the
+          only phase that makes it a genuine temperature check.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: is_pre_vote_check
+        description: is_temperature_check AND poll_phase = 'pre_discussion'. The honest subset.
+        data_type: Bool
+      - name: poll_against_share
+        data_type: Nullable(Float64)
+      - name: vote_against_share_by_vp
+        data_type: Nullable(Float64)
+      - name: poll_minus_vote_vp
+        description: >
+          Forum headcount minus token weight. POSITIVE = the community was more
+          opposed than the capital that decided it; NEGATIVE = capital more opposed
+          than the community.
+        data_type: Nullable(Float64)
+      - name: verdicts_disagree
+        description: The two populations landed on opposite sides of 50%. The headline cases.
+        data_type: Bool
+      - name: as_of_date
+        description: >
+          Freshness anchor for the whole view, NOT a per-row date. Taken from the
+          poll side, since that is what this endpoint adds. Polls dedup at block
+          level, so an unchanged poll writes nothing and this can sit still while
+          the forum moves.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false

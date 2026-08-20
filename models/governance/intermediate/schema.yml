@@ -1,0 +1,556 @@
+version: 2
+
+models:
+  - name: int_governance_proposals
+    description: >
+      One enriched row per Snapshot proposal: derived outcome
+      (passed/rejected/below_quorum/open), quorum_met, keyword category, winning
+      choice, and vote aggregates (unique_voters, total_vp). Vote aggregates are
+      pre-grouped then LEFT JOINed so no-vote proposals get 0, not an epoch.
+    columns:
+      - name: id
+        description: Snapshot proposal id.
+        data_type: String
+        tests: [not_null, unique]
+      - name: outcome
+        description: >
+          passed | rejected | no_consensus (abstain won) | decided (a selection
+          ballot resolved -- the real result is winning_choice, e.g. GIP-148 ->
+          "Noctua (Noca)") | below_quorum | open. Derived from the winning choice
+          + quorum + finality; winning_choice always carries the actual winner.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['passed','rejected','no_consensus','decided','below_quorum','open']
+      - name: winning_choice
+        description: The choice label with the most voting power (any ballot type). Empty if no scores.
+        data_type: String
+      - name: category
+        description: Keyword-derived category (Treasury & Funding, Technical & Protocol, ...).
+        data_type: String
+      - name: unique_voters
+        description: Distinct voters (deduped one-per-voter upstream).
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_gip
+    description: >
+      The GIP spine — one row per GIP number, unifying forum discussion
+      (topics/posts/views/phase flags) with Snapshot proposal(s). Canonical
+      `outcome` is set only when unambiguous (single decisive result across
+      ballots); conflicting decisive outcomes set outcome NULL and
+      outcome_ambiguous. Full ballot history stays on int_governance_proposals.
+    columns:
+      - name: gip_number
+        description: GIP number (the spine key).
+        data_type: UInt32
+        tests: [not_null, unique]
+      - name: discussed_on_forum
+        description: True if at least one forum topic carries this GIP number.
+        data_type: Bool
+      - name: reached_vote
+        description: True if at least one Snapshot proposal with this GIP number exists.
+        data_type: Bool
+      - name: proposal_count
+        description: Number of Snapshot proposals tagged with this GIP number.
+        data_type: UInt64
+      - name: outcome
+        description: >
+          Canonical outcome when unambiguous; NULL if decisive ballots disagree
+          (outcome_ambiguous) or there is no Snapshot proposal.
+        data_type: Nullable(String)
+      - name: outcome_ambiguous
+        description: True when multiple decisive outcomes exist for this GIP number.
+        data_type: UInt8
+      - name: has_passed
+        description: True if any proposal for this GIP has outcome=passed.
+        data_type: UInt8
+      - name: latest_outcome
+        description: Outcome of the latest proposal by created_at (not canonical).
+        data_type: Nullable(String)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_proposal_links
+    description: >
+      Cross-link from a forum post to a Snapshot proposal via a pasted
+      proposal/0x… URL. Not GIP identity — unmatched links keep
+      proposal_matched=false. Grain: one row per linking post.
+    columns:
+      - name: post_id
+        description: Forum post id.
+        data_type: UInt64
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Lowercased 0x proposal id extracted from the post body.
+        data_type: String
+        tests: [not_null]
+      - name: proposal_matched
+        description: True when snapshot_proposal_id exists in int_governance_proposals.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_topic_proposal_links
+    description: >
+      Topic-level rollup of Snapshot proposal links found in any post of the
+      thread. One row per (topic_id, snapshot_proposal_id).
+    columns:
+      - name: topic_id
+        description: Forum topic id.
+        data_type: UInt32
+        tests: [not_null]
+      - name: snapshot_proposal_id
+        description: Lowercased 0x proposal id linked from the topic.
+        data_type: String
+        tests: [not_null]
+      - name: linking_posts
+        description: Number of posts in the topic that pasted this proposal URL.
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_activity_weekly
+    description: >
+      Weekly forum activity in long format (date, metric, value) for
+      topics_created, posts_created, active_users.
+    columns:
+      - name: date
+        description: Week start (Monday, UTC).
+        data_type: Date
+      - name: metric
+        description: topics_created | posts_created | active_users.
+        data_type: String
+      - name: value
+        description: Metric value for the week.
+        data_type: UInt64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_turnout
+    description: >
+      Per-GIP voting-power turnout (is_gip=1 only -- see below): total_vp cast
+      / eligible supply. Eligible supply is circulating GNO on both chains
+      (dune_gno_supply, excludes Non-Circ. Supply) plus staked GNO, with
+      staked GNO included only when THIS proposal's own strategy_names
+      contains 'beacon-chain' -- different eras used different strategy sets,
+      so eligibility is read per-proposal rather than assumed from a date
+      cutoff. Matched to supply by exact date (0 of 253 proposals miss a
+      match). Numerator is already delegation-aware (Snapshot resolves
+      delegated power into the delegate's cast vote), so turnout does not
+      depend on the delegate graph. Older 'gno'-strategy eras were not
+      independently audited the same way the current getGnoVotingPower
+      contract was -- treat pre-2022 turnout as directional.
+      Filtered to is_gip=1: non-GIP Snapshot activity (spam/phishing-style
+      announcement proposals) is 47% of all proposals but averages ~0.1%
+      turnout, which would roughly halve the blended average if included.
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id.
+        data_type: String
+        tests: [not_null, unique]
+      - name: includes_staked_gno
+        description: True when this proposal's strategy_names contains 'beacon-chain'.
+        data_type: Bool
+      - name: eligible_supply
+        description: eth_circ_supply + gnosis_circ_supply + staked_gno_component (conditional).
+        data_type: Float64
+      - name: turnout
+        description: total_vp / eligible_supply. NULL if eligible_supply is 0.
+        data_type: Nullable(Float64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_current_delegations
+    description: >
+      Current delegation state per (delegator, chain_id): their latest
+      DelegateRegistry event ordered by (block_number, log_index) -- not
+      block_time, which ties within the same block/tx (e.g. clear-then-reset
+      in one transaction). Only currently-active delegations have a row
+      here; a (delegator, chain) whose latest event is 'clear' has none.
+      Grain is per chain because Snapshot reads both registries.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [chain_id, delegator]
+    columns:
+      - name: chain_id
+        description: 1 = Ethereum mainnet, 100 = Gnosis Chain.
+        data_type: UInt64
+        tests: [not_null]
+      - name: delegator
+        description: Address delegating their voting power (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: delegate
+        description: Address currently receiving the delegation (lowercased).
+        data_type: String
+        tests: [not_null]
+      - name: delegated_at
+        description: Block time of the event that set the current delegation.
+        data_type: DateTime
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_vote_power_source
+    description: >
+      One row per (vote, strategy component): the voter's voting power split
+      across the proposal's own strategies, classified into a power source
+      (Staked GNO / GNO holdings / Delegated). Populated once proposals are
+      ingested with the `strategies` field.
+    columns:
+      - name: proposal_id
+        description: Snapshot proposal id.
+        data_type: String
+      - name: voter
+        description: Voter address (lowercased).
+        data_type: String
+      - name: power_source
+        description: >
+          Classified strategy bucket. The classifier falls back to the raw
+          Snapshot strategy name for anything unrecognized, so this test is a
+          real guardrail -- it will legitimately fail the day a new/different
+          voting strategy appears that isn't bucketed here yet.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['Staked GNO (GBC)', 'GNO holdings', 'Delegated']
+      - name: strategy_vp
+        description: Voting power attributed to this strategy component.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_vote_choices
+    description: >
+      One row per (proposal, voter, selected choice): Snapshot's polymorphic raw
+      `choice` resolved to a label and a For/Against/Abstain direction. The
+      foundation for every direction and contestation metric -- nothing
+      downstream should parse choice_raw again. basic/single-choice yield one
+      row per voter; ranked-choice yields one row per preference with vp only on
+      rank 1. Unsupported ballot types (approval/weighted/quadratic, none
+      currently used) yield NO rows by design -- the accepted_values test on
+      ballot_type below is the guard: it fires the moment gnosis.eth enables a
+      type this model cannot decode, before voters can silently vanish from the
+      direction metrics.
+      The 1-based positional mapping into choices[] was verified on 2026-07-28
+      by reconstructing every proposal's scores[] from summed vp_effective and
+      reconciling against Snapshot's own reported scores[] -- exact match across
+      all basic/single-choice proposals. That was a one-off check rather than a
+      standing test, since tests/ here is reserved for heavyweight financial
+      reconciliations; re-run it by hand if the ballot handling ever changes.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: voter
+        description: Lowercased voter address.
+        data_type: String
+        tests: [not_null]
+      - name: ballot_type
+        description: >
+          Snapshot voting system for the proposal. The accepted_values test is a
+          real guardrail, not a formality: a type outside this set cannot be
+          decoded, produces zero rows, and would silently remove those voters
+          from every direction metric. If it fails, add explicit handling in
+          int_governance_vote_choices -- do not widen the list.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['basic', 'single-choice', 'ranked-choice']
+      - name: choice_kind
+        description: >
+          single (basic/single-choice, one row per voter) | ranked
+          (ranked-choice, one row per preference) | unsupported (emits no rows).
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['single', 'ranked']
+      - name: preference_rank
+        description: 1 for single-choice; ranked ballots count up in preference order.
+        data_type: UInt32
+      - name: choice_index
+        description: 1-based index into the proposal's choices[] as cast by the voter.
+        data_type: UInt32
+      - name: choice_index_valid
+        description: >
+          False when the index falls outside choices[]. Such rows keep an empty
+          label and polarity 'unknown' rather than being mapped to a neighbour.
+        data_type: Bool
+      - name: choice_label
+        description: The option text the voter selected. Empty when the index is invalid.
+        data_type: String
+      - name: polarity
+        description: >
+          Direction of the selected option, from the shared
+          classify_choice_polarity macro -- the SAME vocabulary
+          int_governance_proposals uses for outcome, so a per-voter direction can
+          never contradict the proposal-level result. 'other' is a real
+          selection ballot outcome, not a failure.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['for', 'against', 'abstain', 'other', 'unknown']
+      - name: vp_effective
+        description: >
+          Voting power attributable to THIS row. Equals vp for single-choice;
+          for ranked ballots only rank 1 carries vp (Snapshot resolves ranked by
+          instant-runoff, not by splitting weight), so summing never
+          double-counts a ranked voter.
+        data_type: Float64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_proposal_topic_links
+    description: >
+      The unified forum-topic <-> Snapshot-proposal bridge, one row per
+      (proposal, topic). Everything phase-related joins through here instead of
+      re-deriving a bridge. Union of two signals: matching GIP number in both
+      titles (links 133 proposals) and a post pasting the proposal's 0x URL
+      (links 95, and reaches non-GIP proposals the number match cannot). Union
+      is 137 of 253 proposals (54%), effectively all 134 GIPs, across 265 pairs.
+      The proposal's own `discussion` URL is deliberately NOT a third signal --
+      it parses for only 89 and is a subset of the above. MANY-TO-MANY BY
+      DESIGN: re-balloted GIPs (74/87/91/134) give a topic several proposals.
+    columns:
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: topic_id
+        data_type: UInt32
+        tests: [not_null]
+      - name: link_methods
+        description: Which signal(s) established this link.
+        data_type: Array(String)
+      - name: corroborated
+        description: >
+          Both signals fired. A strength indicator, not a requirement -- false
+          means one signal fired, NOT that the two disagreed.
+        data_type: Bool
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_forum_post_phases
+    description: >
+      Every forum post placed in the lifecycle phase of a proposal its topic
+      links to: pre_discussion / pre_vote / voting / post_close. Turns "opinion
+      moved at hour 40" into "here is what was said at hour 40" -- align
+      hours_from_vote_open against api_governance_vote_trajectory.hour_offset.
+      GRAIN IS (post, proposal), NOT post: a post in a topic linked to two
+      proposals yields two rows and its phase can legitimately differ between
+      them, so counting posts without grouping by proposal_id double-counts.
+      Coverage is partial (137 of 253 proposals); posts in unlinked topics have
+      no row at all.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: proposal_id
+        data_type: String
+        tests: [not_null]
+      - name: phase
+        description: >
+          Derived from the proposal's own created_at/start_at/end_at, NOT from
+          the DAO's declared phase-1/2/3 tags (those cover only ~21% of topics).
+          post_close is a signal in its own right, not leftover noise.
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['pre_discussion', 'pre_vote', 'voting', 'post_close']
+      - name: hours_from_vote_open
+        description: Hours from start_at; negative for posts before voting opened.
+        data_type: Int64
+      - name: has_question
+        description: >
+          Post contains '?' after [quote] blocks are stripped. A friction proxy
+          needing no sentiment model. Quote-stripping matters: 11% of posts quote
+          someone else, and a question inside a quotation is not the author's.
+        data_type: Bool
+      - name: is_short_procedural
+        description: Under 120 chars ex-quotes -- "cc @x", moderation. 19% of the corpus.
+        data_type: Bool
+      - name: post_like_count_current
+        description: >
+          Current-state scalar frozen at the topic's last bump. For likes that can
+          be attributed to a phase, use stg_governance__forum_likes.
+        data_type: UInt32
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: int_governance_engagement_counters_daily
+    description: >
+      Daily snapshots of the two forum counters that CANNOT be recovered
+      retroactively -- topic `views` and post `reads`. Discourse exposes both
+      only as current totals with no per-event endpoint, and daily ingestion
+      re-reads a topic only when its bumped_at beats the watermark, so a dormant
+      thread's counters are frozen at its last activity. Likes are deliberately
+      excluded: they have a per-event endpoint, so the full history including
+      timestamps and actors is backfillable into forum_likes instead.
+      THIS CANNOT BE BACKFILLED -- history starts the day it first runs.
+      Partitioned by snapshot_date (NOT month): with insert_overwrite, a
+      month-grain partition would wipe every earlier day in the current month on
+      every run, since each run emits only today's rows.
+    columns:
+      - name: snapshot_date
+        description: The day we LOOKED. Compare against observed_at to spot a stale reading.
+        data_type: Date
+        tests: [not_null]
+      - name: entity_kind
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['topic', 'post']
+      - name: entity_id
+        data_type: UInt64
+      - name: metric
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['views', 'reads']
+      - name: value
+        data_type: UInt64
+      - name: observed_at
+        description: >
+          The source row's ingested_at -- when the value was actually true. A
+          regular daily grid can otherwise hide that it is repeating a
+          months-old number for a dormant thread.
+        data_type: DateTime
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [snapshot_date, entity_kind, entity_id, metric]
+        semantics: snapshot
+        invariants:
+        - id: history-is-unrecoverable
+          text: >
+            Each run emits ONLY today's rows, and Discourse exposes views/reads as
+            current totals with no per-event endpoint. A day this model did not run is
+            permanently absent and cannot be reconstructed from any source. Do not
+            interpolate across a gap and do not treat the series as continuous without
+            checking snapshot_date coverage first.
+        - id: full-refresh-is-destructive-here
+          text: >
+            Unlike every other incremental model in this project, `dbt run
+            --full-refresh` on this one DESTROYS data: it drops the accumulated daily
+            history and re-emits a single day (today). There is no recovery. Rebuild
+            requests for this model must be refused.
+        - id: daily-partition-is-load-bearing
+          text: >
+            partition_by is snapshot_date, deliberately NOT toStartOfMonth. Because
+            insert_overwrite REPLACEs whole partitions present in the batch and each
+            run emits only today's rows, a month-grain partition would wipe every
+            earlier day of the current month on every run. Daily partitions make a
+            re-run overwrite exactly its own day, which is what makes it idempotent.
+            The cost is one partition per day (ch-partition-cap), accepted knowingly.
+        - id: snapshot-date-is-not-observed-at
+          text: >
+            snapshot_date is the day we LOOKED; observed_at is when the value was
+            actually true. Ingestion re-reads a topic only when bumped_at beats the
+            watermark, so a dormant thread's counter is frozen at its last activity.
+            A difference between two consecutive snapshot_dates is real change ONLY if
+            observed_at also moved; otherwise the grid is repeating a stale number.
+        - id: views-and-reads-only
+          text: >
+            Scope is the two counters that cannot be recovered retroactively. Likes are
+            deliberately excluded because they have a per-event endpoint
+            (/user_actions.json), so their full history with timestamps and actors is
+            backfillable into stg_governance__forum_likes. Adding a like counter here
+            would be strictly worse information at higher cost.
+        hazards: [never-seeded-incremental, ch-partition-cap, stale-snapshot-caveat, ch-overcommit-victim]
+        validation:
+        - 'duplicate excess: count() - uniqExact((snapshot_date, entity_kind, entity_id, metric)) == 0'
+        - 'no gaps since inception: uniqExact(snapshot_date) == dateDiff(''day'', min(snapshot_date), max(snapshot_date)) + 1'
+        - 'staleness is visible, not hidden: countIf(observed_at < snapshot_date - INTERVAL 30 DAY) > 0 is EXPECTED (dormant threads), not a defect'
+        reprocess_runbook: >-
+          There is nothing to backfill and nothing to full-refresh — see the
+          full-refresh-is-destructive-here invariant. Re-running today is safe and
+          idempotent: insert_overwrite replaces only today's snapshot_date partition.
+          If a past day is missing, it stays missing; record the gap rather than
+          filling it. Never change partition_by to a month grain. Nothing reads this
+          model yet, so a re-run has no downstream rebuild.
+
+  - name: int_governance_poll_sentiment
+    description: >
+      One row per (post, poll): a forum poll collapsed into a for/against tally,
+      with the timing of the post hosting it. The only record of
+      one-person-one-vote community sentiment on questions that later get a
+      token-weighted Snapshot vote -- the missing middle of the
+      discussion -> signal -> vote funnel.
+      TIMING COMES FROM THE HOST POST: the poll row has no created_at (close_at is
+      a schedule, ingested_at is first-seen), so it is dated by its host post via
+      an INNER JOIN on post_id -- coverage verified 184 of 184. An undated poll
+      must not silently acquire a phase downstream.
+      poll_against_share is NULL rather than 0 when nothing decisive was cast or
+      any count was withheld; a hidden live poll reading as 0% opposition would be
+      worse than no number.
+    columns:
+      - name: post_id
+        data_type: UInt64
+        tests: [not_null]
+      - name: poll_name
+        data_type: String
+        tests: [not_null]
+      - name: is_temperature_check
+        description: >
+          Poll offers BOTH a favour and an against option. A one-sided poll or a
+          multi-option selection ballot is not a for/against check and its
+          against_share would be meaningless.
+        data_type: Bool
+      - name: poll_against_share
+        description: against / (favour + against). NULL when withheld or nothing decisive.
+        data_type: Nullable(Float64)
+      - name: has_withheld_counts
+        description: Any option's count hidden by the poll's results policy.
+        data_type: Bool
+      - name: poll_posted_at
+        description: created_at of the HOST POST -- the poll itself carries no timestamp.
+        data_type: DateTime
+      - name: decisive_votes
+        description: favour + against. Runs roughly 10-65; filter on it before ranking.
+        data_type: Nullable(Int64)
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [post_id, poll_name]
+        semantics: stateless
+        ground_truth: >-
+          Re-derivable from stg_governance__forum_polls collapsed by polarity,
+          INNER JOIN stg_governance__forum_posts for poll_posted_at. Coverage of
+          the host-post join must stay complete (every poll resolves a post).
+        invariants:
+        - id: temperature-check-needs-both-sides
+          text: >
+            is_temperature_check is true only when the poll offers BOTH a favour
+            and an against option. Reading poll_against_share on a one-sided or
+            multi-option ballot is meaningless — always filter
+            is_temperature_check before ranking or averaging.
+        - id: against-share-null-not-zero
+          text: >
+            poll_against_share is NULL (never 0) when decisive_votes is 0 or any
+            option count is withheld. Treating NULL as 0 invents 0% opposition
+            for a hidden live poll.
+        - id: timing-from-host-post
+          text: >
+            The poll row has no created_at. poll_posted_at is the host post's
+            created_at via INNER JOIN on post_id — an undated poll must not
+            silently acquire a phase downstream.
+        hazards: [stale-snapshot-caveat]
+        validation:
+        - 'duplicate excess: count() - uniqExact((post_id, poll_name)) == 0'
+        - 'temperature checks only: countIf(is_temperature_check AND (poll_against_share < 0 OR poll_against_share > 1)) == 0'
+        reprocess_runbook: >-
+          Table materialization — `dbt run --select int_governance_poll_sentiment`
+          rebuilds the full collapse from staging. No partition surgery.
