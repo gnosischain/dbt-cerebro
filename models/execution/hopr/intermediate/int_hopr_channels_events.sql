@@ -66,6 +66,11 @@
 WITH ev AS (
     SELECT
         r.network                                   AS network,
+        -- Carried from the registry rather than re-derived, so the testnet rule is
+        -- defined once. rotsee rows are kept here on purpose -- the testnet stays
+        -- analysable at the int layer and is filtered at the fct/api layer, the same
+        -- split the blokli staging models use.
+        r.is_testnet                                AS is_testnet,
         e.block_number                              AS block_number,
         e.block_timestamp                           AS block_timestamp,
         e.transaction_hash                          AS transaction_hash,
@@ -88,6 +93,7 @@ WITH ev AS (
 typed AS (
     SELECT
         network,
+        is_testnet,
         block_number,
         block_timestamp,
         transaction_hash,
@@ -126,6 +132,7 @@ typed AS (
 unpacked AS (
     SELECT
         network,
+        is_testnet,
         block_number,
         block_timestamp,
         transaction_hash,
@@ -196,6 +203,7 @@ delta AS (
 
 SELECT
     network,
+    is_testnet,
     block_number,
     block_timestamp,
     transaction_hash,

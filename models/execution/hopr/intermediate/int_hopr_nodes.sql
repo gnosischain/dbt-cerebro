@@ -274,9 +274,18 @@ prober_networks AS (
     SELECT DISTINCT network FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
 ),
 
+-- One row per network, so joining it cannot fan out. Pulled from the registry
+-- rather than re-testing the name here: the testnet rule is defined once, in
+-- contracts_hopr_registry, and every consumer inherits it.
+network_flags AS (
+    SELECT DISTINCT network, is_testnet
+    FROM {{ ref('contracts_hopr_registry') }}
+),
+
 enriched AS (
     SELECT
         s.network                                       AS network,
+        nf.is_testnet                                   AS is_testnet,
         s.node_address                                  AS node_address,
 
         -- Operator identity
@@ -312,6 +321,7 @@ enriched AS (
         ca.first_channel_activity_at                    AS first_channel_activity_at,
         ca.last_channel_activity_at                     AS last_channel_activity_at
     FROM spine AS s
+    LEFT JOIN network_flags       AS nf ON nf.network = s.network
     LEFT JOIN latest_announcement AS la ON s.network = la.network AND s.node_address = la.node_address
     LEFT JOIN safe_state          AS st ON s.network = st.network AND s.node_address = st.node_address
     LEFT JOIN safe_created        AS sc ON s.network = sc.network AND st.safe_address = sc.safe_address
@@ -322,6 +332,7 @@ enriched AS (
 
 SELECT
     e.network                                           AS network,
+    e.is_testnet                                        AS is_testnet,
     e.node_address                                      AS node_address,
     e.safe_address                                      AS safe_address,
     e.is_registered                                     AS is_registered,

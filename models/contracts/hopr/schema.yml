@@ -3,15 +3,20 @@ version: 2
 models:
 - name: contracts_hopr_registry
   description: >
-    Address / ABI / network resolution point for every HOPR model. Two HOPR
-    networks run on Gnosis Chain simultaneously - dufour (legacy production,
-    hoprd v2/v3) and jura (v4, the network the GnosisVPN client defaults to,
-    live since block 47415377 / 2026-07-27). The same logical event has a
-    different topic0 on each, so ABIs must resolve per contract address.
-    Addresses come from hoprnet/contracts ethereum/bindings/contracts-addresses.json;
-    every start_blocktime is the contract's own creation date from
-    execution.contracts. The pre-jura staging HoprChannels
-    0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57 is deliberately excluded.
+    Address / ABI / network resolution point for every HOPR model. THREE HOPR
+    environments run on Gnosis Chain simultaneously - dufour (legacy production,
+    hoprd v2/v3), jura (v4, the network the GnosisVPN client defaults to) and
+    rotsee (the v4 testnet, flagged is_testnet). dufour emits the same logical
+    events under different topic0s than the v4 pair, so ABIs must resolve per
+    contract address. Both v4 environments were REDEPLOYED once at block
+    ~4741xxxx (2026-07-27), so a network maps to more than one address per
+    contract_type and both generations are listed - dropping the legacy
+    generation truncates history at the redeploy date. Only the current jura
+    addresses own event_signatures rows; every other row points
+    abi_source_address at them. Addresses come from hoprnet/contracts
+    ethereum/bindings/contracts-addresses.json cross-checked against HOPR's own
+    published contract registry; every start_blocktime is the contract's own
+    creation date from execution.contracts.
   meta:
     owner: analytics_team
     authoritative: false
@@ -33,21 +38,33 @@ models:
           (where event_signatures rows are keyed), never the implementation.
           Pointing at the impl makes the ABI join miss and yields empty
           event_name with no error.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Registry must contain both dufour and jura for every shared
-          contract_type both networks deploy. A missing network silently drops
-          that network's events from every downstream decode.
-      - id: staging-channels-excluded
+          Registry must contain dufour, jura AND rotsee for every shared
+          contract_type they deploy. A missing environment silently drops its
+          events from every downstream decode -- which is exactly how jura's
+          pre-redeploy history went missing before 2026-08.
+      - id: every-generation-present
         text: >-
-          Pre-jura staging HoprChannels
-          0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57 must never appear. It is
-          not production and must never be aggregated with either network.
+          A network maps to MORE than one address per contract_type: both v4
+          environments were redeployed at block ~4741xxxx, so jura Channels is
+          {0x69e63a01 legacy, 0x860f50b2 current} and rotsee Channels is
+          {0x81a79fcd legacy, 0xd8c91008 current}. Keeping only the current
+          generation silently truncates history at the redeploy date, so count
+          deployments per network, never assume one address per network.
+      - id: abi-source-owns-signatures
+        text: >-
+          Only the current jura addresses own event_signatures rows. Every other
+          row (legacy jura, all rotsee) must point abi_source_address at the
+          corresponding current jura address, or the ABI join misses and the
+          decode yields empty event_name with no error. Verified: rotsee and
+          legacy jura topic0s all resolve against the current jura ABI.
       hazards: [decode-watermark-late-logs, decoder-watermark-literals]
       validation:
       - 'uniqExact(address) == count()'
-      - 'uniqExact(network) == 2'
-      - 'countIf(address = ''0x81a79fcde8ffe6452e51d8e0493b37c2a5a09c57'') == 0'
+      - 'uniqExact(network) == 3'
+      - 'every abi_source_address owns signatures: countIf(abi_source_address NOT IN
+        (SELECT lower(contract_address) FROM event_signatures)) == 0'
       reprocess_runbook: >-
         `dbt seed --select contracts_hopr_registry_static` then `dbt run
         --select contracts_hopr_registry+`. Changing the seed without reseeding
@@ -59,12 +76,22 @@ models:
     data_type: String
     tests: [not_null, unique]
   - name: network
-    description: HOPR network this deployment belongs to (dufour or jura).
+    description: >
+      HOPR environment this deployment belongs to: dufour, jura, or the rotsee
+      testnet. Not unique per contract_type -- each v4 environment has a legacy
+      and a current deployment.
     data_type: LowCardinality(String)
     tests:
     - not_null
     - accepted_values:
-        values: ['dufour', 'jura']
+        values: ['dufour', 'jura', 'rotsee']
+  - name: is_testnet
+    description: >
+      True for rotsee. Derived here (prefix-safe) so the on-chain side carries the
+      same testnet concept the blokli staging models expose, and production marts
+      have one flag to filter on. rotsee tickets and balances are not real
+      economics -- never aggregate them with dufour or jura.
+    data_type: Bool
   - name: contract_type
     description: Logical contract type, used as the decode_logs contract_type_filter.
     data_type: String
@@ -111,6 +138,9 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: "2023-08-01"
+      batch_months: 6
     agent:
       grain: [block_timestamp, transaction_hash, log_index]
       semantics: event_stream
@@ -128,13 +158,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: ticket-redemption-pairs-with-balance-decrease
         text: >-
           A ticket redemption always moves value out of the channel, so within
@@ -154,7 +186,7 @@ models:
       validation:
       - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
       - 'no undecoded rows: countIf(event_name = '''') == 0'
-      - 'both deployments decoded: uniqExact(contract_address) == 2'
+      - 'all environments decoded: uniqExact(network) == 3'
       - 'ticket pairing: countIf(event_name = ''TicketRedeemed'') == countIf(event_name = ''ChannelBalanceDecreased'')'
       reprocess_runbook: >-
         Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
@@ -218,6 +250,9 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    full_refresh:
+      start_date: "2023-08-01"
+      batch_months: 6
     agent:
       grain: [block_timestamp, transaction_hash, log_index]
       semantics: event_stream
@@ -235,13 +270,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: proxy-abi-resolves-to-proxy-address
         text: >-
           jura's Announcements is an EIP-1967 proxy (implementation
@@ -260,7 +297,7 @@ models:
       validation:
       - 'duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0'
       - 'no undecoded rows: countIf(event_name = '''') == 0'
-      - 'both deployments decoded: uniqExact(contract_address) == 2'
+      - 'all environments decoded: uniqExact(network) == 3'
       reprocess_runbook: >-
         Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full-
         refresh` also works but re-scans the whole logs history in one query). A
@@ -338,13 +375,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: safe-and-module-emitted-together
         text: >-
           Each node onboarding emits NewHoprNodeStakeSafe and
@@ -438,13 +477,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: deregistration-event-name-differs-per-network
         text: >-
           dufour emits DergisteredNodeSafe (a typo in the deployed contract)
@@ -639,13 +680,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: price-params-must-be-named
         text: >-
           The on-chain ABI leaves both TicketPriceUpdated params unnamed, so
@@ -659,7 +702,11 @@ models:
         text: >-
           Each event's oldTicketPrice equals the previous event's
           newTicketPrice, which is what proves the unnamed params are ordered
-          (old, new).
+          (old, new). CHAIN PER contract_address, NOT per network: each v4
+          environment was redeployed, and a fresh oracle starts its own series
+          from zero, so splicing the two generations of one network into a single
+          ordered series breaks the equality at the redeploy boundary and reads
+          as corrupt data when nothing is wrong.
       - id: watermark-skips-late-logs
         text: >-
           The decode is append-only off a block_number/block_timestamp
@@ -753,13 +800,15 @@ models:
           is contracts_hopr_registry.abi_source_address pointing at an
           implementation address instead of the proxy. The `no undecoded rows`
           query in validation below is the check.
-      - id: both-networks-present
+      - id: all-environments-present
         text: >-
-          Two HOPR networks live on Gnosis Chain simultaneously (dufour and
-          jura) and they emit the same logical events under DIFFERENT topic0s.
-          The ABI resolves per contract address, so a single-ABI decode would
-          silently drop one network entirely. Any model covering both must
-          keep uniqExact(contract_address) == 2.
+          THREE HOPR environments live on Gnosis Chain simultaneously (dufour,
+          jura and the rotsee testnet) and dufour emits the same logical events
+          under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract
+          address, so a single-ABI decode would silently drop an environment
+          entirely. Each v4 environment was also REDEPLOYED once, so a network
+          has more than one contract_address. Assert uniqExact(network) == 3 and
+          check presence per network -- never a bare address count.
       - id: winprob-is-uint56-not-a-fraction
         text: >-
           oldWinProb/newWinProb are uint56 fixed-point: probability = raw /
