@@ -117,13 +117,24 @@ models:
     nowhere on-chain.
   columns:
   - name: network
-    description: HOPR network the node belongs to; jura or rotsee.
+    description: >
+      HOPR network the node belongs to, NORMALIZED to the bare name (jura or rotsee) so
+      it joins the on-chain side, which uses bare names from
+      contracts_hopr_registry_static. blokli decorates the name on some feeds
+      ('jura-prod'); the mapping is prefix-based and applied once here, never in a
+      consumer. See raw_network for what the API actually returned.
+    data_type: String
+  - name: raw_network
+    description: >
+      The network name exactly as blokli returned it, before normalization. This feed
+      serves bare names today, so it usually equals network; it exists so a newly
+      decorated value is visible rather than silently folded away.
     data_type: String
   - name: is_testnet
     description: >
-      True for rotsee. CAST strips LowCardinality before the comparison because
-      comparing a LowCardinality(String) to a literal yields LowCardinality(UInt8),
-      which ClickHouse Cloud rejects with code 455.
+      True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality before the
+      comparison because comparing a LowCardinality(String) to a literal yields
+      LowCardinality(UInt8), which ClickHouse Cloud rejects with code 455.
     data_type: Bool
   - name: snapshot_date
     description: Date of the blokli snapshot.
@@ -181,10 +192,21 @@ models:
     ingestor first ran and none can be recovered. A gap in snapshot_date is permanent.
   columns:
   - name: network
-    description: HOPR network; jura or rotsee.
+    description: >
+      HOPR network, NORMALIZED to the bare name (jura or rotsee) so it joins the
+      on-chain side, which uses bare names from contracts_hopr_registry_static. The
+      blokli API self-reports a decorated name here ('jura-prod'); the mapping is
+      prefix-based and applied once in staging, never in a consumer. See raw_network.
+    data_type: String
+  - name: raw_network
+    description: >
+      The network name exactly as blokli returned it, before normalization -- 'jura-prod'
+      on this feed today. Kept for audit: it is the only place the decoration survives.
     data_type: String
   - name: is_testnet
-    description: True for rotsee. CAST strips LowCardinality to avoid ClickHouse code 455.
+    description: >
+      True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality to avoid
+      ClickHouse code 455.
     data_type: Bool
   - name: snapshot_date
     description: Date of the snapshot.

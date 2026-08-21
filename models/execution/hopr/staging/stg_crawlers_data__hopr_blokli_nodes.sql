@@ -24,10 +24,25 @@
 */
 
 SELECT
-    network,
+    -- blokli self-reports DECORATED network names ('jura-prod' on the snapshot feed),
+    -- while the on-chain side -- contracts_hopr_registry_static and every consumer --
+    -- uses the bare name ('jura'). This feed happens to serve the bare name today, so
+    -- the mapping is a no-op here, but it must stay identical to the snapshot model's:
+    -- normalize ONCE in staging, never re-map in a consumer. Prefix-safe, so a future
+    -- 'jura-staging' lands on the bare name instead of becoming its own silent network.
     -- CAST strips LowCardinality first: comparing a LowCardinality(String) to a literal
     -- yields LowCardinality(UInt8), which ClickHouse Cloud rejects outright (code 455).
-    CAST(network AS String) = 'rotsee'          AS is_testnet,
+    multiIf(
+        startsWith(CAST(network AS String), 'jura'),   'jura',
+        startsWith(CAST(network AS String), 'rotsee'), 'rotsee',
+        CAST(network AS String)
+    )                                           AS network,
+    -- Undecorated API value, kept for audit and to make a future decoration visible.
+    CAST(network AS String)                     AS raw_network,
+    -- Equivalent to (normalized network = 'rotsee'), written against the source column
+    -- rather than the output alias above -- an alias of the same name shadows the source
+    -- column and makes which one is being read ambiguous.
+    startsWith(CAST(network AS String), 'rotsee') AS is_testnet,
     snapshot_date,
     keyid,
     -- Named node_address to match every other HOPR model; blokli calls it chain_key.
