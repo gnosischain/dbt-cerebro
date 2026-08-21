@@ -1,0 +1,279 @@
+version: 2
+
+models:
+
+- name: stg_hopr_db__network_online_hourly
+  description: >
+    Hourly count of online HOPR nodes from the network.hoprnet.org dashboard's own
+    history, ingested by click-runner's hopr-network ingestor. Reads FINAL because the
+    source is a ReplacingMergeTree(ingested_at) and the backfill re-inserts every hour
+    it already holds.
+
+    This is the only HOPR series with multi-year history -- every other feed begins the
+    day its ingestor first ran -- and the only measure of how many nodes are actually up
+    rather than how many ever registered on-chain. The series has substantial hour-level
+    gaps, so consumers must count observed hours rather than assume 24 per day;
+    fct_hopr_network_health_daily exposes that as hours_observed.
+
+    dufour only: the prober was never ported to jura/v4.
+  columns:
+  - name: network
+    description: >
+      Network name derived from the dashboard's own env id (3 is dufour, the `?env=3`
+      the public API uses). An unrecognised id is passed through as
+      'network_id_<n>' rather than dropped, so a new network shows up as an
+      unfamiliar label instead of vanishing.
+    data_type: String
+  - name: observed_at
+    description: Hour the dashboard recorded the count, UTC.
+    data_type: DateTime
+  - name: nodes_online
+    description: Nodes the dashboard considered online in that hour.
+    data_type: UInt32
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: stg_hopr_db__network_nodes
+  description: >
+    Daily per-node quality snapshot from the network.hoprnet.org prober, ingested by
+    click-runner's hopr-network ingestor. Reads FINAL (ReplacingMergeTree(ingested_at);
+    re-running a day re-inserts it).
+
+    DUFOUR ONLY -- the prober was never ported to jura/v4, so there is no liveness or
+    latency signal for the network GnosisVPN runs on. Absence of a jura row means
+    unmeasured, never down. node_address is already in the lowercase 0x form used by the
+    decoded HoprChannels events, so it joins with no normalisation.
+  columns:
+  - name: network
+    description: Network name derived from the dashboard env id; dufour in practice.
+    data_type: String
+  - name: snapshot_date
+    description: Date the prober snapshot was taken.
+    data_type: Date
+  - name: node_address
+    description: >
+      On-chain node address, lowercase 0x-prefixed. Joins directly to
+      int_hopr_nodes.node_address and to HoprChannels source_node/destination_node.
+    data_type: String
+  - name: latency_ms
+    description: >
+      Averaged round-trip time the prober measured, in milliseconds. Fractional by
+      nature -- the prober returns half-millisecond values, so this is a Float and
+      rounding it to an integer discards real precision. NULL means the prober could
+      not reach the node at all, which is the reachability signal rather than a gap.
+    data_type: Nullable(Float64)
+  - name: is_reachable
+    description: >
+      Whether the prober reached the node, derived from latency_ms being non-NULL.
+      Deliberately not derived from availability, which stays populated for a node that
+      is currently down.
+    data_type: Bool
+  - name: availability_24h
+    description: Fraction of the last 24 hours the node was up, in [0,1].
+    data_type: Nullable(Float64)
+  - name: availability_7d
+    description: Fraction of the last 7 days the node was up, in [0,1].
+    data_type: Nullable(Float64)
+  - name: availability_30d
+    description: Fraction of the last 30 days the node was up, in [0,1].
+    data_type: Nullable(Float64)
+  - name: availability_6m
+    description: Fraction of the last 6 months the node was up, in [0,1].
+    data_type: Nullable(Float64)
+  - name: availability_1y
+    description: >
+      Fraction of the last year the node was up. The API currently returns NULL for
+      EVERY node, so this is carried for shape only -- a consumer that filters or
+      averages on it silently loses its whole population.
+    data_type: Nullable(Float64)
+  - name: first_seen
+    description: When the prober first observed this node.
+    data_type: Nullable(DateTime)
+  - name: last_seen
+    description: When the prober last observed this node.
+    data_type: Nullable(DateTime)
+  - name: prober_last_run
+    description: When the prober itself last ran, independent of this node's result.
+    data_type: Nullable(DateTime)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: stg_hopr_db__blokli_nodes
+  description: >
+    Per-node identity snapshot from blokli, HOPR's own v4 indexer, ingested by
+    click-runner's hopr-blokli ingestor. Reads FINAL (ReplacingMergeTree(ingested_at)).
+
+    JURA AND ROTSEE ONLY -- blokli does not serve dufour, the mirror image of the
+    prober's coverage. rotsee is a testnet; filter on is_testnet before using any of it
+    in a network metric.
+
+    THIS IS A CROSS-CHECK, NOT AN INGESTION SOURCE. Measured against the on-chain jura
+    node set, blokli returns no node int_hopr_nodes does not already have, disagrees on
+    no IP, and would contribute a single additional address -- so int_hopr_nodes
+    deliberately does not read it. Its value is that agreement: it independently
+    confirms the Announcements decode, and it carries packet_key and keyid, which exist
+    nowhere on-chain.
+  columns:
+  - name: network
+    description: >
+      HOPR network the node belongs to, NORMALIZED to the bare name (jura or rotsee) so
+      it joins the on-chain side, which uses bare names from
+      contracts_hopr_registry_static. blokli decorates the name on some feeds
+      ('jura-prod'); the mapping is prefix-based and applied once here, never in a
+      consumer. See raw_network for what the API actually returned.
+    data_type: String
+  - name: raw_network
+    description: >
+      The network name exactly as blokli returned it, before normalization. This feed
+      serves bare names today, so it usually equals network; it exists so a newly
+      decorated value is visible rather than silently folded away.
+    data_type: String
+  - name: is_testnet
+    description: >
+      True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality before the
+      comparison because comparing a LowCardinality(String) to a literal yields
+      LowCardinality(UInt8), which ClickHouse Cloud rejects with code 455.
+    data_type: Bool
+  - name: snapshot_date
+    description: Date of the blokli snapshot.
+    data_type: Date
+  - name: keyid
+    description: blokli's own incrementing node id. Exists nowhere on-chain.
+    data_type: UInt32
+  - name: node_address
+    description: >
+      On-chain node address, lowercase 0x-prefixed. blokli calls this chain_key; renamed
+      here to match every other HOPR model.
+    data_type: String
+  - name: packet_key
+    description: >
+      The node's packet (offchain) key, used for mixnet routing. Not recoverable from
+      chain data -- blokli is the only source.
+    data_type: String
+  - name: safe_address
+    description: Address of the node's staking Safe.
+    data_type: String
+  - name: multiaddress
+    description: >
+      Announced libp2p transport address, e.g. /ip4/185.9.1.97/udp/9091/quic-v1.
+    data_type: String
+  - name: multiaddress_count
+    description: How many addresses the node announced.
+    data_type: UInt8
+  - name: announced_ip
+    description: >
+      IPv4 address parsed out of multiaddress. NULL for /ip6/ or /dns4/ addresses --
+      guarded on the /ip4/ prefix so a non-IPv4 address yields NULL rather than a
+      fragment that would look like an address to ipinfo and silently fail to enrich.
+    data_type: Nullable(String)
+  meta:
+    owner: analytics_team
+    authoritative: false
+
+- name: stg_hopr_db__blokli_network_snapshot
+  description: >
+    Daily network-level snapshot from blokli: live protocol parameters plus account,
+    safe and channel counts and balances. Reads FINAL
+    (ReplacingMergeTree(ingested_at)).
+
+    JURA AND ROTSEE ONLY (no dufour). rotsee is a testnet whose ticket price and
+    balances are orders of magnitude from production -- filter on is_testnet before
+    summing anything.
+
+    This is the only source of jura economics and of staked/locked balances that needs
+    no balance indexing, and it is the live counterpart to the oracle events decoded
+    from chain: ticket_price_wxhopr and min_ticket_winning_probability here should agree
+    with the latest TicketPriceUpdated / WinProbUpdated. Disagreement means the decode
+    is stale or an oracle address in contracts_hopr_registry is wrong.
+
+    FORWARD-ONLY: blokli is queried for today, so there is no history before the
+    ingestor first ran and none can be recovered. A gap in snapshot_date is permanent.
+  columns:
+  - name: network
+    description: >
+      HOPR network, NORMALIZED to the bare name (jura or rotsee) so it joins the
+      on-chain side, which uses bare names from contracts_hopr_registry_static. The
+      blokli API self-reports a decorated name here ('jura-prod'); the mapping is
+      prefix-based and applied once in staging, never in a consumer. See raw_network.
+    data_type: String
+  - name: raw_network
+    description: >
+      The network name exactly as blokli returned it, before normalization -- 'jura-prod'
+      on this feed today. Kept for audit: it is the only place the decoration survives.
+    data_type: String
+  - name: is_testnet
+    description: >
+      True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality to avoid
+      ClickHouse code 455.
+    data_type: Bool
+  - name: snapshot_date
+    description: Date of the snapshot.
+    data_type: Date
+  - name: chain_id
+    description: EVM chain id the deployment runs on.
+    data_type: UInt32
+  - name: block_number
+    description: Block the snapshot was taken at.
+    data_type: UInt64
+  - name: api_version
+    description: blokli API version that served the snapshot.
+    data_type: String
+  - name: ticket_price_wxhopr
+    description: >
+      Price of a single ticket in wxHOPR. Nearly meaningless alone -- see
+      payout_per_winning_ticket_wxhopr.
+    data_type: Nullable(Float64)
+  - name: min_ticket_winning_probability
+    description: Minimum probability with which a ticket wins, in [0,1].
+    data_type: Float64
+  - name: payout_per_winning_ticket_wxhopr
+    description: >
+      ticket_price_wxhopr / min_ticket_winning_probability -- what a winning ticket is
+      actually worth. HOPR pays relayers probabilistically, so this is the economically
+      meaningful figure; comparing raw ticket prices across networks is meaningless
+      because they run different winning probabilities. NULL if the probability is zero.
+    data_type: Nullable(Float64)
+  - name: key_binding_fee_wxhopr
+    description: Fee charged to bind a packet key to a chain key, in wxHOPR.
+    data_type: Nullable(Float64)
+  - name: channel_closure_grace_period_s
+    description: Seconds a channel stays pending-to-close before it can be finalised.
+    data_type: UInt32
+  - name: account_count
+    description: Accounts (nodes) blokli knows on this network.
+    data_type: UInt32
+  - name: safes_count
+    description: Distinct staking Safes on this network.
+    data_type: UInt32
+  - name: safes_balance_wxhopr
+    description: Total wxHOPR held across those Safes -- staked but not yet in channels.
+    data_type: Nullable(Float64)
+  - name: channels_total
+    description: Channels in any state.
+    data_type: UInt32
+  - name: channels_balance_wxhopr
+    description: Total wxHOPR locked across channels in any state.
+    data_type: Nullable(Float64)
+  - name: channels_open
+    description: Channels currently open.
+    data_type: UInt32
+  - name: channels_open_balance_wxhopr
+    description: wxHOPR locked in open channels -- the network's working capital.
+    data_type: Nullable(Float64)
+  - name: channels_pendingtoclose
+    description: Channels closing but still inside the grace period.
+    data_type: UInt32
+  - name: channels_pendingtoclose_balance_wxhopr
+    description: wxHOPR still locked in pending-to-close channels.
+    data_type: Nullable(Float64)
+  - name: channels_closed
+    description: Channels fully closed.
+    data_type: UInt32
+  - name: channels_closed_balance_wxhopr
+    description: Residual balance recorded against closed channels.
+    data_type: Nullable(Float64)
+  meta:
+    owner: analytics_team
+    authoritative: false

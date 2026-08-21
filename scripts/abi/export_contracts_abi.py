@@ -73,9 +73,10 @@ def export_contracts_abi():
             abi_json,
             contract_name,
             source,
-            toString(updated_at) as updated_at
+            toString(updated_at) as updated_at,
+            if(chain = '', 'gnosis', chain) AS chain
         FROM contracts_abi
-        ORDER BY contract_address, implementation_address
+        ORDER BY chain, contract_address, implementation_address
         """
         
         logger.info("Fetching ABIs from database...")
@@ -97,7 +98,8 @@ def export_contracts_abi():
                 'abi_json',
                 'contract_name',
                 'source',
-                'updated_at'
+                'updated_at',
+                'chain'
             ])
             
             # Write data rows

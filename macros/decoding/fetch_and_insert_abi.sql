@@ -69,7 +69,8 @@
                 abi_json, 
                 contract_name,
                 source, 
-                updated_at
+                updated_at,
+                chain
             )
             VALUES (
                 '{{ address }}', 
@@ -77,7 +78,8 @@
                 '{{ abi_safe }}',
                 '{{ contract_name | replace("'", "\\'") }}',
                 'blockscout',
-                now()
+                now(),
+                'gnosis'
             )
         {% endset %}
 
@@ -170,7 +172,8 @@
                         abi_json, 
                         contract_name,
                         source, 
-                        updated_at
+                        updated_at,
+                        chain
                     )
                     VALUES (
                         '{{ address }}', 
@@ -178,7 +181,8 @@
                         '{{ impl_abi_safe }}',
                         '{{ impl_name | replace("'", "\\'") }}',
                         'blockscout',
-                        now()
+                        now(),
+                        'gnosis'
                     )
                 {% endset %}
 

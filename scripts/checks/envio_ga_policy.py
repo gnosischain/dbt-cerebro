@@ -44,7 +44,12 @@ def main():
     allow = load_allow()
     violations = []
     for path in glob.glob(os.path.join(REPO, "models", "**", "*.sql"), recursive=True):
-        sql = open(path).read()
+        # encoding is explicit because open() defaults to the platform codepage:
+        # on Windows that is cp1252, and any model containing a non-ASCII byte (an
+        # arrow or dash in a comment is enough) raises UnicodeDecodeError. The gate
+        # then fails for a reason unrelated to envio policy, which teaches everyone
+        # running run_all.py locally to ignore a red gate.
+        sql = open(path, encoding="utf-8").read()
         if not ENVIO_RE.search(sql):
             continue
         name = os.path.basename(path)[:-4]

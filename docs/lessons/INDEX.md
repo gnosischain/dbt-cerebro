@@ -85,6 +85,16 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   token maps from an independent source (address-sorted swap tokens == Vault order).
 - [unpriced-wrapper-token](unpriced-wrapper-token.md) `remediated` — every new
   wrapper/vault token needs a price path or it reads $0 everywhere.
+- [derived-seed-regen-unsafe](derived-seed-regen-unsafe.md) `remediated` — running the
+  documented "regenerate the signature seeds" command corrupted every topic0 (hex prefix
+  sliced by position, broken by the web3 v7 upgrade) and would have deleted 24 in-use
+  rows whose ABIs had left the store. Both silent. Set-diff against HEAD and require
+  REMOVED == 0 before committing any regenerated seed.
+- [classifier-unsafe-default](classifier-unsafe-default.md) `remediated` — the ipinfo
+  org classifier's ELSE branch defaulted every unknown provider to residential; blast
+  radius measured via int_hopr_nodes. Unknown must be explicit ('Unknown'), never a
+  guessed default. (Entry added during the #56 split — the lesson file existed on the
+  branch but was missing from this index.)
 - [stale-snapshot-caveat](stale-snapshot-caveat.md) `observed` — argMax "latest" marts
   silently serve the last ingested (possibly partial) day; check max(date) first.
 - [elementary-artifact-upload-tax](elementary-artifact-upload-tax.md) `enforced` —

@@ -1,0 +1,81 @@
+version: 2
+
+seeds:
+  - name: contracts_abi
+    description: >
+      Canonical ABI store for the decoding pipeline (multichain). One row per
+      (chain, contract_address, implementation_address); proxies carry a
+      second row with the implementation's ABI. Maintained via
+      scripts/signatures/fetch_abi_to_csv.py (--chain selects the Blockscout
+      instance and the chain value written).
+    columns:
+      - name: chain
+        description: "Network the contract is deployed on (e.g. gnosis, celo)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+
+  - name: event_signatures
+    description: >
+      Event topic0 signatures generated from contracts_abi by
+      scripts/signatures/signature_generator.py. Consumed by the decode_logs
+      macro, which filters on `chain` — the same address can host different
+      contracts on different chains, so the chain column prevents cross-chain
+      ABI collisions.
+    columns:
+      - name: chain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+            - signature
+
+  - name: function_signatures
+    description: >
+      Function 4-byte selectors generated from contracts_abi by
+      scripts/signatures/signature_generator.py. Consumed by the decode_calls
+      macro, which filters on `chain`.
+    columns:
+      - name: chain
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['gnosis', 'celo']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - chain
+            - contract_address
+            - implementation_address
+            - signature
+
+  - name: hopr_node_registry
+    description: >
+      Node classification, sourced from HOPR's own repos rather than inferred.
+      cover_traffic comes from ct-research ct-app/.configs/core_prod_config.yaml
+      (sessions.green_destinations + blue_destinations); gnosisvpn_exit from
+      gnosis_vpn linux/resources/config-jura.toml, which also supplies city and
+      country. Nodes absent from this seed are deliberately left unclassified
+      rather than guessed at.
+    columns:
+      - name: node_address
+        description: Node chain key, lowercased with 0x prefix
+        tests: [not_null, unique]
+      - name: node_class
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['cover_traffic', 'gnosisvpn_exit']

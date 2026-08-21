@@ -416,6 +416,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # The report uses box-drawing characters, which crash on a cp1252 Windows
+    # console after the files are already written (exit 1 on a successful run).
+    for stream in (sys.stdout, sys.stderr):
+        if getattr(stream, "encoding", "") and stream.encoding.lower() not in ("utf-8", "utf8"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except (AttributeError, OSError):
+                pass
+
     args = parse_args(argv)
     result = generate(Path(args.target_dir))
     entities_text = render_entities_yaml(result["annotations"])

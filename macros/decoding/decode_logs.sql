@@ -18,6 +18,10 @@
    - contract_address  : Ethereum contract address (string) or list of addresses (array)
                         Single address: '0x...' 
                         Multiple addresses: ['0x...', '0x...', ...]
+   - chain             : Which chain's ABIs to load from event_signatures
+                        (default 'gnosis'). Must match the network of
+                        source_table — the same address can host different
+                        contracts on different chains.
    - output_json_type  : If true, returns a native Map; otherwise JSON string
    - incremental_column: Column used for incremental processing (e.g. block_timestamp)
    - address_column    : Column containing the log contract address (default: address)
@@ -69,7 +73,8 @@
         incremental_column='block_timestamp',
         address_column='address',
         start_blocktime=null,
-        event_name_filter=none
+        event_name_filter=none,
+        chain='gnosis'
 ) %}
 
 {# Check if using ref model (new way) or address list (old way) #}
@@ -161,7 +166,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM {{ ref('event_signatures') }}
-WHERE {{ abi_filter }}
+WHERE chain = '{{ chain }}'
+  AND {{ abi_filter }}
 {% endset %}
 
 {# — Optional pre-decode topic0 filter — #}
@@ -175,7 +181,7 @@ WHERE {{ abi_filter }}
   {% for ev in event_name_filter %}
     {% set _ = ev_quoted.append("'" ~ ev ~ "'") %}
   {% endfor %}
-  {% set topic0_filter = "AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM " ~ ref('event_signatures') ~ " WHERE event_name IN (" ~ ev_quoted | join(', ') ~ "))" %}
+  {% set topic0_filter = "AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM " ~ ref('event_signatures') ~ " WHERE chain = '" ~ chain ~ "' AND event_name IN (" ~ ev_quoted | join(', ') ~ "))" %}
 {% endif %}
 
 {% set sql_body %}
@@ -222,8 +228,17 @@ logs AS (
          `{{ incremental_column }} >= <ts of last block>` is what enables
          partition pruning; it is provably safe because the strict
          block_number bound already excludes everything at or before the
-         watermark. Empty/missing target => no watermark (same as before). #}
-      {% if incremental_column and not flags.FULL_REFRESH %}
+         watermark. Empty/missing target => no watermark (same as before).
+
+         is_incremental() guard: the watermark only makes sense when dbt is
+         appending to an existing incremental target. For table-materialized
+         callers (e.g. the Celo native models that full-rebuild while the
+         backfill is in flight) it would read the OLD table's max block and
+         wrongly exclude everything before it from the rebuild; on an
+         incremental model's very first build it made run_query fail on the
+         missing target. Both cases now skip the watermark; established
+         incremental runs compile byte-identically. #}
+      {% if incremental_column and not flags.FULL_REFRESH and is_incremental() %}
         {% set _wm_bn = none %}{% set _wm_ts = none %}
         {% if execute %}
           {% set _wm = run_query("SELECT max(block_number), toString(max(" ~ incremental_column ~ ")) FROM " ~ this) %}
