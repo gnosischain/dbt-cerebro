@@ -61,7 +61,7 @@
      Do not filter unenriched nodes out of counts.
 
   4. Liveness IS joined (latency_ms, availability_*, prober_snapshot_date) from the
-     network.hoprnet.org prober via stg_crawlers_data__hopr_network_nodes. It is
+     network.hoprnet.org prober via stg_hopr_db__network_nodes. It is
      dufour-only -- the prober was never ported to jura/v4 -- and `liveness_source`
      separates "probed and unreachable" from "never probed" from "no prober covers
      this network". Absence from the prober's roster does NOT prove a node is dead:
@@ -258,7 +258,7 @@ prober_latest AS (
         argMax(availability_24h, snapshot_date)         AS availability_24h,
         argMax(availability_7d, snapshot_date)          AS availability_7d,
         argMax(availability_30d, snapshot_date)         AS availability_30d
-    FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
+    FROM {{ ref('stg_hopr_db__network_nodes') }}
     -- network is part of the key even though the prober only covers dufour today.
     -- Grouping on node_address alone would collapse the same address across networks
     -- and let argMax hand back another network's measurement -- silently, and only
@@ -271,7 +271,7 @@ prober_latest AS (
 -- means the day the prober gains v4 support the classification follows automatically
 -- instead of quietly reporting every jura node as unmeasurable forever.
 prober_networks AS (
-    SELECT DISTINCT network FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
+    SELECT DISTINCT network FROM {{ ref('stg_hopr_db__network_nodes') }}
 ),
 
 -- One row per network, so joining it cannot fan out. Pulled from the registry

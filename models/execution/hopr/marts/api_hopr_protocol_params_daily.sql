@@ -43,6 +43,6 @@ SELECT
     -- Total wxHOPR the network holds: sitting in Safes plus locked in live channels. The
     -- closest thing to a TVL for HOPR, and it needs no balance indexing.
     safes_balance_wxhopr + channels_open_balance_wxhopr             AS total_wxhopr_committed
-FROM {{ ref('stg_crawlers_data__hopr_blokli_network_snapshot') }}
+FROM {{ ref('stg_hopr_db__blokli_network_snapshot') }}
 WHERE NOT is_testnet
 ORDER BY network, date

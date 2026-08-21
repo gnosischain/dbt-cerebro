@@ -76,7 +76,7 @@ online AS (
         min(nodes_online)           AS nodes_online_min,
         max(nodes_online)           AS nodes_online_max,
         uniqExact(observed_at)      AS hours_observed
-    FROM {{ ref('stg_crawlers_data__hopr_network_online_hourly') }}
+    FROM {{ ref('stg_hopr_db__network_online_hourly') }}
     GROUP BY network, date
 ),
 
@@ -93,7 +93,7 @@ probed AS (
         round(avgIf(latency_ms, is_reachable), 1)           AS avg_latency_ms,
         round(quantileIf(0.5)(latency_ms, is_reachable), 1) AS p50_latency_ms,
         round(avg(availability_24h), 4)                     AS avg_availability_24h
-    FROM {{ ref('stg_crawlers_data__hopr_network_nodes') }}
+    FROM {{ ref('stg_hopr_db__network_nodes') }}
     GROUP BY network, date
 ),
 
