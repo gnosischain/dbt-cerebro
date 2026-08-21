@@ -50,6 +50,11 @@ WITH ev AS (
     FROM {{ ref('int_hopr_channels_events') }} AS e
     LEFT JOIN {{ ref('hopr_node_registry') }}  AS src
         ON e.source_node = lower(src.node_address)
+    -- Production networks only. rotsee is the v4 TESTNET: its channels and tickets
+    -- outnumber jura's several times over, so leaving it in would swamp every
+    -- headline with traffic that is not real economics. It stays queryable in
+    -- int_hopr_channels_events, which keeps the flag rather than the filter.
+    WHERE NOT e.is_testnet
 )
 
 SELECT

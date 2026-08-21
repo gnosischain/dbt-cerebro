@@ -55,6 +55,10 @@ node_first_seen AS (
         ON lower(a.contract_address) = replaceAll(r.address, '0x', '')
     WHERE a.event_name = 'KeyBinding'
       AND a.decoded_params['chain_key'] != ''
+      -- Production networks only -- rotsee is the v4 testnet. Its registrations are
+      -- test deployments and would inflate the cumulative node count, which is the
+      -- headline series of this mart.
+      AND NOT r.is_testnet
     GROUP BY network, node_address
 ),
 
