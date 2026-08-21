@@ -2,29 +2,21 @@
   config(
     materialized='table',
     engine='MergeTree()',
-    order_by='(activity_date, country_code)',
-    tags=['dev','hopr','gnosisvpn','api'],
-    meta={
-      'api': {
-        'exclude_from_api': true
-      }
-    }
+    order_by='(date, country_code)',
+    tags=['production','hopr','gnosisvpn','tier3',
+          'api:gnosisvpn_exit_activity','granularity:daily']
   )
 }}
 
 /*
-  NOT SERVED YET -- meta.api.exclude_from_api is set deliberately.
+  SERVED AT tier3. GnosisVPN is still in closed beta (El Dorado; early access
+  lands with Shangri-La, Sept 2026), so tier3 is the honest shelf for it: a real
+  endpoint contract, marked as the least settled tier. Every caveat below travels
+  with the data and is not optional context.
 
-  The api_* prefix declares intent, but entering the endpoint convention
-  (scripts/checks/check_api_tags.py) requires an `api:<endpoint>` tag plus
-  granularity and tier tags and a complete typed column schema, and it publishes a
-  contract that metrics-dashboard and the Cerebro API/MCP would then depend on.
-  GnosisVPN is still in closed beta (El Dorado); early access lands with
-  Shangri-La in Sept 2026, and jura currently has ~40 nodes with a week of data.
-  Publishing an endpoint contract over that would be premature.
-
-  To expose it later: drop this meta block, add the api:/granularity:/tier tags and
-  the typed column schema in schema.yml, then re-run scripts/checks/check_api_tags.py.
+  This is the SUPPLY side -- traffic arriving at named exits. The demand side
+  (how many clients, how many actually used it) is api_hopr_gnosisvpn_users_daily.
+  Reading either as "GnosisVPN usage" on its own will mislead.
 */
 
 /*
@@ -58,7 +50,7 @@
 
 WITH ev AS (
     SELECT
-        toDate(e.block_timestamp)   AS activity_date,
+        toDate(e.block_timestamp)   AS date,
         e.event_name                AS event_name,
         e.channel_id                AS channel_id,
         e.source_node               AS source_node,
@@ -74,7 +66,9 @@ WITH ev AS (
 )
 
 SELECT
-    activity_date,
+    -- Named `date`, not `activity_date`: check_api_tags requires a served
+    -- granularity:daily endpoint to expose its grain as date/block_date/day.
+    date,
     country_code,
     location_city,
     exit_label,
@@ -87,4 +81,4 @@ SELECT
     uniqExactIf(source_node, source_node IS NOT NULL)                     AS unique_counterparty_nodes,
     uniqExact(channel_id)                                                 AS channels_seen
 FROM ev
-GROUP BY activity_date, country_code, location_city, exit_label
+GROUP BY date, country_code, location_city, exit_label

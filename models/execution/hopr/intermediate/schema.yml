@@ -19,12 +19,22 @@ models:
       the append-watermark and append-over-populated-partition hazards.
     columns:
       - name: network
-        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        description: >
+          dufour (legacy production), jura (v4 / GnosisVPN) or rotsee (v4 testnet).
+          Each v4 network spans TWO contract deployments -- the pre-2026-07-27
+          generation and the current one -- so network is not one address.
         data_type: LowCardinality(String)
         tests:
           - not_null
           - accepted_values:
-              values: ['dufour', 'jura']
+              values: ['dufour', 'jura', 'rotsee']
+      - name: is_testnet
+        description: >
+          True for rotsee, inherited from contracts_hopr_registry so the rule is
+          defined once. Kept at this layer rather than filtered: the testnet stays
+          analysable here and the fct_/api_ marts exclude it. Never sum a metric
+          across this flag.
+        data_type: Bool
       - name: channel_id
         description: >
           Channel identifier, keccak256(abi.encodePacked(source, destination)).
@@ -177,12 +187,22 @@ models:
           crawlers_data.ipinfo first rather than this model.
     columns:
       - name: network
-        description: dufour (legacy production) or jura (v4 / GnosisVPN)
+        description: >
+          dufour (legacy production), jura (v4 / GnosisVPN) or rotsee (v4 testnet).
+          Each v4 network spans TWO contract deployments -- the pre-2026-07-27
+          generation and the current one -- so network is not one address.
         data_type: LowCardinality(String)
         tests:
           - not_null
           - accepted_values:
-              values: ['dufour', 'jura']
+              values: ['dufour', 'jura', 'rotsee']
+      - name: is_testnet
+        description: >
+          True for rotsee, inherited from contracts_hopr_registry so the rule is
+          defined once. Kept at this layer rather than filtered: the testnet stays
+          analysable here and the fct_/api_ marts exclude it. Never sum a metric
+          across this flag.
+        data_type: Bool
       - name: node_address
         description: Node chain key, lowercased with 0x prefix. Join key to channel endpoints and to the prober feed.
         data_type: String
@@ -358,3 +378,85 @@ models:
       - name: last_channel_activity_at
         description: Most recent channel event involving this node.
         data_type: Nullable(DateTime)
+
+  - name: int_hopr_vpn_clients
+    description: >
+      GnosisVPN client nodes -- one row per (network, node_address). A client is a
+      node that emitted a KeyBinding but NEVER an AddressAnnouncement: it joined
+      the network without advertising itself as reachable, so it cannot be routed
+      through and sits at the edge of the mixnet.
+      This is HOPR's own definition, taken from the SQL behind their published
+      GnosisVPN dashboard and adopted deliberately so our user counts are
+      comparable to theirs rather than a parallel invention. It is STRUCTURAL --
+      derived from chain events, so it needs no maintenance as clients appear,
+      unlike the hopr_node_registry seed which names exits from a git config and
+      goes stale silently.
+      Cannot be folded into int_hopr_nodes: that model's spine is announcement /
+      safe-registry / channel activity, so a node that only key-bound is absent
+      from it entirely -- which is exactly this population.
+      One operator can run many nodes, so a row is an upper bound on a person.
+      Clients register no Safe, so there is no on-chain identity to collapse them.
+      rotsee rows are retained and flagged; the marts exclude them.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [network, node_address]
+        semantics: dimension
+        invariants:
+        - id: one-row-per-node
+          text: >-
+            count() - uniqExact((network, node_address)) must be 0.
+        - id: clients-never-announced
+          text: >-
+            No row may appear in AddressAnnouncement for its network. An announced
+            node is a relay or an exit, and counting one as a customer inflates
+            every demand metric built on this model.
+        - id: infrastructure-excluded
+          text: >-
+            No row may match hopr_node_registry. Cover-traffic and GnosisVPN exit
+            nodes are HOPR's own infrastructure; they announce, so the anti-join
+            already removes them, and the explicit exclusion is the guard.
+        hazards: [ch-left-join-nulls, decode-watermark-late-logs]
+        validation:
+        - 'count() - uniqExact((network, node_address)) == 0'
+        - 'countIf(node_address IN (SELECT lower(node_address) FROM hopr_node_registry)) == 0'
+        - 'first_deploy_date is never null: countIf(first_deploy_date IS NULL) == 0'
+        reprocess_runbook: >-
+          Plain `dbt run -s int_hopr_vpn_clients`. It reads only the decoded
+          Announcements table, so a rebuild is cheap. If the client population looks
+          wrong, check contracts_hopr_Announcements_events for empty event_name
+          first -- a failed ABI join drops KeyBinding rows silently and shrinks this
+          model rather than erroring.
+    columns:
+      - name: network
+        description: HOPR network the client joined.
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura', 'rotsee']
+      - name: is_testnet
+        description: True for rotsee, inherited from contracts_hopr_registry.
+        data_type: Bool
+      - name: node_address
+        description: Client chain key, lowercased with 0x prefix.
+        data_type: String
+        tests: [not_null]
+      - name: first_key_binding_at
+        description: Timestamp of the first KeyBinding -- when the client came into existence.
+        data_type: DateTime
+      - name: first_deploy_date
+        description: >
+          Date of first_key_binding_at. This is the "deployment" leg of HOPR's
+          active-user definition.
+        data_type: Date
+        tests: [not_null]
+      - name: last_key_binding_at
+        description: Timestamp of the most recent KeyBinding for this node.
+        data_type: DateTime
+      - name: key_binding_count
+        description: >
+          Number of KeyBinding events. Normally 1; more than one means the node
+          rebound a packet key, which is a reinstall rather than a new client.
+        data_type: UInt64

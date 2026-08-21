@@ -114,11 +114,11 @@ semantic_models:
         - vpn exit node usage
         grain: day
   defaults:
-    agg_time_dimension: activity_date
+    agg_time_dimension: date
   dimensions:
-  - name: activity_date
+  - name: date
     type: time
-    expr: activity_date
+    expr: date
     type_params:
       time_granularity: day
   - name: country_code
@@ -672,5 +672,172 @@ semantic_models:
     description: Channels currently open. Daily level, so max.
     agg: max
     expr: channels_open
+
+- name: hopr_vpn_clients
+  description: >
+    GnosisVPN client dimension. A client is a node that key-bound but never
+    announced a multiaddress -- it joined without offering itself as reachable, so
+    it is an edge of the mixnet rather than a relay. HOPR's own definition, adopted
+    so counts are comparable to their published figures. One operator can run many
+    nodes and clients register no Safe, so a row is an upper bound on a person --
+    there is no identity here to collapse them by.
+  model: ref('int_hopr_vpn_clients')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosisvpn clients
+        - how many gnosis vpn clients
+        - hopr edge nodes
+        - gnosisvpn client deployments
+        grain: node
+  defaults:
+    agg_time_dimension: first_key_binding_at
+  dimensions:
+  - name: first_key_binding_at
+    description: When the client came into existence - use for client cohorts.
+    type: time
+    expr: first_key_binding_at
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  - name: is_testnet
+    description: >
+      True for rotsee. A DIMENSION, never summed - filter it out before quoting any
+      client count, because testnet clients are test deployments.
+    type: categorical
+    expr: is_testnet
+  measures:
+  - name: gnosisvpn_clients
+    description: >
+      Distinct GnosisVPN clients. agg is count_distinct over the node key, never a
+      row sum - and remember one operator can run several.
+    agg: count_distinct
+    expr: node_address
+
+- name: hopr_gnosisvpn_users_daily
+  description: >
+    GnosisVPN demand per network per day. TWO user definitions live here and they
+    are not interchangeable: active_users_* follows HOPR's published definition
+    (redeemed a ticket OR first key-bound in the window) and is what to compare
+    against their MAU/WAU; using_users_* counts redemptions only, i.e. actual use.
+    The difference is the deployed-but-never-used cohort. Never plot one captioned
+    as the other, and never sum either across days - they are already distinct
+    counts over rolling windows.
+  model: ref('fct_hopr_gnosisvpn_users_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosisvpn active users
+        - gnosis vpn mau
+        - gnosis vpn wau
+        - how many people use gnosisvpn
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  measures:
+  - name: gnosisvpn_active_users_30d
+    description: >
+      HOPR-comparable rolling-30d actives (31 days inclusive). agg is max, not sum:
+      the value is already a distinct count per day, and summing it across days
+      counts the same client once per day it was active.
+    agg: max
+    expr: active_users_30d
+  - name: gnosisvpn_active_users_7d
+    description: HOPR-comparable rolling-7d actives. agg max for the same reason.
+    agg: max
+    expr: active_users_7d
+  - name: gnosisvpn_using_users_30d
+    description: >
+      Rolling-30d clients that actually redeemed a ticket, excluding install-only
+      clients. The honest "is it being used" series. agg max.
+    agg: max
+    expr: using_users_30d
+  - name: gnosisvpn_using_users_7d
+    description: Rolling-7d clients that actually redeemed a ticket. agg max.
+    agg: max
+    expr: using_users_7d
+  - name: gnosisvpn_new_clients
+    description: >
+      Clients whose first key-binding fell on this day. This one IS additive across
+      days - it is a per-day count of first-time events, not a distinct count.
+    agg: sum
+    expr: new_clients
+  - name: gnosisvpn_client_tickets_redeemed
+    description: Tickets redeemed by clients. Proportional to relayed traffic, not bytes.
+    agg: sum
+    expr: tickets_redeemed
+  - name: gnosisvpn_client_redeemed_wxhopr
+    description: wxHOPR paid by clients for relaying.
+    agg: sum
+    expr: redeemed_wxhopr
+
+- name: hopr_api_gnosisvpn_users_daily
+  description: >
+    Served GnosisVPN demand per network per day. Same two definitions as
+    hopr_gnosisvpn_users_daily - active_users_* is HOPR-comparable, using_users_* is
+    redemptions only. tier3: GnosisVPN is in closed beta until Sept 2026, so treat
+    these as early-access telemetry.
+  model: ref('api_hopr_gnosisvpn_users_daily')
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gnosisvpn active users endpoint
+        - served gnosis vpn users
+        - gnosisvpn daily users
+        grain: day
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: day
+  - name: network
+    type: categorical
+    expr: network
+  measures:
+  - name: hopr_api_gnosisvpn_active_users_30d
+    description: >
+      HOPR-comparable rolling-30d active clients. agg max - a per-day distinct count
+      must never be summed across days.
+    agg: max
+    expr: active_users_30d
+  - name: hopr_api_gnosisvpn_active_users_7d
+    description: HOPR-comparable rolling-7d active clients. agg max.
+    agg: max
+    expr: active_users_7d
+  - name: hopr_api_gnosisvpn_using_users_30d
+    description: Rolling-30d clients that actually redeemed a ticket. agg max.
+    agg: max
+    expr: using_users_30d
+  - name: hopr_api_gnosisvpn_using_users_7d
+    description: Rolling-7d clients that actually redeemed a ticket. agg max.
+    agg: max
+    expr: using_users_7d
+  - name: hopr_api_gnosisvpn_new_clients
+    description: Clients first key-bound on this day. Additive across days.
+    agg: sum
+    expr: new_clients
 
 metrics: []

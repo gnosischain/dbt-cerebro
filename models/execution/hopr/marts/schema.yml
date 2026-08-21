@@ -16,7 +16,7 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['dufour', 'jura']
+              values: ['dufour', 'jura', 'rotsee']
       - name: activity_date
         data_type: Date
         tests: [not_null]
@@ -174,35 +174,162 @@ models:
 
   - name: api_gnosisvpn_exit_activity_daily
     description: >
-      GnosisVPN traffic by exit node and country, per day -- the one HOPR series
-      that is about product demand rather than protocol plumbing. Works because
-      the exit-node roster is committed to git (gnosis/gnosis_vpn
-      linux/resources/config-jura.toml) with an address, city and country per
-      destination. Scoped to jura, which carries no cover traffic.
-      Two caveats consumers must carry: tickets are probabilistic payments, so
-      they are proportional to relayed volume in expectation but are NOT a
-      bandwidth measurement (real bytes live only in node-local Prometheus
-      metrics); and channel counts track how many clients are running, not usage,
-      because the client auto-maintains channels toward target_open_channels.
-      The city/country labels are product metadata, not verified geography -- the
-      announced IPs for these nodes cluster in one 185.9.1.0/24 block plus Google
-      Cloud ranges.
+      GnosisVPN traffic by exit node and country, per day -- the SUPPLY side of
+      the product. Works because the exit-node roster is committed to git
+      (gnosis/gnosis_vpn linux/resources/config-jura.toml) with an address, city
+      and country per destination. Scoped to jura, which carries no cover traffic.
+      The demand side -- how many clients exist and how many actually used it --
+      is api_hopr_gnosisvpn_users_daily; neither answers the other's question.
+      Three caveats travel with this data. Tickets are probabilistic payments,
+      proportional to relayed volume in expectation but NOT a bandwidth
+      measurement (real bytes live only in node-local Prometheus metrics).
+      Channel counts track how many clients are running, not usage, because the
+      client auto-maintains channels toward target_open_channels -- read
+      tickets_redeemed for usage. And the city/country labels are product
+      metadata, not verified geography: the announced IPs cluster in one
+      185.9.1.0/24 block plus Google Cloud ranges.
+      The exit roster is a static git snapshot, so it goes stale silently as HOPR
+      adds exits -- unlike int_hopr_vpn_clients, which is derived structurally.
+    meta:
+      owner: analytics_team
+      authoritative: false
     columns:
-      - name: activity_date
+      - name: date
+        description: >
+          Day of the relayed activity. Named date, not activity_date, because a
+          served granularity:daily endpoint must expose its grain under that name.
         data_type: Date
         tests: [not_null]
       - name: country_code
-        description: ISO-3166 alpha-2 of the exit node's advertised location
+        description: ISO-3166 alpha-2 of the exit node's advertised location.
         data_type: LowCardinality(String)
         tests: [not_null]
+      - name: location_city
+        description: City the exit advertises. Product metadata, not verified geography.
+        data_type: String
+      - name: exit_label
+        description: Human label for the exit from the GnosisVPN client config.
+        data_type: String
       - name: tickets_redeemed
-        description: Redeemed tickets on channels terminating at this exit
+        description: >
+          Redeemed tickets on channels terminating at this exit. The usage series --
+          proportional to relayed traffic in expectation, not a byte count.
         data_type: UInt64
         tests: [not_null]
+      - name: redeemed_wxhopr
+        description: wxHOPR paid out to this exit, from channel balance decreases.
+        data_type: Decimal(38, 18)
+      - name: channels_opened
+        description: >
+          Channels opened toward this exit. Tracks clients running, NOT demand --
+          the client auto-maintains channels toward target_open_channels.
+        data_type: UInt64
+      - name: channels_closed
+        description: Channels closed toward this exit on this day.
+        data_type: UInt64
       - name: unique_counterparty_nodes
         description: >
           Distinct nodes funding channels toward this exit. An upper bound on
-          running clients, not a user count -- one operator can run many nodes.
+          running clients, not a user count -- one operator can run many nodes,
+          and this is per-exit so it cannot be summed across exits.
+        data_type: UInt64
+      - name: channels_seen
+        description: Distinct channels observed toward this exit on this day.
+        data_type: UInt64
+
+  - name: fct_hopr_gnosisvpn_users_daily
+    description: >
+      GnosisVPN client activity per network per day, on a dense date spine -- the
+      DEMAND side. Publishes two user definitions side by side and they are not
+      interchangeable. active_users_* mirrors HOPR's own published definition (a
+      client is active if it redeemed a ticket OR first key-bound in the window)
+      and is the one to quote against their figures. using_users_* counts
+      redemptions only, i.e. whether the product was actually used. The difference
+      between them is the deployed-but-never-used cohort.
+      The 30d window is 31 days inclusive while the 7d window is 7 -- an asymmetry
+      copied deliberately from HOPR's query so the numbers line up; see the model
+      header for why it is reproduced rather than corrected.
+      There is no bandwidth column, by design: tickets are probabilistic payments,
+      not bytes. rotsee (testnet) is excluded.
+    meta:
+      owner: analytics_team
+      authoritative: false
+      agent:
+        grain: [network, date]
+        semantics: daily_snapshot
+        invariants:
+        - id: one-row-per-network-day
+          text: >-
+            count() - uniqExact((network, date)) must be 0. The spine is dense, so
+            a quiet day is a zero row, never a missing one.
+        - id: using-never-exceeds-active
+          text: >-
+            using_users_N is a strict subset of active_users_N by construction
+            (redemptions only, versus redemptions plus deployments). Any row where
+            using > active means the window predicates have drifted apart.
+        - id: windows-are-nested
+          text: >-
+            active_users_7d <= active_users_30d on every row; likewise for using_*.
+            A wider window cannot contain fewer distinct clients.
+        - id: no-testnet-rows
+          text: >-
+            rotsee must never appear. Its clients are test deployments and would
+            multiply the apparent user base.
+        hazards: [ch-left-join-nulls, decode-watermark-late-logs]
+        validation:
+        - 'count() - uniqExact((network, date)) == 0'
+        - 'countIf(using_users_30d > active_users_30d) == 0'
+        - 'countIf(active_users_7d > active_users_30d) == 0'
+        - "countIf(network = 'rotsee') == 0"
+        reprocess_runbook: >-
+          Plain `dbt run -s fct_hopr_gnosisvpn_users_daily`. It is a table over
+          small inputs, so a rebuild is cheap and idempotent; rebuild
+          int_hopr_vpn_clients first if the decode layer changed.
+    columns:
+      - name: network
+        description: HOPR network. rotsee is excluded, so dufour or jura.
+        data_type: LowCardinality(String)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['dufour', 'jura']
+      - name: date
+        description: Day of the rolling window's right edge.
+        data_type: Date
+        tests: [not_null]
+      - name: active_users_30d
+        description: >
+          HOPR-comparable rolling-30d actives (31 days inclusive): clients that
+          redeemed a ticket OR first key-bound. Quote this against HOPR's MAU.
+        data_type: UInt64
+      - name: active_users_7d
+        description: HOPR-comparable rolling-7d actives. Quote against HOPR's WAU.
+        data_type: UInt64
+      - name: active_users_1d
+        description: Clients active on this day alone, same definition.
+        data_type: UInt64
+      - name: using_users_30d
+        description: >
+          Stricter rolling-30d actives -- ticket redemptions only, excluding
+          install-only clients. Use for "is the product being used".
+        data_type: UInt64
+      - name: using_users_7d
+        description: Stricter rolling-7d actives, redemptions only.
+        data_type: UInt64
+      - name: using_users_1d
+        description: Clients that redeemed on this day alone.
+        data_type: UInt64
+      - name: new_clients
+        description: Clients whose first key-binding fell on this day.
+        data_type: UInt64
+      - name: tickets_redeemed
+        description: Tickets redeemed by clients on this day.
+        data_type: UInt64
+      - name: redeemed_wxhopr
+        description: wxHOPR paid by clients on this day, from channel balance decreases.
+        data_type: Decimal(38, 18)
+      - name: channels_active
+        description: Distinct channels clients transacted on this day.
         data_type: UInt64
 
   # ─────────────────────────── served endpoints (api_*) ───────────────────────────
@@ -211,10 +338,69 @@ models:
   # which is what check_api_tags.py enforces. Renaming any of these means grepping the
   # metrics-dashboard SQL by FROM/JOIN, not by filename.
   #
-  # api_gnosisvpn_exit_activity_daily above is deliberately NOT one of these: it keeps
-  # meta.api.exclude_from_api while GnosisVPN is in closed beta, because publishing an
-  # endpoint contract over a week-old product surface would commit us to it. GnosisVPN
-  # stays visible through the gnosisvpn_exit_nodes counts and jura rows below.
+  # The two GnosisVPN endpoints are tier3, not tier1: the product is in closed beta
+  # until Shangri-La (Sept 2026), so their series are early-access telemetry. They
+  # were unserved until 2026-08; the exit endpoint's grain column was renamed
+  # activity_date -> date on promotion, which is what the daily convention requires.
+
+  - name: api_hopr_gnosisvpn_users_daily
+    description: >
+      Served GnosisVPN client activity per network per day -- the demand side.
+      Exposes BOTH user definitions: active_users_* (HOPR-comparable; redemption
+      OR first key-binding) and using_users_* (redemptions only). They are not
+      interchangeable and the difference between them is the
+      deployed-but-never-used cohort, so a chart captioned "GnosisVPN users" must
+      say which one it plots. The 30d window is 31 days inclusive and the 7d
+      window is 7, an asymmetry inherited from HOPR's own query for
+      comparability. No bandwidth column exists: tickets are probabilistic
+      payments, not bytes. Passthrough of fct_hopr_gnosisvpn_users_daily.
+    meta:
+      owner: analytics_team
+      authoritative: false
+    columns:
+      - name: date
+        description: Day of the rolling window's right edge.
+        data_type: Date
+        tests: [not_null]
+      - name: network
+        description: HOPR network. rotsee (testnet) is excluded upstream.
+        data_type: LowCardinality(String)
+        tests: [not_null]
+      - name: active_users_30d
+        description: >
+          HOPR-comparable rolling-30d active clients (31 days inclusive): redeemed
+          a ticket OR first key-bound. This is the figure to compare with HOPR's
+          published MAU.
+        data_type: UInt64
+      - name: active_users_7d
+        description: HOPR-comparable rolling-7d active clients. Compare with HOPR's WAU.
+        data_type: UInt64
+      - name: active_users_1d
+        description: Clients active on this day alone, same definition.
+        data_type: UInt64
+      - name: using_users_30d
+        description: >
+          Rolling-30d clients that actually redeemed a ticket, excluding
+          install-only clients. The "is it being used" series.
+        data_type: UInt64
+      - name: using_users_7d
+        description: Rolling-7d clients that actually redeemed a ticket.
+        data_type: UInt64
+      - name: using_users_1d
+        description: Clients that redeemed on this day alone.
+        data_type: UInt64
+      - name: new_clients
+        description: Clients whose first key-binding fell on this day.
+        data_type: UInt64
+      - name: tickets_redeemed
+        description: Tickets redeemed by clients on this day.
+        data_type: UInt64
+      - name: redeemed_wxhopr
+        description: wxHOPR paid by clients on this day.
+        data_type: Decimal(38, 18)
+      - name: channels_active
+        description: Distinct channels clients transacted on this day.
+        data_type: UInt64
 
   - name: api_hopr_network_health_daily
     description: >
