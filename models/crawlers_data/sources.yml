@@ -320,9 +320,11 @@ sources:
             data_type: DateTime
 
   # HOPR feeds ingested by click-runner (hopr_network_ingestor, hopr_blokli_ingestor).
-  # Same dev/prod split as crawlers_data_ipinfo above: click-runner writes to
-  # {{HOPR_DATABASE}}, which is crawlers_data in prod. Point DBT_HOPR_SCHEMA at a dev
-  # database to build against a local ingest, and unset it for prod.
+  # click-runner writes these to {{HOPR_DATABASE}}, which is hopr_db in prod -- their own
+  # database, NOT crawlers_data (decided 2026-08-18; the crawlers_data copies were
+  # dropped). This is the one crawlers_data_* source that does not live in crawlers_data,
+  # so unlike crawlers_data_ipinfo above the default here is hopr_db. Point
+  # DBT_HOPR_SCHEMA at another database to build against a local ingest.
   #
   # All four are ReplacingMergeTree(ingested_at) and re-running a day supersedes that
   # day's rows, so every staging model over them reads FINAL -- without it a re-run
@@ -334,7 +336,7 @@ sources:
   #   - blokli (hopr_blokli_*) serves jura and rotsee but NOT dufour.
   # rotsee is a testnet -- its ticket price and balances are not real economics.
   - name: crawlers_data_hopr
-    schema: "{{ env_var('DBT_HOPR_SCHEMA', 'crawlers_data') }}"
+    schema: "{{ env_var('DBT_HOPR_SCHEMA', 'hopr_db') }}"
     meta:
       owner: analytics_team
       authoritative: false
