@@ -66,8 +66,8 @@ logs AS (
           
         
         
-        AND block_number > 47649022
-        AND block_timestamp >= toDateTime('2026-08-10 06:13:25')
+        AND block_number > 47835142
+        AND block_timestamp >= toDateTime('2026-08-21 06:31:05')
         
         
         
@@ -102,7 +102,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
  ),
 
 process AS (

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_hopr_gnosisvpn_users_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_hopr_gnosisvpn_users_daily</h1>
+    <p>GnosisVPN client activity per network per day, on a dense date spine -- the DEMAND side. Publishes two user definitions side by side and they are not interchangeable. active_users_* mirrors HOPR&#x27;s own published definition (a client is active if it redeemed a ticket OR first key-bound in the window) and is the one to quote against their figures. using_users_* counts redemptions only, i.e. whether the product was actually used. The difference between them is the deployed-but-never-used cohort. The 30d window is 31 days inclusive while the 7d window is 7 -- an asymmetry copied deliberately from HOPR&#x27;s query so the numbers line up; see the model header for why it is reproduced rather than corrected. There is no bandwidth column, by design: tickets are probabilistic payments, not bytes. rotsee (testnet) is excluded.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/marts/fct_hopr_gnosisvpn_users_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>hopr</span> <span class='pill'>gnosisvpn</span> <span class='pill'>fct</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>active_users_1d</code></td><td>UInt64</td><td>Clients active on this day alone, same definition.</td></tr><tr><td><code>active_users_30d</code></td><td>UInt64</td><td>HOPR-comparable rolling-30d actives (31 days inclusive): clients that redeemed a ticket OR first key-bound. Quote this against HOPR&#x27;s MAU.
+</td></tr><tr><td><code>active_users_7d</code></td><td>UInt64</td><td>HOPR-comparable rolling-7d actives. Quote against HOPR&#x27;s WAU.</td></tr><tr><td><code>channels_active</code></td><td>UInt64</td><td>Distinct channels clients transacted on this day.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Day of the rolling window&#x27;s right edge.</td></tr><tr><td><code>network</code></td><td>LowCardinality(String)</td><td>HOPR network. rotsee is excluded, so dufour or jura.</td></tr><tr><td><code>new_clients</code></td><td>UInt64</td><td>Clients whose first key-binding fell on this day.</td></tr><tr><td><code>redeemed_wxhopr</code></td><td>Decimal(38, 18)</td><td>wxHOPR paid by clients on this day, from channel balance decreases.</td></tr><tr><td><code>tickets_redeemed</code></td><td>UInt64</td><td>Tickets redeemed by clients on this day.</td></tr><tr><td><code>using_users_1d</code></td><td>UInt64</td><td>Clients that redeemed on this day alone.</td></tr><tr><td><code>using_users_30d</code></td><td>UInt64</td><td>Stricter rolling-30d actives -- ticket redemptions only, excluding install-only clients. Use for &quot;is the product being used&quot;.
+</td></tr><tr><td><code>using_users_7d</code></td><td>UInt64</td><td>Stricter rolling-7d actives, redemptions only.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>network</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>gnosisvpn_active_users_30d</code> (max)</li><li><code>gnosisvpn_active_users_7d</code> (max)</li><li><code>gnosisvpn_using_users_30d</code> (max)</li><li><code>gnosisvpn_using_users_7d</code> (max)</li><li><code>gnosisvpn_new_clients</code> (sum)</li><li><code>gnosisvpn_client_tickets_redeemed</code> (sum)</li><li><code>gnosisvpn_client_redeemed_wxhopr</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_hopr_channels_events</code></li><li><code>int_hopr_vpn_clients</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_hopr_gnosisvpn_users_daily</code></li></ul>
+    
+  </body>
+</html>

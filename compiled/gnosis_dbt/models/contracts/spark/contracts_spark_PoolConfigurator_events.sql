@@ -96,7 +96,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = '2fc8823e1b967d474b47ae0ad041c2ed562ab588'
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') = '2fc8823e1b967d474b47ae0ad041c2ed562ab588'
  ),
 
 process AS (

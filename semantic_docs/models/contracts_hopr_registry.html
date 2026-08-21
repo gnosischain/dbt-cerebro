@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>contracts_hopr_registry</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>contracts_hopr_registry</h1>
+    <p>Address / ABI / network resolution point for every HOPR model. THREE HOPR environments run on Gnosis Chain simultaneously - dufour (legacy production, hoprd v2/v3), jura (v4, the network the GnosisVPN client defaults to) and rotsee (the v4 testnet, flagged is_testnet). dufour emits the same logical events under different topic0s than the v4 pair, so ABIs must resolve per contract address. Both v4 environments were REDEPLOYED once at block ~4741xxxx (2026-07-27), so a network maps to more than one address per contract_type and both generations are listed - dropping the legacy generation truncates history at the redeploy date. Only the current jura addresses own event_signatures rows; every other row points abi_source_address at them. Addresses come from hoprnet/contracts ethereum/bindings/contracts-addresses.json cross-checked against HOPR&#x27;s own published contract registry; every start_blocktime is the contract&#x27;s own creation date from execution.contracts.
+</p>
+    <p><strong>Module:</strong> contracts</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/contracts/hopr/contracts_hopr_registry.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>contracts</span> <span class='pill'>hopr</span> <span class='pill'>registry</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>abi_source_address</code></td><td>String</td><td>Address whose event_signatures rows carry this contract&#x27;s ABI. For proxies this is the PROXY&#x27;s own address, not the implementation: fetch_abi_to_csv.py stores the implementation&#x27;s ABI under the proxy&#x27;s contract_address, so signature_generator keys the rows on the proxy. Only point this at a different address when the ABI genuinely lives under another contract (shared runtime ABIs, Safe singletons).
+</td></tr><tr><td><code>address</code></td><td>String</td><td>Contract address, lowercased with 0x prefix.</td></tr><tr><td><code>contract_type</code></td><td>String</td><td>Logical contract type, used as the decode_logs contract_type_filter.</td></tr><tr><td><code>discovery_source</code></td><td>String</td><td>Provenance of the row, for example hoprnet_contracts_addresses_json.</td></tr><tr><td><code>is_dynamic</code></td><td>UInt8</td><td>1 if the contract was discovered from a factory, 0 if statically declared. All HOPR rows are static.
+</td></tr><tr><td><code>is_testnet</code></td><td>Bool</td><td>True for rotsee. Derived here (prefix-safe) so the on-chain side carries the same testnet concept the blokli staging models expose, and production marts have one flag to filter on. rotsee tickets and balances are not real economics -- never aggregate them with dufour or jura.
+</td></tr><tr><td><code>network</code></td><td>LowCardinality(String)</td><td>HOPR environment this deployment belongs to: dufour, jura, or the rotsee testnet. Not unique per contract_type -- each v4 environment has a legacy and a current deployment.
+</td></tr><tr><td><code>start_blocktime</code></td><td>String</td><td>Contract creation date, taken from execution.contracts rather than estimated from a block delta.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li>None</li></ul>
+    <h2>Downstream</h2><ul><li><code>contracts_hopr_Announcements_events</code></li><li><code>contracts_hopr_Channels_events</code></li><li><code>contracts_hopr_NodeSafeMigration_events</code></li><li><code>contracts_hopr_NodeSafeRegistry_events</code></li><li><code>contracts_hopr_NodeStakeFactory_events</code></li><li><code>contracts_hopr_TicketPriceOracle_events</code></li><li><code>contracts_hopr_WinningProbabilityOracle_events</code></li><li><code>fct_hopr_network_health_daily</code></li><li><code>int_hopr_channels_events</code></li><li><code>int_hopr_nodes</code></li><li><code>int_hopr_vpn_clients</code></li></ul>
+    
+  </body>
+</html>

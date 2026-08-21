@@ -65,8 +65,8 @@ logs AS (
           
         
         
-        AND block_number > 47648848
-        AND block_timestamp >= toDateTime('2026-08-10 05:58:45')
+        AND block_number > 47834783
+        AND block_timestamp >= toDateTime('2026-08-21 06:00:40')
         
         
         
@@ -96,7 +96,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = '1337bedc9d22ecbe766df105c9623922a27963ec'
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') = '1337bedc9d22ecbe766df105c9623922a27963ec'
  ),
 
 process AS (

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_hopr_network_health_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_hopr_network_health_daily</h1>
+    <p>Daily HOPR network health per network: how many nodes have ever registered on-chain, versus how many are actually up.
+THE GAP BETWEEN THOSE IS THE POINT. On-chain registration is cumulative and never expires, so a node that ran once in 2023 and vanished still counts in nodes_registered_cumulative forever; the prober and the dashboard&#x27;s online series measure the live network. The two have diverged every year -- roughly 1.6x apart in 2023 and 3.5x by 2026, as registrations accumulate while the live network shrinks. Both columns sit side by side specifically so a chart cannot show one while implying the other, and neither should ever be labelled &quot;network size&quot; without saying which it is.
+Coverage is asymmetric. nodes_online_* reaches back to 2023-09 from the dashboard history; the prober columns start only when click-runner&#x27;s hopr-network ingestor first ran and are NULL before that, meaning unmeasured, never zero. Both prober feeds are dufour-only, so jura carries registration counts and nothing else -- jura&#x27;s missing liveness is the prober never having been ported to v4, not jura being down.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/marts/fct_hopr_network_health_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>hopr</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>avg_availability_24h</code></td><td>Nullable(Float64)</td><td>Mean 24-hour availability across all probed nodes, in [0,1].</td></tr><tr><td><code>avg_latency_ms</code></td><td>Nullable(Float64)</td><td>Mean round-trip time across reachable nodes, milliseconds.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Calendar day, UTC.</td></tr><tr><td><code>hours_observed</code></td><td>UInt64</td><td>Distinct hours the dashboard actually recorded that day, 0 to 24. The history is far from complete, so this is how a consumer tells a well-observed day from a single-sample one. Zero means the online columns are NULL.
+</td></tr><tr><td><code>network</code></td><td>String</td><td>HOPR network; dufour, or jura for registration counts only.</td></tr><tr><td><code>nodes_high_availability</code></td><td>Nullable(UInt64)</td><td>Nodes up at least 90% of the last 24 hours. Kept apart from nodes_reachable because a node can answer one probe while being down most of the day.
+</td></tr><tr><td><code>nodes_online_avg</code></td><td>Nullable(Float64)</td><td>Mean of the dashboard&#x27;s hourly online count across the hours observed that day. NULL where the dashboard history has no hours at all. Always read with hours_observed.
+</td></tr><tr><td><code>nodes_online_max</code></td><td>Nullable(UInt32)</td><td>Highest hourly online count observed that day.</td></tr><tr><td><code>nodes_online_min</code></td><td>Nullable(UInt32)</td><td>Lowest hourly online count observed that day.</td></tr><tr><td><code>nodes_probed</code></td><td>Nullable(UInt64)</td><td>Nodes the prober attempted that day. NULL before the ingestor started and for every jura row. Consistently far below nodes_registered_cumulative, because the prober tracks the live set rather than the historical registry.
+</td></tr><tr><td><code>nodes_reachable</code></td><td>Nullable(UInt64)</td><td>Nodes the prober actually reached, i.e. that returned a latency.</td></tr><tr><td><code>nodes_registered_cumulative</code></td><td>UInt64</td><td>Running total of nodes ever registered on this network up to and including this date. Never decrements -- deregistration and abandonment are invisible to it. This is NOT the live network size.
+</td></tr><tr><td><code>nodes_registered_new</code></td><td>UInt64</td><td>Nodes whose first KeyBinding fell on this date. KeyBinding is the act of joining the network; AddressAnnouncement repeats whenever a node re-announces an address, so it dates announcements rather than registrations.
+</td></tr><tr><td><code>p50_latency_ms</code></td><td>Nullable(Float64)</td><td>Median round-trip time across reachable nodes. Materially below the mean -- a long tail of slow nodes pulls the average up, so the median is the better headline.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>network</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>hopr_nodes_online</code> (avg)</li><li><code>hopr_hours_observed</code> (sum)</li><li><code>hopr_nodes_registered_cumulative</code> (max)</li><li><code>hopr_nodes_registered_new</code> (sum)</li><li><code>hopr_nodes_reachable</code> (max)</li><li><code>hopr_nodes_high_availability</code> (max)</li><li><code>hopr_median_latency_ms</code> (avg)</li><li><code>hopr_avg_availability_24h</code> (avg)</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_hopr_Announcements_events</code></li><li><code>contracts_hopr_registry</code></li><li><code>stg_hopr_db__network_nodes</code></li><li><code>stg_hopr_db__network_online_hourly</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_hopr_network_health_daily</code></li></ul>
+    
+  </body>
+</html>

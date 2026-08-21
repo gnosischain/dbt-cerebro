@@ -62,8 +62,8 @@ logs AS (
           
         
         
-        AND block_number > 47648950
-        AND block_timestamp >= toDateTime('2026-08-10 06:07:25')
+        AND block_number > 47834984
+        AND block_timestamp >= toDateTime('2026-08-21 06:17:40')
         
         
         
@@ -98,7 +98,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_whitelist` cw WHERE cw.contract_type = 'SwaprPool')
  ),
 
 process AS (

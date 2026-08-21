@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 13,
-    "high_risk": 301,
-    "models": 1165
+    "explicit_contracts": 25,
+    "high_risk": 309,
+    "models": 1191
   },
-  "inputs_fingerprint": "0e75162f12ee4371d8c3737c173906a05b7376c1f46950fbe56ee51119b8a8bd",
+  "inputs_fingerprint": "840bba51bbb078fabbaa2cadddc1b6354e52952e9ad8f6057eff2ae4faf6884c",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -137,6 +137,23 @@
       "symptom": "full-refresh fails Code 252 (max_partitions_per_insert_block); attempting to raise the setting fails Code 452",
       "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
     },
+    "classifier-unsafe-default": {
+      "body": "## Symptom\nA category column looks well-populated and plausible, and one bucket quietly holds the\nmajority of rows. Nothing errors, no test fails, row counts are stable. The bucket is\ninflated by everything the pattern rules did not recognise.\n\n## Root cause\nThe terminal branch of the pattern chain named a real category instead of an unknown:\n\n    lowerUTF8(org) ILIKE '%broadband%' OR ..., 'Public ISP (Home/Office)',\n    lowerUTF8(org) = '', 'Unknown',\n    'Public ISP (Home/Office)'          -- <-- absence of evidence becomes a claim\n\nTwo failure modes compound:\n- **The default is a positive assertion.** \"I could not classify this\" is rendered\n  indistinguishable from \"I classified this as residential\". The `'Unknown'` bucket\n  existed but only fired on an empty org string \u2014 9 rows out of 22,177 \u2014 so the honest\n  answer was unreachable in practice.\n- **The manufactured value was the flattering one.** Downstream this became\n  `home_staker`, i.e. the classifier's own coverage gaps read as evidence of\n  decentralisation. An unsafe default that produced an *unwelcome* number would have\n  been investigated years earlier; this one confirmed what readers hoped.\n\nCoverage gaps are inevitable in string matching and are not themselves the bug. The bug\nis resolving them into a category.\n\n## Forbidden action\nDo not fix this downstream. Overriding the bucket in one consumer (the HOPR model, in\nthis case) leaves the defect live for every other consumer and makes two models disagree\nabout the same IP with nothing marking either authoritative. Fix the column where it is\ndefined.\n\nDo not add a new top-level bucket name as part of the fix without checking consumers:\n`int_esg_node_classification` enumerates bucket names explicitly and falls through to\n`node_category='unknown'`, so introducing e.g. a `'Contabo'` bucket would make a\n*correctly identified* datacenter classify worse than an unrecognised one. Route\nadditional providers into an existing bucket the consumers already understand.\n\n## Safe remediation / convention\n1. Widen both sides of the rule set first \u2014 the hosting list *and* the residential list.\n   Flipping the fallback alone just trades over-claiming one category for over-claiming\n   another (here it would have demoted Starlink and 1&1 Versatel, both genuine consumer\n   ISPs, to Unknown).\n2. Then make the terminal branch `'Unknown'`, and confirm consumers have a branch for it\n   (ESG already scored `'Unknown'` at 0.30 confidence).\n3. Leave the residue unknown. 4.0% unclassified is a true statement about the data;\n   widen the lists over time, never narrow the fallback.\n\n## Detection\nMeasure how much of a bucket got there by fallthrough rather than by a rule \u2014 re-run the\nbucket's own positive predicates over its members and count the misses:\n\n    SELECT countIf(<positive predicates for that bucket>) AS by_rule,\n           countIf(NOT (<same predicates>))              AS by_fallthrough\n    FROM <model> WHERE <category> = '<bucket>'\n\n`by_fallthrough` should be 0. Any other value is the size of the lie. Then diff old vs\nnew classification as a migration matrix grouped by (old, new) \u2014 a correct widening\nshows transitions *out of* the over-assigned bucket and none into it.\n\nWatch for accented brand spellings while auditing: `lowerUTF8` lowercases the accent but\n`ILIKE` matches literal bytes, so `'%telefon%'` matches neither `TELEFONICA BRASIL` nor\n`Telefonos`, and a single brand splits across buckets by country. One stem does not fix it\neither \u2014 the accent lands in a different position per language, so `'%telef%'` recovers\n`Telefonica` but still misses `Telefonos` (breaks at `tel-e`). Use a stem on each side of\nthe accent and keep the patterns ASCII, since some `scripts/checks` readers open model SQL\nwith no explicit encoding and die on cp1252.\n\n## Enforcement\nNo static gate \u2014 whether an ELSE branch is a legitimate category or an unsafe default is\nintent, not statically checkable. Recorded as a convention in the\n`stg_crawlers_data__ipinfo.generic_provider` column doc, which states the contract\n(positive-evidence-only), why the bucket names are constrained, and to widen the lists\nrather than narrow the fallback. Related: [circular-completeness-proof](circular-completeness-proof.md)\n(a metric that validates itself against its own coverage).",
+      "evidence": [
+        "models/p2p/staging/stg_crawlers_data__ipinfo.sql \u2014 generic_provider multiIf; ELSE was 'Public ISP (Home/Office)', now 'Unknown'",
+        "measured before fix: 10,162 of 15,557 IPs labelled Public ISP (Home/Office) matched no residential pattern at all; 651 were AS51167 Contabo GmbH, 174 M247, 108+38 Datacamp",
+        "HOPR blast radius: int_hopr_nodes reported 545 of 1,020 dufour nodes residential; after fix 157, with 751 datacenter-hosted \u2014 a ~3.5x overstatement of home hosting",
+        "consumer that converts it to a claim: models/ESG/intermediate/int_esg_node_classification.sql:57 maps the bucket to node_category='home_staker' at 0.80 confidence",
+        "post-fix distribution over crawlers_data.ipinfo (22,177 rows): Unknown 872 (3.9%), three transitions only, all out of Public ISP \u2014 1,802 to Hosting/CDN (Other), 863 to Unknown, 110 to Oracle Cloud"
+      ],
+      "id": "classifier-unsafe-default",
+      "last_verified": "2026-08-05",
+      "path": "docs/lessons/classifier-unsafe-default.md",
+      "scope": "any model deriving a category from free-text with a pattern-match chain (multiIf/CASE over org/name/label strings), and every consumer that turns that category into a claim",
+      "status": "remediated",
+      "symptom": "a bucket is far larger than reality and nobody notices, because the ELSE branch silently assigns it to every input the rules failed to match",
+      "title": "A classifier's ELSE branch must not assert a category \u2014 unmatched input is 'Unknown'"
+    },
     "decode-watermark-late-logs": {
       "body": "## Symptom\nA metric built on decoded events silently undercounts, or cumulative balances go\nnegative for real holders. Balances are the canary because a dropped *inflow* flips a\ncumulative sum negative; counts and aggregates just drift low.\n\n## Root cause\nDecode models are `incremental_strategy='append'` wrappers over `decode_logs()`. At\nrender time the macro embeds literal `AND block_number > <max>` (+ timestamp bound)\nfrom the target table. There is **no lookback**: a log backfilled into\n`execution.logs` for an already-passed range sits below the watermark and is excluded\nby every subsequent run, forever.\n\n## Forbidden action\nDo not add a daily lookback to the decode layer. On `append` models a lookback\nduplicates rows until a background merge, and downstreams read without `FINAL` \u2192\ndouble-count. (A lookback is dup-safe only on `insert_overwrite` models.)\n\n## Detection\nRaw-vs-decoded parity per contract per month: count in `execution.logs` filtered to the\ncontract vs count in the decode model, grouped by `toStartOfMonth(block_timestamp)`;\nnonzero deficit = dropped logs. Cheapest, earliest signal \u2014 fires before balances do.\n\n## Safe remediation\n`scripts/refresh/gap_window_refresh.py --months <gap months> --select <decode>+` \u2014\ndrops the gap-month partition (lowering the watermark) and re-runs scoped. Never the\ndaily runner (only advances the watermark); a full-history rebuild is hours slower for\nthe same result.\n\n## Ground truth\nOn-chain `eth_getLogs` over the affected range: if the chain has the logs and\n`execution.logs` does too, this lesson applies; if `execution.logs` is missing them,\nsee raw-logs-ingestion-holes (layer below dbt).\n\n## Enforcement\nNone automatic yet \u2014 parity/continuity checks exist as data-quality tests (see\ntests/data_quality/) and run on the observability schedule; a weekly sweep +\ngap-window recovery is the operating posture. Long-term option (not built): convert\ndecode models to month-partitioned insert_overwrite, making a lookback dup-safe.",
       "evidence": [
@@ -167,6 +184,24 @@
       "status": "enforced",
       "symptom": "every decode run reads the full raw-table span (measured 112s/run vs 9s with literal bounds); an empty target full-scans on every run",
       "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+    },
+    "derived-seed-regen-unsafe": {
+      "body": "## Symptom\nYou run the documented refresh step for a generated seed. It reports success. Either a\ndecoded model then rebuilds to zero rows with no error, or nothing appears wrong at all\nuntil some unrelated contract quietly stops decoding weeks later. The diff is thousands\nof lines because the generator reorders as well as regenerates, so nobody reads it.\n\n## Root cause\nThree failures that all hide inside \"the generator ran fine\", and the third is what let\nthe first two survive.\n\n**Position-slicing a hex string across a library upgrade.** `HexBytes.hex()` returned a\n`0x`-prefixed string up to hexbytes 0.x and returns it bare from 1.0. Code that strips\nthe prefix with `[2:]` keeps working syntactically and starts eating real payload. For a\n32-byte topic0 you lose two hex characters; for a 4-byte selector you get bytes 1\u20134\ninstead of 0\u20133. The output is still a plausible-looking hex string of nearly the right\nlength, and the failure surfaces as a JOIN that matches nothing.\n\n**A derived artefact that is not actually derivable from its declared source.** The\nseed was documented as generated from `contracts_abi.csv`, but rows had been retained\nby hand after their ABIs were removed from the store. That inconsistency is invisible\nwhile nobody regenerates, and the moment somebody does, the \"regeneration\" is a\ndeletion. The generator cannot warn you, because from its point of view those rows\nsimply do not exist.\n\n**Nondeterministic output order, which is what made the other two undetectable.** The\ngenerator wrote rows in source order, so an unrelated change to the ABI store reshuffled\nthe file and a two-row change presented as thousands of modified lines. Nobody reviews\nthat diff, so nobody would have noticed truncated hashes or deleted rows inside it. An\nunreadable diff is not a cosmetic problem \u2014 it is the mechanism by which real defects\nship.\n\n## Forbidden action\nDo not commit a regenerated seed on the strength of the generator exiting 0. Do not\njudge it by the line diff alone even now that ordering is stable \u2014 a diff being small is\nevidence about ordering, not about content. Do not assume a generated file is\nreproducible just because a script exists that claims to produce it.\n\n## Detection\nCompare as SETS against HEAD, not as text, and insist that the removed set is empty:\n\n```python\nold = set(subprocess.run([\"git\",\"show\",f\"HEAD:{path}\"],capture_output=True,\n                         text=True).stdout.splitlines()[1:])\nnew = set(open(path,encoding=\"utf-8\").read().splitlines()[1:])\nprint(\"added\", len(new - old), \"REMOVED\", len(old - new))   # REMOVED must be 0\n```\n\nPlus a shape assertion the corruption cannot survive \u2014 every event signature is exactly\n64 hex characters, every selector exactly 8:\n\n```python\nbad = [r for r in rows if len(r[\"signature\"]) != 64]\n```\n\nAnd one known-answer check, which is the cheapest of all: the canonical ERC-20\n`Transfer(address,address,uint256)` must hash to\n`ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef`. If it does not, the\nhashing is wrong and nothing else you generated is trustworthy.\n\n## Safe remediation\nSlice by prefix, never by position \u2014 `.hex().removeprefix(\"0x\")` \u2014 so the same code is\ncorrect on both library generations. Then make the source complete rather than patching\nthe output: restore the missing ABIs so the declared source really does produce every\nrow, and re-run until the removed set is empty. A generated file that cannot be\nregenerated byte-for-equivalent from its input is not generated, it is hand-maintained\nwith extra steps, and it will lose data the first time someone believes the docstring.\n\nMake the output deterministic in the same change. Sorting on identity (chain, address,\nname, signature \u2014 never on the JSON payload columns, whose formatting is not stable) costs\none line in the writer and converts every future regeneration into a reviewable diff.\nVerify it by regenerating twice and requiring the two files to be byte-identical; a\ngenerator that is not idempotent cannot be reasoned about.\n\nOrder matters: `signature_generator.py` reads ABIs from the ClickHouse table, not the\nCSV, so `dbt seed --select contracts_abi` must run BEFORE the generator or it silently\nregenerates from a stale ABI set. The documented sequence is right; running the\ngenerator first is the easy mistake.\n\n## Ground truth\nKnown-answer vectors. Canonical event hashes and selectors are public and fixed \u2014\n`Transfer`, `Approval`, any well-known signature. A generator that reproduces those is\nalmost certainly right; one that does not is wrong regardless of how confidently it\nreports success.\n\n## Enforcement\nCode fix in `scripts/signatures/signature_generator.py` (prefix-strip helper and a\ndeterministic sort in `write_csv`) plus the 4 restored ABIs, so regeneration is now\nadditive by construction and reviewable by default. No CI gate: the seeds\nchange rarely and legitimately, and a gate that fires on every genuine ABI addition\nwould be turned off. The durable protection is the set-diff above \u2014 run it before\ncommitting any regenerated seed, and treat a non-empty removed set as a bug in the\nsource, never as an expected cleanup.",
+      "evidence": [
+        "scripts/signatures/signature_generator.py used w3.keccak(text=...).hex()[2:], which assumed HexBytes.hex() returns a 0x prefix. hexbytes >= 1.0 (web3 v7) returns it bare, so the slice ate the first TWO hex characters of every topic0 and shifted every function selector by a byte. Observed under web3 7.16.0 / hexbytes 1.3.1: AddedAccess(address) generated as 286ad1f3\u2026 against the true 87286ad1f3\u2026",
+        "nothing raises: decode_logs joins logs to event_signatures on that string, so a corrupted hash matches no log and the model simply builds empty",
+        "seeds/event_signatures.csv also held 24 rows that no ABI in seeds/contracts_abi.csv could produce \u2014 4 contracts (2 UniswapV3Pool, OffchainScoreBasedMintPolicy 0x450d6827\u2026, ComposableStablePool 0xdd439304\u2026) whose signatures had been retained by hand after their ABIs left the store. A faithful regeneration DELETES those 24 rows, which would have silently broken Balancer pool decoding (0xdd439304 is the abi_source_address for the whole pool registry), the Circles score policy, and Circles/Uniswap liquidity",
+        "both were latent, not active: the committed CSVs were correct, generated under web3 v6 when the ABIs were still present. The landmine was armed for whoever next ran the documented command",
+        "fixed 2026-08-06 by slicing the prefix rather than the position (keccak_hex helper) and by restoring the 4 missing ABIs, after which regeneration is purely additive: 0 rows removed from either file",
+        "a third, compounding defect: output order followed whatever order the ABIs came back from ClickHouse, so a 22-row addition rendered as 5,409 insertions and 5,256 deletions and was unreviewable \u2014 which is precisely why the two data defects above survived. Fixed the same day by sorting on identity (chain, address, name, signature) in write_csv; two consecutive regenerations now produce byte-identical files"
+      ],
+      "id": "derived-seed-regen-unsafe",
+      "last_verified": "2026-08-06",
+      "path": "docs/lessons/derived-seed-regen-unsafe.md",
+      "scope": "seeds generated by a script from another source rather than hand-edited \u2014 seeds/event_signatures.csv and seeds/function_signatures.csv via scripts/signatures/signature_generator.py; by extension any \"re-run the generator\" refresh step",
+      "status": "remediated",
+      "symptom": "after running the documented regeneration command, a decoded model rebuilds to zero rows with no error; or a contract that decoded fine yesterday stops matching any event, while the generator reports success and the diff is too large to read",
+      "title": "Regenerating a derived seed can corrupt and delete silently \u2014 prove it reproduces HEAD before trusting it"
     },
     "docs-catalog-zero-nodes": {
       "body": "## Symptom\n`dbt docs generate` succeeds but `catalog.json` has zero model entries; docs pages and\ncatalog-driven tooling show sources only.\n\n## Root cause\nThe dbt-clickhouse adapter's catalog generation emits source relations only on this\nsetup. It is a known adapter behavior, not a project misconfiguration.\n\n## Forbidden action\nDon't burn time \"fixing\" the empty model catalog, and don't build tooling that assumes\nmodel-level catalog entries exist \u2014 the semantic pipeline runs manifest-only for this\nreason, and any committed overlay must match that assumption.\n\n## Related gotcha\nNew decode models make `dbt docs generate` **crash at compile time** until they've been\nbuilt once (`--full-refresh` seed first, then docs).\n\n## Detection\n`python -c \"import json; c=json.load(open('target/catalog.json')); print(len(c['nodes']), len(c['sources']))\"`\n\n## Enforcement\nNone \u2014 informational. Encoded here and in AGENTS.md verification caveats.",
@@ -28804,6 +28839,457 @@
       ],
       "unique_key": null
     },
+    "api_gnosisvpn_exit_activity_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "api_gnosisvpn_exit_activity_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_gnosisvpn_exit_activity_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:gnosisvpn_exit_activity",
+        "gnosisvpn",
+        "granularity:daily",
+        "hopr",
+        "production",
+        "tier3"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_channel_activity_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_channel_activity_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_channel_activity_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_channel_activity",
+        "granularity:daily",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_gnosisvpn_users_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_gnosisvpn_users_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_gnosisvpn_users_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_gnosisvpn_users",
+        "gnosisvpn",
+        "granularity:daily",
+        "hopr",
+        "production",
+        "tier3",
+        "window:30d"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_network_health_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_network_health_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_network_health_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_network_health",
+        "granularity:daily",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_node_locations_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_node_locations_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_node_locations_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_node_locations",
+        "granularity:latest",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_nodes_by_country_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_nodes_by_country_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_nodes_by_country_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_nodes_by_country",
+        "granularity:latest",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_nodes_hosting_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_nodes_hosting_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_nodes_hosting_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_nodes_hosting",
+        "granularity:latest",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_hopr_protocol_params_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_hopr_protocol_params_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/api_hopr_protocol_params_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:hopr_protocol_params",
+        "granularity:daily",
+        "hopr",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
     "api_p2p_clients_latest": {
       "contract": {
         "hazards": [],
@@ -45019,6 +45505,1113 @@
       ],
       "unique_key": null
     },
+    "contracts_hopr_Announcements_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md",
+          "scripts/full_refresh/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "proxy-abi-resolves-to-proxy-address",
+            "text": "jura's Announcements is an EIP-1967 proxy (implementation 0x914c4ad36e5ec147be0a94c671d7440f1d0fc8c1) but its event_signatures rows are keyed on the PROXY address, because fetch_abi_to_csv.py stores the implementation's ABI under the proxy's contract_address. Setting abi_source_address to the implementation makes the ABI join miss and produced 59 rows with empty event_name and no error."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models",
+          "staged_full_refresh"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "no undecoded rows: countIf(event_name = '') == 0",
+          "all environments decoded: uniqExact(network) == 3"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 5,
+      "downstream_api_models": [
+        "api_hopr_gnosisvpn_users_daily",
+        "api_hopr_network_health_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 9,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_Announcements_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_Announcements_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_Channels_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md",
+          "scripts/full_refresh/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "ticket-redemption-pairs-with-balance-decrease",
+            "text": "A ticket redemption always moves value out of the channel, so within a (network, day) countIf(event_name='TicketRedeemed') must equal countIf(event_name='ChannelBalanceDecreased'). This holds exactly on both networks and is the cheapest guard against the dual-deployment decode half-failing. It is an AGGREGATE equality, so it cannot be a row-level generic test - run the `ticket pairing` query in validation below."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models",
+          "staged_full_refresh"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "no undecoded rows: countIf(event_name = '') == 0",
+          "all environments decoded: uniqExact(network) == 3",
+          "ticket pairing: countIf(event_name = 'TicketRedeemed') == countIf(event_name = 'ChannelBalanceDecreased')"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 6,
+      "downstream_api_models": [
+        "api_gnosisvpn_exit_activity_daily",
+        "api_hopr_channel_activity_daily",
+        "api_hopr_gnosisvpn_users_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 10,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_Channels_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_Channels_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_NodeSafeMigration_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "empty-until-migration-starts",
+            "text": "Zero rows is the CORRECT state until node operators begin migrating from dufour to jura; it is not a decode failure. The contract exists only on jura, so this model covers ONE network unlike its siblings. When rows appear, SafeAndModuleMigrationCompleted counts migration progress."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "no undecoded rows: countIf(event_name = '') == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_NodeSafeMigration_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_NodeSafeMigration_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_NodeSafeRegistry_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "deregistration-event-name-differs-per-network",
+            "text": "dufour emits DergisteredNodeSafe (a typo in the deployed contract) and jura emits DeregisteredNodeSafe. Any deregistration logic must accept BOTH spellings or it silently under-counts on one network."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "no undecoded rows: countIf(event_name = '') == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 4,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_NodeSafeRegistry_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_NodeSafeRegistry_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_NodeStakeFactory_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "safe-and-module-emitted-together",
+            "text": "Each node onboarding emits NewHoprNodeStakeSafe and NewHoprNodeStakeModule together, so their counts must match per network. jura additionally emits NewHoprNodeStakeModuleForSafe, which dufour does not."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "no undecoded rows: countIf(event_name = '') == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 4,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_NodeStakeFactory_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_NodeStakeFactory_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_TicketPriceOracle_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "price-params-must-be-named",
+            "text": "The on-chain ABI leaves both TicketPriceUpdated params unnamed, so decode_logs collapses every map key to '' and decoded_params['newTicketPrice'] returns NULL with no error. scripts/signatures/name_hopr_oracle_params.py restores the names, but only after regenerating event_signatures, reseeding AND full- refreshing this model - skipping any step fails silently. Enforced by the model-level dbt_utils.expression_is_true test above."
+          },
+          {
+            "id": "price-series-is-a-chain",
+            "text": "Each event's oldTicketPrice equals the previous event's newTicketPrice, which is what proves the unnamed params are ordered (old, new). CHAIN PER contract_address, NOT per network: each v4 environment was redeployed, and a fresh oracle starts its own series from zero, so splicing the two generations of one network into a single ordered series breaks the equality at the redeploy boundary and reads as corrupt data when nothing is wrong."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "params are named: countIf(event_name = 'TicketPriceUpdated' AND NOT has(mapKeys(decoded_params), 'newTicketPrice')) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_TicketPriceOracle_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_TicketPriceOracle_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_WinningProbabilityOracle_events": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "raw-logs-ingestion-holes",
+            "status": "observed",
+            "title": "Raw execution.logs can have block holes \u2014 a layer below dbt"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-log",
+            "text": "One row per emitted log. (block_timestamp, transaction_hash, log_index) is both the unique_key and the ReplacingMergeTree order_by, so count() - uniqExact((block_timestamp, transaction_hash, log_index)) must be 0."
+          },
+          {
+            "id": "no-undecoded-rows",
+            "text": "event_name must never be empty. An empty event_name means the ABI join missed, which happens silently with no error - the usual cause is contracts_hopr_registry.abi_source_address pointing at an implementation address instead of the proxy. The `no undecoded rows` query in validation below is the check."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "THREE HOPR environments live on Gnosis Chain simultaneously (dufour, jura and the rotsee testnet) and dufour emits the same logical events under DIFFERENT topic0s than the v4 pair. The ABI resolves per contract address, so a single-ABI decode would silently drop an environment entirely. Each v4 environment was also REDEPLOYED once, so a network has more than one contract_address. Assert uniqExact(network) == 3 and check presence per network -- never a bare address count."
+          },
+          {
+            "id": "winprob-is-uint56-not-a-fraction",
+            "text": "oldWinProb/newWinProb are uint56 fixed-point: probability = raw / 2^56. Reading the raw value as a probability overstates it by 56 bits. Cross-checked against blokli's minTicketWinningProbability for jura (raw 288230376143 -> 0.000004, exact match)."
+          },
+          {
+            "id": "winprob-params-must-be-named",
+            "text": "dufour's verified ABI omits both param names even though the Solidity source names them; jura's keeps them. Restored by name_hopr_oracle_params.py and enforced by the model-level dbt_utils.expression_is_true test above."
+          },
+          {
+            "id": "watermark-skips-late-logs",
+            "text": "The decode is append-only off a block_number/block_timestamp watermark, so logs landing in execution.logs below the current high- water mark are never decoded. A backfill or gap-repair of the raw logs requires re-decoding the affected range explicitly."
+          }
+        ],
+        "profiles": [
+          "decode_models",
+          "incremental_models"
+        ],
+        "reprocess_runbook": "Rebuild with scripts/full_refresh/refresh.py (a plain `dbt run --full- refresh` also works but re-scans the whole logs history in one query). A single-pass rebuild of the largest model here took ~36 min and succeeded on an idle cluster; it OOMed with ClickHouse Code 241 only while heavy ad-hoc queries ran concurrently, so retry when the cluster is quiet before assuming the model is too fat. If it still OOMs, declare meta.full_refresh batch_months and let refresh.py batch it - decode_logs honors the start_month/end_month vars. Because the strategy is append, drop target partitions first (macros/db/drop_partition.sql) if they already hold rows. Changing contracts_hopr_registry_static or the oracle ABI names requires `dbt seed` FIRST - refresh.py rebuilds models only, and a stale registry yields silently undecoded rows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "duplicate excess: count() - uniqExact((block_timestamp, transaction_hash, log_index)) == 0",
+          "params are named: countIf(event_name = 'WinProbUpdated' AND NOT has(mapKeys(decoded_params), 'newWinProb')) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "contracts_hopr_WinningProbabilityOracle_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(block_timestamp)",
+      "path": "models/contracts/hopr/contracts_hopr_WinningProbabilityOracle_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "events",
+        "hopr",
+        "microbatch",
+        "production"
+      ],
+      "unique_key": "(block_timestamp, transaction_hash, log_index)"
+    },
+    "contracts_hopr_registry": {
+      "contract": {
+        "agents_md": [
+          "models/contracts/AGENTS.md"
+        ],
+        "grain": [
+          "address"
+        ],
+        "ground_truth": "hoprnet/contracts ethereum/bindings/contracts-addresses.json plus execution.contracts creation dates, loaded via the contracts_hopr_registry_static seed.",
+        "hazards": [
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "decoder-watermark-literals",
+            "status": "enforced",
+            "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-address",
+            "text": "address is unique. A duplicate would make every decode_logs join ambiguous and silently double-decode that deployment."
+          },
+          {
+            "id": "abi-source-is-proxy-not-impl",
+            "text": "For EIP-1967 proxies, abi_source_address must be the PROXY address (where event_signatures rows are keyed), never the implementation. Pointing at the impl makes the ABI join miss and yields empty event_name with no error."
+          },
+          {
+            "id": "all-environments-present",
+            "text": "Registry must contain dufour, jura AND rotsee for every shared contract_type they deploy. A missing environment silently drops its events from every downstream decode -- which is exactly how jura's pre-redeploy history went missing before 2026-08."
+          },
+          {
+            "id": "every-generation-present",
+            "text": "A network maps to MORE than one address per contract_type: both v4 environments were redeployed at block ~4741xxxx, so jura Channels is {0x69e63a01 legacy, 0x860f50b2 current} and rotsee Channels is {0x81a79fcd legacy, 0xd8c91008 current}. Keeping only the current generation silently truncates history at the redeploy date, so count deployments per network, never assume one address per network."
+          },
+          {
+            "id": "abi-source-owns-signatures",
+            "text": "Only the current jura addresses own event_signatures rows. Every other row (legacy jura, all rotsee) must point abi_source_address at the corresponding current jura address, or the ABI join misses and the decode yields empty event_name with no error. Verified: rotsee and legacy jura topic0s all resolve against the current jura ABI."
+          }
+        ],
+        "profiles": [
+          "decode_models"
+        ],
+        "reprocess_runbook": "`dbt seed --select contracts_hopr_registry_static` then `dbt run --select contracts_hopr_registry+`. Changing the seed without reseeding leaves every decode on a stale address set; a wrong abi_source_address yields silently undecoded rows rather than an error.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "decode-watermark-late-logs",
+            "text": "No lookback: raw logs backfilled below the append watermark are dropped forever by normal runs; recover known gap months with gap_window_refresh.py, never the daily runner."
+          },
+          {
+            "lesson": "decoder-watermark-literals",
+            "text": "Watermarks are render-time literals (partition pruning); never revert to a scalar-subquery bound."
+          },
+          {
+            "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          }
+        ],
+        "semantics": "dimension",
+        "validation": [
+          "make check-fast",
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "uniqExact(address) == count()",
+          "uniqExact(network) == 3",
+          "every abi_source_address owns signatures: countIf(abi_source_address NOT IN (SELECT lower(contract_address) FROM event_signatures)) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 7,
+      "downstream_api_models": [
+        "api_gnosisvpn_exit_activity_daily",
+        "api_hopr_channel_activity_daily",
+        "api_hopr_gnosisvpn_users_daily",
+        "api_hopr_network_health_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 11,
+      "downstream_transitive_count": 20,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "contracts_hopr_registry",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/contracts/hopr/contracts_hopr_registry.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "contracts",
+        "hopr",
+        "production",
+        "registry"
+      ],
+      "unique_key": null
+    },
     "contracts_ocsdai_events": {
       "contract": {
         "agents_md": [
@@ -58164,6 +59757,238 @@
         "production",
         "user_portfolio",
         "yields"
+      ],
+      "unique_key": null
+    },
+    "fct_hopr_gnosisvpn_users_daily": {
+      "contract": {
+        "grain": [
+          "network",
+          "date"
+        ],
+        "hazards": [
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-network-day",
+            "text": "count() - uniqExact((network, date)) must be 0. The spine is dense, so a quiet day is a zero row, never a missing one."
+          },
+          {
+            "id": "using-never-exceeds-active",
+            "text": "using_users_N is a strict subset of active_users_N by construction (redemptions only, versus redemptions plus deployments). Any row where using > active means the window predicates have drifted apart."
+          },
+          {
+            "id": "windows-are-nested",
+            "text": "active_users_7d <= active_users_30d on every row; likewise for using_*. A wider window cannot contain fewer distinct clients."
+          },
+          {
+            "id": "no-testnet-rows",
+            "text": "rotsee must never appear. Its clients are test deployments and would multiply the apparent user base."
+          }
+        ],
+        "profiles": [],
+        "reprocess_runbook": "Plain `dbt run -s fct_hopr_gnosisvpn_users_daily`. It is a table over small inputs, so a rebuild is cheap and idempotent; rebuild int_hopr_vpn_clients first if the decode layer changed.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "semantics": "daily_snapshot",
+        "validation": [
+          "make check-fast",
+          "count() - uniqExact((network, date)) == 0",
+          "countIf(using_users_30d > active_users_30d) == 0",
+          "countIf(active_users_7d > active_users_30d) == 0",
+          "countIf(network = 'rotsee') == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_gnosisvpn_users_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "fct_hopr_gnosisvpn_users_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/fct_hopr_gnosisvpn_users_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "fct",
+        "gnosisvpn",
+        "hopr",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "fct_hopr_network_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_channel_activity_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "fct_hopr_network_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/fct_hopr_network_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "fct",
+        "hopr",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "fct_hopr_network_health_daily": {
+      "contract": {
+        "grain": [
+          "network",
+          "date"
+        ],
+        "ground_truth": "Cumulative registrations from decoded HoprAnnouncements KeyBinding events; liveness from the network.hoprnet.org dashboard history and prober, ingested by click-runner into the hopr_db source.",
+        "hazards": [
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
+            "id": "stale-snapshot-caveat",
+            "status": "observed",
+            "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          },
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-network-date",
+            "text": "Grain is (network, date); count() must equal uniqExact((network, date)). The date spine is a UNION DISTINCT of the three inputs' own dates, so a duplicate means an input started emitting more than one row per day."
+          },
+          {
+            "id": "registered-and-online-are-not-interchangeable",
+            "text": "nodes_registered_cumulative counts nodes that ever key-bound and never decrements. nodes_online_avg counts nodes up on the day. Presenting the first as network size overstates HOPR several-fold, and the factor grows every year. Any single \"node count\" on a dashboard must name which one."
+          },
+          {
+            "id": "bare-hex-vs-prefixed-address-join",
+            "text": "The registrations CTE joins decoded events to contracts_hopr_registry. execution.logs carries addresses as BARE hex while the registry stores them 0x-prefixed, so the join must strip the prefix (lower(contract_address) = replaceAll(r.address, '0x', '')). Joining raw matches nothing, yields a cumulative count of zero for every date, and still builds green -- this exact failure happened during development."
+          },
+          {
+            "id": "hours-observed-is-load-bearing",
+            "text": "The dashboard's hourly history is missing a substantial share of its hours, so a day can rest on anything from one observation to twenty-four. Read nodes_online_avg together with hours_observed and drop or flag thin days; averaging them as equal to full days silently overweights sparse periods."
+          },
+          {
+            "id": "null-means-unmeasured",
+            "text": "NULL in any prober column means no measurement existed for that day, never zero nodes. coalescing them to 0 would invent an outage across the whole span before the ingestor started."
+          }
+        ],
+        "profiles": [],
+        "reprocess_runbook": "Plain `dbt run --select fct_hopr_network_health_daily` - it is a small table rebuilt whole with no watermark. Rebuild after the click-runner HOPR ingestors run or after any Announcements decode change. Set DBT_HOPR_SCHEMA to the database holding the click-runner tables when building outside prod.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "semantics": "daily_snapshot",
+        "validation": [
+          "make check-fast",
+          "count() - uniqExact((network, date)) == 0",
+          "registrations are non-zero: max(nodes_registered_cumulative) > 0",
+          "cumulative never decreases: no row where nodes_registered_cumulative < previous within network",
+          "online implies observation: countIf(nodes_online_avg IS NOT NULL AND hours_observed = 0) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_network_health_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "fct_hopr_network_health_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/marts/fct_hopr_network_health_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "hopr",
+        "production"
       ],
       "unique_key": null
     },
@@ -78189,6 +80014,249 @@
       ],
       "unique_key": "(proxy_address)"
     },
+    "int_hopr_channels_events": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 6,
+      "downstream_api_models": [
+        "api_gnosisvpn_exit_activity_daily",
+        "api_hopr_channel_activity_daily",
+        "api_hopr_gnosisvpn_users_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 4,
+      "downstream_transitive_count": 9,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_hopr_channels_events",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfYear(block_timestamp)",
+      "path": "models/execution/hopr/intermediate/int_hopr_channels_events.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "hopr",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_hopr_nodes": {
+      "contract": {
+        "grain": [
+          "network",
+          "node_address"
+        ],
+        "ground_truth": "On-chain HoprAnnouncements / HoprNodeSafeRegistry / HoprNodeStakeFactory events, plus the hopr_node_registry seed for class labels and crawlers_data.ipinfo for geography.",
+        "hazards": [
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          },
+          {
+            "id": "stale-snapshot-caveat",
+            "status": "observed",
+            "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-network-node",
+            "text": "Grain is (network, node_address); count() must equal uniqExact((network, node_address)). A duplicate would double-count a node in every operator-concentration or geography aggregate."
+          },
+          {
+            "id": "join-use-nulls-required",
+            "text": "join_use_nulls = 1 must stay set in the pre_hook. Every enrichment is a LEFT JOIN and ClickHouse otherwise fills unmatched rows with the column TYPE DEFAULT ('' for String), not NULL. Without it every unclassified node reads as classified, and every node reports geo enrichment whether or not ipinfo matched. Both failures are silent."
+          },
+          {
+            "id": "geo-coverage-is-partial-and-explicit",
+            "text": "ipinfo coverage of HOPR IPs depends on ip_crawler having been pointed at them IN THE DATABASE BEING READ, and the two databases differ. crawlers_data is populated by the nebula pipeline for a different node set, so it contains HOPR IPs only incidentally; playground_max is where ip_crawler's `hopr` preset has been run. Until that preset runs against crawlers_data, expect geo_source to be mostly 'unenriched' on a prod build and mostly 'ipinfo' in dev -- that gap is missing ingestion, not a regression in this model. Coverage also lags newly-announced IPs between crawler runs. Never filter unenriched nodes out of counts, and never read a NULL ip_country as \"no country\"."
+          },
+          {
+            "id": "registered-is-not-alive",
+            "text": "count() here is \"nodes that EVER registered\", never \"network size\" -- on-chain presence is cumulative and never expires, so nodes that stopped running years ago still count. It runs several times the live network.\nJudging which rows are alive takes two signals, not one. liveness_source = 'prober' with is_reachable is direct evidence of life, but the prober's roster is not the population of record: some unprobed nodes still earn on chain, so last_channel_activity_at is the second signal and neither alone is sufficient. fct_hopr_network_health_daily holds registered and online side by side."
+          },
+          {
+            "id": "prober-source-must-exist-in-target-database",
+            "text": "This model reads stg_hopr_db__network_nodes, so it depends on click-runner's HOPR tables existing in whatever database the source resolves to (hopr_db by default, DBT_HOPR_SCHEMA to override). A ClickHouse view over a missing table fails to CREATE rather than returning nothing, so if those tables are absent the build errors instead of degrading. The whole HOPR set is still development-only, so nothing is live yet -- but the first production build will fail unless the tables exist in hopr_db. A single run of each click-runner HOPR ingestor creates them (CREATE TABLE IF NOT EXISTS); the cron does not have to be deployed first. Same applies to fct_hopr_network_health_daily, the api_hopr_* views and the four stg_hopr_db__* views."
+          },
+          {
+            "id": "safe-link-only-from-registry",
+            "text": "NodeSafeRegistry is the ONLY source linking a node to a Safe. NewHoprNodeStakeSafe carries just `instance` (the Safe address) and no node address, so it can only date a Safe's creation, never attribute it."
+          },
+          {
+            "id": "deregistration-event-name-differs-per-network",
+            "text": "dufour emits DergisteredNodeSafe (a typo in the deployed contract) and jura emits DeregisteredNodeSafe. Matching one spelling silently under-counts deregistrations on the other network, inflating is_registered."
+          }
+        ],
+        "profiles": [],
+        "reprocess_runbook": "Plain `dbt run --select int_hopr_nodes` - it is a small table over already-decoded inputs, so a full rebuild is seconds and there is no watermark to respect. Rebuild after any of its upstreams change, and after reseeding hopr_node_registry. If geo coverage jumps or collapses, check crawlers_data.ipinfo first rather than this model.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "semantics": "dimension",
+        "validation": [
+          "make check-fast",
+          "count() - uniqExact((network, node_address)) == 0",
+          "countIf(node_class = 'cover_traffic') == 10 AND countIf(node_class = 'gnosisvpn_exit') == 7",
+          "geo honesty: countIf(geo_source = 'ipinfo' AND ip_country IS NULL) == 0",
+          "liveness honesty: countIf(liveness_source != 'prober' AND latency_ms IS NOT NULL) == 0",
+          "every classified node resolves a safe: countIf(node_class != 'unclassified' AND safe_address IS NULL) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 3,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_hopr_nodes",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/intermediate/int_hopr_nodes.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "hopr",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_hopr_vpn_clients": {
+      "contract": {
+        "grain": [
+          "network",
+          "node_address"
+        ],
+        "hazards": [
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
+            "id": "decode-watermark-late-logs",
+            "status": "remediated",
+            "title": "Append decode watermark drops late-arriving logs forever"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-row-per-node",
+            "text": "count() - uniqExact((network, node_address)) must be 0."
+          },
+          {
+            "id": "clients-never-announced",
+            "text": "No row may appear in AddressAnnouncement for its network. An announced node is a relay or an exit, and counting one as a customer inflates every demand metric built on this model."
+          },
+          {
+            "id": "infrastructure-excluded",
+            "text": "No row may match hopr_node_registry. Cover-traffic and GnosisVPN exit nodes are HOPR's own infrastructure; they announce, so the anti-join already removes them, and the explicit exclusion is the guard."
+          }
+        ],
+        "profiles": [],
+        "reprocess_runbook": "Plain `dbt run -s int_hopr_vpn_clients`. It reads only the decoded Announcements table, so a rebuild is cheap. If the client population looks wrong, check contracts_hopr_Announcements_events for empty event_name first -- a failed ABI join drops KeyBinding rows silently and shrinks this model rather than erroring.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "semantics": "dimension",
+        "validation": [
+          "make check-fast",
+          "count() - uniqExact((network, node_address)) == 0",
+          "countIf(node_address IN (SELECT lower(node_address) FROM hopr_node_registry)) == 0",
+          "first_deploy_date is never null: countIf(first_deploy_date IS NULL) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_gnosisvpn_users_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 2,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_hopr_vpn_clients",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/intermediate/int_hopr_vpn_clients.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "hopr",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
     "int_live__dex_trades_raw": {
       "contract": {
         "hazards": [
@@ -83044,7 +85112,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 21,
+      "downstream_api_count": 24,
       "downstream_api_models": [
         "api_esg_carbon_emissions_annualised_latest",
         "api_esg_carbon_emissions_daily",
@@ -83055,6 +85123,9 @@
         "api_esg_estimated_nodes_daily",
         "api_esg_info_annual_daily",
         "api_esg_info_category_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest",
         "api_p2p_clients_latest",
         "api_p2p_discv4_clients_daily",
         "api_p2p_discv4_clients_latest",
@@ -83062,13 +85133,10 @@
         "api_p2p_discv5_clients_latest",
         "api_p2p_discv5_current_fork_daily",
         "api_p2p_discv5_next_fork_daily",
-        "api_p2p_topology_latest",
-        "api_quarterly_data_carbon_emissions",
-        "api_quarterly_data_energy_consumption",
-        "api_quarterly_data_nodes_estimated"
+        "api_p2p_topology_latest"
       ],
-      "downstream_direct_count": 4,
-      "downstream_transitive_count": 37,
+      "downstream_direct_count": 5,
+      "downstream_transitive_count": 41,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -83328,6 +85396,203 @@
         "production",
         "size",
         "state"
+      ],
+      "unique_key": null
+    },
+    "stg_hopr_db__blokli_network_snapshot": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_protocol_params_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_hopr_db__blokli_network_snapshot",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/staging/stg_hopr_db__blokli_network_snapshot.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "hopr",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_hopr_db__blokli_nodes": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_hopr_db__blokli_nodes",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/staging/stg_hopr_db__blokli_nodes.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "hopr",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_hopr_db__network_nodes": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 4,
+      "downstream_api_models": [
+        "api_hopr_network_health_daily",
+        "api_hopr_node_locations_latest",
+        "api_hopr_nodes_by_country_latest",
+        "api_hopr_nodes_hosting_latest"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 6,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_hopr_db__network_nodes",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/staging/stg_hopr_db__network_nodes.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "hopr",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_hopr_db__network_online_hourly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_hopr_network_health_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_hopr_db__network_online_hourly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/hopr/staging/stg_hopr_db__network_online_hourly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "crawlers_data",
+        "hopr",
+        "production",
+        "staging"
       ],
       "unique_key": null
     },
@@ -85246,7 +87511,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "251d00524d565c6fe8c05e9fe391c1da6de107538c348aaf80b136d196b02690",
+  "models_hash": "99aa839411d4e7688c5a9bdee736bf4387bf69aa52c1b87fccab4f0e4c56f6f9",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

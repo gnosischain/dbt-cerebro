@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_hopr_channels_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_hopr_channels_events</h1>
+    <p>Normalized HOPR payment-channel events across both live networks. Reconciles three differences between the deployments: (1) dufour emits typed scalars while jura emits the raw packed storage word (balance uint96 | ticketIndex uint48 | closureTime uint32 | epoch uint24 | status uint8, low bits first), unpacked here and verified against blokli&#x27;s API to the exact wei; (2) dufour&#x27;s ChannelOpened carries no channelId, so it is derived as keccak256(source || destination) -- verified against 52/52 real events; (3) source/destination appear only on ChannelOpened, so they are filled across each (network, channel_id) partition, which is sound because channel_id is a pure function of the endpoint pair and therefore invariant across channel reopens. Materialized as a table rather than an incremental append: the expensive log scan already happened upstream, so a full rebuild is cheap and avoids the append-watermark and append-over-populated-partition hazards.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/intermediate/int_hopr_channels_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>hopr</span> <span class='pill'>intermediate</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>balance_wei</code></td><td>Nullable(UInt256)</td><td>Channel balance AFTER the event, in wei. NULL where the event carries no balance observation (dufour ChannelOpened and ChannelClosed) -- must stay NULL so the delta window does not diff against a fabricated zero.
+</td></tr><tr><td><code>channel_id</code></td><td>String</td><td>Channel identifier, keccak256(abi.encodePacked(source, destination)). Derived for dufour ChannelOpened, taken from the event elsewhere.
+</td></tr><tr><td><code>channel_status</code></td><td>String</td><td>Decoded ChannelStatus; &#x27;unknown&#x27; on dufour, which does not emit it</td></tr><tr><td><code>event_name</code></td><td>String</td><td></td></tr><tr><td><code>is_testnet</code></td><td>Bool</td><td>True for rotsee, inherited from contracts_hopr_registry so the rule is defined once. Kept at this layer rather than filtered: the testnet stays analysable here and the fct_/api_ marts exclude it. Never sum a metric across this flag.
+</td></tr><tr><td><code>network</code></td><td>LowCardinality(String)</td><td>dufour (legacy production), jura (v4 / GnosisVPN) or rotsee (v4 testnet). Each v4 network spans TWO contract deployments -- the pre-2026-07-27 generation and the current one -- so network is not one address.
+</td></tr><tr><td><code>packing_overflow_check</code></td><td>Nullable(UInt256)</td><td>Guard on the jura bit layout itself: the packed struct occupies bits 0..207, so anything at bit 208 or above must be zero. A non-zero value means the Channel struct changed and the unpacking offsets are stale.
+</td></tr><tr><td><code>redeemed_wei</code></td><td>Nullable(UInt256)</td><td>Value paid out to the destination node on a ticket redemption, derived as the drop in balance on ChannelBalanceDecreased. Scoped to that event because a channel closing also drops the balance but returns funds to the source instead.
+</td></tr><tr><td><code>ticket_index</code></td><td>Nullable(UInt64)</td><td>Channel&#x27;s ticket index after the event. NOT a ticket count -- it advances by a ticket&#x27;s index RANGE, so jura channels reach millions within a week. Never aggregate as a volume.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>block_timestamp</code> (time)</li><li><code>network</code> (categorical)</li><li><code>event_name</code> (categorical)</li><li><code>channel_status</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>hopr_channel_events</code> (count)</li><li><code>hopr_redeemed_wei</code> (sum)</li><li><code>hopr_distinct_channels</code> (count_distinct)</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_hopr_Channels_events</code></li><li><code>contracts_hopr_registry</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_gnosisvpn_exit_activity_daily</code></li><li><code>fct_hopr_gnosisvpn_users_daily</code></li><li><code>fct_hopr_network_daily</code></li><li><code>int_hopr_nodes</code></li></ul>
+    
+  </body>
+</html>

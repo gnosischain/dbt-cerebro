@@ -66,8 +66,8 @@ logs AS (
           
         
         
-        AND block_number > 47649691
-        AND block_timestamp >= toDateTime('2026-08-10 07:10:50')
+        AND block_number > 47833236
+        AND block_timestamp >= toDateTime('2026-08-21 03:49:15')
         
         
         
@@ -102,7 +102,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_gpay_modules_registry` cw WHERE cw.contract_type = 'DelayModule')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_gpay_modules_registry` cw WHERE cw.contract_type = 'DelayModule')
  ),
 
 process AS (

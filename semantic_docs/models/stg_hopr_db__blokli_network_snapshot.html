@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>stg_hopr_db__blokli_network_snapshot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>stg_hopr_db__blokli_network_snapshot</h1>
+    <p>Daily network-level snapshot from blokli: live protocol parameters plus account, safe and channel counts and balances. Reads FINAL (ReplacingMergeTree(ingested_at)).
+JURA AND ROTSEE ONLY (no dufour). rotsee is a testnet whose ticket price and balances are orders of magnitude from production -- filter on is_testnet before summing anything.
+This is the only source of jura economics and of staked/locked balances that needs no balance indexing, and it is the live counterpart to the oracle events decoded from chain: ticket_price_wxhopr and min_ticket_winning_probability here should agree with the latest TicketPriceUpdated / WinProbUpdated. Disagreement means the decode is stale or an oracle address in contracts_hopr_registry is wrong.
+FORWARD-ONLY: blokli is queried for today, so there is no history before the ingestor first ran and none can be recovered. A gap in snapshot_date is permanent.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/staging/stg_hopr_db__blokli_network_snapshot.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>staging</span> <span class='pill'>crawlers_data</span> <span class='pill'>hopr</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>account_count</code></td><td>UInt32</td><td>Accounts (nodes) blokli knows on this network.</td></tr><tr><td><code>api_version</code></td><td>String</td><td>blokli API version that served the snapshot.</td></tr><tr><td><code>block_number</code></td><td>UInt64</td><td>Block the snapshot was taken at.</td></tr><tr><td><code>chain_id</code></td><td>UInt32</td><td>EVM chain id the deployment runs on.</td></tr><tr><td><code>channel_closure_grace_period_s</code></td><td>UInt32</td><td>Seconds a channel stays pending-to-close before it can be finalised.</td></tr><tr><td><code>channels_balance_wxhopr</code></td><td>Nullable(Float64)</td><td>Total wxHOPR locked across channels in any state.</td></tr><tr><td><code>channels_closed</code></td><td>UInt32</td><td>Channels fully closed.</td></tr><tr><td><code>channels_closed_balance_wxhopr</code></td><td>Nullable(Float64)</td><td>Residual balance recorded against closed channels.</td></tr><tr><td><code>channels_open</code></td><td>UInt32</td><td>Channels currently open.</td></tr><tr><td><code>channels_open_balance_wxhopr</code></td><td>Nullable(Float64)</td><td>wxHOPR locked in open channels -- the network&#x27;s working capital.</td></tr><tr><td><code>channels_pendingtoclose</code></td><td>UInt32</td><td>Channels closing but still inside the grace period.</td></tr><tr><td><code>channels_pendingtoclose_balance_wxhopr</code></td><td>Nullable(Float64)</td><td>wxHOPR still locked in pending-to-close channels.</td></tr><tr><td><code>channels_total</code></td><td>UInt32</td><td>Channels in any state.</td></tr><tr><td><code>is_testnet</code></td><td>Bool</td><td>True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality to avoid ClickHouse code 455.
+</td></tr><tr><td><code>key_binding_fee_wxhopr</code></td><td>Nullable(Float64)</td><td>Fee charged to bind a packet key to a chain key, in wxHOPR.</td></tr><tr><td><code>min_ticket_winning_probability</code></td><td>Float64</td><td>Minimum probability with which a ticket wins, in [0,1].</td></tr><tr><td><code>network</code></td><td>String</td><td>HOPR network, NORMALIZED to the bare name (jura or rotsee) so it joins the on-chain side, which uses bare names from contracts_hopr_registry_static. The blokli API self-reports a decorated name here (&#x27;jura-prod&#x27;); the mapping is prefix-based and applied once in staging, never in a consumer. See raw_network.
+</td></tr><tr><td><code>payout_per_winning_ticket_wxhopr</code></td><td>Nullable(Float64)</td><td>ticket_price_wxhopr / min_ticket_winning_probability -- what a winning ticket is actually worth. HOPR pays relayers probabilistically, so this is the economically meaningful figure; comparing raw ticket prices across networks is meaningless because they run different winning probabilities. NULL if the probability is zero.
+</td></tr><tr><td><code>raw_network</code></td><td>String</td><td>The network name exactly as blokli returned it, before normalization -- &#x27;jura-prod&#x27; on this feed today. Kept for audit: it is the only place the decoration survives.
+</td></tr><tr><td><code>safes_balance_wxhopr</code></td><td>Nullable(Float64)</td><td>Total wxHOPR held across those Safes -- staked but not yet in channels.</td></tr><tr><td><code>safes_count</code></td><td>UInt32</td><td>Distinct staking Safes on this network.</td></tr><tr><td><code>snapshot_date</code></td><td>Date</td><td>Date of the snapshot.</td></tr><tr><td><code>ticket_price_wxhopr</code></td><td>Nullable(Float64)</td><td>Price of a single ticket in wxHOPR. Nearly meaningless alone -- see payout_per_winning_ticket_wxhopr.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>hopr_blokli_network_snapshot</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_hopr_protocol_params_daily</code></li></ul>
+    
+  </body>
+</html>

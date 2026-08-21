@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>stg_hopr_db__blokli_nodes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>stg_hopr_db__blokli_nodes</h1>
+    <p>Per-node identity snapshot from blokli, HOPR&#x27;s own v4 indexer, ingested by click-runner&#x27;s hopr-blokli ingestor. Reads FINAL (ReplacingMergeTree(ingested_at)).
+JURA AND ROTSEE ONLY -- blokli does not serve dufour, the mirror image of the prober&#x27;s coverage. rotsee is a testnet; filter on is_testnet before using any of it in a network metric.
+THIS IS A CROSS-CHECK, NOT AN INGESTION SOURCE. Measured against the on-chain jura node set, blokli returns no node int_hopr_nodes does not already have, disagrees on no IP, and would contribute a single additional address -- so int_hopr_nodes deliberately does not read it. Its value is that agreement: it independently confirms the Announcements decode, and it carries packet_key and keyid, which exist nowhere on-chain.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/staging/stg_hopr_db__blokli_nodes.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>staging</span> <span class='pill'>crawlers_data</span> <span class='pill'>hopr</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>announced_ip</code></td><td>Nullable(String)</td><td>IPv4 address parsed out of multiaddress. NULL for /ip6/ or /dns4/ addresses -- guarded on the /ip4/ prefix so a non-IPv4 address yields NULL rather than a fragment that would look like an address to ipinfo and silently fail to enrich.
+</td></tr><tr><td><code>is_testnet</code></td><td>Bool</td><td>True for rotsee (any rotsee-prefixed value). CAST strips LowCardinality before the comparison because comparing a LowCardinality(String) to a literal yields LowCardinality(UInt8), which ClickHouse Cloud rejects with code 455.
+</td></tr><tr><td><code>keyid</code></td><td>UInt32</td><td>blokli&#x27;s own incrementing node id. Exists nowhere on-chain.</td></tr><tr><td><code>multiaddress</code></td><td>String</td><td>Announced libp2p transport address, e.g. /ip4/185.9.1.97/udp/9091/quic-v1.
+</td></tr><tr><td><code>multiaddress_count</code></td><td>UInt8</td><td>How many addresses the node announced.</td></tr><tr><td><code>network</code></td><td>String</td><td>HOPR network the node belongs to, NORMALIZED to the bare name (jura or rotsee) so it joins the on-chain side, which uses bare names from contracts_hopr_registry_static. blokli decorates the name on some feeds (&#x27;jura-prod&#x27;); the mapping is prefix-based and applied once here, never in a consumer. See raw_network for what the API actually returned.
+</td></tr><tr><td><code>node_address</code></td><td>String</td><td>On-chain node address, lowercase 0x-prefixed. blokli calls this chain_key; renamed here to match every other HOPR model.
+</td></tr><tr><td><code>packet_key</code></td><td>String</td><td>The node&#x27;s packet (offchain) key, used for mixnet routing. Not recoverable from chain data -- blokli is the only source.
+</td></tr><tr><td><code>raw_network</code></td><td>String</td><td>The network name exactly as blokli returned it, before normalization. This feed serves bare names today, so it usually equals network; it exists so a newly decorated value is visible rather than silently folded away.
+</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>Address of the node&#x27;s staking Safe.</td></tr><tr><td><code>snapshot_date</code></td><td>Date</td><td>Date of the blokli snapshot.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>hopr_blokli_nodes</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

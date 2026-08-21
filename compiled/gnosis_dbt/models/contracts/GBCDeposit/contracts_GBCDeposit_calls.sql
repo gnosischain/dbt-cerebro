@@ -59,8 +59,8 @@ WITH
             
           
           
-          AND block_number > 47641356
-          AND block_timestamp >= toDateTime('2026-08-09 19:21:15')
+          AND block_number > 47828815
+          AND block_timestamp >= toDateTime('2026-08-20 21:32:40')
           
           
           
@@ -87,7 +87,8 @@ SELECT
     arrayMap(x -> JSONExtractString(x,'name'), params_raw) AS names,
     arrayMap(x -> JSONExtractString(x,'type'), params_raw) AS types
 FROM `dbt`.`function_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414647007d1645d9'
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') = '0b98057ea310f4d31f2a452b414647007d1645d9'
  ),
 
   

@@ -62,7 +62,7 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_BalancerV2_pool_registry` cw WHERE cw.contract_type = 'BalancerV2Pool')
 
       
-        AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM `dbt`.`event_signatures` WHERE event_name IN ('SwapFeePercentageChanged', 'ProtocolFeePercentageCacheUpdated'))
+        AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM `dbt`.`event_signatures` WHERE chain = 'gnosis' AND event_name IN ('SwapFeePercentageChanged', 'ProtocolFeePercentageCacheUpdated'))
       
 
       
@@ -81,8 +81,8 @@ logs AS (
           
         
         
-        AND block_number > 47642513
-        AND block_timestamp >= toDateTime('2026-08-09 21:00:00')
+        AND block_number > 47826275
+        AND block_timestamp >= toDateTime('2026-08-20 17:56:35')
         
         
         
@@ -117,7 +117,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_BalancerV2_pool_registry` cw WHERE cw.contract_type = 'BalancerV2Pool')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_BalancerV2_pool_registry` cw WHERE cw.contract_type = 'BalancerV2Pool')
  ),
 
 process AS (

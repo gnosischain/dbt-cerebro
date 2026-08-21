@@ -87,7 +87,8 @@ SELECT
     arrayMap(x -> JSONExtractString(x,'name'), params_raw) AS names,
     arrayMap(x -> JSONExtractString(x,'type'), params_raw) AS types
 FROM `dbt`.`function_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') = 'c12c1e50abb450d6205ea2c3fa861b3b834d13e8'
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') = 'c12c1e50abb450d6205ea2c3fa861b3b834d13e8'
  ),
 
   

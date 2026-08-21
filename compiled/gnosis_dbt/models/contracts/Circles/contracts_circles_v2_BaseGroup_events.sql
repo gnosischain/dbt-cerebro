@@ -64,8 +64,8 @@ logs AS (
           
         
         
-        AND block_number > 47551751
-        AND block_timestamp >= toDateTime('2026-08-04 11:44:40')
+        AND block_number > 47657482
+        AND block_timestamp >= toDateTime('2026-08-10 18:13:50')
         
         
         
@@ -100,7 +100,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_circles_registry` cw WHERE cw.contract_type = 'BaseGroupRuntime')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_circles_registry` cw WHERE cw.contract_type = 'BaseGroupRuntime')
  ),
 
 process AS (

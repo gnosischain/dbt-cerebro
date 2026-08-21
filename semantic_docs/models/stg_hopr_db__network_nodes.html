@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>stg_hopr_db__network_nodes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>stg_hopr_db__network_nodes</h1>
+    <p>Daily per-node quality snapshot from the network.hoprnet.org prober, ingested by click-runner&#x27;s hopr-network ingestor. Reads FINAL (ReplacingMergeTree(ingested_at); re-running a day re-inserts it).
+DUFOUR ONLY -- the prober was never ported to jura/v4, so there is no liveness or latency signal for the network GnosisVPN runs on. Absence of a jura row means unmeasured, never down. node_address is already in the lowercase 0x form used by the decoded HoprChannels events, so it joins with no normalisation.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/staging/stg_hopr_db__network_nodes.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>staging</span> <span class='pill'>crawlers_data</span> <span class='pill'>hopr</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>availability_1y</code></td><td>Nullable(Float64)</td><td>Fraction of the last year the node was up. The API currently returns NULL for EVERY node, so this is carried for shape only -- a consumer that filters or averages on it silently loses its whole population.
+</td></tr><tr><td><code>availability_24h</code></td><td>Nullable(Float64)</td><td>Fraction of the last 24 hours the node was up, in [0,1].</td></tr><tr><td><code>availability_30d</code></td><td>Nullable(Float64)</td><td>Fraction of the last 30 days the node was up, in [0,1].</td></tr><tr><td><code>availability_6m</code></td><td>Nullable(Float64)</td><td>Fraction of the last 6 months the node was up, in [0,1].</td></tr><tr><td><code>availability_7d</code></td><td>Nullable(Float64)</td><td>Fraction of the last 7 days the node was up, in [0,1].</td></tr><tr><td><code>first_seen</code></td><td>Nullable(DateTime)</td><td>When the prober first observed this node.</td></tr><tr><td><code>is_reachable</code></td><td>Bool</td><td>Whether the prober reached the node, derived from latency_ms being non-NULL. Deliberately not derived from availability, which stays populated for a node that is currently down.
+</td></tr><tr><td><code>last_seen</code></td><td>Nullable(DateTime)</td><td>When the prober last observed this node.</td></tr><tr><td><code>latency_ms</code></td><td>Nullable(Float64)</td><td>Averaged round-trip time the prober measured, in milliseconds. Fractional by nature -- the prober returns half-millisecond values, so this is a Float and rounding it to an integer discards real precision. NULL means the prober could not reach the node at all, which is the reachability signal rather than a gap.
+</td></tr><tr><td><code>network</code></td><td>String</td><td>Network name derived from the dashboard env id; dufour in practice.</td></tr><tr><td><code>node_address</code></td><td>String</td><td>On-chain node address, lowercase 0x-prefixed. Joins directly to int_hopr_nodes.node_address and to HoprChannels source_node/destination_node.
+</td></tr><tr><td><code>prober_last_run</code></td><td>Nullable(DateTime)</td><td>When the prober itself last ran, independent of this node&#x27;s result.</td></tr><tr><td><code>snapshot_date</code></td><td>Date</td><td>Date the prober snapshot was taken.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>hopr_network_nodes</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_hopr_network_health_daily</code></li><li><code>int_hopr_nodes</code></li></ul>
+    
+  </body>
+</html>

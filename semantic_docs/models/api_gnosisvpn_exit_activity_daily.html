@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>api_gnosisvpn_exit_activity_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>api_gnosisvpn_exit_activity_daily</h1>
+    <p>GnosisVPN traffic by exit node and country, per day -- the SUPPLY side of the product. Works because the exit-node roster is committed to git (gnosis/gnosis_vpn linux/resources/config-jura.toml) with an address, city and country per destination. Scoped to jura, which carries no cover traffic. The demand side -- how many clients exist and how many actually used it -- is api_hopr_gnosisvpn_users_daily; neither answers the other&#x27;s question. Three caveats travel with this data. Tickets are probabilistic payments, proportional to relayed volume in expectation but NOT a bandwidth measurement (real bytes live only in node-local Prometheus metrics). Channel counts track how many clients are running, not usage, because the client auto-maintains channels toward target_open_channels -- read tickets_redeemed for usage. And the city/country labels are product metadata, not verified geography: the announced IPs cluster in one 185.9.1.0/24 block plus Google Cloud ranges. The exit roster is a static git snapshot, so it goes stale silently as HOPR adds exits -- unlike int_hopr_vpn_clients, which is derived structurally.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/hopr/marts/api_gnosisvpn_exit_activity_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>hopr</span> <span class='pill'>gnosisvpn</span> <span class='pill'>tier3</span> <span class='pill'>api:gnosisvpn_exit_activity</span> <span class='pill'>granularity:daily</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>channels_closed</code></td><td>UInt64</td><td>Channels closed toward this exit on this day.</td></tr><tr><td><code>channels_opened</code></td><td>UInt64</td><td>Channels opened toward this exit. Tracks clients running, NOT demand -- the client auto-maintains channels toward target_open_channels.
+</td></tr><tr><td><code>channels_seen</code></td><td>UInt64</td><td>Distinct channels observed toward this exit on this day.</td></tr><tr><td><code>country_code</code></td><td>LowCardinality(String)</td><td>ISO-3166 alpha-2 of the exit node&#x27;s advertised location.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Day of the relayed activity. Named date, not activity_date, because a served granularity:daily endpoint must expose its grain under that name.
+</td></tr><tr><td><code>exit_label</code></td><td>String</td><td>Human label for the exit from the GnosisVPN client config.</td></tr><tr><td><code>location_city</code></td><td>String</td><td>City the exit advertises. Product metadata, not verified geography.</td></tr><tr><td><code>redeemed_wxhopr</code></td><td>Decimal(38, 18)</td><td>wxHOPR paid out to this exit, from channel balance decreases.</td></tr><tr><td><code>tickets_redeemed</code></td><td>UInt64</td><td>Redeemed tickets on channels terminating at this exit. The usage series -- proportional to relayed traffic in expectation, not a byte count.
+</td></tr><tr><td><code>unique_counterparty_nodes</code></td><td>UInt64</td><td>Distinct nodes funding channels toward this exit. An upper bound on running clients, not a user count -- one operator can run many nodes, and this is per-exit so it cannot be summed across exits.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>country_code</code> (categorical)</li><li><code>location_city</code> (categorical)</li><li><code>exit_label</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>gnosisvpn_tickets_redeemed</code> (sum)</li><li><code>gnosisvpn_redeemed_wxhopr</code> (sum)</li><li><code>gnosisvpn_channels_opened</code> (sum)</li><li><code>gnosisvpn_peak_counterparty_nodes</code> (max)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_hopr_channels_events</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

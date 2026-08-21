@@ -61,7 +61,7 @@ logs AS (
     WHERE lower(replaceAll(address, '0x', '')) IN (SELECT lower(replaceAll(cw.address, '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
 
       
-        AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM `dbt`.`event_signatures` WHERE event_name IN ('EnabledModule', 'DisabledModule', 'ChangedGuard', 'ChangedModuleGuard'))
+        AND replaceAll(lower(topic0),'0x','') IN (SELECT replaceAll(lower(signature),'0x','') FROM `dbt`.`event_signatures` WHERE chain = 'gnosis' AND event_name IN ('EnabledModule', 'DisabledModule', 'ChangedGuard', 'ChangedModuleGuard'))
       
 
       
@@ -116,7 +116,8 @@ SELECT
   arrayMap(x->JSONExtractBool(x,'indexed'),
            JSONExtractArrayRaw(params))          AS flags
 FROM `dbt`.`event_signatures`
-WHERE replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
+WHERE chain = 'gnosis'
+  AND replaceAll(lower(contract_address),'0x','') IN (SELECT lower(replaceAll(coalesce(nullIf(cw.abi_source_address, ''), cw.address), '0x', '')) FROM `dbt`.`contracts_safe_registry` cw WHERE cw.contract_type = 'SafeProxy')
  ),
 
 process AS (
