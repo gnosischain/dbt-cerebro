@@ -56,4 +56,4 @@ SELECT
     -- a /ip6/ or /dns4/ address yields NULL instead of a fragment that would look like
     -- an IPv4 address to ipinfo and silently fail to enrich.
     if(startsWith(multiaddress, '/ip4/'), splitByChar('/', multiaddress)[3], NULL) AS announced_ip
-FROM {{ source('crawlers_data_hopr', 'hopr_blokli_nodes') }} FINAL
+FROM {{ source('hopr_db', 'hopr_blokli_nodes') }} FINAL

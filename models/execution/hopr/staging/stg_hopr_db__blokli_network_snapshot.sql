@@ -73,4 +73,4 @@ SELECT
     channels_pendingtoclose_balance_wxhopr,
     channels_closed,
     channels_closed_balance_wxhopr
-FROM {{ source('crawlers_data_hopr', 'hopr_blokli_network_snapshot') }} FINAL
+FROM {{ source('hopr_db', 'hopr_blokli_network_snapshot') }} FINAL

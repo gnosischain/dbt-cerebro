@@ -40,4 +40,4 @@ SELECT
     first_seen,
     last_seen,
     prober_last_run
-FROM {{ source('crawlers_data_hopr', 'hopr_network_nodes') }} FINAL
+FROM {{ source('hopr_db', 'hopr_network_nodes') }} FINAL

@@ -30,4 +30,4 @@ SELECT
     multiIf(network_id = 3, 'dufour', concat('network_id_', toString(network_id))) AS network,
     observed_at,
     nodes_online
-FROM {{ source('crawlers_data_hopr', 'hopr_network_online_hourly') }} FINAL
+FROM {{ source('hopr_db', 'hopr_network_online_hourly') }} FINAL
