@@ -5,7 +5,13 @@
     order_by='(source, weight, target, edge_type)',
     unique_key='(source, target, edge_type)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production', 'execution', 'accounts', 'portfolio', 'graph', 'granularity:latest']
+    tags=['production', 'execution', 'accounts', 'portfolio', 'graph', 'granularity:latest'],
+    query_settings={
+        'max_memory_usage': '4000000000',
+        'memory_usage_overcommit_max_wait_microseconds': '60000000',
+        'max_bytes_before_external_sort': '1000000000',
+        'max_bytes_before_external_group_by': '1000000000'
+    }
   )
 }}
 
