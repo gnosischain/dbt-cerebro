@@ -382,18 +382,27 @@ models:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: contracts_gpay_modules_registry
   description: |
-    Cross-referenced registry of every Zodiac module proxy that is currently
-    or was ever enabled on a Gnosis Pay Safe.
+    Registry of the Zodiac module proxies whose events Gnosis Pay models
+    decode: every proxy ever enabled on a GP Safe, plus the Spender
+    singletons.
 
-    Two evidence sources, joined on the proxy address:
+    Per-card modules (Delay, Roles) need two agreeing evidence sources,
+    joined on the proxy address:
       1. int_execution_safes_module_events — the Safe enabled this address
          as a module (filtered to GP Safes via int_execution_gpay_wallets).
       2. int_execution_zodiac_module_proxies — the address was deployed by
          the canonical Zodiac ModuleProxyFactory and points at one of the
-         three known GP mastercopies.
-
+         known per-card GP mastercopies.
     The INNER JOIN means we drop any "enabled module" event that points to
     an address we don't recognise as a Zodiac proxy of a GP-relevant type.
+
+    The Spender is registered on factory discovery ALONE, because it is a
+    singleton enabled on GP's infra safes rather than on any card safe —
+    the per-card filter above is structurally incapable of admitting it,
+    and requiring it kept int_execution_gpay_spender_events empty from
+    2023-12 onward. Keyed on its two mastercopies (0x70db5361...,
+    0x7a592bae...), which share a byte-identical ABI.
+
     This is the high-quality registry that decode_logs consumes via
     contract_address_ref to decode per-module events downstream.
 
