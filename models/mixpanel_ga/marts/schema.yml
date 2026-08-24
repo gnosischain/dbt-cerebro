@@ -278,11 +278,15 @@ models:
       Per-user fact joining Mixpanel identified users to Gnosis Pay Safes
       through the keyed-pseudonym identity bridge.
 
-      One row per (user_id_hash, gp_safe) pair where the user matched on
-      at least one of the three identity roles (initial_owner, delegate,
-      safe_self). Denormalizes the per-Safe module topology, current daily
-      limit, and recent delay activity onto each row so downstream segment
-      queries don't need extra joins.
+      One row per (user_id_hash, gp_safe) pair matched by either path:
+      direct (distinct_id was an owner/delegate EOA or the Safe itself —
+      roles initial_owner / delegate / safe_self; near-extinct in current
+      data, where identified distinct_ids are app account addresses) or
+      pay_profile (the app's Mixpanel profile `pay` property names the
+      user's GP Safe via int_mixpanel_ga_gpay_pay_bridge). Denormalizes
+      the per-Safe module topology, current daily limit, and recent delay
+      activity onto each row so downstream segment queries don't need
+      extra joins.
 
       Privacy invariant: every column representing a person is either
       user_id_hash (already pseudonymized in stg_mixpanel_ga__events) or a
@@ -306,7 +310,7 @@ models:
         description: The Gnosis Pay Safe this user matched against.
         data_type: String
       - name: matched_roles
-        description: Array of identity roles that matched (subset of [initial_owner, delegate, safe_self]).
+        description: Array of identity roles that matched (subset of [initial_owner, delegate, safe_self, pay_profile]).
         data_type: Array(String)
       - name: enabled_modules
         description: Array of module types currently enabled on this Safe (typically [DelayModule, RolesModule, SpenderModule]).

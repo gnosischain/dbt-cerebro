@@ -7,7 +7,14 @@
     settings={ 'allow_nullable_key': 1 },
     tags=['production','hopr','intermediate'],
     pre_hook=["SET allow_experimental_json_type = 1"],
-    post_hook=["SET allow_experimental_json_type = 0"]
+    post_hook=["SET allow_experimental_json_type = 0"],
+    query_settings={
+        'max_threads': '2',
+        'max_memory_usage': '6000000000',
+        'memory_usage_overcommit_max_wait_microseconds': '60000000',
+        'max_bytes_before_external_sort': '500000000',
+        'max_bytes_before_external_group_by': '500000000'
+    }
   )
 }}
 
