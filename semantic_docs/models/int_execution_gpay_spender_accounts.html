@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_execution_gpay_spender_accounts</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_execution_gpay_spender_accounts</h1>
+    <p>Bridge from Spender Spend.account addresses to card-Safe identities,
+one row per account ever debited by a Spender module.
+
+Spend.account is a per-card module ENABLED ON the card Safe, not the
+Safe itself (the Safe emits ExecutionFromModuleSuccess(module=account)
+in the same spend transaction). The enabling Safe comes from
+int_execution_safes_module_events (event_kind=&#x27;enabled_module&#x27;,
+target_address = account); the mapping is 1:1 over full history.
+canonical_safe collapses June 2026 migrated OLD Safes onto their NEW
+Safe via int_execution_gpay_safe_canonical. Accounts with no enable
+event (decode lag) keep safe_address NULL so consumers pick their gate.
+</p>
+    <p><strong>Module:</strong> execution</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_spender_accounts.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>account</code></td><td>String</td><td>Spender Spend.account address (0x-prefixed, lowercase) — the per-card account module.</td></tr><tr><td><code>canonical_safe</code></td><td>Nullable(String)</td><td>safe_address collapsed onto the canonical NEW Safe for June 2026 migrated Safes; equals safe_address otherwise.</td></tr><tr><td><code>enabled_at</code></td><td>Nullable(DateTime)</td><td>Earliest enabled_module timestamp for this account.</td></tr><tr><td><code>is_gpay_wallet</code></td><td>UInt8</td><td>1 if safe_address or canonical_safe is in int_execution_gpay_wallets.</td></tr><tr><td><code>safe_address</code></td><td>Nullable(String)</td><td>The Safe this account module was enabled on (latest enable event; NULL if no enable event decoded yet).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_safe_canonical</code></li><li><code>int_execution_gpay_spender_events</code></li><li><code>int_execution_gpay_wallets</code></li><li><code>int_execution_safes_module_events</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_execution_gpay_spend_activity_daily</code></li></ul>
+    
+  </body>
+</html>

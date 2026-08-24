@@ -63,13 +63,13 @@
         "api": 378,
         "approved": 286,
         "candidate": 387,
-        "docs_only": 127,
+        "docs_only": 128,
         "fct": 175,
-        "int": 181,
-        "model": 768,
+        "int": 182,
+        "model": 769,
         "source": 32,
         "stg": 31,
-        "total_nodes": 800
+        "total_nodes": 801
       },
       "mixpanel_ga": {
         "api": 23,
@@ -129,11 +129,11 @@
         "total_nodes": 3
       }
     },
-    "relationship_count": 735,
+    "relationship_count": 737,
     "semantic_status_counts": {
       "approved": 466,
       "candidate": 471,
-      "docs_only": 405
+      "docs_only": 406
     }
   },
   "entity_dictionary": {
@@ -356,11 +356,11 @@
     }
   },
   "metadata": {
-    "catalog_hash": "15043d8ccc1d5c4300cf05bcc0fd176981f241e5923fbb7e24955204729eacc3",
-    "generated_at": "2026-08-21T20:21:39.434998+00:00",
-    "graph_catalog_hash": "060b2a949a50b691579c283e717e9ea2d8d667ad3138d2002493c363326707f9",
-    "manifest_hash": "252fe558024e0b873d3a749aa726855ba4a75312cf1dd2da9331caa3f3e16950",
-    "model_count": 1242,
+    "catalog_hash": "ac42dc3525616973d209052f9aadea47f9a8f853f6c617cd7114a38fc62f968d",
+    "generated_at": "2026-08-24T14:24:56.811181+00:00",
+    "graph_catalog_hash": "bae120264369fcdaeee636e8b7a9f11a3b36166ee025a9846b239abb58f8e2b2",
+    "manifest_hash": "8f282990149afd784155504e07e1bcb2aedb81f6ad8c99221306fe3dfa48d76d",
+    "model_count": 1243,
     "project_name": "gnosis_dbt",
     "semantic_manifest_hash": "b663ffd7d80a9a729a7cb23b123ee404bd2d4c5b5b8f107c5c76b82186099fc1",
     "source_count": 100
@@ -120760,7 +120760,7 @@
           "name": "start_blocktime"
         }
       },
-      "description": "Cross-referenced registry of every Zodiac module proxy that is currently\nor was ever enabled on a Gnosis Pay Safe.\n\nTwo evidence sources, joined on the proxy address:\n  1. int_execution_safes_module_events \u2014 the Safe enabled this address\n     as a module (filtered to GP Safes via int_execution_gpay_wallets).\n  2. int_execution_zodiac_module_proxies \u2014 the address was deployed by\n     the canonical Zodiac ModuleProxyFactory and points at one of the\n     three known GP mastercopies.\n\nThe INNER JOIN means we drop any \"enabled module\" event that points to\nan address we don't recognise as a Zodiac proxy of a GP-relevant type.\nThis is the high-quality registry that decode_logs consumes via\ncontract_address_ref to decode per-module events downstream.\n\nOutput schema matches the standard contracts_*_registry shape so\ndecode_logs picks up abi_source_address automatically.\n",
+      "description": "Registry of the Zodiac module proxies whose events Gnosis Pay models\ndecode: every proxy ever enabled on a GP Safe, plus the Spender\nsingletons.\n\nPer-card modules (Delay, Roles) need two agreeing evidence sources,\njoined on the proxy address:\n  1. int_execution_safes_module_events \u2014 the Safe enabled this address\n     as a module (filtered to GP Safes via int_execution_gpay_wallets).\n  2. int_execution_zodiac_module_proxies \u2014 the address was deployed by\n     the canonical Zodiac ModuleProxyFactory and points at one of the\n     known per-card GP mastercopies.\nThe INNER JOIN means we drop any \"enabled module\" event that points to\nan address we don't recognise as a Zodiac proxy of a GP-relevant type.\n\nThe Spender is registered on factory discovery ALONE, because it is a\nsingleton enabled on GP's infra safes rather than on any card safe \u2014\nthe per-card filter above is structurally incapable of admitting it,\nand requiring it kept int_execution_gpay_spender_events empty from\n2023-12 onward. Keyed on its two mastercopies (0x70db5361...,\n0x7a592bae...), which share a byte-identical ABI.\n\nThis is the high-quality registry that decode_logs consumes via\ncontract_address_ref to decode per-module events downstream.\n\nOutput schema matches the standard contracts_*_registry shape so\ndecode_logs picks up abi_source_address automatically.\n",
       "dimensions": [],
       "entities": [
         {
@@ -156462,7 +156462,7 @@
         },
         "matched_roles": {
           "data_type": "Array(String)",
-          "description": "Array of identity roles that matched (subset of [initial_owner, delegate, safe_self]).",
+          "description": "Array of identity roles that matched (subset of [initial_owner, delegate, safe_self, pay_profile]).",
           "name": "matched_roles"
         },
         "spends_last_30d": {
@@ -156476,7 +156476,7 @@
           "name": "user_id_hash"
         }
       },
-      "description": "Per-user fact joining Mixpanel identified users to Gnosis Pay Safes\nthrough the keyed-pseudonym identity bridge.\n\nOne row per (user_id_hash, gp_safe) pair where the user matched on\nat least one of the three identity roles (initial_owner, delegate,\nsafe_self). Denormalizes the per-Safe module topology, current daily\nlimit, and recent delay activity onto each row so downstream segment\nqueries don't need extra joins.\n\nPrivacy invariant: every column representing a person is either\nuser_id_hash (already pseudonymized in stg_mixpanel_ga__events) or a\nSafe address (smart account, treated as non-PII). No raw EOA appears.\n\nImplementation note: explicit AS aliases on the m.* columns in the\nfinal SELECT are required. ClickHouse keeps the qualified name\n`m.gp_safe` in the output projection whenever the bare name `gp_safe`\nis ambiguous across joined relations (modules_per_safe,\nallowance_per_safe, delay_30d, spends_30d all expose a `gp_safe`\ncolumn), and the config's order_by=(user_id_hash, gp_safe) would\nthen fail to resolve.\n",
+      "description": "Per-user fact joining Mixpanel identified users to Gnosis Pay Safes\nthrough the keyed-pseudonym identity bridge.\n\nOne row per (user_id_hash, gp_safe) pair matched by either path:\ndirect (distinct_id was an owner/delegate EOA or the Safe itself \u2014\nroles initial_owner / delegate / safe_self; near-extinct in current\ndata, where identified distinct_ids are app account addresses) or\npay_profile (the app's Mixpanel profile `pay` property names the\nuser's GP Safe via int_mixpanel_ga_gpay_pay_bridge). Denormalizes\nthe per-Safe module topology, current daily limit, and recent delay\nactivity onto each row so downstream segment queries don't need\nextra joins.\n\nPrivacy invariant: every column representing a person is either\nuser_id_hash (already pseudonymized in stg_mixpanel_ga__events) or a\nSafe address (smart account, treated as non-PII). No raw EOA appears.\n\nImplementation note: explicit AS aliases on the m.* columns in the\nfinal SELECT are required. ClickHouse keeps the qualified name\n`m.gp_safe` in the output projection whenever the bare name `gp_safe`\nis ambiguous across joined relations (modules_per_safe,\nallowance_per_safe, delay_30d, spends_30d all expose a `gp_safe`\ncolumn), and the config's order_by=(user_id_hash, gp_safe) would\nthen fail to resolve.\n",
       "dimensions": [],
       "entities": [
         {
@@ -156501,6 +156501,7 @@
           "int_execution_gpay_safe_identities",
           "int_execution_gpay_safe_modules",
           "int_execution_gpay_spend_activity_daily",
+          "int_mixpanel_ga_gpay_pay_bridge",
           "stg_mixpanel_ga__events"
         ]
       },
@@ -179509,6 +179510,7 @@
           "int_execution_gnosis_app_gp_card_ga_link",
           "int_execution_gpay_accounts_deployed",
           "int_execution_gpay_safe_modules",
+          "int_execution_gpay_spender_accounts",
           "int_execution_gpay_user_identity_bridge",
           "int_revenue_fees_unified_daily",
           "int_revenue_gpay_fees_daily"
@@ -179780,7 +179782,7 @@
         },
         "gp_safe": {
           "data_type": "String",
-          "description": "The Gnosis Pay Safe (the debited account from the Spend event).",
+          "description": "The Gnosis Pay Safe the debited account module is enabled on (as of the event; not canonicalized across the June 2026 migration).",
           "name": "gp_safe"
         },
         "spend_count": {
@@ -179789,7 +179791,7 @@
           "name": "spend_count"
         }
       },
-      "description": "Daily card-spend activity per GP Safe.\n\nSource: int_execution_gpay_spender_events filtered to event_name='Spend'.\nThe Spend event already carries `account` (the debited Safe), so we\ndon't need to join through int_execution_gpay_safe_modules \u2014 the\naccount address IS the gp_safe. We INNER JOIN to int_execution_gpay_wallets to\nguard against any cross-Safe Spend events that wouldn't be GP-related.\n\nAggregates count of spends and number of distinct assets/receivers.\nAmounts are not summed because they're per-asset and per-decimals; a\nfollow-up model can do the USD valuation join.\n",
+      "description": "Daily card-spend activity per GP Safe.\n\nSource: int_execution_gpay_spender_events filtered to event_name='Spend'.\nSpend.account is a per-card module, not the Safe itself, so it is\nresolved to the enabling card Safe via\nint_execution_gpay_spender_accounts, then INNER JOINed to\nint_execution_gpay_wallets so only registered card wallets count\n(drops the ~0.5% of accounts whose Safe is unlinked or unregistered;\nthe current month is reprocessed daily, so decode-lag stragglers\nself-heal).\n\nAggregates count of spends and number of distinct assets/receivers.\nAmounts are not summed because they're per-asset and per-decimals; a\nfollow-up model can do the USD valuation join.\n",
       "dimensions": [
         {
           "expr": "date",
@@ -179824,6 +179826,7 @@
           "fct_mixpanel_ga_gpay_users"
         ],
         "upstream": [
+          "int_execution_gpay_spender_accounts",
           "int_execution_gpay_spender_events",
           "int_execution_gpay_wallets"
         ]
@@ -179854,6 +179857,89 @@
       },
       "semantic_source_file": "authoring/execution/gpay/semantic_models.yml",
       "semantic_status": "candidate",
+      "tags": [
+        "production",
+        "execution",
+        "gpay"
+      ]
+    },
+    "int_execution_gpay_spender_accounts": {
+      "columns": {
+        "account": {
+          "data_type": "String",
+          "description": "Spender Spend.account address (0x-prefixed, lowercase) \u2014 the per-card account module.",
+          "name": "account"
+        },
+        "canonical_safe": {
+          "data_type": "Nullable(String)",
+          "description": "safe_address collapsed onto the canonical NEW Safe for June 2026 migrated Safes; equals safe_address otherwise.",
+          "name": "canonical_safe"
+        },
+        "enabled_at": {
+          "data_type": "Nullable(DateTime)",
+          "description": "Earliest enabled_module timestamp for this account.",
+          "name": "enabled_at"
+        },
+        "is_gpay_wallet": {
+          "data_type": "UInt8",
+          "description": "1 if safe_address or canonical_safe is in int_execution_gpay_wallets.",
+          "name": "is_gpay_wallet"
+        },
+        "safe_address": {
+          "data_type": "Nullable(String)",
+          "description": "The Safe this account module was enabled on (latest enable event; NULL if no enable event decoded yet).",
+          "name": "safe_address"
+        }
+      },
+      "description": "Bridge from Spender Spend.account addresses to card-Safe identities,\none row per account ever debited by a Spender module.\n\nSpend.account is a per-card module ENABLED ON the card Safe, not the\nSafe itself (the Safe emits ExecutionFromModuleSuccess(module=account)\nin the same spend transaction). The enabling Safe comes from\nint_execution_safes_module_events (event_kind='enabled_module',\ntarget_address = account); the mapping is 1:1 over full history.\ncanonical_safe collapses June 2026 migrated OLD Safes onto their NEW\nSafe via int_execution_gpay_safe_canonical. Accounts with no enable\nevent (decode lag) keep safe_address NULL so consumers pick their gate.\n",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "account",
+          "name": "address",
+          "type": "foreign"
+        },
+        {
+          "expr": "safe_address",
+          "name": "safe",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "execution",
+        "gpay",
+        "intermediate",
+        "int_execution_gpay_spender_accounts"
+      ],
+      "lineage": {
+        "downstream": [
+          "int_execution_gpay_spend_activity_daily"
+        ],
+        "upstream": [
+          "int_execution_gpay_safe_canonical",
+          "int_execution_gpay_spender_events",
+          "int_execution_gpay_wallets",
+          "int_execution_safes_module_events"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "execution",
+      "name": "int_execution_gpay_spender_accounts",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/execution/gpay/intermediate/int_execution_gpay_spender_accounts.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_execution_gpay_spender_accounts`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
       "tags": [
         "production",
         "execution",
@@ -180032,7 +180118,7 @@
         },
         "spend_account": {
           "data_type": "Nullable(String)",
-          "description": "Spend.account \u2014 the GP Safe being debited. NULL on non-Spend events.",
+          "description": "Spend.account \u2014 the per-card account module debited (a module enabled on the card Safe, not the Safe itself; map to the Safe via int_execution_gpay_spender_accounts). NULL on non-Spend events.",
           "name": "spend_account"
         },
         "spend_amount": {
@@ -180061,7 +180147,7 @@
           "name": "transaction_hash"
         }
       },
-      "description": "Decoded events from the Gnosis Pay Spender module proxies attached to\nGP Safes. The Spender is GP's custom final gatekeeper for card-spend\nauthorization (deployed and controlled by GP's settlement infra).\n\nEvents of interest:\n\n  Spend(asset, account, receiver, amount)\n      \u2014 THE event. Fired on every successful card transaction. The\n        headline analytics signal for GP card activity.\n            asset    \u2014 token being spent (ERC-20 contract address)\n            account  \u2014 the GP Safe being debited\n            receiver \u2014 settlement / merchant-acquirer destination\n            amount   \u2014 token base units (string; could be large)\n\n  AvatarSet(previousAvatar, newAvatar)\n      \u2014 Spender bound to a Safe (or rebound). The newAvatar is the\n        GP Safe this Spender module belongs to. Setup signal.\n\n  TargetSet(previousTarget, newTarget)\n      \u2014 The Spender's target contract changed.\n\n  EnabledModule / DisabledModule\n      \u2014 Sub-modules of the Spender enabled or disabled (the Spender\n        itself acts as a module manager for its own sub-stack).\n\n  ExecutionFromModuleSuccess / ExecutionFromModuleFailure\n      \u2014 A sub-module forwarded a call through the Spender.\n\n  OwnershipTransferred / Initialized\n      \u2014 Standard ownable / proxy lifecycle.\n\n  HashExecuted / HashInvalidated\n      \u2014 Signed-message tracking. The parameter is an unnamed bytes32\n        so we cannot pluck it by key \u2014 we just record the event fired\n        and leave the bytes32 in the raw decoded_params for downstream\n        consumers that need it.\n",
+      "description": "Decoded events from the Gnosis Pay Spender module proxies attached to\nGP Safes. The Spender is GP's custom final gatekeeper for card-spend\nauthorization (deployed and controlled by GP's settlement infra).\n\nEvents of interest:\n\n  Spend(asset, account, receiver, amount)\n      \u2014 THE event. Fired on every successful card transaction. The\n        headline analytics signal for GP card activity.\n            asset    \u2014 token being spent (ERC-20 contract address)\n            account  \u2014 the per-card account module debited (NOT the\n                       Safe itself: it is a module enabled on the card\n                       Safe; int_execution_gpay_spender_accounts maps\n                       it to the Safe)\n            receiver \u2014 settlement / merchant-acquirer destination\n            amount   \u2014 token base units (string; could be large)\n\n  AvatarSet(previousAvatar, newAvatar)\n      \u2014 Spender bound to a Safe (or rebound). The newAvatar is the\n        GP Safe this Spender module belongs to. Setup signal.\n\n  TargetSet(previousTarget, newTarget)\n      \u2014 The Spender's target contract changed.\n\n  EnabledModule / DisabledModule\n      \u2014 Sub-modules of the Spender enabled or disabled (the Spender\n        itself acts as a module manager for its own sub-stack).\n\n  ExecutionFromModuleSuccess / ExecutionFromModuleFailure\n      \u2014 A sub-module forwarded a call through the Spender.\n\n  OwnershipTransferred / Initialized\n      \u2014 Standard ownable / proxy lifecycle.\n\n  HashExecuted / HashInvalidated\n      \u2014 Signed-message tracking. The parameter is an unnamed bytes32\n        so we cannot pluck it by key \u2014 we just record the event fired\n        and leave the bytes32 in the raw decoded_params for downstream\n        consumers that need it.\n",
       "dimensions": [
         {
           "expr": "spender_module_address",
@@ -180178,7 +180264,8 @@
       ],
       "lineage": {
         "downstream": [
-          "int_execution_gpay_spend_activity_daily"
+          "int_execution_gpay_spend_activity_daily",
+          "int_execution_gpay_spender_accounts"
         ],
         "upstream": [
           "contracts_gpay_modules_registry",
@@ -180564,6 +180651,7 @@
           "int_execution_gpay_balances_daily",
           "int_execution_gpay_safe_modules",
           "int_execution_gpay_spend_activity_daily",
+          "int_execution_gpay_spender_accounts",
           "int_execution_gpay_user_identity_bridge",
           "int_execution_gpay_wallet_owners",
           "int_execution_zodiac_modifier_submodules_latest"
@@ -185424,6 +185512,7 @@
           "int_execution_gnosis_app_user_events",
           "int_execution_gpay_accounts_deployed",
           "int_execution_gpay_safe_modules",
+          "int_execution_gpay_spender_accounts",
           "int_execution_zodiac_modifier_submodules_latest"
         ],
         "upstream": [
@@ -204127,13 +204216,13 @@
       "api": 378,
       "approved": 286,
       "candidate": 387,
-      "docs_only": 127,
+      "docs_only": 128,
       "fct": 175,
-      "int": 181,
-      "model": 768,
+      "int": 182,
+      "model": 769,
       "source": 32,
       "stg": 31,
-      "total_nodes": 800
+      "total_nodes": 801
     },
     "mixpanel_ga": {
       "api": 23,
@@ -205114,6 +205203,11 @@
           "model": "int_execution_gpay_safe_canonical",
           "module": "execution",
           "status": "candidate"
+        },
+        {
+          "model": "int_execution_gpay_spender_accounts",
+          "module": "execution",
+          "status": "docs_only"
         },
         {
           "model": "int_execution_gpay_spender_delegates_current",
@@ -218233,6 +218327,11 @@
           "status": "candidate"
         },
         {
+          "model": "int_execution_gpay_spender_accounts",
+          "module": "execution",
+          "status": "docs_only"
+        },
+        {
           "model": "int_execution_gpay_spender_delegates_current",
           "module": "execution",
           "status": "candidate"
@@ -228346,6 +228445,26 @@
       "cardinality": "many_to_one",
       "join_semantics": "left",
       "left_keys": [
+        "account"
+      ],
+      "left_model": "int_execution_gpay_spender_accounts",
+      "name": "gen_address__int_execution_gpay_spender_accounts__account__to__api_execution_account_profile_latest",
+      "preferred_bridge": false,
+      "quality_tier": "candidate",
+      "right_keys": [
+        "address"
+      ],
+      "right_model": "api_execution_account_profile_latest",
+      "safe_for_dimension_enrichment": true,
+      "source_file": "/home/runner/work/dbt-cerebro/dbt-cerebro/semantic/relationships/entities_generated.yml",
+      "via_entity": "address"
+    },
+    {
+      "aggregate_then_join_only": false,
+      "allow_any_join": false,
+      "cardinality": "many_to_one",
+      "join_semantics": "left",
+      "left_keys": [
         "delegate_address"
       ],
       "left_model": "int_execution_gpay_spender_delegates_current",
@@ -229450,6 +229569,26 @@
       ],
       "left_model": "int_execution_gpay_spend_activity_daily",
       "name": "gen_safe__int_execution_gpay_spend_activity_daily__gp_safe__to__api_execution_safe_details_latest",
+      "preferred_bridge": false,
+      "quality_tier": "candidate",
+      "right_keys": [
+        "safe_address"
+      ],
+      "right_model": "api_execution_safe_details_latest",
+      "safe_for_dimension_enrichment": true,
+      "source_file": "/home/runner/work/dbt-cerebro/dbt-cerebro/semantic/relationships/entities_generated.yml",
+      "via_entity": "safe"
+    },
+    {
+      "aggregate_then_join_only": false,
+      "allow_any_join": false,
+      "cardinality": "many_to_one",
+      "join_semantics": "left",
+      "left_keys": [
+        "safe_address"
+      ],
+      "left_model": "int_execution_gpay_spender_accounts",
+      "name": "gen_safe__int_execution_gpay_spender_accounts__safe_address__to__api_execution_safe_details_latest",
       "preferred_bridge": false,
       "quality_tier": "candidate",
       "right_keys": [

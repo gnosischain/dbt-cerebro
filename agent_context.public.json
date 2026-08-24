@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 25,
+    "explicit_contracts": 26,
     "high_risk": 309,
-    "models": 1191
+    "models": 1192
   },
-  "inputs_fingerprint": "840bba51bbb078fabbaa2cadddc1b6354e52952e9ad8f6057eff2ae4faf6884c",
+  "inputs_fingerprint": "de016347f7573b0f1741b650aac788c4d66eeaf55cf077f53db9e10363867e81",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -482,6 +482,25 @@
       "status": "enforced",
       "symptom": "after a staged refresh, a month partition holds only the last stage/slice (e.g. a whole month reduced to one day)",
       "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+    },
+    "stale-seed-deploy-silent-decode-halt": {
+      "body": "## Symptom\n\nA decode model's backfill or daily run completes green but appends nothing; the\ntable's max(block_timestamp) freezes at some boundary (here 2024-08-31 23:55\nfor the mid-backfill model, 2026-08-23 06:27 for the daily fleet) while raw\n`execution.logs` demonstrably continues. Because failure is a zero-row SELECT,\nno error, no test failure, no log line distinguishes it from \"no new events\".\n\n## Root cause\n\n`decode_logs` builds its ABI CTE from `event_signatures` filtered by\n`WHERE chain = 'gnosis'`. A manual `dbt seed` executed from a stale checkout\n(the pre-rebuild branch tip, whose CSVs predate the populated `chain` column)\nreplaced `event_signatures` and `contracts_abi` wholesale with versions where\nevery `chain` is the empty string. From that instant every decode invocation\nmatched zero ABI rows and appended zero rows \u2014 including the very backfill the\nseed deploy was meant to unblock (its batches 1\u20135 ran before the deploy and\nlanded 232k rows; batches 6+ ran after it and landed nothing, which mimicked a\ndate-cap and sent the next session down the wrong path).\n\n## Forbidden action\n\nNever run `dbt seed` (or any manual seed load) without first confirming the\ncheckout is the intended branch tip, and never walk away from a seed deploy\nwithout verifying the loaded table against the working-tree CSV (row count and\na value-distribution spot check on the discriminator columns, `chain` above\nall). A seed deploy is a full-table REPLACE \u2014 a stale checkout is a silent\nmass-revert.\n\n## Detection\n\n- `SELECT chain, count() FROM dbt.event_signatures GROUP BY chain` \u2014 any ''\n  bucket means this lesson fired (same for contracts_abi / function_signatures).\n- Freshness sweep: `max(block_timestamp)` over decode models vs now; a shared\n  freeze timestamp across independent decode models points at the shared seed,\n  not at the models.\n- The seed schema tests (`accepted_values` on chain) fail on '' \u2014 they run in\n  CI and, once the `path:seeds` batch deploys, in every scheduled test run.\n\n## Safe remediation\n\nRe-run `dbt seed --select event_signatures contracts_abi function_signatures\n--full-refresh` from the correct checkout (the dbt container bind-mounts the\nworking tree), verify counts + chain distribution, then let watermark-based\nincrementals catch up on their own (`--incremental-only` refresh for a\nmid-backfill model; the daily runner for the fleet). No partitions were wiped \u2014\nthe failure mode is pure non-append, so no history recovery is needed beyond\nre-running the silent window.\n\n## Ground truth\n\nRaw `execution.logs` for the affected contracts (address IN registry, bounded\nblock_timestamp window) versus the decoded table's per-month counts. The raw\nside is untouched by this failure class.\n\n## Enforcement\n\n`path:seeds` test batch in `scripts/run_dbt_observability.sh` (in tree, pending\ndeploy) makes the existing seed `chain` tests run on schedule; flip this lesson\nto `enforced` once that batch has demonstrably failed-or-passed in a production\nrun.",
+      "evidence": [
+        "prod fingerprint 2026-08-24 ~09:00 UTC: dbt.event_signatures 1,356 rows ALL chain='' , dbt.contracts_abi 180 rows ALL chain='' \u2014 exactly matches the CSVs at commit 3a210482 (the pre-rebuild fix/gpay-spender-registry tip: 1,356 / 180 rows, zero ',gnosis'); branch tip e076d2c7 CSVs are 1,432 / 199 rows all gnosis",
+        "filter locus: macros/decoding/decode_logs.sql:169 (WHERE chain = '{{ chain }}') and :184 (topic0 subquery) \u2014 empty chain values make the ABI CTE empty, decode SELECT returns 0 rows, append inserts nothing, dbt reports OK",
+        "frozen fleet measured 2026-08-24: int_execution_safes_module_events / safes_owner_events max 2026-08-23 06:27:50, zodiac_module_proxies 2026-08-23 07:09:45, gpay_delay_events 2026-08-22 22:56:35",
+        "disproof of the rival theory: compiled batch SQL (container target/run/.../int_execution_gpay_spender_events.sql, 2026-08-24 08:21) had correct window 2026-06\u21922026-08, watermark block_number > 35769220, and NO incremental_end_date cap \u2014 yet inserted 0 rows; WL-027 handover's DBT_MB_INCREMENTAL_END_DATE theory was wrong",
+        "guard hole: seeds/schema.yml already carried not_null + accepted_values('gnosis','celo') on chain, but scripts/run_dbt_observability.sh build_test_batches selected only tag:production model paths + sources \u2014 seeds were in no batch, so the tripwire never ran on schedule",
+        "remediation 2026-08-24 09:17 UTC: dbt seed --select event_signatures contracts_abi --full-refresh from the bind-mounted branch tip; verified 1,432 / 199 rows, 0 empty chain, 22 Spender signature rows; function_signatures was untouched by the bad deploy (4,139 rows, chain intact) so decode_calls never broke",
+        "enforcement fix in tree, pending deploy: path:seeds batch added to build_test_batches in scripts/run_dbt_observability.sh (both full and preview_subset scopes)"
+      ],
+      "id": "stale-seed-deploy-silent-decode-halt",
+      "last_verified": "2026-08-24",
+      "path": "docs/lessons/stale-seed-deploy-silent-decode-halt.md",
+      "scope": "seeds (event_signatures, contracts_abi, function_signatures); every decode_logs model; any manual dbt seed run",
+      "status": "remediated",
+      "symptom": "Decode models stop appending (max(block_timestamp) frozen) while runs and refreshes complete green; a refresh window with verified raw data inserts 0 rows; compiled SQL shows correct filters.",
+      "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
     },
     "stale-snapshot-caveat": {
       "body": "## Symptom\nA \"quarter-end\" or \"latest\" metric looks fine but is frozen \u2014 the underlying source\nstopped ingesting and `argMax(value, date)` keeps promoting the last observed day.\nThe last day can also be *partial*, making the value wrong as well as stale.\n\n## Root cause\nargMax-style snapshot marts have no freshness contract of their own; the scheduled\nElementary freshness tests are `severity: warn`, so a silent source halt doesn't fail\nanything. (dbt-native `source freshness` would error after 48h \u2014 but only if that\nsurface is run and acted on.)\n\n## Forbidden action\nNever quote a snapshot/\"latest\"/\"quarter-end\" number without checking `max(date)` of\nthe underlying table against today \u2014 and whether the last day's row count is in line\nwith previous days (partial-day trap).\n\n## Detection\n`SELECT max(date), count() FROM <table> WHERE date = (SELECT max(date) FROM <table>)`\nvs a typical day's count.\n\n## Safe remediation\nEscalate the ingestion halt (external system); until fixed, source true current values\nfrom an alternative (the consensus incident used dora) and label the mart's staleness.\n\n## Enforcement\nNone yet \u2014 freshness alerts remain warn-severity; the caveat is encoded here and in\nAGENTS.md verification caveats.",
@@ -33800,6 +33819,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -33853,6 +33877,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -33911,6 +33939,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -33964,6 +33997,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34022,6 +34059,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34075,6 +34117,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34154,6 +34200,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34207,6 +34258,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34286,6 +34341,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34339,6 +34399,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34398,6 +34462,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           }
         ],
         "profiles": [
@@ -34426,6 +34495,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           }
         ],
         "semantics": "event",
@@ -34500,6 +34573,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34553,6 +34631,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34632,6 +34714,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34685,6 +34772,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34747,6 +34838,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34800,6 +34896,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34858,6 +34958,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -34911,6 +35016,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -34969,6 +35078,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35022,6 +35136,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35080,6 +35198,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35133,6 +35256,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35194,6 +35321,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35247,6 +35379,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35326,6 +35462,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35379,6 +35520,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35437,6 +35582,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35490,6 +35640,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35552,6 +35706,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35605,6 +35764,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35667,6 +35830,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35720,6 +35888,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35778,6 +35950,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35831,6 +36008,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -35889,6 +36070,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -35942,6 +36128,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36000,6 +36190,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36053,6 +36248,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36111,6 +36310,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36164,6 +36368,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36222,6 +36430,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36275,6 +36488,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36333,6 +36550,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36386,6 +36608,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36444,6 +36670,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36497,6 +36728,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36555,6 +36790,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36608,6 +36848,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36666,6 +36910,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36719,6 +36968,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36777,6 +37030,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36830,6 +37088,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -36889,6 +37151,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36942,6 +37209,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37001,6 +37272,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37054,6 +37330,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37112,6 +37392,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37165,6 +37450,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37244,6 +37533,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37297,6 +37591,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37355,6 +37653,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37408,6 +37711,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37487,6 +37794,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37540,6 +37852,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37602,6 +37918,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37655,6 +37976,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37717,6 +38042,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37770,6 +38100,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37849,6 +38183,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37902,6 +38241,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -37964,6 +38307,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38017,6 +38365,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38096,6 +38448,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38149,6 +38506,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38211,6 +38572,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38264,6 +38630,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38345,6 +38715,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38398,6 +38773,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38457,6 +38836,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38510,6 +38894,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38590,6 +38978,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38643,6 +39036,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38722,6 +39119,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38775,6 +39177,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38854,6 +39260,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38907,6 +39318,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -38986,6 +39401,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39039,6 +39459,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39118,6 +39542,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39171,6 +39600,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39250,6 +39683,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39303,6 +39741,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39382,6 +39824,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39435,6 +39882,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39514,6 +39965,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39567,6 +40023,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39646,6 +40106,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39699,6 +40164,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39778,6 +40247,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39831,6 +40305,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -39907,6 +40385,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           }
         ],
         "profiles": [
@@ -39935,6 +40418,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           }
         ],
         "semantics": "event",
@@ -40009,6 +40496,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40062,6 +40554,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40120,6 +40616,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40173,6 +40674,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40231,6 +40736,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40284,6 +40794,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40342,6 +40856,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40395,6 +40914,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40453,6 +40976,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40506,6 +41034,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40564,6 +41096,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40617,6 +41154,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40696,6 +41237,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40749,6 +41295,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40807,6 +41357,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40860,6 +41415,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -40918,6 +41477,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40971,6 +41535,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41031,6 +41599,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41084,6 +41657,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41142,6 +41719,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41195,6 +41777,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41253,6 +41839,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41306,6 +41897,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41385,6 +41980,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41438,6 +42038,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41496,6 +42100,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41549,6 +42158,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41607,6 +42220,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41660,6 +42278,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41739,6 +42361,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41792,6 +42419,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41850,6 +42481,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41903,6 +42539,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -41982,6 +42622,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42035,6 +42680,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42093,6 +42742,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42146,6 +42800,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42225,6 +42883,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42278,6 +42941,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42336,6 +43003,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42389,6 +43061,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42468,6 +43144,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42521,6 +43202,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42579,6 +43264,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42632,6 +43322,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42690,6 +43384,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42743,6 +43442,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42801,6 +43504,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42854,6 +43562,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -42912,6 +43624,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42965,6 +43682,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43023,6 +43744,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43076,6 +43802,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43155,6 +43885,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43208,6 +43943,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43266,6 +44005,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43319,6 +44063,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43377,6 +44125,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43430,6 +44183,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43488,6 +44245,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43541,6 +44303,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43601,6 +44367,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43654,6 +44425,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43712,6 +44487,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43765,6 +44545,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43844,6 +44628,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43897,6 +44686,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -43955,6 +44748,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44008,6 +44806,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44066,6 +44868,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44119,6 +44926,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44177,6 +44988,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44230,6 +45046,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44288,6 +45108,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44341,6 +45166,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44420,6 +45249,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44473,6 +45307,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44552,6 +45390,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44605,6 +45448,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44684,6 +45531,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44737,6 +45589,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44795,6 +45651,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44848,6 +45709,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -44906,6 +45771,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44959,6 +45829,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -45017,6 +45891,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45070,6 +45949,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -45128,6 +46011,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45181,6 +46069,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -45239,6 +46131,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45292,6 +46189,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -45355,6 +46256,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45392,6 +46298,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -45483,7 +46393,7 @@
         "api_execution_gnosis_app_gpay_topups_monthly"
       ],
       "downstream_direct_count": 4,
-      "downstream_transitive_count": 150,
+      "downstream_transitive_count": 151,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -45527,6 +46437,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -45616,6 +46531,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -45684,6 +46603,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -45773,6 +46697,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -45844,6 +46772,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45911,6 +46844,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -45971,6 +46908,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -46044,6 +46986,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -46108,6 +47054,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -46181,6 +47132,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -46245,6 +47200,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -46322,6 +47282,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -46382,6 +47346,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -46459,6 +47428,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -46517,6 +47490,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           }
         ],
         "invariants": [
@@ -46567,6 +47545,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           }
         ],
         "semantics": "dimension",
@@ -46631,6 +47613,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -46684,6 +47671,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -46790,7 +47781,7 @@
         "api_execution_gnosis_app_funnel_summary"
       ],
       "downstream_direct_count": 8,
-      "downstream_transitive_count": 392,
+      "downstream_transitive_count": 393,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -46829,6 +47820,11 @@
             "id": "decoder-watermark-literals",
             "status": "enforced",
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+          },
+          {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
             "id": "never-seeded-incremental",
@@ -46884,6 +47880,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -46963,6 +47963,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47016,6 +48021,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -47096,6 +48105,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47149,6 +48163,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -47207,6 +48225,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47260,6 +48283,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -47339,6 +48366,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47392,6 +48424,10 @@
           },
           {
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
+          },
+          {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
           },
           {
             "lesson": "never-seeded-incremental",
@@ -47450,6 +48486,11 @@
             "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
           },
           {
+            "id": "stale-seed-deploy-silent-decode-halt",
+            "status": "remediated",
+            "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47505,6 +48546,10 @@
             "text": "Seed a new decode model once with dbt run --full-refresh; an empty target has no watermark and full-scans the raw source every run. New decode models crash dbt docs generate until first built."
           },
           {
+            "lesson": "stale-seed-deploy-silent-decode-halt",
+            "text": "A decode that appends zero rows while raw logs continue usually means the signature seeds are broken (e.g. chain='' after a seed deploy from a stale checkout) \u2014 check SELECT chain, count() FROM event_signatures before blaming the model."
+          },
+          {
             "lesson": "never-seeded-incremental",
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
@@ -47540,7 +48585,7 @@
         "api_execution_gnosis_app_active_users_incl_gpay_monthly"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 374,
+      "downstream_transitive_count": 375,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -73540,8 +74585,8 @@
         "api_execution_gnosis_app_gpay_topups_cohort_monthly",
         "api_execution_gnosis_app_gpay_topups_monthly"
       ],
-      "downstream_direct_count": 11,
-      "downstream_transitive_count": 202,
+      "downstream_direct_count": 12,
+      "downstream_transitive_count": 204,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -73701,6 +74746,10 @@
         "agents_md": [
           "scripts/full_refresh/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "gp_safe"
+        ],
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -73733,6 +74782,20 @@
             "title": "Stage start_date later than real first activity silently truncates history"
           }
         ],
+        "invariants": [
+          {
+            "id": "account-resolves-to-safe",
+            "text": "gp_safe is the card Safe resolved from Spend.account via int_execution_gpay_spender_accounts. Spend.account is a per-card module enabled ON the Safe, never the Safe itself \u2014 joining spend_account directly to int_execution_gpay_wallets returns zero rows by construction, not by accident."
+          },
+          {
+            "id": "card-wallets-only",
+            "text": "Rows are INNER-gated on int_execution_gpay_wallets after the bridge hop; accounts whose Safe is unlinked or unregistered (~0.5%) are dropped. The current month is reprocessed each run (insert_overwrite), so decode-lag stragglers self-heal without intervention."
+          },
+          {
+            "id": "current-day-excluded",
+            "text": "date < today() always \u2014 max(date) is yesterday on a healthy run; a partial current day must never appear in the table."
+          }
+        ],
         "profiles": [
           "incremental_models",
           "insert_overwrite_models",
@@ -73757,7 +74820,8 @@
           }
         ],
         "validation": [
-          "make check-fast"
+          "make check-fast",
+          "uniqueness: count() == uniqExact(date, gp_safe)"
         ]
       },
       "description_present": true,
@@ -73767,7 +74831,7 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 3,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -73786,6 +74850,54 @@
         "production"
       ],
       "unique_key": null
+    },
+    "int_execution_gpay_spender_accounts": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_mixpanel_ga_gpay_crossdomain_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 4,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_execution_gpay_spender_accounts",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/gpay/intermediate/int_execution_gpay_spender_accounts.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "execution",
+        "gpay",
+        "production"
+      ],
+      "unique_key": "account"
     },
     "int_execution_gpay_spender_delegates_current": {
       "contract": {
@@ -73908,8 +75020,8 @@
       "downstream_api_models": [
         "api_mixpanel_ga_gpay_crossdomain_daily"
       ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 4,
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 5,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -74153,8 +75265,8 @@
         "api_execution_gnosis_app_gp_card_ga_link_daily",
         "api_execution_gnosis_app_gp_card_ga_volume_daily"
       ],
-      "downstream_direct_count": 12,
-      "downstream_transitive_count": 252,
+      "downstream_direct_count": 13,
+      "downstream_transitive_count": 253,
       "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -77144,7 +78256,7 @@
         "api_execution_gnosis_app_funnel_summary"
       ],
       "downstream_direct_count": 11,
-      "downstream_transitive_count": 393,
+      "downstream_transitive_count": 394,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -77305,8 +78417,8 @@
         "api_execution_gnosis_app_gpay_topups_by_token_daily",
         "api_execution_gnosis_app_gpay_topups_cohort_monthly"
       ],
-      "downstream_direct_count": 6,
-      "downstream_transitive_count": 231,
+      "downstream_direct_count": 7,
+      "downstream_transitive_count": 232,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -77495,7 +78607,7 @@
         "api_execution_gnosis_app_gp_card_ga_link_daily"
       ],
       "downstream_direct_count": 6,
-      "downstream_transitive_count": 259,
+      "downstream_transitive_count": 260,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -79554,7 +80666,7 @@
         "api_execution_gnosis_app_active_users_incl_gpay_monthly"
       ],
       "downstream_direct_count": 10,
-      "downstream_transitive_count": 373,
+      "downstream_transitive_count": 374,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -79992,7 +81104,7 @@
         "api_execution_gnosis_app_gpay_topups_monthly"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 157,
+      "downstream_transitive_count": 158,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -87511,7 +88623,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "99aa839411d4e7688c5a9bdee736bf4387bf69aa52c1b87fccab4f0e4c56f6f9",
+  "models_hash": "3930cca5d5e762f3575010aefa40f06337875e2e93c26b21734e646259d46b5c",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

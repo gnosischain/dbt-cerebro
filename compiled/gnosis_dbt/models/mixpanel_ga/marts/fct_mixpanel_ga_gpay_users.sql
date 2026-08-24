@@ -7,15 +7,32 @@ WITH mp_users AS (
       AND is_identified = 1
 ),
 
+-- Two identity paths into the GP Safe graph:
+--   direct      — distinct_id was itself an owner/delegate EOA or the Safe
+--                 (near-extinct in current data: identified distinct_ids are
+--                 app account addresses the on-chain graph never sees)
+--   pay_profile — the app's own Mixpanel profile `pay` property names the
+--                 user's GP Safe; its pseudonym equals the identity graph's
+--                 hash of that Safe (safe_self / migrated rows)
 matches AS (
     SELECT
-        mp.user_id_hash,
-        id.gp_safe,
-        groupArray(DISTINCT id.identity_role) AS matched_roles
-    FROM mp_users mp
-    INNER JOIN `dbt`.`int_execution_gpay_safe_identities` id
-        ON mp.user_id_hash = id.user_pseudonym
-    GROUP BY mp.user_id_hash, id.gp_safe
+        user_id_hash,
+        gp_safe,
+        groupArray(DISTINCT identity_role) AS matched_roles
+    FROM (
+        SELECT mp.user_id_hash, id.gp_safe, id.identity_role
+        FROM mp_users mp
+        INNER JOIN `dbt`.`int_execution_gpay_safe_identities` id
+            ON mp.user_id_hash = id.user_pseudonym
+        UNION ALL
+        SELECT mp.user_id_hash, id.gp_safe, 'pay_profile' AS identity_role
+        FROM mp_users mp
+        INNER JOIN `dbt`.`int_mixpanel_ga_gpay_pay_bridge` b
+            ON b.ga_user_id_hash = mp.user_id_hash
+        INNER JOIN `dbt`.`int_execution_gpay_safe_identities` id
+            ON id.user_pseudonym = b.pay_safe_pseudonym
+    )
+    GROUP BY user_id_hash, gp_safe
 ),
 
 modules_per_safe AS (

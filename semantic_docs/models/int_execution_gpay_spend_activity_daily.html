@@ -18,10 +18,13 @@
     <p>Daily card-spend activity per GP Safe.
 
 Source: int_execution_gpay_spender_events filtered to event_name=&#x27;Spend&#x27;.
-The Spend event already carries `account` (the debited Safe), so we
-don&#x27;t need to join through int_execution_gpay_safe_modules — the
-account address IS the gp_safe. We INNER JOIN to int_execution_gpay_wallets to
-guard against any cross-Safe Spend events that wouldn&#x27;t be GP-related.
+Spend.account is a per-card module, not the Safe itself, so it is
+resolved to the enabling card Safe via
+int_execution_gpay_spender_accounts, then INNER JOINed to
+int_execution_gpay_wallets so only registered card wallets count
+(drops the ~0.5% of accounts whose Safe is unlinked or unregistered;
+the current month is reprocessed daily, so decode-lag stragglers
+self-heal).
 
 Aggregates count of spends and number of distinct assets/receivers.
 Amounts are not summed because they&#x27;re per-asset and per-decimals; a
@@ -33,10 +36,10 @@ follow-up model can do the USD valuation join.
     <p><strong>Path:</strong> <code>models/execution/gpay/intermediate/int_execution_gpay_spend_activity_daily.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>execution</span> <span class='pill'>gpay</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Calendar date (UTC).</td></tr><tr><td><code>distinct_assets</code></td><td>UInt64</td><td>Number of distinct token contracts spent on this date.</td></tr><tr><td><code>distinct_receivers</code></td><td>UInt64</td><td>Number of distinct receiver addresses on this date.</td></tr><tr><td><code>gp_safe</code></td><td>String</td><td>The Gnosis Pay Safe (the debited account from the Spend event).</td></tr><tr><td><code>spend_count</code></td><td>UInt64</td><td>Number of Spend events emitted on behalf of this Safe on this date.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Calendar date (UTC).</td></tr><tr><td><code>distinct_assets</code></td><td>UInt64</td><td>Number of distinct token contracts spent on this date.</td></tr><tr><td><code>distinct_receivers</code></td><td>UInt64</td><td>Number of distinct receiver addresses on this date.</td></tr><tr><td><code>gp_safe</code></td><td>String</td><td>The Gnosis Pay Safe the debited account module is enabled on (as of the event; not canonicalized across the June 2026 migration).</td></tr><tr><td><code>spend_count</code></td><td>UInt64</td><td>Number of Spend events emitted on behalf of this Safe on this date.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>gp_safe</code> (categorical)</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>int_execution_gpay_spender_events</code></li><li><code>int_execution_gpay_wallets</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>int_execution_gpay_spender_accounts</code></li><li><code>int_execution_gpay_spender_events</code></li><li><code>int_execution_gpay_wallets</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_mixpanel_ga_gpay_users</code></li></ul>
     
   </body>

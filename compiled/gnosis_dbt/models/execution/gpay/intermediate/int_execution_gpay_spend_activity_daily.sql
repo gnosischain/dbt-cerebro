@@ -4,10 +4,18 @@ WITH gpay_safes AS (
     SELECT lower(address) AS pay_wallet FROM `dbt`.`int_execution_gpay_wallets`
 ),
 
+-- Spend.account is a per-card module, not the Safe itself; the bridge
+-- resolves it to the Safe the module was enabled on.
+account_safes AS (
+    SELECT account, safe_address
+    FROM `dbt`.`int_execution_gpay_spender_accounts`
+    WHERE safe_address IS NOT NULL
+),
+
 events_filtered AS (
     SELECT
         toDate(s.block_timestamp) AS date,
-        s.spend_account           AS gp_safe_raw,
+        lower(s.spend_account)    AS spend_account,
         s.spend_asset,
         s.spend_receiver
     FROM `dbt`.`int_execution_gpay_spender_events` s
@@ -39,10 +47,11 @@ events_filtered AS (
 
 SELECT
     e.date,
-    e.gp_safe_raw                AS gp_safe,
+    a.safe_address               AS gp_safe,
     count()                      AS spend_count,
     uniqExact(e.spend_asset)     AS distinct_assets,
     uniqExact(e.spend_receiver)  AS distinct_receivers
 FROM events_filtered e
-INNER JOIN gpay_safes gs ON gs.pay_wallet = e.gp_safe_raw
-GROUP BY e.date, e.gp_safe_raw
+INNER JOIN account_safes a ON a.account = e.spend_account
+INNER JOIN gpay_safes gs ON gs.pay_wallet = a.safe_address
+GROUP BY e.date, a.safe_address
