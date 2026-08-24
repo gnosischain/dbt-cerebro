@@ -90,6 +90,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   sliced by position, broken by the web3 v7 upgrade) and would have deleted 24 in-use
   rows whose ABIs had left the store. Both silent. Set-diff against HEAD and require
   REMOVED == 0 before committing any regenerated seed.
+- [stale-seed-deploy-silent-decode-halt](stale-seed-deploy-silent-decode-halt.md)
+  `remediated` — a manual dbt seed from a stale checkout reverted `chain` to '' on
+  event_signatures/contracts_abi; every decode_logs model then appended ZERO rows,
+  all green, mimicking a date-cap. Verify row count + chain distribution after any
+  seed deploy; seeds batch added to scheduled tests (pending deploy).
 - [classifier-unsafe-default](classifier-unsafe-default.md) `remediated` — the ipinfo
   org classifier's ELSE branch defaulted every unknown provider to residential; blast
   radius measured via int_hopr_nodes. Unknown must be explicit ('Unknown'), never a

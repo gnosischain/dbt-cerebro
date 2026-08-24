@@ -67,7 +67,13 @@ profiles:
           Seed a new decode model once with dbt run --full-refresh; an empty target has
           no watermark and full-scans the raw source every run. New decode models crash
           dbt docs generate until first built.
-    hazards: [decode-watermark-late-logs, decoder-watermark-literals]
+      - text: >-
+          A decode that appends zero rows while raw logs continue usually means the
+          signature seeds are broken (e.g. chain='' after a seed deploy from a stale
+          checkout) — check SELECT chain, count() FROM event_signatures before blaming
+          the model.
+        lesson: stale-seed-deploy-silent-decode-halt
+    hazards: [decode-watermark-late-logs, decoder-watermark-literals, stale-seed-deploy-silent-decode-halt]
     ground_truth: "on-chain eth_getLogs over the contract + block range"
     reprocess_runbook: "scripts/refresh/gap_window_refresh.py --months <gap months> --select <model>+"
     validation:

@@ -87,6 +87,7 @@ build_test_batches() {
   case "$DBT_TEST_SCOPE" in
     full)
       test_batches=(
+        "path:seeds"
         "tag:production,resource_type:source"
         "tag:production,path:models/consensus/staging"
         "tag:production,path:models/execution/staging"
@@ -109,6 +110,7 @@ build_test_batches() {
       declare -A seen_api_dirs=()
 
       test_batches=(
+        "path:seeds"
         "tag:production,resource_type:source"
         "tag:production,path:models/crawlers_data"
         "tag:production,path:models/contracts"
