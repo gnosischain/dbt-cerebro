@@ -645,7 +645,10 @@ models:
           — THE event. Fired on every successful card transaction. The
             headline analytics signal for GP card activity.
                 asset    — token being spent (ERC-20 contract address)
-                account  — the GP Safe being debited
+                account  — the per-card account module debited (NOT the
+                           Safe itself: it is a module enabled on the card
+                           Safe; int_execution_gpay_spender_accounts maps
+                           it to the Safe)
                 receiver — settlement / merchant-acquirer destination
                 amount   — token base units (string; could be large)
 
@@ -682,7 +685,7 @@ models:
     description: Spend.asset — token contract being spent (lowercase, 0x-prefixed). NULL on non-Spend events.
     data_type: Nullable(String)
   - name: spend_account
-    description: Spend.account — the GP Safe being debited. NULL on non-Spend events.
+    description: Spend.account — the per-card account module debited (a module enabled on the card Safe, not the Safe itself; map to the Safe via int_execution_gpay_spender_accounts). NULL on non-Spend events.
     data_type: Nullable(String)
   - name: spend_receiver
     description: Spend.receiver — settlement / merchant-acquirer destination.
@@ -753,15 +756,53 @@ models:
       - log_index
       config:
         where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(block_timestamp) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+- name: int_execution_gpay_spender_accounts
+  description: |
+    Bridge from Spender Spend.account addresses to card-Safe identities,
+    one row per account ever debited by a Spender module.
+
+    Spend.account is a per-card module ENABLED ON the card Safe, not the
+    Safe itself (the Safe emits ExecutionFromModuleSuccess(module=account)
+    in the same spend transaction). The enabling Safe comes from
+    int_execution_safes_module_events (event_kind='enabled_module',
+    target_address = account); the mapping is 1:1 over full history.
+    canonical_safe collapses June 2026 migrated OLD Safes onto their NEW
+    Safe via int_execution_gpay_safe_canonical. Accounts with no enable
+    event (decode lag) keep safe_address NULL so consumers pick their gate.
+  columns:
+  - name: account
+    description: Spender Spend.account address (0x-prefixed, lowercase) — the per-card account module.
+    data_type: String
+    tests:
+    - unique
+    - not_null
+  - name: safe_address
+    description: The Safe this account module was enabled on (latest enable event; NULL if no enable event decoded yet).
+    data_type: Nullable(String)
+  - name: canonical_safe
+    description: safe_address collapsed onto the canonical NEW Safe for June 2026 migrated Safes; equals safe_address otherwise.
+    data_type: Nullable(String)
+  - name: enabled_at
+    description: Earliest enabled_module timestamp for this account.
+    data_type: Nullable(DateTime)
+  - name: is_gpay_wallet
+    description: 1 if safe_address or canonical_safe is in int_execution_gpay_wallets.
+    data_type: UInt8
+  meta:
+    owner: analytics_team
+    authoritative: false
 - name: int_execution_gpay_spend_activity_daily
   description: |
     Daily card-spend activity per GP Safe.
 
     Source: int_execution_gpay_spender_events filtered to event_name='Spend'.
-    The Spend event already carries `account` (the debited Safe), so we
-    don't need to join through int_execution_gpay_safe_modules — the
-    account address IS the gp_safe. We INNER JOIN to int_execution_gpay_wallets to
-    guard against any cross-Safe Spend events that wouldn't be GP-related.
+    Spend.account is a per-card module, not the Safe itself, so it is
+    resolved to the enabling card Safe via
+    int_execution_gpay_spender_accounts, then INNER JOINed to
+    int_execution_gpay_wallets so only registered card wallets count
+    (drops the ~0.5% of accounts whose Safe is unlinked or unregistered;
+    the current month is reprocessed daily, so decode-lag stragglers
+    self-heal).
 
     Aggregates count of spends and number of distinct assets/receivers.
     Amounts are not summed because they're per-asset and per-decimals; a
@@ -775,7 +816,7 @@ models:
         config:
           where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
   - name: gp_safe
-    description: The Gnosis Pay Safe (the debited account from the Spend event).
+    description: The Gnosis Pay Safe the debited account module is enabled on (as of the event; not canonicalized across the June 2026 migration).
     data_type: String
   - name: spend_count
     description: Number of Spend events emitted on behalf of this Safe on this date.
@@ -792,6 +833,26 @@ models:
     full_refresh:
       start_date: "2023-06-01"
       batch_months: 3
+    agent:
+      grain: [date, gp_safe]
+      invariants:
+      - id: account-resolves-to-safe
+        text: gp_safe is the card Safe resolved from Spend.account via
+          int_execution_gpay_spender_accounts. Spend.account is a per-card
+          module enabled ON the Safe, never the Safe itself — joining
+          spend_account directly to int_execution_gpay_wallets returns zero
+          rows by construction, not by accident.
+      - id: card-wallets-only
+        text: Rows are INNER-gated on int_execution_gpay_wallets after the
+          bridge hop; accounts whose Safe is unlinked or unregistered
+          (~0.5%) are dropped. The current month is reprocessed each run
+          (insert_overwrite), so decode-lag stragglers self-heal without
+          intervention.
+      - id: current-day-excluded
+        text: date < today() always — max(date) is yesterday on a healthy
+          run; a partial current day must never appear in the table.
+      validation:
+      - 'uniqueness: count() == uniqExact(date, gp_safe)'
   tests:
   - elementary.schema_changes:
       severity: warn
