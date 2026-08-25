@@ -1,0 +1,50 @@
+version: 2
+
+sources:
+  - name: rpc_state_indexer
+    schema: "{{ env_var('DBT_RPC_STATE_INDEXER_SCHEMA', 'rpc_state_indexer') }}"
+    meta:
+      owner: analytics_team
+      authoritative: false
+    tables:
+      - name: v_token_scalars_published
+        description: >
+          Published per-day token scalars (totalSupply etc.) from the
+          rpc-state-indexer service. Read the published views only, never the
+          raw attempt tables. Grain includes job_name and attempt_id — the same
+          (token, date) scalar appears under multiple jobs and attempts, so
+          consumers must filter chain_id + job_name and dedup per day. No
+          freshness yet; it moves here from dune_gno_supply at the Dune cutover.
+        columns:
+          - name: chain_id
+            data_type: UInt64
+          - name: job_name
+            data_type: LowCardinality(String)
+          - name: token_address
+            data_type: String
+          - name: snapshot_date
+            data_type: Date
+          - name: scalar_name
+            data_type: LowCardinality(String)
+          - name: scalar_raw
+            data_type: UInt256
+      - name: v_token_balances_published
+        description: >
+          Published per-day (token, holder) balances from the rpc-state-indexer
+          service. The same (token, date, holder) can appear under multiple
+          job_names (e.g. GNO under both curated_balances and treasury) —
+          always filter chain_id and job_name or sums double-count. No
+          freshness yet; it moves here from dune_gno_supply at the Dune cutover.
+        columns:
+          - name: chain_id
+            data_type: UInt64
+          - name: job_name
+            data_type: LowCardinality(String)
+          - name: token_address
+            data_type: String
+          - name: snapshot_date
+            data_type: Date
+          - name: holder_address
+            data_type: String
+          - name: balance_raw
+            data_type: UInt256

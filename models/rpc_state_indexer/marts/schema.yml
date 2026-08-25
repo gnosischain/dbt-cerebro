@@ -1,0 +1,77 @@
+version: 2
+
+models:
+- name: api_gno_supply_daily
+  description: Daily GNO supply by category label served from the rpc-state-indexer derivation. History starts 2020-08-23 (Gnosis leg; ETH legs from 2020-11-01, the chain-1 day-anchor start) — the pre-2020 series remains queryable in the deprecated Dune models. Takes over the api:gno_supply endpoint from api_crawlers_data_gno_supply_daily at the switch.
+  columns:
+
+  - name: label
+    description: Supply bucket, exactly one of 'Ethereum Circ. Supply', 'Gnosis Circ. Supply' or 'Non-Circ. Supply'.
+    data_type: String
+    tests:
+    - accepted_values:
+        values: ['Ethereum Circ. Supply', 'Gnosis Circ. Supply', 'Non-Circ. Supply']
+
+  - name: date
+    description: The date corresponding to the supply data, formatted as YYYY-MM-DD.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+  - name: supply
+    description: The amount of GNO supply recorded on the given date, measured in GNO token units.
+    data_type: Float64
+    tests:
+    - elementary.column_anomalies:
+        column_anomalies:
+        - null_count
+        - min
+        - max
+        timestamp_column: date
+        time_bucket:
+          period: day
+          count: 1
+        severity: warn
+        tags:
+        - elementary
+  meta:
+    owner: analytics_team
+    authoritative: false
+    api:
+      exclude_from_api: true
+  tests:
+  - elementary.volume_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      training_period:
+        period: day
+        count: 56
+      seasonality: day_of_week
+      detection_period:
+        period: day
+        count: 2
+      detection_delay:
+        period: day
+        count: 1
+      anomaly_sensitivity: 3
+      ignore_small_changes:
+        spike_failure_percent_threshold: 10
+        drop_failure_percent_threshold: 20
+      severity: warn
+      tags:
+      - elementary
+  - elementary.freshness_anomalies:
+      timestamp_column: date
+      time_bucket:
+        period: day
+        count: 1
+      severity: warn
+      tags:
+      - elementary
+  - elementary.schema_changes:
+      severity: error
+      tags:
+      - elementary
