@@ -34,16 +34,16 @@ SELECT
     -- CAST strips LowCardinality first: comparing a LowCardinality(String) to a literal
     -- yields LowCardinality(UInt8), which ClickHouse Cloud rejects outright (code 455).
     multiIf(
-        startsWith(CAST(network AS String), 'jura'),   'jura',
-        startsWith(CAST(network AS String), 'rotsee'), 'rotsee',
-        CAST(network AS String)
+        startsWith(CAST(t.network AS String), 'jura'),   'jura',
+        startsWith(CAST(t.network AS String), 'rotsee'), 'rotsee',
+        CAST(t.network AS String)
     )                                           AS network,
     -- Undecorated API value, kept for audit: the only place 'jura-prod' stays visible.
-    CAST(network AS String)                     AS raw_network,
-    -- Equivalent to (normalized network = 'rotsee'), written against the source column
-    -- rather than the output alias above -- an alias of the same name shadows the source
-    -- column and makes which one is being read ambiguous.
-    startsWith(CAST(network AS String), 'rotsee') AS is_testnet,
+    -- t.-qualified: the bare name here resolves to the OUTPUT ALIAS above (ClickHouse
+    -- alias shadowing, lesson ch-alias-shadows-where).
+    CAST(t.network AS String)                   AS raw_network,
+    -- Same qualification; equivalent to (normalized network = 'rotsee').
+    startsWith(CAST(t.network AS String), 'rotsee') AS is_testnet,
     snapshot_date,
     chain_id,
     block_number,
@@ -73,4 +73,4 @@ SELECT
     channels_pendingtoclose_balance_wxhopr,
     channels_closed,
     channels_closed_balance_wxhopr
-FROM {{ source('hopr_db', 'hopr_blokli_network_snapshot') }} FINAL
+FROM {{ source('hopr_db', 'hopr_blokli_network_snapshot') }} AS t FINAL
