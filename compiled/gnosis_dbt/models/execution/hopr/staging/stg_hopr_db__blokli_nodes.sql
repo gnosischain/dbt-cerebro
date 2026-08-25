@@ -28,16 +28,16 @@ SELECT
     -- CAST strips LowCardinality first: comparing a LowCardinality(String) to a literal
     -- yields LowCardinality(UInt8), which ClickHouse Cloud rejects outright (code 455).
     multiIf(
-        startsWith(CAST(network AS String), 'jura'),   'jura',
-        startsWith(CAST(network AS String), 'rotsee'), 'rotsee',
-        CAST(network AS String)
+        startsWith(CAST(t.network AS String), 'jura'),   'jura',
+        startsWith(CAST(t.network AS String), 'rotsee'), 'rotsee',
+        CAST(t.network AS String)
     )                                           AS network,
     -- Undecorated API value, kept for audit and to make a future decoration visible.
-    CAST(network AS String)                     AS raw_network,
-    -- Equivalent to (normalized network = 'rotsee'), written against the source column
-    -- rather than the output alias above -- an alias of the same name shadows the source
-    -- column and makes which one is being read ambiguous.
-    startsWith(CAST(network AS String), 'rotsee') AS is_testnet,
+    -- t.-qualified: the bare name here resolves to the OUTPUT ALIAS above (ClickHouse
+    -- alias shadowing, lesson ch-alias-shadows-where).
+    CAST(t.network AS String)                   AS raw_network,
+    -- Same qualification; equivalent to (normalized network = 'rotsee').
+    startsWith(CAST(t.network AS String), 'rotsee') AS is_testnet,
     snapshot_date,
     keyid,
     -- Named node_address to match every other HOPR model; blokli calls it chain_key.
@@ -51,4 +51,4 @@ SELECT
     -- a /ip6/ or /dns4/ address yields NULL instead of a fragment that would look like
     -- an IPv4 address to ipinfo and silently fail to enrich.
     if(startsWith(multiaddress, '/ip4/'), splitByChar('/', multiaddress)[3], NULL) AS announced_ip
-FROM `hopr_db`.`hopr_blokli_nodes` FINAL
+FROM `hopr_db`.`hopr_blokli_nodes` AS t FINAL
