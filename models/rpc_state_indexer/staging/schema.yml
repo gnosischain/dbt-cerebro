@@ -1,0 +1,63 @@
+version: 2
+
+models:
+- name: stg_rpc_state_indexer__token_scalars_published
+  description: Cleanup view over the rpc-state-indexer published token scalars — lowercases token addresses, passes the published columns through. Grain includes job_name and attempt duplicates, so downstream consumers must filter chain_id + job_name and dedup per day.
+  columns:
+
+  - name: chain_id
+    description: EVM chain id the scalar was observed on (1 = Ethereum mainnet, 100 = Gnosis).
+    data_type: UInt64
+
+  - name: job_name
+    description: Indexer census job that published the observation; the same scalar appears under multiple jobs.
+    data_type: LowCardinality(String)
+
+  - name: token_address
+    description: Token contract address, lowercased 0x hex.
+    data_type: String
+
+  - name: snapshot_date
+    description: Snapshot date at the chain's canonical day anchor.
+    data_type: Date
+
+  - name: scalar_name
+    description: Which contract scalar was read, e.g. totalSupply.
+    data_type: LowCardinality(String)
+
+  - name: scalar_raw
+    description: Raw scalar value in the token's smallest unit.
+    data_type: UInt256
+  meta:
+    owner: analytics_team
+    authoritative: false
+- name: stg_rpc_state_indexer__token_balances_published
+  description: Cleanup view over the rpc-state-indexer published token balances — lowercases token and holder addresses, passes the published columns through. The same (token, date, holder) can appear under multiple job_names, so downstream consumers must filter chain_id + job_name or sums double-count.
+  columns:
+
+  - name: chain_id
+    description: EVM chain id the balance was observed on (1 = Ethereum mainnet, 100 = Gnosis).
+    data_type: UInt64
+
+  - name: job_name
+    description: Indexer census job that published the observation.
+    data_type: LowCardinality(String)
+
+  - name: token_address
+    description: Token contract address, lowercased 0x hex.
+    data_type: String
+
+  - name: snapshot_date
+    description: Snapshot date at the chain's canonical day anchor.
+    data_type: Date
+
+  - name: holder_address
+    description: Holder address, lowercased 0x hex; the zero address carries the token's burned balance for tokens that never decrement totalSupply.
+    data_type: String
+
+  - name: balance_raw
+    description: Raw balance in the token's smallest unit at the day anchor block.
+    data_type: UInt256
+  meta:
+    owner: analytics_team
+    authoritative: false

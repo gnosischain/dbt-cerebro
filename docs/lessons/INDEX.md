@@ -75,6 +75,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 
 ## Pipeline / sources
 
+- [old-token-burned-supply-overstatement](old-token-burned-supply-overstatement.md)
+  `observed` — pre-2018-style tokens (mainnet GNO) never decrement totalSupply();
+  transfers to 0x0 accumulate at the zero address (~3.15M GNO), so a raw totalSupply()
+  read overstates effective supply — subtract balanceOf(0x0)/balanceOf(0xdEaD). Fix in
+  tree (WL-036 splice), pending merge.
 - [raw-logs-ingestion-holes](raw-logs-ingestion-holes.md) `observed` — execution.logs
   can have block holes below dbt; no dbt lever fixes them. May/June 2026 instances
   recovered end-to-end; the 2026-07-08 instance is raw-backfilled but decode
