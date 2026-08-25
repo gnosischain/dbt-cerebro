@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 27,
-    "high_risk": 310,
-    "models": 1202
+    "explicit_contracts": 29,
+    "high_risk": 311,
+    "models": 1246
   },
-  "inputs_fingerprint": "89a773fe2fc1e75cfdad052c4652419d9b404578c1cd0e004bd7712c031a8a25",
+  "inputs_fingerprint": "125190705e55e4018ad5664d12fc03243a8b4df160b230ea7c3b8869767adc18",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -136,6 +136,23 @@
       "status": "remediated",
       "symptom": "full-refresh fails Code 252 (max_partitions_per_insert_block); attempting to raise the setting fails Code 452",
       "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+    },
+    "ch-qualified-column-leak": {
+      "body": "## Symptom\nA model builds clean and its column is visibly named `total_vp` in the SQL, but\n\n```sql\nSELECT total_vp FROM playground_max.api_governance_proposal_direction\n```\n\nfails with `Code: 47 ... Unknown expression identifier 'total_vp'`, while\n\n```sql\nSELECT \"a.total_vp\" FROM playground_max.api_governance_proposal_direction\n```\n\nworks. The qualifier is part of the column name in the warehouse.\n\n## Root cause\nClickHouse resolves an ambiguous projected column by keeping its qualifier as the output\nname. `SELECT a.total_vp` where `total_vp` exists on both joined relations yields a column\nnamed `a.total_vp`, not `total_vp`. Unambiguous columns resolve normally, which is why this\nhits one or two columns in a model and leaves the rest looking fine.\n\nSibling of [ch-alias-shadows-where](ch-alias-shadows-where.md): both are ClickHouse name\nresolution behaving unlike other engines. There the alias wins where you wanted the column;\nhere the qualifier leaks where you wanted the bare name.\n\n## Forbidden action\nDon't project a column from a multi-relation join without an explicit alias when that name\nexists on more than one side. Don't trust a green `dbt build` as evidence the column names\nare right \u2014 nothing in the build checks them.\n\n## Safe remediation / convention\nAlias explicitly: `a.total_vp AS total_vp`. Do it for every projected column whose name\nappears in more than one joined relation, not just the ones you expect to be ambiguous \u2014\nadding a CTE later can make a previously-unique name ambiguous without touching the SELECT.\n\n## Detection\nManual, after writing or editing any model with joins:\n\n```sql\nSELECT table, name FROM system.columns\nWHERE database = currentDatabase() AND name LIKE '%.%'\n```\n\nEmpty is correct. A `not_null`/`unique` test on the affected column also catches it (as\nCode 47 on the test, not a row failure) \u2014 but only for columns that happen to be tested,\nwhich in practice means keys. Non-key columns on a mart have no automatic detector.\n\n## Enforcement\nNone \u2014 informational, and deliberately so. A catalog-based CI gate was considered and\nrejected: `target/catalog.json` carries zero model nodes on this project (see\n[docs-catalog-zero-nodes](docs-catalog-zero-nodes.md)), column names live only in the\ncatalog, and that record explicitly forbids building tooling that assumes model-level\ncatalog entries. The semantic pipeline is manifest-only for the same reason. A gate would\ntherefore have to query the warehouse live, which no existing check does.\n\nNote prose alone is a weak safeguard here: all four occurrences above happened in one\nsession, three of them *after* the first had been diagnosed and commented in-code. Run the\nsweep; do not rely on remembering.",
+      "evidence": [
+        "models/governance/marts/api_governance_proposal_direction.sql \u2014 `a.total_vp` shipped (total_vp exists on both int_governance_proposals and the agg CTE); now aliased",
+        "models/governance/intermediate/int_governance_forum_post_phases.sql \u2014 `po.topic_id` shipped (topic_id also on int_governance_proposal_topic_links); now aliased",
+        "models/governance/marts/api_governance_discussion_phases.sql \u2014 `s.phase` and `s.proposal_id` shipped (both names present in all three CTEs); now aliased",
+        "models/governance/marts/api_governance_poll_vs_vote.sql \u2014 `d.proposal_id` and `p.topic_id`; the first surfaced as a FAILING not_null test, the rest were silent",
+        "four occurrences in one session, three of them silent; two survived a build that reported PASS=117 WARN=0 ERROR=0 and were only found by the sweep below"
+      ],
+      "id": "ch-qualified-column-leak",
+      "last_verified": "2026-07-30",
+      "path": "docs/lessons/ch-qualified-column-leak.md",
+      "scope": "any SELECT over two or more joined relations that projects a column whose name exists in more than one of them without an explicit alias \u2014 marts and intermediates built from multiple CTEs are the exposure",
+      "status": "remediated",
+      "symptom": "the built relation has a column literally named `a.total_vp` / `s.phase` / `po.topic_id`; dbt reports the model green, and every consumer querying the intended name fails with Code 47 UNKNOWN_IDENTIFIER on a column that is plainly there in the SQL",
+      "title": "An unaliased ambiguous column ships with its qualifier IN the column name"
     },
     "classifier-unsafe-default": {
       "body": "## Symptom\nA category column looks well-populated and plausible, and one bucket quietly holds the\nmajority of rows. Nothing errors, no test fails, row counts are stable. The bucket is\ninflated by everything the pattern rules did not recognise.\n\n## Root cause\nThe terminal branch of the pattern chain named a real category instead of an unknown:\n\n    lowerUTF8(org) ILIKE '%broadband%' OR ..., 'Public ISP (Home/Office)',\n    lowerUTF8(org) = '', 'Unknown',\n    'Public ISP (Home/Office)'          -- <-- absence of evidence becomes a claim\n\nTwo failure modes compound:\n- **The default is a positive assertion.** \"I could not classify this\" is rendered\n  indistinguishable from \"I classified this as residential\". The `'Unknown'` bucket\n  existed but only fired on an empty org string \u2014 9 rows out of 22,177 \u2014 so the honest\n  answer was unreachable in practice.\n- **The manufactured value was the flattering one.** Downstream this became\n  `home_staker`, i.e. the classifier's own coverage gaps read as evidence of\n  decentralisation. An unsafe default that produced an *unwelcome* number would have\n  been investigated years earlier; this one confirmed what readers hoped.\n\nCoverage gaps are inevitable in string matching and are not themselves the bug. The bug\nis resolving them into a category.\n\n## Forbidden action\nDo not fix this downstream. Overriding the bucket in one consumer (the HOPR model, in\nthis case) leaves the defect live for every other consumer and makes two models disagree\nabout the same IP with nothing marking either authoritative. Fix the column where it is\ndefined.\n\nDo not add a new top-level bucket name as part of the fix without checking consumers:\n`int_esg_node_classification` enumerates bucket names explicitly and falls through to\n`node_category='unknown'`, so introducing e.g. a `'Contabo'` bucket would make a\n*correctly identified* datacenter classify worse than an unrecognised one. Route\nadditional providers into an existing bucket the consumers already understand.\n\n## Safe remediation / convention\n1. Widen both sides of the rule set first \u2014 the hosting list *and* the residential list.\n   Flipping the fallback alone just trades over-claiming one category for over-claiming\n   another (here it would have demoted Starlink and 1&1 Versatel, both genuine consumer\n   ISPs, to Unknown).\n2. Then make the terminal branch `'Unknown'`, and confirm consumers have a branch for it\n   (ESG already scored `'Unknown'` at 0.30 confidence).\n3. Leave the residue unknown. 4.0% unclassified is a true statement about the data;\n   widen the lists over time, never narrow the fallback.\n\n## Detection\nMeasure how much of a bucket got there by fallthrough rather than by a rule \u2014 re-run the\nbucket's own positive predicates over its members and count the misses:\n\n    SELECT countIf(<positive predicates for that bucket>) AS by_rule,\n           countIf(NOT (<same predicates>))              AS by_fallthrough\n    FROM <model> WHERE <category> = '<bucket>'\n\n`by_fallthrough` should be 0. Any other value is the size of the lie. Then diff old vs\nnew classification as a migration matrix grouped by (old, new) \u2014 a correct widening\nshows transitions *out of* the over-assigned bucket and none into it.\n\nWatch for accented brand spellings while auditing: `lowerUTF8` lowercases the accent but\n`ILIKE` matches literal bytes, so `'%telefon%'` matches neither `TELEFONICA BRASIL` nor\n`Telefonos`, and a single brand splits across buckets by country. One stem does not fix it\neither \u2014 the accent lands in a different position per language, so `'%telef%'` recovers\n`Telefonica` but still misses `Telefonos` (breaks at `tel-e`). Use a stem on each side of\nthe accent and keep the patterns ASCII, since some `scripts/checks` readers open model SQL\nwith no explicit encoding and die on cp1252.\n\n## Enforcement\nNo static gate \u2014 whether an ELSE branch is a legitimate category or an unsafe default is\nintent, not statically checkable. Recorded as a convention in the\n`stg_crawlers_data__ipinfo.generic_provider` column doc, which states the contract\n(positive-evidence-only), why the bucket names are constrained, and to widen the lists\nrather than narrow the fallback. Related: [circular-completeness-proof](circular-completeness-proof.md)\n(a metric that validates itself against its own coverage).",
@@ -4913,10 +4930,13 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 0,
-      "downstream_api_models": [],
-      "downstream_direct_count": 0,
-      "downstream_transitive_count": 0,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 3,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -6516,10 +6536,13 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 0,
-      "downstream_api_models": [],
-      "downstream_direct_count": 0,
-      "downstream_transitive_count": 0,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 3,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -29262,6 +29285,1128 @@
         "hopr",
         "production",
         "tier3"
+      ],
+      "unique_key": null
+    },
+    "api_governance_activity_monthly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_activity_monthly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_activity_monthly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_activity",
+        "governance",
+        "granularity:monthly",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_delegates_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_delegates_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_delegates_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_delegates",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_delegation_graph": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_delegation_graph",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_delegation_graph.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_delegation_graph",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_discussion_phases": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_discussion_phases",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_discussion_phases.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_discussion_phases",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_electorate_monthly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_electorate_monthly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_electorate_monthly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_electorate",
+        "governance",
+        "granularity:monthly",
+        "production",
+        "tier1"
+      ],
+      "unique_key": null
+    },
+    "api_governance_forum_activity_weekly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_forum_activity_weekly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_forum_activity_weekly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_forum_activity",
+        "governance",
+        "granularity:weekly",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_forum_topic_proposal_links": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_forum_topic_proposal_links",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_forum_topic_proposal_links.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_forum_proposal_links",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_gip_funnel": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_gip_funnel",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_gip_funnel.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_funnel",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_kpis_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_kpis_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_kpis_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_kpis",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_poll_vs_vote": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_poll_vs_vote",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_poll_vs_vote.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_poll_vs_vote",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_power_source_monthly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_power_source_monthly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_power_source_monthly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_power_source",
+        "governance",
+        "granularity:monthly",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_proposal_choices": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_proposal_choices",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_proposal_choices.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_proposal_choices",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_proposal_direction": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_proposal_direction",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_proposal_direction.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_proposal_direction",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_proposals_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_proposals_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_proposals_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_proposals",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_top_proposers": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_top_proposers",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_top_proposers.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_top_proposers",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_top_voters": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_top_voters",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_top_voters.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_top_voters",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_turnout_latest": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_turnout_latest",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_turnout_latest.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_turnout",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_turnout_monthly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_turnout_monthly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_turnout_monthly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_turnout",
+        "governance",
+        "granularity:monthly",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_vote_trajectory": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_vote_trajectory",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_vote_trajectory.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_vote_trajectory",
+        "governance",
+        "granularity:hourly",
+        "production",
+        "tier2"
+      ],
+      "unique_key": null
+    },
+    "api_governance_whale_concentration": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_governance_whale_concentration",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/marts/api_governance_whale_concentration.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api:governance_whale_concentration",
+        "governance",
+        "granularity:latest",
+        "production",
+        "tier2"
       ],
       "unique_key": null
     },
@@ -64269,7 +65414,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 23,
+      "downstream_api_count": 25,
       "downstream_api_models": [
         "api_consensus_info_active_ongoing_latest",
         "api_consensus_info_apy_latest",
@@ -64293,7 +65438,7 @@
         "api_consensus_validators_performance_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 36,
+      "downstream_transitive_count": 39,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -81480,6 +82625,751 @@
       ],
       "unique_key": "(proxy_address)"
     },
+    "int_governance_current_delegations": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_delegates_latest",
+        "api_governance_delegation_graph"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_current_delegations",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_current_delegations.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_engagement_counters_daily": {
+      "contract": {
+        "grain": [
+          "snapshot_date",
+          "entity_kind",
+          "entity_id",
+          "metric"
+        ],
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "stale-snapshot-caveat",
+            "status": "observed",
+            "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "history-is-unrecoverable",
+            "text": "Each run emits ONLY today's rows, and Discourse exposes views/reads as current totals with no per-event endpoint. A day this model did not run is permanently absent and cannot be reconstructed from any source. Do not interpolate across a gap and do not treat the series as continuous without checking snapshot_date coverage first."
+          },
+          {
+            "id": "full-refresh-is-destructive-here",
+            "text": "Unlike every other incremental model in this project, `dbt run --full-refresh` on this one DESTROYS data: it drops the accumulated daily history and re-emits a single day (today). There is no recovery. Rebuild requests for this model must be refused."
+          },
+          {
+            "id": "daily-partition-is-load-bearing",
+            "text": "partition_by is snapshot_date, deliberately NOT toStartOfMonth. Because insert_overwrite REPLACEs whole partitions present in the batch and each run emits only today's rows, a month-grain partition would wipe every earlier day of the current month on every run. Daily partitions make a re-run overwrite exactly its own day, which is what makes it idempotent. The cost is one partition per day (ch-partition-cap), accepted knowingly."
+          },
+          {
+            "id": "snapshot-date-is-not-observed-at",
+            "text": "snapshot_date is the day we LOOKED; observed_at is when the value was actually true. Ingestion re-reads a topic only when bumped_at beats the watermark, so a dormant thread's counter is frozen at its last activity. A difference between two consecutive snapshot_dates is real change ONLY if observed_at also moved; otherwise the grid is repeating a stale number."
+          },
+          {
+            "id": "views-and-reads-only",
+            "text": "Scope is the two counters that cannot be recovered retroactively. Likes are deliberately excluded because they have a per-event endpoint (/user_actions.json), so their full history with timestamps and actors is backfillable into stg_governance__forum_likes. Adding a like counter here would be strictly worse information at higher cost."
+          }
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models"
+        ],
+        "reprocess_runbook": "There is nothing to backfill and nothing to full-refresh \u2014 see the full-refresh-is-destructive-here invariant. Re-running today is safe and idempotent: insert_overwrite replaces only today's snapshot_date partition. If a past day is missing, it stays missing; record the gap rather than filling it. Never change partition_by to a month grain. Nothing reads this model yet, so a re-run has no downstream rebuild.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          }
+        ],
+        "semantics": "snapshot",
+        "validation": [
+          "make check-fast",
+          "duplicate excess: count() - uniqExact((snapshot_date, entity_kind, entity_id, metric)) == 0",
+          "no gaps since inception: uniqExact(snapshot_date) == dateDiff('day', min(snapshot_date), max(snapshot_date)) + 1",
+          "staleness is visible, not hidden: countIf(observed_at < snapshot_date - INTERVAL 30 DAY) > 0 is EXPECTED (dormant threads), not a defect"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_governance_engagement_counters_daily",
+      "owner": "analytics_team",
+      "partition_by": "snapshot_date",
+      "path": "models/governance/intermediate/int_governance_engagement_counters_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_forum_activity_weekly": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_forum_activity_weekly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_forum_activity_weekly",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_forum_activity_weekly.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_forum_post_phases": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_discussion_phases"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_forum_post_phases",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_forum_post_phases.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_forum_proposal_links": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_governance_discussion_phases",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 6,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_forum_proposal_links",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_forum_proposal_links.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_forum_topic_proposal_links": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_governance_discussion_phases",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 5,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_forum_topic_proposal_links",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_forum_topic_proposal_links.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_gip": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_gip_funnel",
+        "api_governance_kpis_latest"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_gip",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_gip.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "gip",
+        "governance",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_poll_sentiment": {
+      "contract": {
+        "grain": [
+          "post_id",
+          "poll_name"
+        ],
+        "ground_truth": "Re-derivable from stg_governance__forum_polls collapsed by polarity, INNER JOIN stg_governance__forum_posts for poll_posted_at. Coverage of the host-post join must stay complete (every poll resolves a post).",
+        "hazards": [
+          {
+            "id": "stale-snapshot-caveat",
+            "status": "observed",
+            "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "temperature-check-needs-both-sides",
+            "text": "is_temperature_check is true only when the poll offers BOTH a favour and an against option. Reading poll_against_share on a one-sided or multi-option ballot is meaningless \u2014 always filter is_temperature_check before ranking or averaging."
+          },
+          {
+            "id": "against-share-null-not-zero",
+            "text": "poll_against_share is NULL (never 0) when decisive_votes is 0 or any option count is withheld. Treating NULL as 0 invents 0% opposition for a hidden live poll."
+          },
+          {
+            "id": "timing-from-host-post",
+            "text": "The poll row has no created_at. poll_posted_at is the host post's created_at via INNER JOIN on post_id \u2014 an undated poll must not silently acquire a phase downstream."
+          }
+        ],
+        "profiles": [],
+        "reprocess_runbook": "Table materialization \u2014 `dbt run --select int_governance_poll_sentiment` rebuilds the full collapse from staging. No partition surgery.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "semantics": "stateless",
+        "validation": [
+          "make check-fast",
+          "duplicate excess: count() - uniqExact((post_id, poll_name)) == 0",
+          "temperature checks only: countIf(is_temperature_check AND (poll_against_share < 0 OR poll_against_share > 1)) == 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_poll_sentiment",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_poll_sentiment.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "forum",
+        "governance",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_proposal_topic_links": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_discussion_phases",
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 3,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_proposal_topic_links",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_proposal_topic_links.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "intermediate",
+        "production"
+      ],
+      "unique_key": null
+    },
+    "int_governance_proposals": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 16,
+      "downstream_api_models": [
+        "api_governance_activity_monthly",
+        "api_governance_discussion_phases",
+        "api_governance_electorate_monthly",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_gip_funnel",
+        "api_governance_kpis_latest",
+        "api_governance_poll_vs_vote",
+        "api_governance_power_source_monthly",
+        "api_governance_proposal_choices",
+        "api_governance_proposal_direction",
+        "api_governance_proposals_latest",
+        "api_governance_top_proposers",
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly",
+        "api_governance_vote_trajectory",
+        "api_governance_whale_concentration"
+      ],
+      "downstream_direct_count": 18,
+      "downstream_transitive_count": 24,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_proposals",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_proposals.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "proposals"
+      ],
+      "unique_key": null
+    },
+    "int_governance_turnout": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_turnout",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_turnout.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "turnout"
+      ],
+      "unique_key": null
+    },
+    "int_governance_vote_choices": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 4,
+      "downstream_api_models": [
+        "api_governance_electorate_monthly",
+        "api_governance_poll_vs_vote",
+        "api_governance_proposal_direction",
+        "api_governance_vote_trajectory"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 4,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_vote_choices",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_vote_choices.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "votes"
+      ],
+      "unique_key": null
+    },
+    "int_governance_vote_power_source": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_power_source_monthly"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_governance_vote_power_source",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/intermediate/int_governance_vote_power_source.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "power",
+        "production"
+      ],
+      "unique_key": null
+    },
     "int_hopr_channels_events": {
       "contract": {
         "hazards": [],
@@ -85618,7 +87508,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 30,
+      "downstream_api_count": 32,
       "downstream_api_models": [
         "api_consensus_credentials_daily",
         "api_consensus_credentials_latest",
@@ -85642,7 +87532,7 @@
         "api_consensus_validators_explorer_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 49,
+      "downstream_transitive_count": 52,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -86513,12 +88403,14 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 1,
+      "downstream_api_count": 3,
       "downstream_api_models": [
-        "api_crawlers_data_gno_supply_daily"
+        "api_crawlers_data_gno_supply_daily",
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 1,
+      "downstream_transitive_count": 4,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -87036,6 +88928,568 @@
         "production",
         "size",
         "state"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_categories": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_categories",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_categories.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_likes": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_discussion_phases"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_likes",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_likes.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_polls": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_polls",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_polls.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_posts": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 4,
+      "downstream_api_models": [
+        "api_governance_discussion_phases",
+        "api_governance_forum_activity_weekly",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 5,
+      "downstream_transitive_count": 11,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_posts",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_posts.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_topics": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 6,
+      "downstream_api_models": [
+        "api_governance_discussion_phases",
+        "api_governance_forum_activity_weekly",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_gip_funnel",
+        "api_governance_kpis_latest",
+        "api_governance_poll_vs_vote"
+      ],
+      "downstream_direct_count": 5,
+      "downstream_transitive_count": 11,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_topics",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_topics.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__forum_users": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__forum_users",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__forum_users.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__snapshot_delegations": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 2,
+      "downstream_api_models": [
+        "api_governance_delegates_latest",
+        "api_governance_delegation_graph"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 3,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__snapshot_delegations",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__snapshot_delegations.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__snapshot_follows": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__snapshot_follows",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__snapshot_follows.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__snapshot_proposals": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 16,
+      "downstream_api_models": [
+        "api_governance_activity_monthly",
+        "api_governance_discussion_phases",
+        "api_governance_electorate_monthly",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_gip_funnel",
+        "api_governance_kpis_latest",
+        "api_governance_poll_vs_vote",
+        "api_governance_power_source_monthly",
+        "api_governance_proposal_choices",
+        "api_governance_proposal_direction",
+        "api_governance_proposals_latest",
+        "api_governance_top_proposers",
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly",
+        "api_governance_vote_trajectory",
+        "api_governance_whale_concentration"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 25,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__snapshot_proposals",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__snapshot_proposals.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__snapshot_space": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_governance_kpis_latest"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__snapshot_space",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__snapshot_space.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_governance__snapshot_votes": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 17,
+      "downstream_api_models": [
+        "api_governance_activity_monthly",
+        "api_governance_discussion_phases",
+        "api_governance_electorate_monthly",
+        "api_governance_forum_topic_proposal_links",
+        "api_governance_gip_funnel",
+        "api_governance_kpis_latest",
+        "api_governance_poll_vs_vote",
+        "api_governance_power_source_monthly",
+        "api_governance_proposal_choices",
+        "api_governance_proposal_direction",
+        "api_governance_proposals_latest",
+        "api_governance_top_proposers",
+        "api_governance_top_voters",
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly",
+        "api_governance_vote_trajectory",
+        "api_governance_whale_concentration"
+      ],
+      "downstream_direct_count": 7,
+      "downstream_transitive_count": 26,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_governance__snapshot_votes",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/governance/staging/stg_governance__snapshot_votes.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "governance",
+        "production",
+        "staging"
       ],
       "unique_key": null
     },
@@ -89251,7 +91705,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "6a17d2d5b79b8d63fa0dd6137b5cfdc3b512d8cced99af9646e6173347a2fa9e",
+  "models_hash": "cb572a808e0b236f534653bc273d04d5661255c6d9a7d81c1aaf7ae5c3031008",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

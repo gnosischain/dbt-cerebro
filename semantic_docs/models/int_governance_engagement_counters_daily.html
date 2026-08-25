@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_governance_engagement_counters_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_governance_engagement_counters_daily</h1>
+    <p>Daily snapshots of the two forum counters that CANNOT be recovered retroactively -- topic `views` and post `reads`. Discourse exposes both only as current totals with no per-event endpoint, and daily ingestion re-reads a topic only when its bumped_at beats the watermark, so a dormant thread&#x27;s counters are frozen at its last activity. Likes are deliberately excluded: they have a per-event endpoint, so the full history including timestamps and actors is backfillable into forum_likes instead. THIS CANNOT BE BACKFILLED -- history starts the day it first runs. Partitioned by snapshot_date (NOT month): with insert_overwrite, a month-grain partition would wipe every earlier day in the current month on every run, since each run emits only today&#x27;s rows.
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/intermediate/int_governance_engagement_counters_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>intermediate</span> <span class='pill'>governance</span> <span class='pill'>forum</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>entity_id</code></td><td>UInt64</td><td></td></tr><tr><td><code>entity_kind</code></td><td>String</td><td></td></tr><tr><td><code>metric</code></td><td>String</td><td></td></tr><tr><td><code>observed_at</code></td><td>DateTime</td><td>The source row&#x27;s ingested_at -- when the value was actually true. A regular daily grid can otherwise hide that it is repeating a months-old number for a dormant thread.
+</td></tr><tr><td><code>snapshot_date</code></td><td>Date</td><td>The day we LOOKED. Compare against observed_at to spot a stale reading.</td></tr><tr><td><code>value</code></td><td>UInt64</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>snapshot_date</code> (time)</li><li><code>entity_kind</code> (categorical)</li><li><code>entity_id</code> (categorical)</li><li><code>metric</code> (categorical)</li><li><code>observed_at</code> (time)</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>stg_governance__forum_posts</code></li><li><code>stg_governance__forum_topics</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

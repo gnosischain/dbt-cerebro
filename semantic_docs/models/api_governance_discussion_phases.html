@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>api_governance_discussion_phases</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>api_governance_discussion_phases</h1>
+    <p>Discussion and endorsement per proposal per lifecycle phase: before the proposal existed, after it existed but before voting opened, during the vote, and after it closed. Rows exist for any (proposal, phase) with either posts or likes, so a phase where people only clicked like is still present -- an ABSENT row means nothing happened, a zero means the phase had activity of the other kind. Coverage is 137 of 253 proposals (54%), effectively all GIPs; filter is_gip = 1 for aggregates. CAUTION on cross-phase comparison: pre_discussion and post_close are UNBOUNDED windows while voting is typically 7 days, so comparing raw post counts across phases is not like-for-like. Compare per-proposal or per-day.
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> approved</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/marts/api_governance_discussion_phases.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>governance</span> <span class='pill'>tier2</span> <span class='pill'>api:governance_discussion_phases</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>as_of_date</code></td><td>Date</td><td>Latest forum activity this endpoint reflects, taken as the later of the newest linked-topic post and the newest like. It is a data-freshness anchor for the whole view, NOT a per-row date -- every row carries the same value. It tracks the linked-topic subset, so it can legitimately trail the forum as a whole.
+</td></tr><tr><td><code>distinct_likers</code></td><td>UInt64</td><td></td></tr><tr><td><code>likes_given_in_phase</code></td><td>UInt64</td><td>Likes counted by the LIKE&#x27;s own timestamp -- exact, and the real &quot;endorsement during the vote&quot; figure. PREFER THIS.
+</td></tr><tr><td><code>likes_on_posts_written_in_phase</code></td><td>UInt64</td><td>Sum of the current like_count of posts WRITTEN in this phase. Approximate: a like given today on a 2023 post lands in 2023. Kept only so likes_given_in_phase can be reconciled against forum_posts, which is the only figure the mini-app can currently show. If the two diverge sharply, this is the one that is wrong.
+</td></tr><tr><td><code>participants</code></td><td>UInt64</td><td>Distinct forum user_ids posting in this phase.</td></tr><tr><td><code>phase</code></td><td>String</td><td></td></tr><tr><td><code>posts</code></td><td>UInt64</td><td></td></tr><tr><td><code>proposal_created_at</code></td><td>DateTime</td><td>Proposal creation time. Declared so the daily time-spine bridge can resolve it -- the registry validator checks relationship keys against DECLARED columns, not the model&#x27;s actual SQL columns.
+</td></tr><tr><td><code>proposal_id</code></td><td>String</td><td></td></tr><tr><td><code>question_share</code></td><td>Nullable(Float64)</td><td>Share of posts in this phase asking something rather than asserting, measured on quote-stripped text. NULL when the phase has no posts.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>proposal_created_at</code> (time)</li><li><code>phase</code> (categorical)</li><li><code>gip_number</code> (categorical)</li><li><code>is_gip</code> (categorical)</li><li><code>category</code> (categorical)</li><li><code>outcome</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_discussion_phases__posts</code> (sum)</li><li><code>governance_discussion_phases__participants</code> (sum)</li><li><code>governance_discussion_phases__likes_given_value</code> (sum)</li><li><code>governance_discussion_phases__question_posts</code> (sum)</li><li><code>governance_discussion_phases__question_share_value</code> (average)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_governance_forum_post_phases</code></li><li><code>int_governance_proposal_topic_links</code></li><li><code>int_governance_proposals</code></li><li><code>stg_governance__forum_likes</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

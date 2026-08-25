@@ -1,0 +1,25 @@
+
+
+-- Single-row headline governance KPIs. Pass rate + passed count are GIP-scoped
+-- so the ~118 non-GIP announcement/spam proposals don't skew the headline
+-- (blended pass rate is misleading; real GIP pass rate is ~80%). Selection
+-- ballots (outcome='decided') are excluded from the pass-rate denominator since
+-- they are not pass/fail.
+SELECT sub.*, (SELECT toDate(max(created_at)) FROM `dbt`.`stg_governance__snapshot_votes`) AS as_of_date
+FROM (
+SELECT
+    (SELECT count() FROM `dbt`.`int_governance_proposals`)                                    AS total_proposals,
+    (SELECT countIf(is_gip) FROM `dbt`.`int_governance_proposals`)                            AS total_gip_proposals,
+    (SELECT count() FROM `dbt`.`int_governance_gip`)                                          AS total_gips,
+    (SELECT uniqExact(voter) FROM `dbt`.`stg_governance__snapshot_votes`)                     AS unique_voters,
+    (SELECT count() FROM `dbt`.`stg_governance__snapshot_votes`)                              AS total_votes_cast,
+    (SELECT max(followers_count) FROM `dbt`.`stg_governance__snapshot_space`)                 AS followers,
+    (SELECT countIf(is_gip AND outcome = 'passed') FROM `dbt`.`int_governance_proposals`)     AS gip_proposals_passed,
+    (SELECT round(
+        countIf(is_gip AND outcome = 'passed')
+        / nullIf(countIf(is_gip AND outcome IN ('passed','rejected','no_consensus','below_quorum')), 0), 3)
+     FROM `dbt`.`int_governance_proposals`)                                                   AS gip_pass_rate,
+    -- Grain is closed GIP *proposals* (a GIP can have multiple Snapshot ballots).
+    (SELECT round(avg(unique_voters), 1)
+     FROM `dbt`.`int_governance_proposals` WHERE is_gip AND state = 'closed')                 AS avg_voters_per_gip_proposal
+) AS sub

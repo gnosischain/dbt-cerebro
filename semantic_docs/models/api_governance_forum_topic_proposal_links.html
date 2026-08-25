@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>api_governance_forum_topic_proposal_links</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>api_governance_forum_topic_proposal_links</h1>
+    <p>Forum discussion &lt;-&gt; Snapshot vote cross-links, topic grain. Unions two independent signals -- a pasted proposal/0x URL in a post (via_forum_post) and the proposal&#x27;s own authored `discussion` field (via_discussion) -- so a link found by only one method still gets its own row (43 discussion-only rows verified; not merely a corroboration decoration on the post-link source). Includes topics where title-parsing found no GIP number but a linked proposal recovers the connection (recovered_via_link).
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> approved</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/marts/api_governance_forum_topic_proposal_links.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>governance</span> <span class='pill'>tier2</span> <span class='pill'>api:governance_forum_proposal_links</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>as_of_date</code></td><td>Date</td><td>Snapshot freshness for this point-in-time endpoint — the creation date of the newest forum topic.</td></tr><tr><td><code>corroborated_by_discussion</code></td><td>Bool</td><td>via_forum_post AND via_discussion -- both signals agree. False does NOT mean disagreement; most false rows are one signal without the other (see via_forum_post/via_discussion individually). A small number of topics carry rows for two different proposals (typically a multi-ballot GIP redo, e.g. GIP-134), each independently flagged.
+</td></tr><tr><td><code>proposal_id</code></td><td>String</td><td>Snapshot proposal id this topic links to. Same value as snapshot_proposal_id; kept as the semantic layer&#x27;s `proposal` entity key.
+</td></tr><tr><td><code>proposal_matched</code></td><td>Bool</td><td>True when the linked snapshot_proposal_id exists in int_governance_proposals.</td></tr><tr><td><code>recovered_via_link</code></td><td>Bool</td><td>True when the topic&#x27;s own title has no GIP number but a linked proposal does.</td></tr><tr><td><code>snapshot_proposal_id</code></td><td>String</td><td>Snapshot proposal id (0x form) resolved from either link signal.</td></tr><tr><td><code>topic_id</code></td><td>UInt32</td><td></td></tr><tr><td><code>via_discussion</code></td><td>Bool</td><td>True when this proposal&#x27;s own authored `discussion` field points at this topic.</td></tr><tr><td><code>via_forum_post</code></td><td>Bool</td><td>True when a post in this topic pastes this proposal&#x27;s own 0x URL.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>topic_gip_number</code> (categorical)</li><li><code>recovered_via_link</code> (categorical)</li><li><code>via_forum_post</code> (categorical)</li><li><code>via_discussion</code> (categorical)</li><li><code>corroborated_by_discussion</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_forum_proposal_links__linking_posts_value</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_governance_forum_topic_proposal_links</code></li><li><code>int_governance_proposals</code></li><li><code>stg_governance__forum_topics</code></li><li><code>stg_governance__snapshot_proposals</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

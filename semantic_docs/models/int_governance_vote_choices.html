@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_governance_vote_choices</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_governance_vote_choices</h1>
+    <p>One row per (proposal, voter, selected choice): Snapshot&#x27;s polymorphic raw `choice` resolved to a label and a For/Against/Abstain direction. The foundation for every direction and contestation metric -- nothing downstream should parse choice_raw again. basic/single-choice yield one row per voter; ranked-choice yields one row per preference with vp only on rank 1. Unsupported ballot types (approval/weighted/quadratic, none currently used) yield NO rows by design -- the accepted_values test on ballot_type below is the guard: it fires the moment gnosis.eth enables a type this model cannot decode, before voters can silently vanish from the direction metrics. The 1-based positional mapping into choices[] was verified on 2026-07-28 by reconstructing every proposal&#x27;s scores[] from summed vp_effective and reconciling against Snapshot&#x27;s own reported scores[] -- exact match across all basic/single-choice proposals. That was a one-off check rather than a standing test, since tests/ here is reserved for heavyweight financial reconciliations; re-run it by hand if the ballot handling ever changes.
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/intermediate/int_governance_vote_choices.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>governance</span> <span class='pill'>votes</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>ballot_type</code></td><td>String</td><td>Snapshot voting system for the proposal. The accepted_values test is a real guardrail, not a formality: a type outside this set cannot be decoded, produces zero rows, and would silently remove those voters from every direction metric. If it fails, add explicit handling in int_governance_vote_choices -- do not widen the list.
+</td></tr><tr><td><code>choice_index</code></td><td>UInt32</td><td>1-based index into the proposal&#x27;s choices[] as cast by the voter.</td></tr><tr><td><code>choice_index_valid</code></td><td>Bool</td><td>False when the index falls outside choices[]. Such rows keep an empty label and polarity &#x27;unknown&#x27; rather than being mapped to a neighbour.
+</td></tr><tr><td><code>choice_kind</code></td><td>String</td><td>single (basic/single-choice, one row per voter) | ranked (ranked-choice, one row per preference) | unsupported (emits no rows).
+</td></tr><tr><td><code>choice_label</code></td><td>String</td><td>The option text the voter selected. Empty when the index is invalid.</td></tr><tr><td><code>polarity</code></td><td>String</td><td>Direction of the selected option, from the shared classify_choice_polarity macro -- the SAME vocabulary int_governance_proposals uses for outcome, so a per-voter direction can never contradict the proposal-level result. &#x27;other&#x27; is a real selection ballot outcome, not a failure.
+</td></tr><tr><td><code>preference_rank</code></td><td>UInt32</td><td>1 for single-choice; ranked ballots count up in preference order.</td></tr><tr><td><code>proposal_id</code></td><td>String</td><td></td></tr><tr><td><code>voter</code></td><td>String</td><td>Lowercased voter address.</td></tr><tr><td><code>vp_effective</code></td><td>Float64</td><td>Voting power attributable to THIS row. Equals vp for single-choice; for ranked ballots only rank 1 carries vp (Snapshot resolves ranked by instant-runoff, not by splitting weight), so summing never double-counts a ranked voter.
+</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>ballot_type</code> (categorical)</li><li><code>choice_kind</code> (categorical)</li><li><code>polarity</code> (categorical)</li><li><code>choice_label</code> (categorical)</li><li><code>choice_index_valid</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_vote_choices__vp_effective</code> (sum)</li><li><code>governance_vote_choices__vote_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_governance_proposals</code></li><li><code>stg_governance__snapshot_votes</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_governance_electorate_monthly</code></li><li><code>api_governance_proposal_direction</code></li><li><code>api_governance_vote_trajectory</code></li></ul>
+    
+  </body>
+</html>

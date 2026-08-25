@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>api_governance_poll_vs_vote</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>api_governance_poll_vs_vote</h1>
+    <p>The forum&#x27;s headcount verdict against the token verdict on the SAME question. The only comparison in the layer between two genuinely SEPARATE populations -- a forum temperature check (one person one vote, no token needed) and the Snapshot ballot that followed. head_minus_weight_against on api_governance_proposal_direction compares headcount to capital within ONE ballot, i.e. the same voters weighted twice; here the voters are different people. It sometimes reverses outright: GIP-120 forum 58% against -&gt; Snapshot 0.05% against by VP; GIP-128 37% -&gt; 0.01%; GIP-119 the opposite at 13% -&gt; 98.7%. A blended contestation score would hide that those are opposite phenomena. FILTER is_pre_vote_check for the honest subset (130 of 142 pairs). 2 polls ran during voting and 10 AFTER the ballot closed -- a post-close poll is a retrospective, not a temperature check. Those rows are kept with their phase exposed so the exclusion is visible rather than silent. GRAIN (poll, proposal), MANY-TO-MANY both ways -- a topic hosts several named polls and links to several proposals when a GIP is re-balloted, so GIP-120 legitimately appears more than once. Never aggregate without deciding which poll you mean. Poll totals are small (roughly 10-65 votes): directional, not precise.
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> approved</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/marts/api_governance_poll_vs_vote.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>governance</span> <span class='pill'>tier2</span> <span class='pill'>api:governance_poll_vs_vote</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>as_of_date</code></td><td>Date</td><td>Freshness anchor for the whole view, NOT a per-row date. Taken from the poll side, since that is what this endpoint adds. Polls dedup at block level, so an unchanged poll writes nothing and this can sit still while the forum moves.
+</td></tr><tr><td><code>is_pre_vote_check</code></td><td>Bool</td><td>is_temperature_check AND poll_phase = &#x27;pre_discussion&#x27;. The honest subset.</td></tr><tr><td><code>poll_against_share</code></td><td>Nullable(Float64)</td><td></td></tr><tr><td><code>poll_minus_vote_vp</code></td><td>Nullable(Float64)</td><td>Forum headcount minus token weight. POSITIVE = the community was more opposed than the capital that decided it; NEGATIVE = capital more opposed than the community.
+</td></tr><tr><td><code>poll_name</code></td><td>String</td><td>Exposed because the grain is many-to-many; part of the poll&#x27;s identity.</td></tr><tr><td><code>poll_phase</code></td><td>String</td><td>Where the poll sits in this proposal&#x27;s lifecycle. &#x27;pre_discussion&#x27; is the only phase that makes it a genuine temperature check.
+</td></tr><tr><td><code>proposal_created_at</code></td><td>DateTime</td><td>Declared so the daily time-spine bridge can resolve it.</td></tr><tr><td><code>proposal_id</code></td><td>String</td><td></td></tr><tr><td><code>verdicts_disagree</code></td><td>Bool</td><td>The two populations landed on opposite sides of 50%. The headline cases.</td></tr><tr><td><code>vote_against_share_by_vp</code></td><td>Nullable(Float64)</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>proposal_created_at</code> (time)</li><li><code>gip_number</code> (categorical)</li><li><code>is_gip</code> (categorical)</li><li><code>poll_phase</code> (categorical)</li><li><code>is_pre_vote_check</code> (categorical)</li><li><code>outcome</code> (categorical)</li><li><code>category</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_poll_vs_vote__poll_against_share_value</code> (average)</li><li><code>governance_poll_vs_vote__gap_value</code> (average)</li><li><code>governance_poll_vs_vote__disagreements</code> (sum)</li><li><code>governance_poll_vs_vote__pairs</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>api_governance_proposal_direction</code></li><li><code>int_governance_poll_sentiment</code></li><li><code>int_governance_proposal_topic_links</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

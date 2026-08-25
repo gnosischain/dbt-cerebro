@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_governance_poll_sentiment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_governance_poll_sentiment</h1>
+    <p>One row per (post, poll): a forum poll collapsed into a for/against tally, with the timing of the post hosting it. The only record of one-person-one-vote community sentiment on questions that later get a token-weighted Snapshot vote -- the missing middle of the discussion -&gt; signal -&gt; vote funnel. TIMING COMES FROM THE HOST POST: the poll row has no created_at (close_at is a schedule, ingested_at is first-seen), so it is dated by its host post via an INNER JOIN on post_id -- coverage verified 184 of 184. An undated poll must not silently acquire a phase downstream. poll_against_share is NULL rather than 0 when nothing decisive was cast or any count was withheld; a hidden live poll reading as 0% opposition would be worse than no number.
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/intermediate/int_governance_poll_sentiment.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>intermediate</span> <span class='pill'>governance</span> <span class='pill'>forum</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>decisive_votes</code></td><td>Nullable(Int64)</td><td>favour + against. Runs roughly 10-65; filter on it before ranking.</td></tr><tr><td><code>has_withheld_counts</code></td><td>Bool</td><td>Any option&#x27;s count hidden by the poll&#x27;s results policy.</td></tr><tr><td><code>is_temperature_check</code></td><td>Bool</td><td>Poll offers BOTH a favour and an against option. A one-sided poll or a multi-option selection ballot is not a for/against check and its against_share would be meaningless.
+</td></tr><tr><td><code>poll_against_share</code></td><td>Nullable(Float64)</td><td>against / (favour + against). NULL when withheld or nothing decisive.</td></tr><tr><td><code>poll_name</code></td><td>String</td><td></td></tr><tr><td><code>poll_posted_at</code></td><td>DateTime</td><td>created_at of the HOST POST -- the poll itself carries no timestamp.</td></tr><tr><td><code>post_id</code></td><td>UInt64</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>poll_posted_at</code> (time)</li><li><code>is_temperature_check</code> (categorical)</li><li><code>has_withheld_counts</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_poll_sentiment__poll_against_share_value</code> (average)</li><li><code>governance_poll_sentiment__poll_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>stg_governance__forum_polls</code></li><li><code>stg_governance__forum_posts</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_governance_poll_vs_vote</code></li></ul>
+    
+  </body>
+</html>

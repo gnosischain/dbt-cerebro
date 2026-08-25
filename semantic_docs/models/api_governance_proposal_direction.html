@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>api_governance_proposal_direction</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>api_governance_proposal_direction</h1>
+    <p>Per-proposal voting direction measured twice -- once by headcount, once by voting power -- plus the gap between them. Powers the &quot;whales versus everyone else&quot; view. Shares are over DECISIVE votes (for + against), excluding abstain so an abstain-heavy ballot never reads as consensus; abstain is exposed separately. Only choice_kind=&#x27;single&#x27; (96.8% of proposals) is directional -- ranked-choice rows appear with NULL shares and directional = 0. Filter voters &gt;= 30 before ranking (a divergence over a handful of voters is noise) and is_gip = 1 for any aggregate (119 of 253 proposals are non-GIP spam).
+</p>
+    <p><strong>Module:</strong> governance</p>
+    <p><strong>Status:</strong> approved</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/governance/marts/api_governance_proposal_direction.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>governance</span> <span class='pill'>tier2</span> <span class='pill'>api:governance_proposal_direction</span> <span class='pill'>granularity:latest</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>against_share_by_head</code></td><td>Nullable(Float64)</td><td>against_voters / decisive_voters. NULL when there are no decisive votes.</td></tr><tr><td><code>against_share_by_vp</code></td><td>Nullable(Float64)</td><td>against_vp / decisive_vp. NULL when there is no decisive voting power.</td></tr><tr><td><code>as_of_date</code></td><td>Date</td><td>Snapshot freshness for this point-in-time endpoint — the creation date of the newest proposal.</td></tr><tr><td><code>created_at</code></td><td>DateTime</td><td>Proposal creation time. Declared so the daily time-spine bridge can resolve it.</td></tr><tr><td><code>directional</code></td><td>Bool</td><td>False for ranked-choice and for proposals with no decodable decisive votes.</td></tr><tr><td><code>head_minus_weight_against</code></td><td>Nullable(Float64)</td><td>against_share_by_head minus against_share_by_vp. POSITIVE = small holders were more opposed than capital; NEGATIVE = capital was more opposed than the crowd. The sharpest available read on whether a decision had broad consent or merely sufficient weight.
+</td></tr><tr><td><code>margin_by_vp</code></td><td>Nullable(Float64)</td><td>abs(for_vp - against_vp) / decisive_vp. 0 = dead heat, 1 = unanimous.</td></tr><tr><td><code>proposal_id</code></td><td>String</td><td></td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>created_at</code> (time)</li><li><code>gip_number</code> (categorical)</li><li><code>is_gip</code> (categorical)</li><li><code>outcome</code> (categorical)</li><li><code>category</code> (categorical)</li><li><code>ballot_type</code> (categorical)</li><li><code>directional</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>governance_proposal_direction__against_share_by_head_value</code> (average)</li><li><code>governance_proposal_direction__against_share_by_vp_value</code> (average)</li><li><code>governance_proposal_direction__head_minus_weight_value</code> (average)</li><li><code>governance_proposal_direction__margin_by_vp_value</code> (average)</li><li><code>governance_proposal_direction__abstain_share_by_head_value</code> (average)</li><li><code>governance_proposal_direction__voters_value</code> (sum)</li><li><code>governance_proposal_direction__proposal_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_governance_proposals</code></li><li><code>int_governance_vote_choices</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_governance_poll_vs_vote</code></li></ul>
+    
+  </body>
+</html>
