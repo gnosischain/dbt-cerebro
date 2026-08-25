@@ -2,9 +2,9 @@
   "counts": {
     "explicit_contracts": 26,
     "high_risk": 309,
-    "models": 1192
+    "models": 1196
   },
-  "inputs_fingerprint": "de016347f7573b0f1741b650aac788c4d66eeaf55cf077f53db9e10363867e81",
+  "inputs_fingerprint": "603c8164c66721b706cabb6a1f0bd3d576ab4aa923e39d8e49d9669f7a16aeb4",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -357,6 +357,23 @@
       "status": "remediated",
       "symptom": "model at 0 rows while its SELECT returns tens of thousands; daily runs \"succeed\"",
       "title": "An incremental model created before its input existed stays empty forever"
+    },
+    "old-token-burned-supply-overstatement": {
+      "body": "## Symptom\n\nAn \"effective/circulating supply\" metric built from a contract `totalSupply()` read (or\nan indexer scalar of it) overstates supply, diverging from transfer-delta sources by a\nconstant that jumps at burn-event dates. WL-036: the reconstructed\n`Ethereum Circ. Supply` read 4,709,740 vs Dune's 1,561,933.74 \u2014 a 3,147,806.3458 gap.\n\n## Root cause\n\nPre-2018-style ERC20s (mainnet GNO, 2017) accept plain `transfer(0x0, x)` and never\ndecrement the supply variable: burned tokens accumulate as `balanceOf(0x0)` (sometimes\n`0xdEaD`). Modern OZ-style tokens revert transfers to 0x0 and decrement `totalSupply()`\nin `_burn`, so the two conventions disagree exactly by the burned balance. Transfer-delta\nderivations (Dune's `tokens_*.transfers` with from/to 0x0 as mint/burn) net burns out\nimplicitly, so they measure effective supply; `totalSupply()` measures minted supply.\n\n## Forbidden action\n\nQuoting `totalSupply()` (or a scalar snapshot of it) as circulating/effective supply for\na token without first checking `balanceOf(0x0)` and `balanceOf(0xdEaD)`. Also: summing\nholder balances INCLUDING the zero/dead addresses while simultaneously subtracting\nnothing \u2014 that double-counts burned tokens as held.\n\n## Detection\n\n- One-off: `eth_call balanceOf(0x0\u20260)` and `balanceOf(0x\u2026dEaD)` on the token; nonzero on\n  either means raw `totalSupply()` is not effective supply.\n- Cross-check any supply series against an independent transfer-delta reconstruction;\n  a large flat offset appearing at discrete dates is the signature.\n- Chain-100 GNO needs no adjustment \u2014 proven: its bridged-token mint/burn moves\n  `totalSupply()`, and the scalar matched Dune's transfer-delta series on all 1,613\n  published days.\n\n## Safe remediation\n\neffective_supply = totalSupply() \u2212 balanceOf(0x0) \u2212 balanceOf(0xdEaD) \u2014 harmlessly\nzero-subtracting for well-behaved tokens. In the WL-036 design the zero address is\ntracked as a census holder (rpc-state-indexer `gno_supply_wallets` universe) so the\nburned term is a first-class daily balance, exact at every historical anchor.\n\n## Ground truth\n\nOn-chain state: `balanceOf` at the canonical day-anchor block. For validation, the Dune\ntransfer-delta series (frozen `crawlers_data.dune_gno_supply` history). Note the two\nconventions legitimately differ intraday: state-at-anchor vs end-of-day transfer sum can\ndisagree for one day when a tracked balance moves after the anchor; it self-corrects the\nnext day.",
+      "evidence": [
+        "eth_call 2026-08-24: GNO 0x6810e776\u2026 balanceOf(0x0) = 3,147,806.3457465111 while totalSupply() = 10,000,000 constant",
+        "models/crawlers_data/staging/stg_rpc_state_indexer__gno_supply_daily.sql (burned term; EthCirc = minted - burned - vesting - bridge)",
+        "Full-overlap reconciliation vs Dune 2026-08-24: Non-Circ 2,120/2,120 days exact; EthCirc 2,118/2,120 exact (2 one-day anchor-vs-midnight artifacts, self-correcting)",
+        "Dune parent query 4615226 (captured in session): supply = cumulative transfer deltas with from/to 0x0 as mint/burn",
+        "work-log handover WL-036 (2026-08-24) recorded the wrong formula: 'ETH GNO totalSupply is a CONSTANT 10,000,000' without the burned term"
+      ],
+      "id": "old-token-burned-supply-overstatement",
+      "last_verified": "2026-08-25",
+      "path": "docs/lessons/old-token-burned-supply-overstatement.md",
+      "scope": "Any model deriving a token supply from a contract totalSupply()/scalar read, or summing holder balances without excluding 0x0/0xdEaD. Bit WL-036 (GNO supply splice); fix authored + validated in the working tree, pending merge.",
+      "status": "observed",
+      "symptom": "A supply series reconstructed from totalSupply() disagrees with a transfer-delta series (e.g. Dune's) by a large constant that appears after historical burn events; for mainnet GNO the gap is ~3,147,806 GNO (~31% of the 10M totalSupply).",
+      "title": "A raw totalSupply() read overstates effective supply for pre-2018-style tokens \u2014 transfers to 0x0 accumulate at the zero address without decrementing totalSupply."
     },
     "raw-logs-ingestion-holes": {
       "body": "## Symptom\nAfter a full decode-layer recovery, some rows are still missing. No dbt lever fixes it.\n\n## Root cause\n`execution.logs` is produced by an external node crawler outside this repo. An ingestion\nskip leaves a run of consecutive blocks with zero logs across **all** contracts. The\nlogs were never in the source, so no re-decode can recover them.\n\n## Forbidden action\nDon't keep re-running dbt refresh levers against a raw hole \u2014 if the raw source lacks\nthe rows, every downstream tool will faithfully reproduce the gap.\n\n## Detection\nBlock-continuity scan: a >5-block span with zero logs between two present blocks on a\nlive chain is not \"quiet blocks\". (See the data-quality test in tests/data_quality/.)\n\n## Safe remediation\nConfirm the flagged range on-chain (`eth_getLogs` \u2014 chain has logs, `execution.logs`\ndoesn't), then request a raw re-index of the block range from the ingestion side. After\nthe raw backfill lands, recover the decode layer with `gap_window_refresh.py` (see\ndecode-watermark-late-logs \u2014 the backfilled rows are below the watermark).\nCUMULATIVE downstreams of the affected decodes are wrong from the gap DAY forward,\nso their rebuild window is gap month through CURRENT month, chronologically \u2014 never\njust the gap month (see backfill-order-cumulative, gap-recovery corollary).\nClassify first: grep -rl '{{ this }}' models/ \u2229 dbt ls -s <decode>+.\n\n## Ground truth\nOn-chain `eth_getLogs` for the block range.\n\n## Enforcement\nBlock-continuity data-quality test on the observability schedule; remediation remains\nmanual (external system).",
@@ -28855,6 +28872,61 @@
         "production",
         "tier1",
         "yields"
+      ],
+      "unique_key": null
+    },
+    "api_gno_supply_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_gno_supply_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/rpc_state_indexer/marts/api_gno_supply_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "granularity:daily",
+        "production",
+        "rpc_state_indexer",
+        "tier1"
       ],
       "unique_key": null
     },
@@ -83593,6 +83665,53 @@
       ],
       "unique_key": null
     },
+    "int_rpc_state_indexer_gno_supply_daily": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_gno_supply_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
+      "name": "int_rpc_state_indexer_gno_supply_daily",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_gno_supply_daily.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "production",
+        "rpc_state_indexer"
+      ],
+      "unique_key": null
+    },
     "int_ubo_claims_aave_daily": {
       "contract": {
         "agents_md": [
@@ -88621,9 +88740,105 @@
         "staging"
       ],
       "unique_key": null
+    },
+    "stg_rpc_state_indexer__token_balances_published": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_gno_supply_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_rpc_state_indexer__token_balances_published",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__token_balances_published.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "staging"
+      ],
+      "unique_key": null
+    },
+    "stg_rpc_state_indexer__token_scalars_published": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_gno_supply_daily"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 2,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_rpc_state_indexer__token_scalars_published",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__token_scalars_published.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "staging"
+      ],
+      "unique_key": null
     }
   },
-  "models_hash": "3930cca5d5e762f3575010aefa40f06337875e2e93c26b21734e646259d46b5c",
+  "models_hash": "0dcd8c019de9567438c5fa61238ed3251bb13caa7bc8aa2fbf4740e77fee9334",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

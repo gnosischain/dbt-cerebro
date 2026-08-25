@@ -123,6 +123,15 @@
         "model": 50,
         "total_nodes": 50
       },
+      "rpc_state_indexer": {
+        "api": 1,
+        "docs_only": 6,
+        "int": 1,
+        "model": 4,
+        "source": 2,
+        "stg": 2,
+        "total_nodes": 6
+      },
       "shared": {
         "approved": 3,
         "model": 3,
@@ -133,7 +142,7 @@
     "semantic_status_counts": {
       "approved": 466,
       "candidate": 471,
-      "docs_only": 406
+      "docs_only": 412
     }
   },
   "entity_dictionary": {
@@ -356,14 +365,14 @@
     }
   },
   "metadata": {
-    "catalog_hash": "ac42dc3525616973d209052f9aadea47f9a8f853f6c617cd7114a38fc62f968d",
-    "generated_at": "2026-08-24T14:24:56.811181+00:00",
-    "graph_catalog_hash": "bae120264369fcdaeee636e8b7a9f11a3b36166ee025a9846b239abb58f8e2b2",
-    "manifest_hash": "8f282990149afd784155504e07e1bcb2aedb81f6ad8c99221306fe3dfa48d76d",
-    "model_count": 1243,
+    "catalog_hash": "003842d22b56f83aa851d16491fd3dabaa7d2750f17d5c51c56736b8e0ee3802",
+    "generated_at": "2026-08-25T08:16:06.167055+00:00",
+    "graph_catalog_hash": "a2915084747c2fc2af3477d251e69e4df2599cb47c5e112f52c79998013f4db0",
+    "manifest_hash": "a99e083d89b4e84491f653c5cd33ca143fba7fedc4950d2e29470130545a4d53",
+    "model_count": 1247,
     "project_name": "gnosis_dbt",
     "semantic_manifest_hash": "b663ffd7d80a9a729a7cb23b123ee404bd2d4c5b5b8f107c5c76b82186099fc1",
-    "source_count": 100
+    "source_count": 102
   },
   "metrics": {
     "GBCDeposit_deposists_daily__amount_value": {
@@ -98533,6 +98542,63 @@
         "tier1"
       ]
     },
+    "api_gno_supply_daily": {
+      "columns": {
+        "date": {
+          "data_type": "Date",
+          "description": "The date corresponding to the supply data, formatted as YYYY-MM-DD.",
+          "name": "date"
+        },
+        "label": {
+          "data_type": "String",
+          "description": "Supply bucket, exactly one of 'Ethereum Circ. Supply', 'Gnosis Circ. Supply' or 'Non-Circ. Supply'.",
+          "name": "label"
+        },
+        "supply": {
+          "data_type": "Float64",
+          "description": "The amount of GNO supply recorded on the given date, measured in GNO token units.",
+          "name": "supply"
+        }
+      },
+      "description": "Daily GNO supply by category label served from the rpc-state-indexer derivation. History starts 2020-08-23 (Gnosis leg; ETH legs from 2020-11-01, the chain-1 day-anchor start) \u2014 the pre-2020 series remains queryable in the deprecated Dune models. Takes over the api:gno_supply endpoint from api_crawlers_data_gno_supply_daily at the switch.",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "marts",
+        "api_gno_supply_daily"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "int_rpc_state_indexer_gno_supply_daily"
+        ]
+      },
+      "materialized": "view",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "api_gno_supply_daily",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/marts/api_gno_supply_daily.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`api_gno_supply_daily`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "tier1",
+        "granularity:daily"
+      ]
+    },
     "api_gnosisvpn_exit_activity_daily": {
       "columns": {
         "channels_closed": {
@@ -194660,6 +194726,64 @@
         "refill_append"
       ]
     },
+    "int_rpc_state_indexer_gno_supply_daily": {
+      "columns": {
+        "block_date": {
+          "data_type": "Date",
+          "description": "Snapshot date from the indexer's canonical per-chain day anchors.",
+          "name": "block_date"
+        },
+        "label": {
+          "data_type": "String",
+          "description": "Supply bucket, exactly one of 'Ethereum Circ. Supply', 'Gnosis Circ. Supply' or 'Non-Circ. Supply' \u2014 verbatim the Dune label contract.",
+          "name": "label"
+        },
+        "supply": {
+          "data_type": "Float64",
+          "description": "GNO amount for the bucket on that date, in token units (raw value / 1e18).",
+          "name": "supply"
+        }
+      },
+      "description": "Daily GNO supply breakdown derived from indexer on-chain state, replicating the Dune GNO-supply label contract \u2014 Gnosis Circ. is the chain-100 GNO totalSupply, Non-Circ. sums the three vesting-wallet ETH-GNO balances, and Ethereum Circ. is the minted chain-1 totalSupply minus GNO burned to the zero address (~3.15M) minus vesting minus the Omnibridge escrow. Each series is dedupped per day and forward-filled per label. Verified exact against the Dune series over the full overlap except single-day timing artifacts on days a tracked wallet moved after the census day-anchor block (state-at-anchor vs Dune's end-of-day transfer sum; self-corrects the next day).",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "intermediate",
+        "int_rpc_state_indexer_gno_supply_daily"
+      ],
+      "lineage": {
+        "downstream": [
+          "api_gno_supply_daily"
+        ],
+        "upstream": [
+          "stg_rpc_state_indexer__token_balances_published",
+          "stg_rpc_state_indexer__token_scalars_published"
+        ]
+      },
+      "materialized": "table",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "int_rpc_state_indexer_gno_supply_daily",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_gno_supply_daily.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_rpc_state_indexer_gno_supply_daily`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "rpc_state_indexer"
+      ]
+    },
     "int_ubo_claims_aave_daily": {
       "columns": {
         "balance": {
@@ -197138,6 +197262,234 @@
         "network-crawl",
         "p2p"
       ]
+    },
+    "rpc_state_indexer.v_token_balances_published": {
+      "columns": {
+        "anchor_block": {
+          "data_type": "UInt64",
+          "description": "",
+          "name": "anchor_block"
+        },
+        "anchor_hash": {
+          "data_type": "String",
+          "description": "",
+          "name": "anchor_hash"
+        },
+        "attempt_id": {
+          "data_type": "UUID",
+          "description": "",
+          "name": "attempt_id"
+        },
+        "balance_raw": {
+          "data_type": "UInt256",
+          "description": "",
+          "name": "balance_raw"
+        },
+        "batch_sequence": {
+          "data_type": "UInt32",
+          "description": "",
+          "name": "batch_sequence"
+        },
+        "chain_id": {
+          "data_type": "UInt64",
+          "description": "",
+          "name": "chain_id"
+        },
+        "config_hash": {
+          "data_type": "FixedString(64)",
+          "description": "",
+          "name": "config_hash"
+        },
+        "holder_address": {
+          "data_type": "String",
+          "description": "",
+          "name": "holder_address"
+        },
+        "job_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "job_name"
+        },
+        "observed_at": {
+          "data_type": "DateTime64(9, 'UTC')",
+          "description": "",
+          "name": "observed_at"
+        },
+        "probe_source": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "probe_source"
+        },
+        "result_digest": {
+          "data_type": "FixedString(64)",
+          "description": "",
+          "name": "result_digest"
+        },
+        "scaled_balance_raw": {
+          "data_type": "Nullable(UInt256)",
+          "description": "",
+          "name": "scaled_balance_raw"
+        },
+        "snapshot_date": {
+          "data_type": "Date",
+          "description": "",
+          "name": "snapshot_date"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "",
+          "name": "token_address"
+        },
+        "universe_hash": {
+          "data_type": "FixedString(64)",
+          "description": "",
+          "name": "universe_hash"
+        },
+        "universe_size": {
+          "data_type": "UInt64",
+          "description": "",
+          "name": "universe_size"
+        },
+        "value_kind": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "value_kind"
+        }
+      },
+      "description": "Published per-day (token, holder) balances from the rpc-state-indexer service. The same (token, date, holder) can appear under multiple job_names (e.g. GNO under both curated_balances and treasury) \u2014 always filter chain_id and job_name or sums double-count. No freshness yet; it moves here from dune_gno_supply at the Dune cutover.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "rpc_state_indexer",
+        "v_token_balances_published"
+      ],
+      "lineage": {
+        "downstream": [
+          "stg_rpc_state_indexer__token_balances_published"
+        ],
+        "upstream": []
+      },
+      "materialized": "source",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "rpc_state_indexer.v_token_balances_published",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/sources.yml",
+      "quality_tier": "",
+      "relation_name": "`rpc_state_indexer`.`v_token_balances_published`",
+      "resource_type": "source",
+      "semantic": {},
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": []
+    },
+    "rpc_state_indexer.v_token_scalars_published": {
+      "columns": {
+        "anchor_block": {
+          "data_type": "UInt64",
+          "description": "",
+          "name": "anchor_block"
+        },
+        "anchor_hash": {
+          "data_type": "String",
+          "description": "",
+          "name": "anchor_hash"
+        },
+        "attempt_id": {
+          "data_type": "UUID",
+          "description": "",
+          "name": "attempt_id"
+        },
+        "batch_sequence": {
+          "data_type": "UInt32",
+          "description": "",
+          "name": "batch_sequence"
+        },
+        "chain_id": {
+          "data_type": "UInt64",
+          "description": "",
+          "name": "chain_id"
+        },
+        "config_hash": {
+          "data_type": "FixedString(64)",
+          "description": "",
+          "name": "config_hash"
+        },
+        "job_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "job_name"
+        },
+        "observed_at": {
+          "data_type": "DateTime64(9, 'UTC')",
+          "description": "",
+          "name": "observed_at"
+        },
+        "probe_source": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "probe_source"
+        },
+        "result_digest": {
+          "data_type": "FixedString(64)",
+          "description": "",
+          "name": "result_digest"
+        },
+        "scalar_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "",
+          "name": "scalar_name"
+        },
+        "scalar_raw": {
+          "data_type": "UInt256",
+          "description": "",
+          "name": "scalar_raw"
+        },
+        "snapshot_date": {
+          "data_type": "Date",
+          "description": "",
+          "name": "snapshot_date"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "",
+          "name": "token_address"
+        }
+      },
+      "description": "Published per-day token scalars (totalSupply etc.) from the rpc-state-indexer service. Read the published views only, never the raw attempt tables. Grain includes job_name and attempt_id \u2014 the same (token, date) scalar appears under multiple jobs and attempts, so consumers must filter chain_id + job_name and dedup per day. No freshness yet; it moves here from dune_gno_supply at the Dune cutover.\n",
+      "dimensions": [],
+      "entities": [],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "rpc_state_indexer",
+        "v_token_scalars_published"
+      ],
+      "lineage": {
+        "downstream": [
+          "stg_rpc_state_indexer__token_scalars_published"
+        ],
+        "upstream": []
+      },
+      "materialized": "source",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "rpc_state_indexer.v_token_scalars_published",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/sources.yml",
+      "quality_tier": "",
+      "relation_name": "`rpc_state_indexer`.`v_token_scalars_published`",
+      "resource_type": "source",
+      "semantic": {},
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": []
     },
     "stg_consensus__attestations": {
       "columns": {
@@ -204152,6 +204504,164 @@
         "pools",
         "staging"
       ]
+    },
+    "stg_rpc_state_indexer__token_balances_published": {
+      "columns": {
+        "balance_raw": {
+          "data_type": "UInt256",
+          "description": "Raw balance in the token's smallest unit at the day anchor block.",
+          "name": "balance_raw"
+        },
+        "chain_id": {
+          "data_type": "UInt64",
+          "description": "EVM chain id the balance was observed on (1 = Ethereum mainnet, 100 = Gnosis).",
+          "name": "chain_id"
+        },
+        "holder_address": {
+          "data_type": "String",
+          "description": "Holder address, lowercased 0x hex; the zero address carries the token's burned balance for tokens that never decrement totalSupply.",
+          "name": "holder_address"
+        },
+        "job_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "Indexer census job that published the observation.",
+          "name": "job_name"
+        },
+        "snapshot_date": {
+          "data_type": "Date",
+          "description": "Snapshot date at the chain's canonical day anchor.",
+          "name": "snapshot_date"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "Token contract address, lowercased 0x hex.",
+          "name": "token_address"
+        }
+      },
+      "description": "Cleanup view over the rpc-state-indexer published token balances \u2014 lowercases token and holder addresses, passes the published columns through. The same (token, date, holder) can appear under multiple job_names, so downstream consumers must filter chain_id + job_name or sums double-count.",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "token_address",
+          "name": "token",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "staging",
+        "stg_rpc_state_indexer__token_balances_published"
+      ],
+      "lineage": {
+        "downstream": [
+          "int_rpc_state_indexer_gno_supply_daily"
+        ],
+        "upstream": [
+          "v_token_balances_published"
+        ]
+      },
+      "materialized": "view",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "stg_rpc_state_indexer__token_balances_published",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__token_balances_published.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`stg_rpc_state_indexer__token_balances_published`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "staging",
+        "rpc_state_indexer"
+      ]
+    },
+    "stg_rpc_state_indexer__token_scalars_published": {
+      "columns": {
+        "chain_id": {
+          "data_type": "UInt64",
+          "description": "EVM chain id the scalar was observed on (1 = Ethereum mainnet, 100 = Gnosis).",
+          "name": "chain_id"
+        },
+        "job_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "Indexer census job that published the observation; the same scalar appears under multiple jobs.",
+          "name": "job_name"
+        },
+        "scalar_name": {
+          "data_type": "LowCardinality(String)",
+          "description": "Which contract scalar was read, e.g. totalSupply.",
+          "name": "scalar_name"
+        },
+        "scalar_raw": {
+          "data_type": "UInt256",
+          "description": "Raw scalar value in the token's smallest unit.",
+          "name": "scalar_raw"
+        },
+        "snapshot_date": {
+          "data_type": "Date",
+          "description": "Snapshot date at the chain's canonical day anchor.",
+          "name": "snapshot_date"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "Token contract address, lowercased 0x hex.",
+          "name": "token_address"
+        }
+      },
+      "description": "Cleanup view over the rpc-state-indexer published token scalars \u2014 lowercases token addresses, passes the published columns through. Grain includes job_name and attempt duplicates, so downstream consumers must filter chain_id + job_name and dedup per day.",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "token_address",
+          "name": "token",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "staging",
+        "stg_rpc_state_indexer__token_scalars_published"
+      ],
+      "lineage": {
+        "downstream": [
+          "int_rpc_state_indexer_gno_supply_daily"
+        ],
+        "upstream": [
+          "v_token_scalars_published"
+        ]
+      },
+      "materialized": "view",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "stg_rpc_state_indexer__token_scalars_published",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__token_scalars_published.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`stg_rpc_state_indexer__token_scalars_published`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "staging",
+        "rpc_state_indexer"
+      ]
     }
   },
   "modules": {
@@ -204275,6 +204785,15 @@
       "int": 10,
       "model": 50,
       "total_nodes": 50
+    },
+    "rpc_state_indexer": {
+      "api": 1,
+      "docs_only": 6,
+      "int": 1,
+      "model": 4,
+      "source": 2,
+      "stg": 2,
+      "total_nodes": 6
     },
     "shared": {
       "approved": 3,
@@ -220464,6 +220983,16 @@
         {
           "model": "stg_pools__v3_pool_registry",
           "module": "execution",
+          "status": "docs_only"
+        },
+        {
+          "model": "stg_rpc_state_indexer__token_balances_published",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "stg_rpc_state_indexer__token_scalars_published",
+          "module": "rpc_state_indexer",
           "status": "docs_only"
         }
       ],
