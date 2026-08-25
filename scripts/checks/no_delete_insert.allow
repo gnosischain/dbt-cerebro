@@ -30,6 +30,14 @@ model.gnosis_dbt.int_execution_tokens_balances_native_daily
 model.gnosis_dbt.int_execution_transactions_by_project_daily
 model.gnosis_dbt.int_execution_transactions_unique_addresses
 model.gnosis_dbt.int_live__dex_trades_raw
+# Same shape as its int_live__dex_trades_raw sibling above: a 48h-TTL live cache
+# that re-appends a short overlap window every ~45s and is read with FINAL. The
+# 'microbatch' tag can't be the fix here — it enrolls a model in
+# scripts/refresh/dbt_incremental_runner.py's staged daily catch-up (which needs
+# meta.full_refresh stages), whereas these tables are driven by the live cron
+# (`dbt run --select tag:live`). Duplicate-safety comes from FINAL + the TTL, both
+# asserted in the model's meta.agent invariants.
+model.gnosis_dbt.int_live__gpay_activity_raw::append_no_microbatch
 model.gnosis_dbt.int_revenue_fees_weekly_per_user
 model.gnosis_dbt.int_ubo_claims_balancer_v2_daily
 model.gnosis_dbt.int_ubo_claims_swapr_v3_daily

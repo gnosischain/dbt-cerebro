@@ -14,3 +14,27 @@ sources:
       - name: transactions
         description: "Transactions from execution_live — same schema as execution.transactions but near-real-time."
         loaded_at_field: block_timestamp
+
+  # Batch reference tables in the production `dbt` schema. Live models read
+  # these cross-database so playground_max runs (and the live loop) always see
+  # the authoritative daily wallet set without rebuilding GP lineage locally.
+  - name: dbt_live_refs
+    description: >
+      Production dbt marts/intermediates used as read-only inputs by tag:live
+      models. Always resolves to schema `dbt`, independent of the dbt target.
+    schema: dbt
+    tags: ["gnosis", "execution", "live"]
+
+    tables:
+      - name: int_execution_gpay_wallets
+        description: >
+          Authoritative GP Safe address set (payment-gated + operational +
+          migrated). Built daily by the batch dbt run; live GP pulse joins
+          against this table rather than a playground copy.
+
+      - name: int_execution_token_prices_daily
+        description: >
+          Daily token USD prices from the production batch run. Used by the
+          live GP pulse with an ASOF join so today's events still pick up the
+          latest available daily price (exact-date joins leave live rows
+          unpriced until the next morning's price load).
