@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 26,
-    "high_risk": 309,
-    "models": 1196
+    "explicit_contracts": 27,
+    "high_risk": 310,
+    "models": 1202
   },
-  "inputs_fingerprint": "948eb3f78d52f4d12a627e2383a865dcffef8ea4f64d25197298eb261fdefa5a",
+  "inputs_fingerprint": "89a773fe2fc1e75cfdad052c4652419d9b404578c1cd0e004bd7712c031a8a25",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -22990,6 +22990,228 @@
       ],
       "unique_key": null
     },
+    "api_execution_live_gpay_activity": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 1,
+      "downstream_api_models": [
+        "api_execution_live_gpay_stats"
+      ],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_execution_live_gpay_activity",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/marts/api_execution_live_gpay_activity.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api",
+        "execution",
+        "gpay",
+        "live"
+      ],
+      "unique_key": null
+    },
+    "api_execution_live_gpay_freshness": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_execution_live_gpay_freshness",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/marts/api_execution_live_gpay_freshness.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api",
+        "execution",
+        "gpay",
+        "live"
+      ],
+      "unique_key": null
+    },
+    "api_execution_live_gpay_minute_2h": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_execution_live_gpay_minute_2h",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/marts/api_execution_live_gpay_minute_2h.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api",
+        "execution",
+        "gpay",
+        "live"
+      ],
+      "unique_key": null
+    },
+    "api_execution_live_gpay_stats": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_execution_live_gpay_stats",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/marts/api_execution_live_gpay_stats.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api",
+        "execution",
+        "gpay",
+        "live"
+      ],
+      "unique_key": null
+    },
     "api_execution_live_trades": {
       "contract": {
         "hazards": [],
@@ -23148,6 +23370,62 @@
       "owner": "analytics_team",
       "partition_by": null,
       "path": "models/execution/live/marts/api_execution_live_trades_hourly_48h.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "api",
+        "execution",
+        "live",
+        "pools",
+        "trades"
+      ],
+      "unique_key": null
+    },
+    "api_execution_live_trades_minute_2h": {
+      "contract": {
+        "hazards": [],
+        "profiles": [
+          "api_models"
+        ],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "semantic-retirement-gate",
+            "text": "The api:/granularity:/tier tag contract and typed column schema are CI-enforced. Renaming/retiring requires updating semantic/authoring and grepping the metrics-dashboard repo's SQL by FROM/JOIN."
+          }
+        ],
+        "validation": [
+          "make check-fast",
+          "python scripts/checks/check_api_tags.py",
+          "python scripts/semantic/build_registry.py --target-dir target --validate --max-warnings 0"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "api_execution_live_trades_minute_2h",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/marts/api_execution_live_trades_minute_2h.sql",
       "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
@@ -34347,7 +34625,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -34371,7 +34649,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 6,
-      "downstream_transitive_count": 493,
+      "downstream_transitive_count": 494,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -34488,14 +34766,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_transitive_count": 6,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -34720,7 +34999,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -34744,7 +35023,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 8,
-      "downstream_transitive_count": 491,
+      "downstream_transitive_count": 492,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -34861,14 +35140,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_transitive_count": 6,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -35468,7 +35748,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -35492,7 +35772,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 4,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37539,7 +37819,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -37563,7 +37843,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 495,
+      "downstream_transitive_count": 496,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37800,7 +38080,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -37824,7 +38104,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 11,
-      "downstream_transitive_count": 498,
+      "downstream_transitive_count": 499,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37941,14 +38221,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_transitive_count": 6,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38189,7 +38470,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -38213,7 +38494,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 495,
+      "downstream_transitive_count": 496,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38454,7 +38735,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -38478,7 +38759,7 @@
         "api_execution_circles_v2_pools_daily"
       ],
       "downstream_direct_count": 9,
-      "downstream_transitive_count": 499,
+      "downstream_transitive_count": 500,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38595,14 +38876,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_transitive_count": 6,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39125,7 +39407,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39149,7 +39431,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39266,7 +39548,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39290,7 +39572,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39407,7 +39689,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39431,7 +39713,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39548,7 +39830,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39572,7 +39854,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39689,7 +39971,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39713,7 +39995,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39830,7 +40112,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39854,7 +40136,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -39971,7 +40253,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -39995,7 +40277,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -40112,7 +40394,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -40136,7 +40418,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -40253,7 +40535,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -40277,7 +40559,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -40394,7 +40676,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -40418,7 +40700,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -47760,7 +48042,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -47784,7 +48066,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -47969,7 +48251,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -47993,7 +48275,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -48749,7 +49031,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -48773,7 +49055,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 490,
+      "downstream_transitive_count": 491,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -59084,7 +59366,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -59108,7 +59390,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -76918,7 +77200,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -76942,7 +77224,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -77872,7 +78154,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -77896,7 +78178,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -77955,7 +78237,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -77979,7 +78261,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -78075,7 +78357,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -78099,7 +78381,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -78190,7 +78472,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 280,
+      "downstream_api_count": 281,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -78214,7 +78496,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -78870,7 +79152,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -78894,7 +79176,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 27,
-      "downstream_transitive_count": 481,
+      "downstream_transitive_count": 482,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -81505,14 +81787,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
-      "downstream_direct_count": 2,
-      "downstream_transitive_count": 3,
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 4,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -81532,6 +81815,132 @@
         "live",
         "pools",
         "trades"
+      ],
+      "unique_key": null
+    },
+    "int_live__gpay_activity_raw": {
+      "contract": {
+        "grain": [
+          "block_timestamp",
+          "transaction_hash",
+          "log_index"
+        ],
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "duplicate-seed-drift",
+            "status": "remediated",
+            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+          },
+          {
+            "id": "frontier-day-incomplete-inputs",
+            "status": "remediated",
+            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "stale-snapshot-caveat",
+            "status": "observed",
+            "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "rolling-48h-window-only",
+            "text": "This is a 48h cache, not a history. The 48h TTL on block_timestamp matches the execution_live.logs source retention, so any total computed here is a window total \u2014 never compare it against the batch pipeline's lifetime figures. Historical GP activity lives in int_execution_gpay_activity."
+          },
+          {
+            "id": "overlap-append-needs-final",
+            "text": "Every live-loop run re-appends the last live_gpay_overlap_minutes to self-heal out-of-order cryo-live inserts, so the table legitimately holds duplicate grain rows between merges. Readers MUST use FINAL (as api_execution_live_gpay_activity and _minute_2h do); a new reader that omits it will double-count the overlap window."
+          },
+          {
+            "id": "wallet-set-lags-by-design",
+            "text": "Wallet membership is read from the daily-refreshed batch table dbt.int_execution_gpay_wallets via source('dbt_live_refs'), so a Safe created today can be absent until the next batch run. Missing brand-new Safes is expected lag, not a decode bug."
+          }
+        ],
+        "profiles": [
+          "incremental_models",
+          "cumulative_self_referencing"
+        ],
+        "reprocess_runbook": "Nothing to backfill \u2014 the 48h TTL means a full rebuild is just the next live-loop run. If the table is wrong, `dbt run --full-refresh -s int_live__gpay_activity_raw` re-reads the whole 48h source window; the live loop (`dbt run --select tag:live`) then resumes appending overlap windows.",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "backfill-order-cumulative",
+            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
+          },
+          {
+            "lesson": "frontier-day-incomplete-inputs",
+            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
+          }
+        ],
+        "semantics": "event_stream",
+        "validation": [
+          "make check-fast",
+          "window bound: max(block_timestamp) - min(block_timestamp) <= 48 hours",
+          "reader parity: SELECT count() FROM model FINAL equals uniqExact((block_timestamp, transaction_hash, log_index))"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 4,
+      "downstream_api_models": [
+        "api_execution_live_gpay_activity",
+        "api_execution_live_gpay_freshness",
+        "api_execution_live_gpay_minute_2h",
+        "api_execution_live_gpay_stats"
+      ],
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 4,
+      "explicit_contract": true,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": true,
+      "incremental_strategy": "append",
+      "materialized": "incremental",
+      "name": "int_live__gpay_activity_raw",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/execution/live/intermediate/int_live__gpay_activity_raw.sql",
+      "reads_this": true,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "execution",
+        "gpay",
+        "intermediate",
+        "live"
       ],
       "unique_key": null
     },
@@ -84418,7 +84827,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -84442,7 +84851,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -84487,7 +84896,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -84511,7 +84920,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -85619,7 +86028,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -85643,7 +86052,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -85743,7 +86152,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -85767,7 +86176,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -85928,7 +86337,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -85952,7 +86361,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -86219,7 +86628,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -86243,7 +86652,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 482,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -86849,14 +87258,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 4,
+      "downstream_transitive_count": 5,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -86901,14 +87311,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 4,
+      "downstream_transitive_count": 5,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -86953,14 +87364,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 4,
+      "downstream_transitive_count": 5,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -87005,14 +87417,15 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 3,
+      "downstream_api_count": 4,
       "downstream_api_models": [
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 4,
+      "downstream_transitive_count": 5,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -87478,7 +87891,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 32,
+      "downstream_api_count": 33,
       "downstream_api_models": [
         "api_execution_account_profile_latest",
         "api_execution_account_search_index",
@@ -87486,6 +87899,7 @@
         "api_execution_circles_v2_pools_latest",
         "api_execution_live_trades",
         "api_execution_live_trades_hourly_48h",
+        "api_execution_live_trades_minute_2h",
         "api_execution_live_trades_stats",
         "api_execution_mmm_spine_weekly",
         "api_execution_pools_fee_apr_7d_daily",
@@ -87498,11 +87912,10 @@
         "api_execution_pools_tvl_daily",
         "api_execution_pools_tvl_latest",
         "api_execution_pools_tvl_token_daily",
-        "api_execution_pools_volume_7d",
-        "api_execution_pools_volume_daily"
+        "api_execution_pools_volume_7d"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 55,
+      "downstream_transitive_count": 56,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -87711,7 +88124,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -87735,7 +88148,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 489,
+      "downstream_transitive_count": 490,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88064,7 +88477,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88088,7 +88501,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88142,7 +88555,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88166,7 +88579,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88220,7 +88633,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88244,7 +88657,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88298,7 +88711,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88322,7 +88735,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88460,7 +88873,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88484,7 +88897,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 13,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88695,7 +89108,7 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 279,
+      "downstream_api_count": 280,
       "downstream_api_models": [
         "api_dao_treasury_allocation_latest",
         "api_dao_treasury_holdings_by_class_ts",
@@ -88719,7 +89132,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 19,
-      "downstream_transitive_count": 494,
+      "downstream_transitive_count": 495,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -88838,7 +89251,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "f3ccede1c911797d678c063cbdd0ff81f5b204244fd70c6531b204e63cf97eda",
+  "models_hash": "6a17d2d5b79b8d63fa0dd6137b5cfdc3b512d8cced99af9646e6173347a2fa9e",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
