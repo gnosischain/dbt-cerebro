@@ -58,7 +58,7 @@ WITH opts AS (
 
 SELECT
     o.post_id,
-    o.topic_id,
+    o.topic_id AS topic_id,
     o.poll_name,
     o.poll_id,
     o.poll_type,

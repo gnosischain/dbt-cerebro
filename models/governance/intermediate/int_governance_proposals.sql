@@ -68,9 +68,9 @@ SELECT
         b.scores_state != 'final',                          'open',
         length(b.scores) = 0 OR b.scores_total = 0,         'below_quorum',
         NOT b.quorum_met,                                   'below_quorum',
-        match(lower(b.winning_choice), '^abstain'),         'no_consensus',
-        match(lower(b.winning_choice), '(\\bagainst\\b|\\bno\\b|\\bnay\\b|reject|make no change|do not|\\bdon.?t\\b|do nothing|status quo|not now|\\bnone\\b)'), 'rejected',
-        match(lower(b.winning_choice), '(\\bfor\\b|\\byes\\b|approve|adopt|enact|accept|in favou?r|\\baye\\b|agree|support|let.?s do|proceed|enable|extend|launch|activate|ratify)'), 'passed',
+        {{ classify_choice_polarity('b.winning_choice') }} = 'abstain', 'no_consensus',
+        {{ classify_choice_polarity('b.winning_choice') }} = 'against', 'rejected',
+        {{ classify_choice_polarity('b.winning_choice') }} = 'for',     'passed',
         -- Unclassified winners (incl. unlabeled binary ballots) stay 'decided'
         -- — never assume pass just because there were only two choices.
         'decided'

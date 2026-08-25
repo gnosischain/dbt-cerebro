@@ -161,9 +161,9 @@ prop AS (
         r.latest_scores_total
 ),
 universe AS (
-    SELECT gip_number FROM {{ ref('stg_governance__forum_topics') }} WHERE gip_number IS NOT NULL
+    SELECT gip_number FROM {{ ref('stg_governance__forum_topics') }} WHERE gip_number > 0
     UNION DISTINCT
-    SELECT gip_number FROM {{ ref('int_governance_proposals') }} WHERE gip_number IS NOT NULL
+    SELECT gip_number FROM {{ ref('int_governance_proposals') }} WHERE gip_number > 0
 )
 SELECT
     assumeNotNull(u.gip_number)                                             AS gip_number,
