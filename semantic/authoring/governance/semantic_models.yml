@@ -1,0 +1,1588 @@
+semantic_models:
+- name: governance_proposals_latest
+  model: ref('api_governance_proposals_latest')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_proposals_latest__unique_voters_value
+    agg: sum
+    expr: unique_voters
+  - name: governance_proposals_latest__total_vp_value
+    agg: sum
+    expr: total_vp
+  - name: governance_proposals_latest__proposal_count
+    agg: count
+    expr: id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - governance proposals
+        - gnosisdao proposals
+        - gip proposals list
+
+- name: governance_kpis_latest
+  model: ref('api_governance_kpis_latest')
+  measures:
+  - name: governance_kpis_latest__total_proposals_value
+    agg: sum
+    expr: total_proposals
+  - name: governance_kpis_latest__total_gips_value
+    agg: sum
+    expr: total_gips
+  - name: governance_kpis_latest__unique_voters_value
+    agg: sum
+    expr: unique_voters
+  - name: governance_kpis_latest__total_votes_cast_value
+    agg: sum
+    expr: total_votes_cast
+  - name: governance_kpis_latest__followers_value
+    agg: sum
+    expr: followers
+  - name: governance_kpis_latest__gip_proposals_passed_value
+    agg: sum
+    expr: gip_proposals_passed
+  - name: governance_kpis_latest__gip_pass_rate_value
+    agg: sum
+    expr: gip_pass_rate
+  - name: governance_kpis_latest__avg_voters_per_gip_proposal_value
+    agg: sum
+    expr: avg_voters_per_gip_proposal
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - governance headline kpis
+        - total gnosisdao proposals and voters
+        - governance summary numbers
+
+- name: governance_activity_monthly
+  model: ref('api_governance_activity_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: governance_activity_monthly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - governance activity over time
+        - proposals and votes per month
+        - monthly governance trend
+
+- name: governance_forum_activity_weekly
+  model: ref('api_governance_forum_activity_weekly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: week
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: governance_forum_activity_weekly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: week
+        question_synonyms:
+        - forum activity over time
+        - weekly forum posts and topics
+        - governance forum engagement trend
+
+- name: governance_power_source_monthly
+  model: ref('api_governance_power_source_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  - name: label
+    type: categorical
+    expr: label
+  measures:
+  - name: governance_power_source_monthly__value
+    agg: sum
+    expr: value
+  - name: governance_power_source_monthly__voters
+    agg: sum
+    expr: voters
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - voting power by source
+        - staked gno vs delegated voting power
+        - governance voting power breakdown
+
+- name: governance_gip_funnel
+  model: ref('api_governance_gip_funnel')
+  dimensions:
+  - name: stage
+    type: categorical
+    expr: stage
+  measures:
+  - name: governance_gip_funnel__gip_count_value
+    agg: sum
+    expr: gip_count
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - gip conversion funnel
+        - governance proposal funnel
+        - how many gips passed
+
+- name: governance_proposal_choices
+  model: ref('api_governance_proposal_choices')
+  entities:
+  - name: proposal
+    type: foreign
+    expr: proposal_id
+  dimensions:
+  - name: choice
+    type: categorical
+    expr: choice
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_proposal_choices__score_value
+    agg: sum
+    expr: score
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - vote breakdown by choice
+        - for against abstain votes
+        - per-proposal vote results
+
+- name: governance_forum_proposal_links
+  model: ref('api_governance_forum_topic_proposal_links')
+  entities:
+  - name: topic
+    type: foreign
+    expr: topic_id
+  - name: proposal
+    type: foreign
+    expr: proposal_id
+  dimensions:
+  - name: topic_gip_number
+    type: categorical
+    expr: topic_gip_number
+  - name: recovered_via_link
+    type: categorical
+    expr: recovered_via_link
+  - name: via_forum_post
+    type: categorical
+    expr: via_forum_post
+  - name: via_discussion
+    type: categorical
+    expr: via_discussion
+  - name: corroborated_by_discussion
+    type: categorical
+    expr: corroborated_by_discussion
+  measures:
+  - name: governance_forum_proposal_links__linking_posts_value
+    agg: sum
+    expr: linking_posts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        question_synonyms:
+        - forum discussion linked to snapshot vote
+        - which forum topics link to which proposals
+
+- name: governance_whale_concentration
+  model: ref('api_governance_whale_concentration')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_whale_concentration__top1_share_value
+    agg: average
+    expr: top1_share
+  - name: governance_whale_concentration__top10_share_value
+    agg: average
+    expr: top10_share
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - whale concentration
+        - voting power concentration
+        - top voter share per proposal
+
+- name: governance_turnout_latest
+  model: ref('api_governance_turnout_latest')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  - name: includes_staked_gno
+    type: categorical
+    expr: includes_staked_gno
+  measures:
+  - name: governance_turnout_latest__turnout_value
+    agg: average
+    expr: turnout
+  - name: governance_turnout_latest__eligible_supply_value
+    agg: average
+    expr: eligible_supply
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - governance turnout
+        - voter turnout per proposal
+        - what share of gno voted
+
+- name: governance_turnout_monthly
+  model: ref('api_governance_turnout_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  measures:
+  - name: governance_turnout_monthly__avg_turnout_value
+    agg: average
+    expr: avg_turnout
+  - name: governance_turnout_monthly__proposals
+    agg: sum
+    expr: proposals
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - governance turnout trend
+        - turnout over time
+        - monthly voter turnout
+
+- name: governance_delegates_latest
+  model: ref('api_governance_delegates_latest')
+  defaults:
+    agg_time_dimension: last_delegation_at
+  entities:
+  - name: delegate
+    type: primary
+    expr: delegate
+  dimensions:
+  - name: last_delegation_at
+    type: time
+    expr: last_delegation_at
+    type_params:
+      time_granularity: day
+  measures:
+  - name: governance_delegates_latest__delegator_count_value
+    agg: sum
+    expr: delegator_count
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - top governance delegates
+        - who has the most delegators
+        - delegate leaderboard
+
+- name: governance_delegation_graph
+  model: ref('api_governance_delegation_graph')
+  defaults:
+    agg_time_dimension: delegated_at
+  entities:
+  - name: delegator
+    type: primary
+    expr: delegator
+  - name: delegate
+    type: foreign
+    expr: delegate
+  dimensions:
+  - name: delegated_at
+    type: time
+    expr: delegated_at
+    type_params:
+      time_granularity: day
+  measures:
+  - name: governance_delegation_graph__delegation_count
+    agg: count
+    expr: delegator
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - who delegates to whom
+        - delegation graph
+        - current governance delegations
+
+- name: governance_top_voters
+  model: ref('api_governance_top_voters')
+  entities:
+  - name: voter
+    type: primary
+    expr: voter
+  measures:
+  - name: governance_top_voters__proposals_voted_value
+    agg: sum
+    expr: proposals_voted
+  - name: governance_top_voters__total_vp_cast_value
+    agg: sum
+    expr: total_vp_cast
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        role: dimension
+        question_synonyms:
+        - top governance voters
+        - most active voters
+        - voter leaderboard
+
+- name: governance_top_proposers
+  model: ref('api_governance_top_proposers')
+  entities:
+  - name: author
+    type: primary
+    expr: author
+  measures:
+  - name: governance_top_proposers__proposals_authored_value
+    agg: sum
+    expr: proposals_authored
+  - name: governance_top_proposers__enacted_value
+    agg: sum
+    expr: enacted
+  - name: governance_top_proposers__enactment_rate_value
+    agg: average
+    expr: enactment_rate
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        role: dimension
+        question_synonyms:
+        - top gip proposers
+        - most active governance proposal authors
+        - proposer leaderboard
+
+- name: governance_proposal_direction
+  model: ref('api_governance_proposal_direction')
+  defaults:
+    agg_time_dimension: created_at
+  entities:
+  - name: proposal
+    type: primary
+    expr: proposal_id
+  dimensions:
+  - name: created_at
+    type: time
+    expr: created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  - name: ballot_type
+    type: categorical
+    expr: ballot_type
+  - name: directional
+    type: categorical
+    expr: directional
+  measures:
+  - name: governance_proposal_direction__against_share_by_head_value
+    agg: average
+    expr: against_share_by_head
+  - name: governance_proposal_direction__against_share_by_vp_value
+    agg: average
+    expr: against_share_by_vp
+  - name: governance_proposal_direction__head_minus_weight_value
+    agg: average
+    expr: head_minus_weight_against
+  - name: governance_proposal_direction__margin_by_vp_value
+    agg: average
+    expr: margin_by_vp
+  - name: governance_proposal_direction__abstain_share_by_head_value
+    agg: average
+    expr: abstain_share_by_head
+  - name: governance_proposal_direction__voters_value
+    agg: sum
+    expr: voters
+  - name: governance_proposal_direction__proposal_count
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - how divided was the vote
+        - voting direction by proposal
+        - whales versus small holders
+        - contested governance proposals
+
+- name: governance_electorate_monthly
+  model: ref('api_governance_electorate_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  measures:
+  - name: governance_electorate_monthly__median_voters_value
+    agg: average
+    expr: median_voters_per_proposal
+  - name: governance_electorate_monthly__median_vp_value
+    agg: average
+    expr: median_vp_per_proposal
+  - name: governance_electorate_monthly__gip_proposals
+    agg: sum
+    expr: gip_proposals
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: month
+        question_synonyms:
+        - how many people vote in governance
+        - is governance participation declining
+        - electorate size over time
+        - voters versus voting power
+
+- name: governance_discussion_phases
+  model: ref('api_governance_discussion_phases')
+  defaults:
+    agg_time_dimension: proposal_created_at
+  dimensions:
+  - name: proposal_created_at
+    type: time
+    expr: proposal_created_at
+    type_params:
+      time_granularity: day
+  - name: phase
+    type: categorical
+    expr: phase
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: category
+    type: categorical
+    expr: category
+  - name: outcome
+    type: categorical
+    expr: outcome
+  measures:
+  - name: governance_discussion_phases__posts
+    agg: sum
+    expr: posts
+  - name: governance_discussion_phases__participants
+    agg: sum
+    expr: participants
+  - name: governance_discussion_phases__likes_given_value
+    agg: sum
+    expr: likes_given_in_phase
+  - name: governance_discussion_phases__question_posts
+    agg: sum
+    expr: question_posts
+  - name: governance_discussion_phases__question_share_value
+    agg: average
+    expr: question_share
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - when does governance discussion happen
+        - discussion before or after the vote
+        - forum activity by proposal phase
+        - was there debate during voting
+
+# --- Intermediates -----------------------------------------------------------
+# Registered at `candidate` tier for coverage and docs, not for public metric
+# routing: the api_ endpoints above are the supported read path. Dimensions and
+# measures reference only columns DECLARED in models/governance/**/schema.yml,
+# since the registry validator resolves exprs against declared columns.
+# Two names keep their int_ prefix because the stripped name is already taken by
+# the api_ endpoint block above.
+
+- name: governance_proposals
+  model: ref('int_governance_proposals')
+  dimensions:
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: winning_choice
+    type: categorical
+    expr: winning_choice
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_proposals__unique_voters
+    agg: sum
+    expr: unique_voters
+  - name: governance_proposals__proposal_count
+    agg: count
+    expr: id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - governance proposals enriched
+        - snapshot proposals with outcome
+
+- name: governance_gip
+  model: ref('int_governance_gip')
+  dimensions:
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: discussed_on_forum
+    type: categorical
+    expr: discussed_on_forum
+  - name: reached_vote
+    type: categorical
+    expr: reached_vote
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: latest_outcome
+    type: categorical
+    expr: latest_outcome
+  measures:
+  - name: governance_gip__proposal_count
+    agg: sum
+    expr: proposal_count
+  - name: governance_gip__gip_count
+    agg: count
+    expr: gip_number
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - gip spine
+        - one row per gip number
+
+- name: int_governance_forum_proposal_links
+  model: ref('int_governance_forum_proposal_links')
+  dimensions:
+  - name: snapshot_proposal_id
+    type: categorical
+    expr: snapshot_proposal_id
+  - name: proposal_matched
+    type: categorical
+    expr: proposal_matched
+  measures:
+  - name: int_governance_forum_proposal_links__post_count
+    agg: count
+    expr: post_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum posts pasting a proposal url
+        - post level proposal links
+
+- name: governance_forum_topic_proposal_links
+  model: ref('int_governance_forum_topic_proposal_links')
+  dimensions:
+  - name: snapshot_proposal_id
+    type: categorical
+    expr: snapshot_proposal_id
+  measures:
+  - name: governance_forum_topic_proposal_links__linking_posts
+    agg: sum
+    expr: linking_posts
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - topic level proposal links
+        - forum topic to snapshot proposal rollup
+
+- name: int_governance_forum_activity_weekly
+  model: ref('int_governance_forum_activity_weekly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: week
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: int_governance_forum_activity_weekly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: week
+        question_synonyms:
+        - weekly forum activity source
+        - forum topics posts and active users per week
+
+- name: governance_turnout
+  model: ref('int_governance_turnout')
+  dimensions:
+  - name: includes_staked_gno
+    type: categorical
+    expr: includes_staked_gno
+  measures:
+  - name: governance_turnout__turnout
+    agg: average
+    expr: turnout
+  - name: governance_turnout__eligible_supply
+    agg: average
+    expr: eligible_supply
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - per gip turnout source
+        - eligible gno supply per proposal
+
+- name: governance_current_delegations
+  model: ref('int_governance_current_delegations')
+  defaults:
+    agg_time_dimension: delegated_at
+  dimensions:
+  - name: delegated_at
+    type: time
+    expr: delegated_at
+    type_params:
+      time_granularity: day
+  - name: delegate
+    type: categorical
+    expr: delegate
+  measures:
+  - name: governance_current_delegations__delegation_count
+    agg: count
+    expr: delegator
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - current delegation state
+        - active delegator to delegate rows
+
+- name: governance_vote_power_source
+  model: ref('int_governance_vote_power_source')
+  dimensions:
+  - name: power_source
+    type: categorical
+    expr: power_source
+  measures:
+  - name: governance_vote_power_source__strategy_vp
+    agg: sum
+    expr: strategy_vp
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - voting power split by strategy
+        - staked gno versus holdings versus delegated
+
+- name: governance_vote_choices
+  model: ref('int_governance_vote_choices')
+  dimensions:
+  - name: ballot_type
+    type: categorical
+    expr: ballot_type
+  - name: choice_kind
+    type: categorical
+    expr: choice_kind
+  - name: polarity
+    type: categorical
+    expr: polarity
+  - name: choice_label
+    type: categorical
+    expr: choice_label
+  - name: choice_index_valid
+    type: categorical
+    expr: choice_index_valid
+  measures:
+  - name: governance_vote_choices__vp_effective
+    agg: sum
+    expr: vp_effective
+  - name: governance_vote_choices__vote_count
+    agg: count
+    expr: voter
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - per voter choice and direction
+        - for against abstain per voter
+
+- name: governance_proposal_topic_links
+  model: ref('int_governance_proposal_topic_links')
+  dimensions:
+  - name: corroborated
+    type: categorical
+    expr: corroborated
+  # link_methods is Array(String); an array is not a categorical dimension, so the
+  # per-signal breakdown belongs in SQL (arrayJoin) rather than the picker.
+  measures:
+  - name: governance_proposal_topic_links__link_count
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum topic to proposal bridge
+        - which topic discusses which proposal
+
+- name: governance_forum_post_phases
+  model: ref('int_governance_forum_post_phases')
+  dimensions:
+  - name: phase
+    type: categorical
+    expr: phase
+  - name: has_question
+    type: categorical
+    expr: has_question
+  - name: is_short_procedural
+    type: categorical
+    expr: is_short_procedural
+  measures:
+  - name: governance_forum_post_phases__post_count
+    agg: count
+    expr: post_id
+  - name: governance_forum_post_phases__hours_from_vote_open
+    agg: average
+    expr: hours_from_vote_open
+  # post_like_count_current is a current-state scalar frozen at the topic's last
+  # bump, so a sum of it is an approximation that attributes today's like to the
+  # phase the POST was written in. api_governance_discussion_phases exposes that
+  # approximation explicitly alongside the exact like-timestamped figure; it is not
+  # promoted to a measure here so it cannot be picked up as if it were exact.
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - forum posts by proposal lifecycle phase
+        - was there debate during voting
+
+- name: governance_engagement_counters_daily
+  model: ref('int_governance_engagement_counters_daily')
+  defaults:
+    agg_time_dimension: snapshot_date
+  dimensions:
+  - name: snapshot_date
+    type: time
+    expr: snapshot_date
+    type_params:
+      time_granularity: day
+  - name: entity_kind
+    type: categorical
+    expr: entity_kind
+  - name: entity_id
+    type: categorical
+    expr: entity_id
+  - name: metric
+    type: categorical
+    expr: metric
+  - name: observed_at
+    type: time
+    expr: observed_at
+    type_params:
+      time_granularity: day
+  # Deliberately measure-less. `value` is a counter SNAPSHOT re-emitted every day,
+  # so summing it across snapshot_dates multiplies one topic's view count by the
+  # number of days observed, and summing across `metric` adds topic views to post
+  # reads. The meaningful reads are a per-entity delta between two snapshot_dates
+  # (valid only where observed_at also moved) and a latest-value lookup — both of
+  # which are SQL, not a picker aggregate.
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - forum topic views over time
+        - post reads snapshots
+
+- name: governance_poll_sentiment
+  model: ref('int_governance_poll_sentiment')
+  defaults:
+    agg_time_dimension: poll_posted_at
+  dimensions:
+  - name: poll_posted_at
+    type: time
+    expr: poll_posted_at
+    type_params:
+      time_granularity: day
+  - name: is_temperature_check
+    type: categorical
+    expr: is_temperature_check
+  - name: has_withheld_counts
+    type: categorical
+    expr: has_withheld_counts
+  measures:
+  - name: governance_poll_sentiment__poll_against_share_value
+    agg: average
+    expr: poll_against_share
+  - name: governance_poll_sentiment__poll_count
+    agg: count
+    expr: post_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: day
+        question_synonyms:
+        - forum temperature check
+        - poll against share
+        - one person one vote sentiment
+
+- name: governance_poll_vs_vote
+  model: ref('api_governance_poll_vs_vote')
+  defaults:
+    agg_time_dimension: proposal_created_at
+  dimensions:
+  - name: proposal_created_at
+    type: time
+    expr: proposal_created_at
+    type_params:
+      time_granularity: day
+  - name: gip_number
+    type: categorical
+    expr: gip_number
+  - name: is_gip
+    type: categorical
+    expr: is_gip
+  - name: poll_phase
+    type: categorical
+    expr: poll_phase
+  - name: is_pre_vote_check
+    type: categorical
+    expr: is_pre_vote_check
+  - name: outcome
+    type: categorical
+    expr: outcome
+  - name: category
+    type: categorical
+    expr: category
+  measures:
+  - name: governance_poll_vs_vote__poll_against_share_value
+    agg: average
+    expr: poll_against_share
+  - name: governance_poll_vs_vote__gap_value
+    agg: average
+    expr: poll_minus_vote_vp
+  - name: governance_poll_vs_vote__disagreements
+    agg: sum
+    expr: verdicts_disagree
+  - name: governance_poll_vs_vote__pairs
+    agg: count
+    expr: proposal_id
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: approved
+        grain: day
+        question_synonyms:
+        - did the forum agree with the token vote
+        - community versus token holders
+        - temperature check versus snapshot result
+        - proposals the community voted down but passed
+
+# NOT registered here, deliberately: api_governance_vote_trajectory.
+# It is a per-proposal drill-down (one row per proposal x hour-since-open), and its
+# cumulative-share columns are only meaningful for a SINGLE proposal. Any aggregate the
+# semantic layer would compute across proposals and hour buckets -- an average
+# cumulative against-share -- is a number with no interpretation. Registering it would
+# put a misleading aggregate in the Metric Lab picker. Consume it via SQL or a dedicated
+# per-proposal chart instead.
+
+metrics:
+- name: governance_proposal_count
+  label: Governance Proposals
+  description: Count of Snapshot governance proposals for GnosisDAO (gnosis.eth), including non-GIP announcement votes. Filter by is_gip or category for a narrower view.
+  type: simple
+  type_params:
+    measure: governance_proposals_latest__proposal_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - number of governance proposals
+        - how many gips
+        - gnosisdao proposal count
+
+- name: governance_unique_voters_per_proposal
+  label: Governance Unique Voters (per proposal)
+  description: Sum of unique voters across governance proposals. Group by gip_number/category/outcome for per-proposal or per-category breakdowns; this is a per-proposal count, not a distinct-across-all-history voter count (use governance_total_unique_voters for that).
+  type: simple
+  type_params:
+    measure: governance_proposals_latest__unique_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - voters per governance proposal
+        - proposal turnout
+
+- name: governance_total_proposals
+  label: Total Proposals (headline)
+  description: Headline total count of all Snapshot proposals for GnosisDAO, from the single-row KPI snapshot. Point-in-time total as of today.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__total_proposals_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total governance proposals
+        - how many proposals has gnosisdao had
+
+- name: governance_total_unique_voters
+  label: Total Unique Voters (headline)
+  description: Headline count of distinct addresses that have ever voted on a GnosisDAO Snapshot proposal. Point-in-time total as of today.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__unique_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total unique governance voters
+        - how many addresses have voted
+
+- name: governance_gip_pass_rate
+  label: GIP Pass Rate
+  description: Share of finalized (non-open) GIP proposals that passed -- passed / (passed + rejected + no_consensus + below_quorum). Excludes non-GIP announcement proposals and selection-ballot ('decided') outcomes.
+  type: simple
+  type_params:
+    measure: governance_kpis_latest__gip_pass_rate_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - gip pass rate
+        - governance proposal success rate
+        - how many gips pass
+
+- name: governance_activity_monthly
+  label: Governance Activity (monthly)
+  description: Monthly time series of governance activity. Group/filter by the `metric` dimension to select proposals_created, votes_cast, or unique_voters.
+  type: simple
+  type_params:
+    measure: governance_activity_monthly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - metric
+        - date
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - governance activity trend
+        - proposals and votes over time
+
+- name: governance_forum_activity_weekly
+  label: Forum Activity (weekly)
+  description: Weekly time series of Gnosis forum activity. Group/filter by the `metric` dimension to select topics_created, posts_created, or active_users.
+  type: simple
+  type_params:
+    measure: governance_forum_activity_weekly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: week
+        allowed_dimensions:
+        - metric
+        - date
+        supported_time_grains:
+        - week
+        - month
+        - quarter
+        question_synonyms:
+        - forum activity trend
+        - community engagement over time
+
+- name: governance_power_source_monthly
+  label: Voting Power by Source (monthly)
+  description: Monthly voting power cast on GnosisDAO Snapshot proposals, broken down by source (Staked GNO via the Gnosis Beacon Chain, direct GNO holdings, or delegated voting power). Group/filter by the `label` dimension.
+  type: simple
+  type_params:
+    measure: governance_power_source_monthly__value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        allowed_dimensions:
+        - label
+        - date
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - voting power by source
+        - staked gno vs delegated voting power
+        - gnosisdao voting power breakdown
+
+- name: governance_gip_funnel
+  label: GIP Conversion Funnel
+  description: Count of GIPs reaching each stage of the governance lifecycle -- discussed on the forum, reached a Snapshot vote, passed or enacted. A monotonic funnel (each stage <= the prior one).
+  type: simple
+  type_params:
+    measure: governance_gip_funnel__gip_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        allowed_dimensions:
+        - stage
+        question_synonyms:
+        - gip funnel
+        - governance conversion funnel
+        - how many gips get discussed vs voted vs passed
+
+- name: governance_proposal_choice_votes
+  label: Votes by Choice
+  description: Voting power received per ballot choice (e.g. For/Against/Abstain, or ranked-choice options) across GnosisDAO Snapshot proposals. Group by choice, gip_number, or outcome.
+  type: simple
+  type_params:
+    measure: governance_proposal_choices__score_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - votes by choice
+        - for against abstain breakdown
+        - per-choice voting power
+
+- name: governance_forum_proposal_linking_posts
+  label: Forum Posts Linking to a Snapshot Vote
+  description: Count of forum posts that paste a Snapshot proposal URL, by topic. Use recovered_via_link to find discussions with no GIP number in the title that still link to a real vote.
+  type: simple
+  type_params:
+    measure: governance_forum_proposal_links__linking_posts_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - forum posts linking to snapshot votes
+        - discussions recovered via proposal link
+
+- name: governance_whale_top1_share
+  label: Whale Concentration (top 1 voter)
+  description: Average, across proposals, of the share of total voting power cast by the single largest voter. High values indicate whale-decided votes even on proposals with many voters.
+  type: simple
+  type_params:
+    measure: governance_whale_concentration__top1_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - whale concentration
+        - top voter share
+        - largest voter voting power share
+
+- name: governance_whale_top10_share
+  label: Whale Concentration (top 10 voters)
+  description: Average, across proposals, of the share of total voting power cast by the top 10 voters by vp.
+  type: simple
+  type_params:
+    measure: governance_whale_concentration__top10_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - top 10 voter concentration
+        - voting power concentration
+
+- name: governance_turnout
+  label: Governance Turnout (per proposal)
+  description: Per-GIP voting-power turnout (is_gip=1 only -- excludes spam/announcement Snapshot activity, which is ~47% of all proposals but averages near-0% turnout and would otherwise dilute the signal) -- total_vp cast / eligible GNO supply (circulating on both chains, plus staked GNO when the proposal's own strategies include it as an eligible pool). Group by gip_number/category/outcome. Pre-2022 ('gno'-strategy era) figures are directional -- only the current getGnoVotingPower contract was independently audited to confirm it's a simple balance passthrough.
+  type: simple
+  type_params:
+    measure: governance_turnout_latest__turnout_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - governance turnout
+        - voter turnout percentage
+        - what share of gno supply voted
+
+- name: governance_turnout_monthly
+  label: Governance Turnout (monthly trend)
+  description: Monthly average of per-GIP turnout ratios (is_gip=1 only, not population-weighted by eligible supply) -- a directional trend of how GnosisDAO voter turnout has moved over time. Months with no real GIP have no row.
+  type: simple
+  type_params:
+    measure: governance_turnout_monthly__avg_turnout_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        grain: month
+        supported_time_grains:
+        - month
+        - quarter
+        - year
+        question_synonyms:
+        - turnout trend over time
+        - monthly governance turnout
+
+- name: governance_delegate_delegator_count
+  label: Delegators per Delegate
+  description: Count of gnosis.eth holders currently delegating their voting power to each delegate address (DelegateRegistry on Ethereum mainnet, not Gnosis Chain). Group by delegate for a leaderboard. Separate from vote-level power-source classification -- this is the underlying who-delegates-to-whom relationship.
+  type: simple
+  type_params:
+    measure: governance_delegates_latest__delegator_count_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - most delegators
+        - delegate leaderboard
+        - who do people delegate to
+
+- name: governance_delegation_count
+  label: Active Delegations
+  description: Count of currently-active delegator -> delegate relationships for gnosis.eth (DelegateRegistry on Ethereum mainnet). A delegator appears at most once, reflecting only their latest on-chain action.
+  type: simple
+  type_params:
+    measure: governance_delegation_graph__delegation_count
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - total active delegations
+        - how many people delegate their votes
+
+- name: governance_head_vs_weight_divergence
+  label: Head-vs-Weight Divergence (per proposal)
+  description: >
+    Against-share by voter COUNT minus against-share by voting POWER, for one proposal.
+    Positive means small holders were more opposed than capital; negative means capital
+    was more opposed than the crowd. The sharpest read on whether a decision had broad
+    consent or merely sufficient weight. READ IT PER PROPOSAL -- group by gip_number.
+    Averaging it across proposals is not a defined population statistic (each proposal
+    has a different electorate), which is why this is candidate rather than approved.
+    Filter voters >= 30 and is_gip = 1; a divergence over a handful of voters is noise
+    and 119 of 253 proposals are non-GIP spam. Only meaningful where directional = true
+    (basic and single-choice ballots, 96.8% of proposals) -- ranked-choice is NULL.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__head_minus_weight_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - whales versus community
+        - did small holders disagree with large holders
+        - head versus weight divergence
+
+- name: governance_against_share_by_vp
+  label: Against Share (by voting power)
+  description: >
+    Share of DECISIVE voting power (for + against, excluding abstain) cast against, per
+    proposal. Excluding abstain is deliberate -- an abstain-heavy ballot must not read as
+    consensus. Group by gip_number for per-proposal values; filter is_gip = 1 for aggregates.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__against_share_by_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - opposition share
+        - how much voting power voted against
+        - dissent by voting power
+
+- name: governance_against_share_by_head
+  label: Against Share (by voter count)
+  description: >
+    Share of DECISIVE voters (for + against, excluding abstain) who voted against, per
+    proposal. Pair with governance_against_share_by_vp -- the gap between the two is the
+    interesting quantity. One address is one voter here; this is not sybil-resistant.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__against_share_by_head_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how many voters voted against
+        - dissent by headcount
+
+- name: governance_vote_margin
+  label: Vote Margin (by voting power)
+  description: >
+    abs(for - against) / decisive voting power. 0 is a dead heat, 1 is unanimous. Low
+    values flag genuinely close decisions. Group by gip_number; filter is_gip = 1.
+  type: simple
+  type_params:
+    measure: governance_proposal_direction__margin_by_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how close was the vote
+        - narrow governance decisions
+        - vote margin
+
+- name: governance_median_voters_per_proposal
+  label: Median Voters per GIP (monthly)
+  description: >
+    Median number of distinct addresses voting on a GIP, by month. Median rather than
+    mean because per-proposal participation is heavily skewed by airdrop-era ballots (max
+    1,196 voters). ALWAYS read alongside governance_median_vp_per_proposal: headcount fell
+    from 581/GIP in 2022 to 68 in 2026 while voting power per GIP ROSE, so the headcount
+    series alone reads as collapse when it is really an airdrop bubble deflating back to
+    the 2020-21 baseline. Months with no GIP are absent, not zero.
+  type: simple
+  type_params:
+    measure: governance_electorate_monthly__median_voters_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - how many people vote per proposal
+        - is governance participation declining
+        - voters per gip over time
+
+- name: governance_discussion_posts_by_phase
+  label: Forum Posts by Proposal Phase
+  description: >
+    Forum posts grouped by where they fall in a proposal's lifecycle -- before the
+    proposal existed, after it existed but before voting opened, during the vote, or
+    after it closed. Group by phase; filter is_gip = 1 for aggregates.
+    CAUTION: pre_discussion and post_close are UNBOUNDED windows while voting is
+    typically 7 days, so comparing raw counts across phases is not like-for-like --
+    compare per-proposal or per-day. Coverage is 137 of 253 proposals (54%),
+    effectively all GIPs; posts in topics with no linked proposal are absent entirely.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__posts
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - discussion before or after the vote
+        - when do people post about proposals
+        - was there debate during voting
+
+- name: governance_likes_in_phase
+  label: Likes Given by Proposal Phase
+  description: >
+    Likes counted by the LIKE's own timestamp, grouped by proposal phase -- the real
+    "endorsement during the vote" figure. Depends on the per-like edge table
+    (forum_likes); it is NOT derivable from forum_posts.like_count, which is a scalar
+    frozen at the topic's last bump with no timestamp. Likes are the only signal
+    available from people who never voted and never posted. Captures ~74% of the
+    forum's likes_given total -- see stg_governance__forum_likes for why.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__likes_given_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - likes during voting
+        - endorsement by phase
+        - what did lurkers react to
+
+- name: governance_question_share
+  label: Question Share of Posts (per proposal phase)
+  description: >
+    Share of posts asking something rather than asserting, measured on text with
+    [quote] blocks stripped -- a friction proxy that needs no sentiment model.
+    READ IT PER (proposal, phase). Averaging a share across proposals is not
+    population-weighted (each has a different post count), which is why this is
+    candidate rather than approved; weight by posts if you need a real aggregate.
+  type: simple
+  type_params:
+    measure: governance_discussion_phases__question_share_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - how many questions were asked
+        - discussion friction
+        - question density
+
+- name: governance_poll_vs_vote_gap
+  label: Forum Poll vs Token Vote (gap)
+  description: >
+    Forum temperature-check against-share MINUS the Snapshot against-share by voting
+    power, per (poll, proposal). POSITIVE means the community was more opposed than the
+    capital that actually decided it; NEGATIVE means capital was more opposed than the
+    community. Unlike governance_head_vs_weight_divergence -- which weights the SAME
+    ballot two ways -- this compares two genuinely different populations answering the
+    same question, so it is the only measure of community-versus-tokenholder disagreement.
+    ALWAYS filter is_pre_vote_check: 10 polls ran after the ballot closed and are
+    retrospectives, not temperature checks. Read per proposal; poll totals are small
+    (roughly 10-65 votes) so this is directional, not precise -- hence candidate.
+  type: simple
+  type_params:
+    measure: governance_poll_vs_vote__gap_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: candidate
+        owner: analytics_team
+        question_synonyms:
+        - community versus token holders
+        - did the forum agree with the vote
+        - temperature check versus snapshot result
+
+- name: governance_verdict_disagreements
+  label: Proposals Where Forum and Token Vote Disagreed
+  description: >
+    Count of (poll, proposal) pairs where the forum temperature check and the
+    token-weighted Snapshot vote landed on OPPOSITE sides of 50%. The headline cases:
+    GIP-120 (forum 58% against, Snapshot 0.05% against by voting power) and GIP-128
+    (37% versus 0.01%) were voted down by the community and passed nearly unopposed by
+    token holders; GIP-119 ran the other way. Filter is_pre_vote_check. Grain is
+    (poll, proposal) and is many-to-many, so a re-balloted GIP can contribute more than
+    one pair -- this counts pairs, not proposals.
+  type: simple
+  type_params:
+    measure: governance_poll_vs_vote__disagreements
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - proposals the community voted down but passed
+        - where did forum and token vote disagree
+        - community overruled by token holders
+
+- name: governance_median_vp_per_proposal
+  label: Median Voting Power per GIP (monthly)
+  description: >
+    Median voting power cast on a GIP, by month. The capital-side counterpart to
+    governance_median_voters_per_proposal -- plot both on one chart, the divergence
+    between the lines is the finding. Denominated in GNO-equivalent voting power, not USD.
+  type: simple
+  type_params:
+    measure: governance_electorate_monthly__median_vp_value
+  config:
+    meta:
+      cerebro:
+        quality_tier: approved
+        owner: analytics_team
+        question_synonyms:
+        - voting power per proposal
+        - how much capital votes
+        - is capital still participating

@@ -65,6 +65,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   server "(total)" cap = you're the victim of saturation, not a fat query.
 - [ch-partition-cap](ch-partition-cap.md) `remediated` — >100 partitions/INSERT fails
   (252), Cloud blocks raising it (452); never year-partition an insert_overwrite model.
+- [ch-qualified-column-leak](ch-qualified-column-leak.md) `remediated` — an unaliased
+  ambiguous column ships as `a.total_vp`; build is green, consumers get Code 47. Sweep
+  system.columns for `%.%`; no gate possible (catalog has no model nodes).
 - [ch-alias-shadows-where](ch-alias-shadows-where.md) `remediated` — output aliases
   shadow source columns in same-level WHERE; isolate/relabel in another scope.
 - [ch-left-join-nulls](ch-left-join-nulls.md) `remediated` — LEFT JOIN misses return
