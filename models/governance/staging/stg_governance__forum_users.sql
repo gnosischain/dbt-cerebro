@@ -8,7 +8,6 @@
 SELECT
     id,
     username,
-    name,
     trust_level,
     likes_received,
     likes_given,

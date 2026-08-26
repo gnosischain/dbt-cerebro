@@ -1057,6 +1057,128 @@ semantic_models:
 # put a misleading aggregate in the Metric Lab picker. Consume it via SQL or a dedicated
 # per-proposal chart instead.
 
+
+- name: governance_delegation_activity_monthly
+  model: ref('api_governance_delegation_activity_monthly')
+  defaults:
+    agg_time_dimension: date
+  dimensions:
+  - name: date
+    type: time
+    expr: date
+    type_params:
+      time_granularity: month
+  - name: metric
+    type: categorical
+    expr: metric
+  measures:
+  - name: governance_delegation_activity_monthly__value
+    agg: sum
+    expr: value
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        grain: month
+        question_synonyms:
+        - delegation activity over time
+        - delegations set and cleared per month
+        - delegation churn monthly
+        - active delegators trend
+
+# Concentration shares only mean anything at their own (population, tier) row --
+# summing or averaging shares across rows is uninterpretable, so this model is
+# registered measure-less (same rationale as governance_engagement_counters_daily).
+- name: governance_concentration_latest
+  model: ref('api_governance_concentration_latest')
+  dimensions:
+  - name: population
+    type: categorical
+    expr: population
+  - name: tier
+    type: categorical
+    expr: tier
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - voting power concentration
+        - whale share of voting power
+        - delegation concentration
+        - top voters share
+
+# Ranking table keyed by a pseudonym; row-level browse, no meaningful picker
+# aggregate -- registered measure-less.
+- name: governance_contributors_latest
+  model: ref('api_governance_contributors_latest')
+  entities:
+  - name: contributor
+    type: primary
+    expr: contributor_key
+  dimensions:
+  - name: trust_level
+    type: categorical
+    expr: trust_level
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - top forum contributors
+        - most active forum posters
+        - forum contributor leaderboard
+
+# now()-anchored open-ballot view; rows exist only while a ballot is open, so
+# any aggregate over it is a point-in-time observation -- measure-less.
+- name: governance_proposals_live
+  model: ref('api_governance_proposals_live')
+  entities:
+  - name: proposal
+    type: primary
+    expr: id
+  dimensions:
+  - name: quorum_status
+    type: categorical
+    expr: quorum_status
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - open governance votes
+        - active proposals right now
+        - ballots closing soon
+
+# now()-anchored pending-pipeline view -- measure-less for the same reason.
+- name: governance_gip_pipeline_latest
+  model: ref('api_governance_gip_pipeline_latest')
+  entities:
+  - name: topic
+    type: primary
+    expr: topic_id
+  dimensions:
+  - name: phase
+    type: categorical
+    expr: phase
+  - name: is_dormant
+    type: categorical
+    expr: is_dormant
+  config:
+    meta:
+      cerebro:
+        owner: analytics_team
+        quality_tier: candidate
+        question_synonyms:
+        - pending GIPs
+        - GIP pipeline
+        - forum proposals not yet voted
+        - dormant governance ideas
+
 metrics:
 - name: governance_proposal_count
   label: Governance Proposals

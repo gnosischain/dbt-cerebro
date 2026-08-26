@@ -20,7 +20,7 @@
   those to 'for' just because two options existed.
 
   Equivalence verified 2026-07-28 against the pre-macro logic across all 253 proposals
-  in playground_max: passed/for 119, below_quorum/for 78, rejected/against 22,
+  in the validation build: passed/for 119, below_quorum/for 78, rejected/against 22,
   open/for 12, below_quorum/against 11, no_consensus/abstain 6, below_quorum/abstain 3,
   decided/other 2 -- no contradictory (outcome, polarity) pair exists.
 #}

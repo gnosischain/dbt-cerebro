@@ -64,6 +64,11 @@ SELECT
     b.winning_choice,
     b.quorum_met,
     multiIf(
+        b.quorum <= 0,                  'unspecified',
+        b.scores_total >= b.quorum,     'met',
+        'missed'
+    ) AS quorum_status,
+    multiIf(
         b.state != 'closed',                                'open',
         b.scores_state != 'final',                          'open',
         length(b.scores) = 0 OR b.scores_total = 0,         'below_quorum',
