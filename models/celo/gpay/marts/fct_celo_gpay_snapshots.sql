@@ -131,10 +131,54 @@ SELECT
 FROM joined
 
 UNION ALL
--- TotalBalance: All (net-flow USDC+USDT float, latest day)
+-- TotalBalance: All (spendable stablecoin float, mark-to-market, latest day)
+--
+-- Partitioned on token_class, NOT on a hardcoded symbol list. The previous
+-- `symbol IN ('USDC','USDT')` dropped nothing (those are the only tokens with flow)
+-- but would have silently excluded any newly-transacting whitelisted token from the
+-- headline with no error. Driving it off celo_tokens_whitelist.token_class means a
+-- token added to the seed lands in the right bucket automatically.
+--
+-- STABLECOIN only, because this tile means SPENDABLE float. An RWA reward token is
+-- not spendable at the bridge — int_celo_gpay_activity classifies a non-stablecoin
+-- transfer to the settlement contract as 'Other', never 'Payment' — so blending gold
+-- cashback into this number would overstate purchasing power. RWA is reported
+-- alongside as RewardBalance rather than dropped, so it can never go invisible.
+--
+-- if(count() = 0, 0, ...) distinguishes "no position" (a true zero) from "position
+-- held but unpriced" (sum returns NULL, which stays NULL). A NULL tile is a visible
+-- failure; a $0 tile is a plausible-looking lie.
 SELECT 'TotalBalance', 'All',
-    round(toFloat64(sum(balance_usd)), 2),
+    if(count() = 0, 0, round(toFloat64(sum(balance_usd)), 2)),
     toNullable(NULL)
 FROM {{ ref('fct_celo_gpay_balances_by_token_daily') }}
 WHERE date = (SELECT max(date) FROM {{ ref('fct_celo_gpay_balances_by_token_daily') }})
-  AND symbol IN ('USDC', 'USDT')
+  AND token_class = 'STABLECOIN'
+
+UNION ALL
+-- FundedCards: All (cards that have ever RECEIVED money)
+--
+-- Distinct from PaymentUsers, which counts cards that have ever SPENT. The two were
+-- conflated until 2026-08-05: api_celo_gpay_total_funded served PaymentUsers, so the
+-- "funded" tile read 662 when 1087 cards had actually been funded. Inbound actions
+-- only — Cashback is currently compiled out of int_celo_gpay_activity and Reversal has
+-- never fired, so this is Top-up in practice, but naming all three keeps it correct
+-- once either starts. Funnel: issued (registry) > FundedCards > PaymentUsers.
+SELECT 'FundedCards', 'All',
+    toFloat64(uniqExact(safe_address)),
+    toNullable(NULL)
+FROM {{ ref('int_celo_gpay_activity_daily') }}
+WHERE action IN ('Top-up', 'Reversal', 'Cashback')
+
+UNION ALL
+-- RewardBalance: All (RWA cashback holdings, mark-to-market, latest day)
+-- Zero until the cashback program pays out. Kept as an explicit line so the first
+-- reward token to land is visible instead of being filtered away. NOTE: until
+-- cashback_sources is populated in int_celo_gpay_activity, a reward inflow still
+-- misclassifies as 'Top-up' — this tile shows the holding, not the correct action.
+SELECT 'RewardBalance', 'All',
+    if(count() = 0, 0, round(toFloat64(sum(balance_usd)), 2)),
+    toNullable(NULL)
+FROM {{ ref('fct_celo_gpay_balances_by_token_daily') }}
+WHERE date = (SELECT max(date) FROM {{ ref('fct_celo_gpay_balances_by_token_daily') }})
+  AND token_class = 'RWA'

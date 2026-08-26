@@ -114,6 +114,16 @@ models:
     crawlers_data:
       +meta:
         owner: analytics_team
+    celo:
+      +meta:
+        owner: analytics_team
+      # Celo decoded-contracts layer: same policy as the Gnosis `contracts`
+      # tree (append streams + legacy analyzer for the deep decode SQL).
+      contracts:
+        +incremental_strategy: append
+        +engine: "ReplacingMergeTree()"
+        +pre_hook: ["SET enable_analyzer = 0"]
+        +post_hook: ["SET enable_analyzer = 1"]
     governance:
       +meta:
         owner: analytics_team
@@ -240,6 +250,58 @@ seeds:
         date_start: "Date"
         date_end: "Nullable(Date)"
         token_class: "String"
+
+    # Celo (MiniPay / GPay v2) counterpart of tokens_whitelist. Same shape so
+    # downstream models can be ported 1:1. date_start = Celo L2 migration for
+    # the stablecoins, XAUt0 = MiniPay Card launch (cashback token).
+    celo_tokens_whitelist:
+      +engine: MergeTree()
+      +order_by: [address]
+      +column_types:
+        address: "String"
+        decimals: "UInt8"
+        symbol: "String"
+        date_start: "Date"
+        date_end: "Nullable(Date)"
+        token_class: "String"
+
+    # Celo GP settlement contracts. The card universe is the UNION over these: a
+    # Safe is a GP card if its Roles module ever wired ANY of them. Two are live
+    # simultaneously — settlement_legacy is scheduled to migrate onto
+    # settlement_current — so membership is a property of the TRANSFER, never a
+    # permanent per-card attribute. They share no event signatures and so need two
+    # ABIs to decode, but only because the current one adds an indexed `sender` to
+    # every event — both are AggregateBridge with identical function selectors.
+    # Consumed by contracts_celo_gpay_settlement_events (decode),
+    # int_celo_gpay_roles_modules
+    # (discovery), int_celo_gpay_safe_registry (self-exclusion) and
+    # int_celo_gpay_activity (Payment/Reversal classification). Adding the
+    # migration target here is a one-line change; do NOT hardcode an address.
+    # Only status IN ('active','migrating') is in scope; 'planned' stays inert.
+    celo_gpay_settlement_contracts:
+      +engine: MergeTree()
+      +order_by: [address]
+      +column_types:
+        address: "String"
+        label: "String"
+        status: "String"
+        first_seen: "Nullable(Date)"
+        notes: "String"
+
+    # Chainlink feed registry on Celo: maps the AnswerUpdated-emitting
+    # aggregator to its stable proxy and symbol pair. Consumed by
+    # int_celo_token_prices_daily to turn decoded feed events into per-token
+    # daily USD prices. Aggregators verified against the official Chainlink
+    # reference-data directory and live AnswerUpdated activity on celo.logs.
+    celo_chainlink_feeds:
+      +engine: MergeTree()
+      +order_by: [aggregator_address]
+      +column_types:
+        aggregator_address: "String"
+        proxy_address: "String"
+        base_symbol: "String"
+        quote_symbol: "String"
+        decimals: "UInt8"
 
     atoken_reserve_mapping:
       +engine: MergeTree()

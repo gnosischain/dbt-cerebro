@@ -19,8 +19,11 @@
 -- rows), which turns the chart's category x-axis into irregular, arbitrary tick
 -- labels (e.g. "Jun 29, 15:00"). Zero-filling keeps every hour present so ticks
 -- land on round hours and gaps read honestly as no-activity. Tokens are pinned
--- to USDC/USDT to match the whitelist scope (a token with zero payments in the
--- window would otherwise be absent entirely).
+-- to the two that actually transact (USDC/USDT) rather than the full four-token
+-- celo_tokens_whitelist: the spine must name its symbols explicitly, since a
+-- token with zero payments in the window would otherwise be absent entirely —
+-- but spining USDm/XAUt0 too would add two permanently-flat series to the chart.
+-- If either ever starts transacting, add it here.
 WITH hours AS (
     SELECT toDateTime(today() - 14) + toIntervalHour(number) AS hour
     FROM numbers(14 * 24)

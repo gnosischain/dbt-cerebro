@@ -22,11 +22,18 @@ WITH mau_volumes AS (
         uniqExactIf(safe_address, action = 'Top-up')           AS deposit_mau,
         uniqExactIf(safe_address, action = 'Withdrawal')       AS withdrawal_mau,
 
-        sumIf(amount_usd, action = 'Payment')                  AS total_payment_volume_usd,
+        -- coalesce, because amount_usd is Nullable and ClickHouse `sum` over an
+        -- EMPTY set of rows returns NULL, not 0. A month in which an action simply
+        -- did not occur must read 0: without this, May 2026 (no Withdrawal rows)
+        -- returned NULL and poisoned net_flow_usd, and reversal_total_usd is NULL
+        -- in every month because GP has never issued a Reversal on Celo. Note this
+        -- only affects the no-rows case — sum already skips per-row NULLs, so an
+        -- unpriced token still cannot masquerade as zero volume.
+        coalesce(sumIf(amount_usd, action = 'Payment'), 0)      AS total_payment_volume_usd,
         sumIf(activity_count, action = 'Payment')              AS total_payment_count,
-        sumIf(amount_usd, action = 'Top-up')                   AS total_deposit_volume_usd,
-        sumIf(amount_usd, action = 'Withdrawal')               AS total_withdrawal_volume_usd,
-        sumIf(amount_usd, action = 'Reversal')                 AS reversal_total_usd
+        coalesce(sumIf(amount_usd, action = 'Top-up'), 0)       AS total_deposit_volume_usd,
+        coalesce(sumIf(amount_usd, action = 'Withdrawal'), 0)   AS total_withdrawal_volume_usd,
+        coalesce(sumIf(amount_usd, action = 'Reversal'), 0)     AS reversal_total_usd
     FROM {{ ref('int_celo_gpay_activity_daily') }}
     WHERE toStartOfMonth(date) < toStartOfMonth(today())
     GROUP BY month
