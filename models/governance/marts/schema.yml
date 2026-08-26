@@ -83,7 +83,11 @@ models:
       - name: date
         data_type: Date
       - name: metric
-        description: topics_created | posts_created | active_users.
+        description: >
+          topics_created | posts_created | active_users | likes_given |
+          distinct_likers | polls_created | poll_voter_slots. Likes follow the
+          canonical eligibility contract (active + mapped); poll voters are
+          participant-slots (max per poll, never summed over options).
         data_type: String
     meta:
       owner: analytics_team
@@ -579,6 +583,175 @@ models:
           poll side, since that is what this endpoint adds. Polls dedup at block
           level, so an unchanged poll writes nothing and this can sit still while
           the forum moves.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_delegation_activity_monthly
+    description: >
+      Monthly DelegateRegistry activity, long format (date, metric, value).
+      Metrics: set_events, clear_events, net_change, new_delegators (first-ever
+      set per (chain, delegator)), repointed (later sets), active_delegators
+      (running net through the month). Chains collapsed; churn classification
+      is the canonical definition (ordered by block_number, log_index).
+    columns:
+      - name: date
+        description: Month bucket (start of month).
+        data_type: Date
+        tests: [not_null]
+      - name: metric
+        data_type: String
+        tests: [not_null]
+      - name: value
+        description: Int64 -- net_change can be negative.
+        data_type: Int64
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_concentration_latest
+    description: >
+      Space-level concentration at canonical tiers 10/20/50, long format, one
+      row per (population, tier). Populations: voters_by_vp (all-time voting
+      power cast -- participation-weighted, not a balance), voters_by_votes,
+      delegates_by_delegators (currently active delegations, both chains).
+      Per-proposal whale tiers 1/5/10 live in api_governance_whale_concentration.
+    columns:
+      - name: population
+        data_type: String
+        tests:
+          - accepted_values:
+              values: ['voters_by_vp', 'voters_by_votes', 'delegates_by_delegators']
+      - name: tier
+        data_type: UInt8
+        tests: [not_null]
+      - name: tier_value
+        description: Summed value held by the top `tier` members.
+        data_type: Float64
+      - name: total_value
+        data_type: Float64
+      - name: share
+        description: tier_value / total_value. NULL when the population is empty.
+        data_type: Nullable(Float64)
+      - name: members
+        description: Population size.
+        data_type: UInt64
+      - name: as_of_date
+        description: Date of the latest vote ingested.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_contributors_latest
+    description: >
+      Top 200 forum contributors by posts written. Keyed by contributor_key --
+      an irreversible salted pseudonym of the Discourse user id (no username,
+      no raw id ships anywhere in this model). Like counts follow the canonical
+      eligibility contract (active + mapped).
+    columns:
+      - name: contributor_key
+        description: Salted sipHash64 pseudonym of the Discourse user_id. Stable across models built with the same salt.
+        data_type: UInt64
+        tests: [not_null, unique]
+      - name: posts
+        data_type: UInt64
+      - name: topics_started
+        description: Posts with post_number = 1.
+        data_type: UInt64
+      - name: likes_received
+        data_type: UInt64
+      - name: likes_given
+        data_type: UInt64
+      - name: trust_level
+        description: Discourse trust level (0-4); 0 when the user left the directory.
+        data_type: UInt8
+      - name: first_post_at
+        data_type: DateTime
+      - name: last_post_at
+        data_type: DateTime
+      - name: as_of_date
+        description: Date of the newest ingested post.
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_proposals_live
+    description: >
+      Ballots open right now (voting window contains query time). Vote counts
+      lag up to the daily ingest; hours_left is exact. Empty when no ballot is
+      open -- an empty result is a fact, not a failure.
+    columns:
+      - name: id
+        data_type: String
+        tests: [not_null, unique]
+      - name: gip_number
+        data_type: Nullable(UInt32)
+      - name: is_gip
+        data_type: Bool
+      - name: title
+        data_type: String
+      - name: start_at
+        data_type: DateTime
+      - name: end_at
+        data_type: DateTime
+      - name: hours_left
+        data_type: Int64
+      - name: votes_count
+        data_type: UInt64
+      - name: scores_total
+        data_type: Float64
+      - name: quorum
+        data_type: Float64
+      - name: quorum_status
+        description: "Canonical vocabulary: 'unspecified' | 'met' | 'missed'."
+        data_type: String
+      - name: quorum_ratio
+        description: scores_total / quorum. NULL when quorum is unspecified.
+        data_type: Nullable(Float64)
+      - name: as_of_date
+        description: Query date (now()-anchored view).
+        data_type: Date
+    meta:
+      owner: analytics_team
+      authoritative: false
+
+  - name: api_governance_gip_pipeline_latest
+    description: >
+      Pending GIP pipeline: open forum topics whose GIP number never reached a
+      Snapshot vote, with idle time. 45 idle days is the canonical dormancy
+      threshold; every pending topic is exposed with flags (no cap, no hidden
+      rows -- capping is presentation).
+    columns:
+      - name: topic_id
+        data_type: UInt32
+        tests: [not_null]
+      - name: title
+        data_type: String
+      - name: gip_number
+        data_type: Nullable(UInt32)
+      - name: phase
+        description: "phase-1 | phase-2 | phase-3 | none (from topic tags)."
+        data_type: String
+      - name: posts_count
+        data_type: UInt32
+      - name: participant_count
+        data_type: UInt32
+      - name: views
+        data_type: UInt32
+      - name: created_at
+        data_type: DateTime
+      - name: last_posted_at
+        data_type: DateTime
+      - name: days_idle
+        data_type: Int64
+      - name: is_dormant
+        description: days_idle > 45.
+        data_type: Bool
+      - name: as_of_date
+        description: Query date (now()-anchored view).
         data_type: Date
     meta:
       owner: analytics_team
