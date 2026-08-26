@@ -4,7 +4,7 @@
     "high_risk": 318,
     "models": 1277
   },
-  "inputs_fingerprint": "e086569067fa1f2407a647ffa839d2debfdc68245df4d9e1fc9ae3c77b92e9d8",
+  "inputs_fingerprint": "6861d3d8c9d15d145b1353b6d779a301ffbc5f77702975883b6cb790c8cd6d94",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -168,7 +168,7 @@
       "last_verified": "2026-08-06",
       "path": "docs/lessons/circular-completeness-proof.md",
       "scope": "entity-discovery models that define a population from one contract fingerprint (int_celo_gpay_safe_registry, int_celo_gpay_roles_modules); any \"every X is covered\" verification that derives X from the model's own anchor",
-      "status": "resolved",
+      "status": "remediated",
       "symptom": "a coverage check passes at 100% while an entire parallel cohort of the same entity is missing from the model; counts look internally consistent and are wrong",
       "title": "A completeness proof anchored on the identifier the model already knows cannot detect a second one"
     },
@@ -306,7 +306,7 @@
       "last_verified": "2026-08-07",
       "path": "docs/lessons/event-field-can-lie.md",
       "scope": "any model built on decoded contract events where a field is taken at face value \u2014 models/celo/contracts/contracts_celo_gpay_settlement_events.sql and anything downstream of it; by extension every decode_logs model that exposes a token, amount or counterparty",
-      "status": "documented",
+      "status": "remediated",
       "symptom": "a decoded field is internally consistent and looks entirely plausible, but an aggregate built on it disagrees with the chain \u2014 value conserves at one grain and not at another, or one dimension holds 100 percent of the volume when reality is split",
       "title": "A contract's own event can report the wrong value \u2014 ground-truth a decoded field against transfers before building on it"
     },
@@ -67125,7 +67125,7 @@
           },
           {
             "id": "circular-completeness-proof",
-            "status": "resolved",
+            "status": "remediated",
             "title": "A completeness proof anchored on the identifier the model already knows cannot detect a second one"
           }
         ],
