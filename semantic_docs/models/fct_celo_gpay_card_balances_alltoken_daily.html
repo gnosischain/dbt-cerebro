@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_card_balances_alltoken_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_card_balances_alltoken_daily</h1>
+    <p>Deterministic ALL-TOKEN running balance per card Safe (net-flow-since-
+inception, same idiom as fct_celo_gpay_balances_safe_daily but across every token
+the Safe touches). NOTE: the marts-level whitelist scope comment above does
+NOT apply here — this model is intentionally all-token. balance_raw is the
+exact integer net flow (always set); balance is human units, set only for
+known-decimals tokens. No USD.
+
+SPARSE, unlike fct_celo_gpay_balances_safe_daily: a (safe, token) pair only
+has a row on days it had flow, so the latest row per pair carries forward
+implicitly. &quot;Total balance held&quot; therefore requires
+argMax(balance, date) per (safe_address, token_address) — a
+`WHERE date = (SELECT max(date) ...)` snapshot undercounts badly (measured
+2026-08-04: 11,574.22 on the latest day vs a true 25,676.93, a 55% undercount,
+because only 112 of 932 pairs had flow that day). Zero rows ARE written (501 of
+them), so the carry-forward total is trustworthy and the sibling trap in
+docs/lessons/sparse-zero-row-stale-survival.md does not bite here.
+
+DO NOT SUM `balance`. It is a running total, so summing across dates re-counts
+the same balance every day, and summing one date drops every card without flow.
+The semantic measure that did this was removed 2026-08-04; the model stays
+exposed for its DIMENSIONS (which tokens a card holds). For a total use
+api_celo_gpay_total_balance (single latest-day row); the correct per-safe base is
+the dense fct_celo_gpay_balances_safe_daily, whose latest day equals the
+carry-forward total here to the cent (25,676.93 on 2026-08-04).
+
+Do not read api_celo_gpay_total_balance (25,653.36) as disagreeing with that
+25,676.93 — they are different units, not a discrepancy. This model and `balance`
+are NATIVE token units; the api reports mark-to-market USD, which is lower simply
+because USDT and USDC trade a hair under a dollar (20,059.08 USDT at 0.9989 plus
+5,617.85 USDC at 0.99973, verified 2026-08-04). See the balance_usd column note on
+fct_celo_gpay_balances_safe_daily.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_card_balances_alltoken_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>balances</span> <span class='pill'>alltoken</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>balance</code></td><td>Nullable(Float64)</td><td>Cumulative human-unit balance; NULL for unknown-decimals tokens.</td></tr><tr><td><code>balance_raw</code></td><td>Nullable(Int256)</td><td>Cumulative exact integer net flow (in - out). Signed, because a balance legitimately falls. NULL only if a contributing transfer exceeded Int256 max (2^255-1) and so could not be represented — such a transfer is excluded from the running total rather than sign-flipped into a fake outflow, and the warn test celo_gpay_transfer_amount_fits_int256 on the upstream transfers model is what surfaces it. Never observed (max amount_raw is 3.0e9 against a 5.8e76 bound); 0 NULL and 0 negative rows on 2026-08-05.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Day of the balance change. Sparse — present only on days this (safe, token) pair had flow.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address (0x-prefixed, lowercase).</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelist symbol; NULL for non-whitelisted tokens.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>safe_address</code> (categorical)</li><li><code>token_address</code> (categorical)</li><li><code>token_symbol</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_card_balances_alltoken_daily__token_positions</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_safe_transfers_alltoken</code></li></ul>
+    <h2>Downstream</h2><ul><li>None</li></ul>
+    
+  </body>
+</html>

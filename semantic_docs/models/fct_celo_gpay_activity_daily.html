@@ -15,11 +15,27 @@
   <body>
     
     <h1>fct_celo_gpay_activity_daily</h1>
-    <p>Daily card-payment activity (active Safes, payment count, USD volume) plus
-newly-funded and cumulative-funded card counts. &quot;Funded&quot; == a Safe that has
-settled at least one Payment to the bridge (== int_celo_gpay_wallets.is_activated).
-User grain is safe_address (on Celo a card = a Safe = the user). Current
-partial day is excluded. USDC/USDT only.
+    <p>Daily card-payment activity (active Safes, payment count, USD volume) plus BOTH
+funnel counts, which are different metrics:
+  * funded    — the card has ever RECEIVED money (any inbound action).
+  * activated — the card has ever SPENT (settled a Payment to a settlement
+                contract). Equals int_celo_gpay_wallets.is_activated.
+Funnel on 2026-08-05: 1817 issued (int_celo_gpay_safe_registry) &gt; 1087 funded &gt;
+662 activated.
+
+RESTATED 2026-08-05. `cumulative_funded` previously counted from a card&#x27;s first
+PAYMENT, so it tracked activation under the funded name and read 40% low (654 vs
+1075). The original series is preserved as newly_activated/cumulative_activated.
+
+The date spine is the UNION of payment-activity days and funnel-transition days,
+not payment days alone: 9 days saw a card funded with nobody spending, and a
+payment-only spine dropped the 28 cards funded on them from cumulative_funded
+silently. Rows contributed only by the union carry active_users / total_payments /
+total_volume_usd = 0, which is the truth for those days — so do NOT read a 0 row
+as missing data.
+
+User grain is safe_address (on Celo a card = a Safe = the user). Current partial
+day is excluded. Whitelisted tokens only (USDT/USDC in practice — see scope note).
 </p>
     <p><strong>Module:</strong> celo</p>
     <p><strong>Status:</strong> docs_only</p>
@@ -27,11 +43,11 @@ partial day is excluded. USDC/USDT only.
     <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_activity_daily.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>active_users</code></td><td>UInt64</td><td>Distinct Safes that made a payment on this date.</td></tr><tr><td><code>cumulative_funded</code></td><td>UInt64</td><td>Running total of funded (ever-paid) Safes through this date.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Calendar date.</td></tr><tr><td><code>newly_funded</code></td><td>UInt64</td><td>Safes whose first-ever payment fell on this date.</td></tr><tr><td><code>total_payments</code></td><td>UInt64</td><td>Number of payments settled on this date.</td></tr><tr><td><code>total_volume_usd</code></td><td>Float64</td><td>USD payment volume on this date (USDC + USDT).</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>active_users</code></td><td>UInt64</td><td>Distinct Safes that made a payment on this date. 0 on a date present only because a card was funded that day (see the spine note above).</td></tr><tr><td><code>cumulative_activated</code></td><td>UInt64</td><td>Running total of ever-spent Safes through this date; 654 on 2026-08-05. This is the series cumulative_funded carried before the restatement. Always &lt;= cumulative_funded, since a card cannot spend before it is funded.</td></tr><tr><td><code>cumulative_funded</code></td><td>UInt64</td><td>Running total of ever-funded Safes through this date. Reaches 1075 on 2026-08-05 (1087 all-time, less cards first funded today, which is excluded).</td></tr><tr><td><code>date</code></td><td>Date</td><td>Calendar date.</td></tr><tr><td><code>newly_activated</code></td><td>UInt64</td><td>Safes whose first-ever payment fell on this date.</td></tr><tr><td><code>newly_funded</code></td><td>UInt64</td><td>Safes that RECEIVED money for the first time on this date.</td></tr><tr><td><code>total_payments</code></td><td>UInt64</td><td>Number of payments settled on this date. 0 on a funding-only date.</td></tr><tr><td><code>total_volume_usd</code></td><td>Float64</td><td>USD payment volume on this date (USDC + USDT). 0 on a funding-only date.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>int_celo_gpay_activity_daily</code></li></ul>
-    <h2>Downstream</h2><ul><li><code>api_celo_gpay_funded_addresses_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_activated_addresses_daily</code></li><li><code>api_celo_gpay_funded_addresses_daily</code></li></ul>
     
   </body>
 </html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_funder_wallets</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_funder_wallets</h1>
+    <p>The card &lt;-&gt; funding-wallet identity spine: one row per EOA that has directly
+funded a GP card Safe.
+
+WHY IT EXISTS: on Celo the Safe owner is useless as identity. GP&#x27;s provisioning
+flow disables owner-based signing, so int_celo_gpay_safe_current_owners returns
+the dead sentinel 0x..02 for every card, and the funder equals the owner in ZERO
+cases (verified 2026-08-10 across all 1,015 solo-funded cards). The funding EOA is
+the only on-chain link between a card and the person behind it.
+
+SCOPE is direct EOA funders (is_direct_eoa_transfer = 1). Contract-mediated
+funders are Safes/routers, not people&#x27;s wallets, and are excluded rather than
+flagged. Hubs are kept but flagged - filter is_solo_funder for user behaviour.
+
+NOT AN IDENTITY LABEL. &quot;The wallet that funded this card&quot; is the whole claim. It
+is NOT a MiniPay tag: there is no MiniPay marker on Celo and CIP-64 is a
+chain-wide fee envelope (models/celo/AGENTS.md).
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_funder_wallets.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>funder_wallet</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>card_safe_address</code></td><td>Nullable(String)</td><td>The funded card, for solo funders only. NULL for hubs by design - an arbitrary pick among many cards would be misleading.</td></tr><tr><td><code>first_funded_at</code></td><td>DateTime</td><td>First direct funding transfer by this wallet.</td></tr><tr><td><code>first_funding_channel</code></td><td>String</td><td>Shape channel of this wallet&#x27;s earliest funding transfer. A shape, not an identity - see fct_celo_gpay_card_funding for the glossary.</td></tr><tr><td><code>is_solo_funder</code></td><td>UInt8</td><td>1 when the wallet funded exactly one card, so its off-card behaviour is attributable to that cardholder without ambiguity.</td></tr><tr><td><code>last_funded_at</code></td><td>DateTime</td><td>Most recent direct funding transfer by this wallet.</td></tr><tr><td><code>n_cards_funded</code></td><td>UInt64</td><td>Distinct card Safes this wallet has directly funded.</td></tr><tr><td><code>n_funding_transfers</code></td><td>UInt64</td><td>Inbound funding transfers this wallet has made across all cards.</td></tr><tr><td><code>total_funded_usd</code></td><td>Float64</td><td>Summed amount_usd of this wallet&#x27;s funding transfers; unpriced legs are excluded from the sum rather than counted as 0.</td></tr><tr><td><code>wallet_address</code></td><td>String</td><td>Funding EOA (0x-prefixed, lowercase).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>first_funded_at</code> (time)</li><li><code>first_funding_channel</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_funder_wallets__wallet_count</code> (count)</li><li><code>celo_gpay_funder_wallets__cards_funded</code> (sum)</li><li><code>celo_gpay_funder_wallets__funded_usd</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funding_tx_envelopes</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_cardholder_engagement</code></li><li><code>fct_celo_gpay_wallet_share_of_spend_daily</code></li><li><code>fct_celo_gpay_wallet_tenure</code></li><li><code>int_celo_gpay_funder_wallet_monthly_presence</code></li><li><code>int_celo_gpay_funder_wallet_transfers</code></li></ul>
+    
+  </body>
+</html>

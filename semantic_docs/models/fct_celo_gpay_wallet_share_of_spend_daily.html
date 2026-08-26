@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_wallet_share_of_spend_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_wallet_share_of_spend_daily</h1>
+    <p>Daily split of what cardholders send OUT of their own wallet: how much went to the
+GP card, and how much went somewhere else. The competitive question, on-chain.
+Solo funders only (a hub&#x27;s outflow is GP onboarding, not a user choosing), priced
+stablecoins only (token_class from the whitelist seed, never a symbol list).
+
+THE OUTLIER SPLIT IS THE WHOLE POINT, DO NOT DROP IT. Over 2026-08-05..08 the raw
+comparison was $365k sent elsewhere against $48.9k to the card, which reads as the
+card capturing 12% of its holders&#x27; money. It does not: SIX transfers of $1,000+
+carried $313.7k of that $365k (largest single $154k - treasury-scale movement by a
+handful of addresses, not retail behaviour). Excluding them the two sides are
+~$51.4k against ~$48.9k, i.e. roughly half. usd_excl_large is the
+retail-behaviour number, usd_total the flow-of-funds number; they answer different
+questions and neither is wrong, but mixing them is.
+
+Medians over that window were $20.00 to the card against $1.35 elsewhere: the card
+holds the large ticket while the wallet keeps micro-payments - complement rather
+than cannibalisation. That is one window; re-check before repeating it.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_wallet_share_of_spend_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>funder_wallet</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Activity date.</td></tr><tr><td><code>destination</code></td><td>String</td><td>to_card (counterparty is a Safe in the card registry) or to_elsewhere.</td></tr><tr><td><code>n_transfers</code></td><td>UInt64</td><td>Priced stablecoin outbound transfers, gas receipts excluded.</td></tr><tr><td><code>n_transfers_excl_large</code></td><td>UInt64</td><td>Count behind usd_excl_large.</td></tr><tr><td><code>n_transfers_large</code></td><td>UInt64</td><td>Count of transfers at or above $1,000 - typically a handful, and they carry most of usd_total.</td></tr><tr><td><code>n_wallets</code></td><td>UInt64</td><td>Distinct solo funding wallets sending that day.</td></tr><tr><td><code>usd_excl_large</code></td><td>Float64</td><td>Outbound value from transfers under $1,000. The retail-behaviour number, and the one api_celo_gpay_wallet_share_of_spend_monthly serves as `value`.</td></tr><tr><td><code>usd_median</code></td><td>Float64</td><td>Median ticket size. The honest central measure here, given the skew.</td></tr><tr><td><code>usd_total</code></td><td>Float64</td><td>All outbound value including large transfers. Flow-of-funds, NOT retail behaviour - read with usd_excl_large.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>destination</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_wallet_share_of_spend__transfers</code> (sum)</li><li><code>celo_gpay_wallet_share_of_spend__usd_retail</code> (sum)</li><li><code>celo_gpay_wallet_share_of_spend__usd_total</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funder_wallet_transfers</code></li><li><code>int_celo_gpay_funder_wallets</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_wallet_share_of_spend_monthly</code></li></ul>
+    
+  </body>
+</html>

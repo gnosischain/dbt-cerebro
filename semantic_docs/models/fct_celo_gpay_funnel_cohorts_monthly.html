@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_funnel_cohorts_monthly</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_funnel_cohorts_monthly</h1>
+    <p>Cards grouped by the month they were ISSUED, with how far each cohort got through
+issued &gt; funded &gt; activated. Rollup of fct_celo_gpay_card_funnel.
+
+Cohorted and age-normalised on purpose. A single all-time &quot;60% of cards get
+funded&quot; is not a conversion rate on a product that is still ramping - the
+denominator is dominated by cards issued weeks ago, and the headline moves when
+issuance accelerates even if behaviour is identical. Cohorting removes the mix
+shift, the _7d/_30d windows remove the age spread within a cohort.
+
+Compare the windowed rates, not the _ever columns. funded_ever and activated_ever
+are honest counts as of the horizon but are NOT comparable across rows, because
+older cohorts have had longer to convert - they will always slope down toward the
+present and that slope is an artefact.
+
+The lag medians are completer-biased and no eligibility gate fixes it. They are
+taken over cards that DID convert, so a young cohort&#x27;s median only sees its fast
+converters. Expect medians to drift up as a cohort matures; compare them only
+where cohort_complete_30d is true.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_funnel_cohorts_monthly.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>activated_30d</code></td><td>UInt64</td><td>Eligible cards that spent within 30 days of issuance.</td></tr><tr><td><code>activated_7d</code></td><td>UInt64</td><td>Eligible cards that spent within 7 days of issuance.</td></tr><tr><td><code>activated_ever</code></td><td>UInt64</td><td>Cards that spent at any point up to observed_through. Not comparable across cohorts.</td></tr><tr><td><code>activated_rate_30d</code></td><td>Nullable(Float64)</td><td>activated_30d / eligible_30d - issuance to first spend, both legs.</td></tr><tr><td><code>activated_rate_7d</code></td><td>Nullable(Float64)</td><td>activated_7d / eligible_7d - issuance to first spend, both legs.</td></tr><tr><td><code>cards_issued</code></td><td>UInt64</td><td>Cards issued in the month, as of observed_through.</td></tr><tr><td><code>cohort_complete_30d</code></td><td>Bool</td><td>Every card in the row has cleared 30 days of observation.</td></tr><tr><td><code>cohort_complete_7d</code></td><td>Bool</td><td>Every card in the row has cleared 7 days of observation. FALSE means the 7-day rate is computed on a subset and will still move.</td></tr><tr><td><code>cohort_month</code></td><td>Date</td><td>Month the cards were issued. NOT a month of activity.</td></tr><tr><td><code>eligible_30d</code></td><td>UInt64</td><td>Cards with at least 30 days of observation - the denominator for the 30-day rates.</td></tr><tr><td><code>eligible_7d</code></td><td>UInt64</td><td>Cards with at least 7 days of observation - the denominator for the 7-day rates. Smaller than cards_issued for the current cohort, and 0 for a cohort younger than a week.</td></tr><tr><td><code>funded_30d</code></td><td>UInt64</td><td>Eligible cards funded within 30 days of issuance.</td></tr><tr><td><code>funded_7d</code></td><td>UInt64</td><td>Eligible cards funded within 7 days of issuance.</td></tr><tr><td><code>funded_ever</code></td><td>UInt64</td><td>Cards funded at any point up to observed_through. Not comparable across cohorts.</td></tr><tr><td><code>funded_rate_30d</code></td><td>Nullable(Float64)</td><td>funded_30d / eligible_30d. NULL where the cohort has no 30-day-old cards.</td></tr><tr><td><code>funded_rate_7d</code></td><td>Nullable(Float64)</td><td>funded_7d / eligible_7d. NULL where no card in the cohort has 7 days of observation yet - undefined rather than zero, so dashboards do not draw a cliff at the current month that reads as a collapse in conversion.</td></tr><tr><td><code>median_days_fund_to_spend</code></td><td>Int32</td><td>Median lag from funding to first spend, among cards that did both.</td></tr><tr><td><code>median_days_issue_to_fund</code></td><td>Int32</td><td>Median lag among cards that were funded. Completer-biased in young cohorts.</td></tr><tr><td><code>observed_through</code></td><td>Date</td><td>As-of date inherited from fct_celo_gpay_card_funnel.</td></tr><tr><td><code>p90_days_fund_to_spend</code></td><td>Int32</td><td>90th percentile lag from funding to first spend.</td></tr><tr><td><code>p90_days_issue_to_fund</code></td><td>Int32</td><td>90th percentile lag among cards that were funded.</td></tr><tr><td><code>spend_rate_of_funded_30d</code></td><td>Nullable(Float64)</td><td>activated_30d / funded_30d - the second leg alone, over 30 days.</td></tr><tr><td><code>spend_rate_of_funded_7d</code></td><td>Nullable(Float64)</td><td>activated_7d / funded_7d - the second leg alone, which is where the drop-off is.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>fct_celo_gpay_card_funnel</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_funnel_cohorts_monthly</code></li></ul>
+    
+  </body>
+</html>

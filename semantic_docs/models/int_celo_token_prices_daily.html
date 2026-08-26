@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_token_prices_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_token_prices_daily</h1>
+    <p>Celo daily price hub, native-first (same design as the Gnosis
+int_execution_token_prices_daily). Priority 1: native on-chain — decoded
+Chainlink AnswerUpdated (CELO/USDT/USDC/USDm) and the
+derived XAUt/USD (Chainlink CELO/USD divided by SortedOracles CELO/XAUt).
+Priority 2: Dune off-chain feed fallback — load-bearing, not vestigial: the
+Celo Chainlink USDT/USDC aggregators only start 2026-06-23, so earlier
+stablecoin history resolves here or on the peg (XAUt0 before 2026-06-09
+likewise). Priority 3: $1 peg last-resort for the card stablecoins. Daily
+price = last answer of the day. Forward-fill is NOT applied: a symbol is
+absent on a day with no oracle update, so downstream joins must tolerate a
+missing row rather than assume a dense date x symbol grid. Coverage as of
+2026-08-03 is 496/496 days for CELO/USDC/USDT/USDm and 56/56 for XAUt0.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/prices/int_celo_token_prices_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>prices</span> <span class='pill'>daily</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>date</code></td><td>Date</td><td>Price date.</td></tr><tr><td><code>price</code></td><td>Float64</td><td>USD price (last observation of the day from the winning source).</td></tr><tr><td><code>symbol</code></td><td>String</td><td>Token/FX symbol in whitelist display casing (USDm, XAUt0, CELO, ...).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>symbol</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_token_prices_daily__price</code> (average)</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_celo_chainlink_feeds_events</code></li><li><code>int_celo_sorted_oracles_rates</code></li><li><code>stg_crawlers_data__dune_prices</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_balances_safe_daily</code></li><li><code>fct_celo_gpay_settlement_batches</code></li><li><code>int_celo_gpay_funder_wallet_transfers</code></li><li><code>int_celo_gpay_safe_transfers_alltoken</code></li></ul>
+    
+  </body>
+</html>

@@ -19,8 +19,8 @@
 int_execution_gpay_balances_user_daily). Densified over a date spine so
 downstream daily totals and latest-day snapshots are correct on every day.
 Net flow = (Top-up + Reversal) - (Payment + Withdrawal). Equals the true
-on-chain balance ONLY for USDC/USDT under the documented scope assumptions
-(see file header). Not a chain-wide balance snapshot.
+on-chain balance only for whitelisted tokens under the documented scope
+assumptions (see file header). Not a chain-wide balance snapshot.
 </p>
     <p><strong>Module:</strong> celo</p>
     <p><strong>Status:</strong> docs_only</p>
@@ -28,10 +28,10 @@ on-chain balance ONLY for USDC/USDT under the documented scope assumptions
     <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_balances_safe_daily.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>balance</code></td><td>Float64</td><td>Cumulative net native-token balance as of this date.</td></tr><tr><td><code>balance_usd</code></td><td>Float64</td><td>Cumulative net USD balance as of this date.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Calendar date (dense).</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address.</td></tr><tr><td><code>token_symbol</code></td><td>String</td><td>USDC or USDT.</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>balance</code></td><td>Float64</td><td>Cumulative net NATIVE-token balance as of this date. This is the quantity of tokens held; 25,676.93 across all cards on 2026-08-04.</td></tr><tr><td><code>balance_usd</code></td><td>Nullable(Float64)</td><td>MARK-TO-MARKET USD value: `balance` valued at the token&#x27;s price as of this date, carried forward from the last observed price via ASOF join. It is NOT a running sum of each flow&#x27;s USD value — that would be an accumulated cost basis, a different quantity that goes arbitrarily wrong for a volatile token (and can go negative while the card still holds it). Flows are valued at transaction time (int_celo_gpay_activity.amount_usd, correctly historical); stocks are valued as of the reporting date, which is this column. NULL, never 0, when a held token has no price at or before this date — unknown must not read as empty. sum() therefore skips such positions, which is what the two valuation tests on this model guard against. Additive across cards and tokens within a date; NEVER across dates.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Calendar date (dense).</td></tr><tr><td><code>price_date</code></td><td>Nullable(Date)</td><td>The date of the price actually used to value this row. Equals `date` when an oracle answer landed that day, and is EARLIER when the ASOF join carried the last observed price forward (the price hub does not forward-fill). Exposed so the valuation is auditable and so staleness is assertable — the carry-forward is uncapped by design. NULL means no price existed at or before `date`, in which case balance_usd is NULL too.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address.</td></tr><tr><td><code>token_class</code></td><td>String</td><td>STABLECOIN or RWA, from celo_tokens_whitelist (&#x27;UNKNOWN&#x27; if a symbol is somehow absent from the seed). Exists so headline figures can separate spendable float from reward holdings without hardcoding a symbol list — fct_celo_gpay_snapshots reports STABLECOIN as TotalBalance and RWA as RewardBalance.</td></tr><tr><td><code>token_symbol</code></td><td>String</td><td>USDC or USDT.</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
-    <h2>Upstream</h2><ul><li><code>int_celo_gpay_activity_daily</code></li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_activity_daily</code></li><li><code>int_celo_token_prices_daily</code></li></ul>
     <h2>Downstream</h2><ul><li><code>fct_celo_gpay_balance_cohorts_daily</code></li><li><code>fct_celo_gpay_balances_by_token_daily</code></li></ul>
     
   </body>

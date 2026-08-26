@@ -70,7 +70,6 @@ SELECT
     p.poll_name,
     p.status                                        AS poll_status,
     p.poll_posted_at,
-    p.poll_author,
     p.voters                                        AS poll_voters,
     p.favour_votes,
     p.against_votes,

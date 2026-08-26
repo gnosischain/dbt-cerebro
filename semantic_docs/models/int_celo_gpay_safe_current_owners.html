@@ -29,6 +29,26 @@ this Safe&quot;) and can legitimately show the dead sentinel address
 0x0000000000000000000000000000000000000002 as the current owner for
 Safes where GP&#x27;s provisioning flow disabled owner-based signing — that
 is not a bug, it correctly reflects the on-chain state.
+
+CONSUMER WARNING: as of 2026-08-03 that is the state for EVERY card — every
+row carries the sentinel and no real EOA, because GP&#x27;s provisioning flow swaps
+the owner out within seconds of SafeSetup on every card. So this model
+currently carries no user-identifying information at all; anything that needs
+a per-user address must read int_celo_gpay_wallets.owner_address (the initial
+SafeSetup owner, one distinct value per card). Still true at 1817/1817 cards on
+2026-08-05.
+
+EXPOSURE CLOSED OUT 2026-08-05. The model is kept — it is correct, cheap, and
+becomes meaningful the moment GP adopts owner-based signing — but it is no longer
+reachable as an owner identity:
+  * owner_address&#x27;s `address` entity binding is SUPPRESSED in
+    semantic/entity_dictionary.yml. It had generated a join to
+    api_execution_account_profile_latest under which all 1817 cards resolved to
+    the same non-existent account.
+  * no semantic model / measures (registered in scaffold_gate.allow with that
+    rationale), so it cannot be aggregated into a headline.
+safe_address keeps its `safe` binding, which is a real card. Reverse both only
+when a query of &quot;who currently signs for this card&quot; would return a real EOA.
 </p>
     <p><strong>Module:</strong> celo</p>
     <p><strong>Status:</strong> docs_only</p>

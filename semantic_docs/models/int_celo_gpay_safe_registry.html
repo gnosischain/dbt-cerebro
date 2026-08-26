@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_safe_registry</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_safe_registry</h1>
+    <p>GP card Safes on Celo, discovered natively: a Safe that emits
+EnabledModule(&lt;GP Roles proxy&gt;) has been provisioned as a GP card
+(replaces the fp CTE of Dune query 7808895). Confirmed pre-spend, so this
+also covers created-but-never-funded cards. address/contract_type columns
+follow the whitelist shape the decode macros expect via contract_address_ref.
+
+Cardinality is 1:1 with int_celo_gpay_roles_modules and grows continuously
+with issuance (1815 on 2026-08-05); first card 2026-03-31.
+
+POPULATION = THE UNION OVER EVERY IN-SCOPE SETTLEMENT CONTRACT, seeded in
+celo_gpay_settlement_contracts. Two AggregateBridges are live at once and both
+are Gnosis Pay&#x27;s (confirmed by GP 2026-08-05): settlement_legacy 0xc4df5cac… from
+2026-03-31, which GP will migrate onto settlement_current 0xc07cd8c2… (from
+2026-05-28) at an unannounced date. They are ONE card program, so they are unioned
+here. They share no event signatures and so need two ABIs to decode, but that is
+because the current one adds an indexed `sender` to every event, not because the
+contracts are unrelated — both are AggregateBridge with identical function
+selectors (established when the ABIs were fetched on 2026-08-06). Two generations
+of one design; the legacy/current labels describe lifecycle, not a published
+release lineage.
+
+Until 2026-08-05 this registry keyed on the current contract alone and therefore omitted 235 real
+cards and 1743 settlement transfers — roughly 34% of all settlement traffic and
+13% of cards. The distortion was worst in shape, not level: March/April/May were
+~100% missing, so the tree showed payments starting in June and rising 4 -&gt; 266
+-&gt; 2533, when the program had in fact been running steadily since March at
+4 -&gt; 225 -&gt; 472 -&gt; 759 -&gt; 3008. Any historical Celo GP figure produced before
+2026-08-05 is understated and reshaped; restate rather than splice.
+
+Which bridge a payment settled to is a per-TRANSFER fact
+(int_celo_gpay_activity.settlement_address), never a per-card generation column
+— a migrating card keeps its legacy history and gains current-contract payments, so a card-level
+attribute would go stale on migration day. int_celo_gpay_roles_modules
+.wired_settlements is the migration tracker: a module listing both addresses has
+migrated. Zero had as of 2026-08-05.
+
+A third AggregateBridge 0xd11e35ca… is deployed but never used and NOT confirmed
+GP-owned; it sits in the seed as status=&#x27;planned&#x27;, excluded from discovery.
+Flipping it to &#x27;active&#x27; is the whole change needed if it goes live.
+
+Completeness is now proven non-circularly, from settlement traffic on BOTH
+bridges: 507 current-contract spenders + 155 legacy spenders, zero missing from this registry
+(2026-08-05). The earlier &quot;483 senders, all present&quot; proof was circular — it
+defined the spender population using this model&#x27;s own single bridge address, so
+it could not have detected a second one. Any future proof must start from the
+seed, not from one address.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_safe_registry.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>registry</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>GP card Safe address (0x-prefixed, lowercase).</td></tr><tr><td><code>contract_type</code></td><td>String</td><td>Always &#x27;SafeProxy&#x27;.</td></tr><tr><td><code>module_enabled_at</code></td><td>DateTime</td><td>When the GP Roles module was enabled on this Safe (provisioning time).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>module_enabled_at</code> (time)</li><li><code>contract_type</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_safe_registry__card_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_roles_modules</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_celo_gpay_funder_wallet_transfers</code></li><li><code>int_celo_gpay_safe_events_native</code></li><li><code>int_celo_gpay_safe_transfers_alltoken</code></li><li><code>int_celo_gpay_wallet_events</code></li></ul>
+    
+  </body>
+</html>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_safe_events_native</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_safe_events_native</h1>
+    <p>Safe lifecycle events (SafeSetup / AddedOwner / RemovedOwner) for GP card
+Safes on Celo, decoded through the multichain decode pipeline
+(chain=&#x27;celo&#x27;, ABI resolved from the Safe v1.3.0 L2 singleton row of the
+celo partition of event_signatures). SafeSetup rows are exploded one row
+per owner. Incremental append on monthly partitions, mirroring Gnosis
+Chain&#x27;s int_execution_safes_owner_events: the output is bounded by card
+count, but a full rebuild re-scans celo_execution.logs across the whole GP
+era in one query and OOMs (CH code 241) now that the Celo backfill has
+landed. Rebuild through scripts/full_refresh/refresh.py in the monthly
+batches declared in meta.full_refresh below; decode_logs honors the
+start_month/end_month vars the runner passes.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_safe_events_native.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>safe</span> <span class='pill'>microbatch</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_number</code></td><td>UInt64</td><td>Block number of the event.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td>On-chain timestamp of the event.</td></tr><tr><td><code>event_kind</code></td><td>String</td><td>safe_setup | added_owner | removed_owner.</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>Log index within the block.</td></tr><tr><td><code>owner</code></td><td>String</td><td>Owner address this event is about (one row per owner for safe_setup).</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address (0x-prefixed, lowercase).</td></tr><tr><td><code>threshold</code></td><td>Nullable(UInt32)</td><td>Signing threshold from SafeSetup; null for owner-delta events.</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Transaction hash (0x-prefixed).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>block_timestamp</code> (time)</li><li><code>event_kind</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_safe_events_native__event_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_safe_registry</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_celo_gpay_wallet_events</code></li></ul>
+    
+  </body>
+</html>

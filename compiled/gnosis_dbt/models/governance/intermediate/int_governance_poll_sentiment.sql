@@ -75,9 +75,7 @@ SELECT
     )                                                            AS poll_against_share,
 
     -- Timing, from the host post.
-    po.created_at                                                AS poll_posted_at,
-    po.user_id                                                   AS poll_author_user_id,
-    po.username                                                  AS poll_author
+    po.created_at                                                AS poll_posted_at
 
 FROM opts AS o
 INNER JOIN `dbt`.`stg_governance__forum_posts` AS po

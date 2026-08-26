@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_card_funnel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_card_funnel</h1>
+    <p>One row per card - issuance, first funding, first spend, and the lags between.
+The atom behind fct_celo_gpay_funnel_cohorts_monthly.
+
+Every column is measured as of ONE horizon, `observed_through`, taken from
+int_celo_gpay_activity_daily. The three signals come from models built at
+different times (int_celo_gpay_wallets rebuilds fully each run and reaches head;
+int_celo_gpay_activity_daily is incremental and lags), so without a shared
+horizon a card issued yesterday reads as issued-but-never-funded purely because
+funding has not been built yet. Cards issued after the horizon are excluded, and
+first_spend_at is clipped to it even where wallets already knows it.
+
+NEVER divide is_funded by row count to get a conversion rate. Issuance is still
+ramping, so most cards are young and &quot;unfunded&quot; mostly means &quot;issued recently&quot;.
+Use observation_days to restrict to cards old enough to have had a fair chance,
+or read fct_celo_gpay_funnel_cohorts_monthly which does it for you.
+
+first_fund_channel is the funding_channel of the card&#x27;s FIRST inbound transfer
+(from int_celo_gpay_funding_tx_envelopes). It is a shape classification, not an
+identity label — CIP-64 alone is not MiniPay. NULL when the card has never been
+funded. Channel values (same glossary as fct_celo_gpay_card_funding):
+
+  cip64_direct_solo — CIP-64 (tx type 123) + funder EOA called token.transfer()
+    + that funder funds exactly one card. MiniPay-shaped; do not rename to
+    &quot;minipay&quot; without an off-chain identity source.
+  other_direct — same direct EOA transfer() shape, but envelope is not CIP-64
+    (type 0/2), and the funder funds exactly one card.
+  hub — this first-fund&#x27;s funder funds two or more cards (fan-out wins over
+    envelope; includes the legacy 0xa0dd… onboarding hub).
+  mediated — first fund was not a direct EOA→token transfer (e.g. Safe
+    execTransaction).
+  mixed — reserved for relationship-level disagreement on
+    fct_celo_gpay_card_funding; first_fund_channel reads per-transfer envelopes
+    so it does not emit mixed today, but the value stays accepted.
+  unknown — funding transfer row exists but no matching transactions row.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_card_funnel.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>days_fund_to_spend</code></td><td>Nullable(Int32)</td><td>Days from first funding to first spend, for cards that did both. Legitimately 0 - funding and spending the same day is the common MiniPay pattern (152 cards).</td></tr><tr><td><code>days_issue_to_fund</code></td><td>Nullable(Int32)</td><td>Days from issuance to first funding. NULL where the card has never been funded.</td></tr><tr><td><code>days_issue_to_spend</code></td><td>Nullable(Int32)</td><td>Days from issuance to first spend. NULL where the card has never spent.</td></tr><tr><td><code>first_fund_channel</code></td><td>Nullable(String)</td><td>funding_channel of the card&#x27;s first inbound transfer. Shape classification, not MiniPay identity. NULL if never funded. See model description for values.</td></tr><tr><td><code>first_funded_at</code></td><td>Nullable(Date)</td><td>Date the card first RECEIVED money - the first inbound action (Top-up, Reversal or Cashback) in int_celo_gpay_activity_daily. NULL if it never has, which is distinct from a zero lag.</td></tr><tr><td><code>first_spend_at</code></td><td>Nullable(Date)</td><td>Date the card first SPENT - a stablecoin settlement to a bridge, from int_celo_gpay_wallets.first_spend_at, clipped to observed_through so it cannot run ahead of the funding signal.</td></tr><tr><td><code>is_activated</code></td><td>Bool</td><td>Card has ever spent as of observed_through. Matches int_celo_gpay_wallets.is_activated except where a spend falls after the horizon.</td></tr><tr><td><code>is_funded</code></td><td>Bool</td><td>Card has ever received money as of observed_through.</td></tr><tr><td><code>issued_at</code></td><td>Date</td><td>Date the Safe was provisioned as a card (SafeSetup), from int_celo_gpay_wallets.</td></tr><tr><td><code>observation_days</code></td><td>Int32</td><td>Days from issuance to observed_through - how long this card has been observable. The eligibility gate for every conversion rate built on this table.</td></tr><tr><td><code>observed_through</code></td><td>Date</td><td>The as-of date for the whole row, from max(date) in int_celo_gpay_activity_daily. Identical on every row; carried per-row so a consumer reading a slice can still see the horizon.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>GP card Safe address. One row per card.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>issued_at</code> (time)</li><li><code>first_funded_at</code> (time)</li><li><code>first_spend_at</code> (time)</li><li><code>safe_address</code> (categorical)</li><li><code>is_funded</code> (categorical)</li><li><code>is_activated</code> (categorical)</li><li><code>first_fund_channel</code> (categorical)</li><li><code>observation_days</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_card_funnel__cards</code> (count_distinct)</li><li><code>celo_gpay_card_funnel__funded_cards</code> (sum)</li><li><code>celo_gpay_card_funnel__activated_cards</code> (sum)</li><li><code>celo_gpay_card_funnel__avg_days_issue_to_fund</code> (average)</li><li><code>celo_gpay_card_funnel__avg_days_fund_to_spend</code> (average)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_activity_daily</code></li><li><code>int_celo_gpay_funding_tx_envelopes</code></li><li><code>int_celo_gpay_wallets</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_first_fund_by_channel</code></li><li><code>fct_celo_gpay_funnel_cohorts_monthly</code></li></ul>
+    
+  </body>
+</html>

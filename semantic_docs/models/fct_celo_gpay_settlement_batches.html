@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_settlement_batches</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_settlement_batches</h1>
+    <p>One row per settlement transaction - how many card charges it swept, how much left
+the contract, where it went, and what the bridge hop cost in CELO. Built on the
+decoded event layer contracts_celo_gpay_settlement_events.
+
+There is no settlement lag and no float, which is why this model exists instead of
+the lag and float marts originally scoped. The sweep is atomic - all 476 settlement
+transactions contain both the charges and the outflow, and not one does only one or
+the other. Charge-to-settlement time is therefore zero by construction and value in
+flight never exists. The only residual is cross-token - about 10 percent of
+(transaction, token) charge groups pull a token that transaction does not settle,
+so it waits for the next sweep of that token.
+
+Charge amounts are token-agnostic on purpose. The legacy contract reports the WRONG
+token on TokenPullSuccess - it labels all 1,752 of its pulls USDC while the chain
+shows 345 USDC and 1,407 USDT arriving. Counts and amounts are correct, only the
+token field lies. Both stablecoins are 6-decimal so the summed amount stays exact,
+but a per-token split of charges would not be and is not offered. Settlement
+outflows DO carry the right token on both contracts, verified against raw ERC-20
+Transfer logs, which is why charges and settlements are sourced differently here.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_settlement_batches.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>settlement</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>batch_date</code></td><td>Date</td><td>Calendar date of the settlement transaction.</td></tr><tr><td><code>batch_time</code></td><td>DateTime</td><td>Timestamp of the settlement transaction.</td></tr><tr><td><code>bridged_amount</code></td><td>Float64</td><td>Stablecoin units bridged off Celo in this transaction.</td></tr><tr><td><code>charged_amount</code></td><td>Float64</td><td>Total pulled from cards, in stablecoin units. Token-agnostic - see the model description. Exact because both settlement stablecoins carry 6 decimals.</td></tr><tr><td><code>destination_eids</code></td><td>Array(String)</td><td>LayerZero destination endpoint IDs for bridged value. 30101 (Ethereum) is the only value observed. Empty for transaction that only settle locally.</td></tr><tr><td><code>failed_amount</code></td><td>Float64</td><td>Amount GP attempted to pull and could not (originAmount on the failure event).</td></tr><tr><td><code>fee_usd_per_charge</code></td><td>Nullable(Float64)</td><td>Bridge cost attributed per card charge in the batch. NULL rather than 0 when a batch has no charges, so empty batches drop out of averages instead of dragging them toward zero.</td></tr><tr><td><code>n_bridged</code></td><td>UInt64</td><td>SettlementBridged events - value sent to another chain via LayerZero.</td></tr><tr><td><code>n_charges</code></td><td>UInt64</td><td>Successful card charges (TokenPullSuccess) swept in this transaction.</td></tr><tr><td><code>n_failed_charges</code></td><td>UInt64</td><td>Failed pulls (TokenPullFailedWithAmount) in this transaction. 7 in total ever, all between 2026-05-28 and 2026-06-29, none since.</td></tr><tr><td><code>n_transferred</code></td><td>UInt64</td><td>SettlementTransferred events - value sent to a receiver on Celo.</td></tr><tr><td><code>native_fee_celo</code></td><td>Float64</td><td>CELO paid for the LayerZero hop. Zero for locally-settled batches, which cost nothing beyond gas.</td></tr><tr><td><code>native_fee_usd</code></td><td>Float64</td><td>native_fee_celo priced at the batch date.</td></tr><tr><td><code>receivers</code></td><td>Array(String)</td><td>Distinct settlement receivers in this transaction. An array because one transaction can bridge one token and locally transfer another to different destinations. The local receiver changed from 0x8ab54f9e to 0xdc9b73c3 after 2026-06-10.</td></tr><tr><td><code>settled_amount</code></td><td>Float64</td><td>Total stablecoin units that left the contract. Equals charged_amount per contract over all time.</td></tr><tr><td><code>settled_usd</code></td><td>Float64</td><td>settled_amount priced per token at the batch date.</td></tr><tr><td><code>settlement_contract</code></td><td>String</td><td>Address of the settlement contract, unprefixed lowercase as stored in the decode layer.</td></tr><tr><td><code>settlement_label</code></td><td>String</td><td>settlement_legacy or settlement_current, from the celo_gpay_settlement_contracts seed. &#x27;unknown&#x27; would mean a contract is emitting settlement events without being in the seed, which should never happen.</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>The settlement transaction. One row per hash.</td></tr><tr><td><code>transferred_amount</code></td><td>Float64</td><td>Stablecoin units transferred to a Celo receiver in this transaction.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>batch_time</code> (time)</li><li><code>settlement_label</code> (categorical)</li><li><code>settlement_contract</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_settlement_batches__batches</code> (count_distinct)</li><li><code>celo_gpay_settlement_batches__charges</code> (sum)</li><li><code>celo_gpay_settlement_batches__failed_charges</code> (sum)</li><li><code>celo_gpay_settlement_batches__settled_usd</code> (sum)</li><li><code>celo_gpay_settlement_batches__bridge_fee_celo</code> (sum)</li><li><code>celo_gpay_settlement_batches__bridge_fee_usd</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>contracts_celo_gpay_settlement_events</code></li><li><code>int_celo_token_prices_daily</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_settlement_cost_monthly</code></li></ul>
+    
+  </body>
+</html>

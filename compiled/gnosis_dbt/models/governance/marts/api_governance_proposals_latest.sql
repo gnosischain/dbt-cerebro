@@ -20,6 +20,7 @@ SELECT
     winning_choice,
     quorum,
     quorum_met,
+    quorum_status,
     scores_total,
     votes_count,
     unique_voters,

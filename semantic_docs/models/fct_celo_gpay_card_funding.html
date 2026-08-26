@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>fct_celo_gpay_card_funding</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>fct_celo_gpay_card_funding</h1>
+    <p>Deterministic funding-relationship per card Safe: which addresses fund it
+(inbound transfers), per token, plus each funder&#x27;s fan-out and a label-free
+funding_channel. RAW addresses, NO identity labels — we do not claim a funder
+&quot;is&quot; MiniPay, a ramp, or a CEX. Grain (safe_address, funder, token_address).
+All-token (the marts whitelist scope comment does not apply).
+
+funding_channel is a SHAPE classification from
+int_celo_gpay_funding_tx_envelopes (transaction envelope + call pattern +
+funder fan-out). CIP-64 (transaction_type 123) alone is not MiniPay — most of
+Celo uses that envelope. Channel values:
+
+  cip64_direct_solo — every transfer in this relationship is CIP-64, the funder
+    EOA called token.transfer() directly, and that funder funds exactly one
+    card. This is the MiniPay-shaped path; do not rename the value to &quot;minipay&quot;.
+  other_direct — same direct EOA transfer() shape, but the envelope is not
+    CIP-64 (type 0/2), and the funder funds exactly one card.
+  hub — this funder funds two or more cards. Fan-out wins over envelope: a
+    multi-card CIP-64 funder is still hub. Includes the legacy 0xa0dd… hub
+    (type 0, ~250 cards).
+  mediated — not a direct EOA→token transfer (e.g. Gnosis Safe execTransaction
+    0x6a761202, routers). Assigned before hub when the call is not direct.
+  mixed — transfers in this (safe, funder, token) relationship disagree on
+    channel (rare).
+  unknown — transfer row(s) could not be joined to celo_execution.transactions.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_card_funding.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>funding</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>first_funded_at</code></td><td>DateTime</td><td>Timestamp of this funder&#x27;s first inbound transfer to this card in this token.</td></tr><tr><td><code>funder</code></td><td>String</td><td>RAW inbound sender address, deliberately unlabeled.</td></tr><tr><td><code>funder_n_cards_funded</code></td><td>UInt64</td><td>Distinct cards this funder funds (fan-out; the relayer-vs-individual signal).</td></tr><tr><td><code>funder_n_funding_transfers</code></td><td>UInt64</td><td>Total inbound funding transfers this funder makes across all cards.</td></tr><tr><td><code>funding_channel</code></td><td>String</td><td>Shape classification for this (safe, funder, token) relationship. See model description for the channel glossary. Not an identity label.</td></tr><tr><td><code>last_funded_at</code></td><td>DateTime</td><td>Timestamp of this funder&#x27;s most recent inbound transfer to this card in this token.</td></tr><tr><td><code>n_transfers</code></td><td>UInt64</td><td>Inbound transfers from this funder to this card in this token.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The GP card Safe being funded (0x-prefixed, lowercase).</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Funding token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).</td></tr><tr><td><code>total_amount</code></td><td>Nullable(Float64)</td><td>Native total for known-decimals tokens; NULL otherwise.</td></tr><tr><td><code>total_amount_raw</code></td><td>UInt256</td><td>Exact integer sum of inbound amounts (this card/funder/token). UNSIGNED: these are uint256 ERC-20 amounts and inbound-only, so no sign is meaningful and a signed cast could only introduce a sign-flip above 2^255 (EXECUTIONTRANSFERS-C03).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>first_funded_at</code> (time)</li><li><code>last_funded_at</code> (time)</li><li><code>safe_address</code> (categorical)</li><li><code>funder</code> (categorical)</li><li><code>token_symbol</code> (categorical)</li><li><code>funding_channel</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_card_funding__total_amount</code> (sum)</li><li><code>celo_gpay_card_funding__n_transfers</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funding_tx_envelopes</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_funding_by_channel</code></li></ul>
+    
+  </body>
+</html>

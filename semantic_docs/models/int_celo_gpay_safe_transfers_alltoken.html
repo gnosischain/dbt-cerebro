@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_safe_transfers_alltoken</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_safe_transfers_alltoken</h1>
+    <p>Deterministic all-token ERC-20 Transfer activity touching a GP card Safe on
+either side (int_celo_gpay_safe_registry) — NO token whitelist, NO
+counterparty labeling. Base for the deterministic Tier-1 enrichment
+(all-token balances, funding-relationship) AND the base that
+int_celo_gpay_activity classifies (whitelisted subset). `amount`/`amount_usd`
+are set only for whitelisted tokens (celo_tokens_whitelist, address-gated, so
+spoof tokens are excluded); `amount_raw` is always the exact integer. A
+Safe-to-Safe transfer yields two rows
+(one per Safe-side) by design. Incremental (insert_overwrite); the backfill
+is complete, so plain daily incremental is the correct path. Scans all Celo
+Transfer logs filtered to registry Safes — heavy on full-refresh (rebuild via
+scripts/full_refresh/refresh.py in monthly batches, never a plain
+--full-refresh), bounded per-month incrementally.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_safe_transfers_alltoken.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>transfers</span> <span class='pill'>alltoken</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount</code></td><td>Nullable(Float64)</td><td>Human-unit amount; NULL for unknown-decimals tokens (no guessing).</td></tr><tr><td><code>amount_raw</code></td><td>UInt256</td><td>Exact integer transfer amount (unscaled). Always populated. uint256 on-chain, so it is unsigned here — consumers that need signed arithmetic must guard the cast (see fct_celo_gpay_card_balances_alltoken_daily).</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD value at the transfer date (whitelisted tokens only); NULL when unpriced.</td></tr><tr><td><code>block_date</code></td><td>Date</td><td>UTC date of the transfer&#x27;s block; the monthly incremental partition key derives from it.</td></tr><tr><td><code>counterparty</code></td><td>String</td><td>The other side of the transfer — RAW address, deliberately unlabeled.</td></tr><tr><td><code>direction</code></td><td>String</td><td>&#x27;in&#x27; if the Safe received, &#x27;out&#x27; if it sent.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The GP card Safe side of this transfer (0x-prefixed, lowercase).</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Transferred token contract address (0x-prefixed, lowercase). Any token, whitelisted or not.</td></tr><tr><td><code>token_class</code></td><td>Nullable(String)</td><td>Whitelist token_class (STABLECOIN / RWA); NULL for non-whitelisted tokens.</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelist symbol; NULL for non-whitelisted tokens (decimals unknown).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>block_date</code> (time)</li><li><code>safe_address</code> (categorical)</li><li><code>direction</code> (categorical)</li><li><code>token_address</code> (categorical)</li><li><code>token_symbol</code> (categorical)</li><li><code>token_class</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_safe_transfers_alltoken__amount</code> (sum)</li><li><code>celo_gpay_safe_transfers_alltoken__amount_usd</code> (sum)</li><li><code>celo_gpay_safe_transfers_alltoken__transfer_rows</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_safe_registry</code></li><li><code>int_celo_token_prices_daily</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_card_balances_alltoken_daily</code></li><li><code>int_celo_gpay_activity</code></li><li><code>int_celo_gpay_funding_tx_envelopes</code></li><li><code>int_celo_gpay_wallets</code></li></ul>
+    
+  </body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_roles_modules</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_roles_modules</h1>
+    <p>GP-specific Zodiac Roles module proxies on Celo, discovered natively from
+celo_execution.logs: an EnabledModule(&lt;GP AggregateBridge&gt;) event emitted BY a
+Roles proxy is a GP-only fingerprint set at card provisioning. Replaces
+the roles_with_bridge CTE of Dune query 7808895. Raw topic slicing, not
+the decode macro — this registry is itself an input to the decoded layer
+(see model header). Full rebuild every run; bounded by card count.
+
+The fingerprint matches ANY settlement contract seeded in
+celo_gpay_settlement_contracts (status active or migrating), not a single
+hardcoded address — both live bridges are GP&#x27;s and are unioned. 1815 modules on
+2026-08-05: 1580 on settlement_current 0xc07cd8c2…, 235 on settlement_legacy
+0xc4df5cac…. See int_celo_gpay_safe_registry for the impact of the period when
+only the current contract counted.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_roles_modules.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>registry</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>address</code></td><td>String</td><td>Roles module proxy address (0x-prefixed, lowercase).</td></tr><tr><td><code>contract_type</code></td><td>String</td><td>Always &#x27;RolesModProxy&#x27;.</td></tr><tr><td><code>first_seen_at</code></td><td>DateTime</td><td>First EnabledModule(bridge) event for this proxy, i.e. card provisioning time. Migration does NOT reset it: a card that later wires a second bridge emits another EnabledModule from the same proxy, and the min() keeps the original.</td></tr><tr><td><code>wired_settlements</code></td><td>Array(String)</td><td>Sorted distinct settlement contracts this Roles module has wired, and the migration tracker for GP&#x27;s planned move off the legacy contract. One element is the normal state; TWO elements means that card has migrated and its payment history spans both bridges. Zero modules had two on 2026-08-05, i.e. migration had not started. Read migration state from here — never from a per-card generation column, which cannot represent a card that moved.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>first_seen_at</code> (time)</li><li><code>contract_type</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_roles_modules__module_count</code> (count)</li></ul>
+    <h2>Upstream</h2><ul><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>int_celo_gpay_safe_registry</code></li></ul>
+    
+  </body>
+</html>

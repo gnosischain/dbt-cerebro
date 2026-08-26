@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_funder_wallet_daily</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_funder_wallet_daily</h1>
+    <p>Daily funding-wallet activity at (date, wallet, direction, counterparty_class,
+token) grain, folded off int_celo_gpay_funder_wallet_transfers.
+
+FEE LEGS ARE EXCLUDED HERE, ON PURPOSE, AND THIS IS THE MODEL DOWNSTREAM SHOULD
+USE. A CIP-64 fee Transfer is the gas receipt of an action, not an action; counting
+it makes one payment look like two. &quot;Active&quot; in the wallet-side tree therefore
+means: moved a token that was not a gas fee.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_funder_wallet_daily.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>funder_wallet</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount_usd</code></td><td>Float64</td><td>Summed priced value; unpriced legs excluded from the sum, so 0 can mean &quot;active but unvalued&quot;.</td></tr><tr><td><code>counterparty_class</code></td><td>String</td><td>As int_celo_gpay_funder_wallet_transfers, minus fee_sink.</td></tr><tr><td><code>date</code></td><td>Date</td><td>Activity date (partition key).</td></tr><tr><td><code>direction</code></td><td>String</td><td>&#x27;in&#x27; or &#x27;out&#x27;, from the wallet&#x27;s perspective.</td></tr><tr><td><code>n_counterparties</code></td><td>UInt64</td><td>Distinct counterparties on this day for this grain.</td></tr><tr><td><code>n_transfers</code></td><td>UInt64</td><td>Non-fee transfers on this day for this grain. The activity signal - use this, not amount_usd, to decide whether a wallet was active.</td></tr><tr><td><code>n_transfers_unpriced</code></td><td>UInt64</td><td>How many of n_transfers carried no USD value, so amount_usd = 0 can be distinguished from a genuinely zero-value day.</td></tr><tr><td><code>token_class</code></td><td>Nullable(String)</td><td>STABLECOIN / RWA; NULL for non-whitelisted tokens.</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelisted tokens only; NULL otherwise.</td></tr><tr><td><code>wallet_address</code></td><td>String</td><td>The funding wallet.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>date</code> (time)</li><li><code>direction</code> (categorical)</li><li><code>counterparty_class</code> (categorical)</li><li><code>token_symbol</code> (categorical)</li><li><code>token_class</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_funder_wallet_daily__transfers</code> (sum)</li><li><code>celo_gpay_funder_wallet_daily__active_wallets</code> (count_distinct)</li><li><code>celo_gpay_funder_wallet_daily__amount_usd</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funder_wallet_transfers</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_cardholder_engagement</code></li></ul>
+    
+  </body>
+</html>

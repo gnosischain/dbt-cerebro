@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>contracts_celo_gpay_settlement_events</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>contracts_celo_gpay_settlement_events</h1>
+    <p>Gnosis Pay&#x27;s own settlement-contract events on Celo, decoded from
+celo_execution.logs for every address in seeds/celo_gpay_settlement_contracts.
+This is the AUTHORITATIVE record of card charges and treasury movement;
+int_celo_gpay_activity infers the same charges from ERC-20 Transfer direction
+instead. The two agree exactly when bound at the shared watermark
+least(max(activity.block_time), max(TokenPullSuccess.block_timestamp)) —
+enforced by celo_gpay_charges_match_payments on this model. That is the only
+external confirmation the transfer-based classifier has.
+
+Both settlement contracts live here in one model. decode_logs joins a log to
+its ABI on (address, topic0) rather than topic0 alone, so contracts with
+disjoint signatures cannot cross-match. Beyond the charges it exposes three
+things nothing else in the tree can see: failed charge attempts, which move no
+money and are therefore invisible to a transfer-derived model; the treasury
+leg (bridged cross-chain via the LayerZero USDT0 OFT, or transferred locally);
+and the CELO fee paid per settlement batch.
+
+HEAVY: a full-history decode in one query OOMs (ClickHouse Code 241). Rebuild
+via scripts/full_refresh/refresh.py in the monthly batches declared below,
+never a plain `dbt run --full-refresh`.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/contracts/contracts_celo_gpay_settlement_events.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>contracts</span> <span class='pill'>settlement</span> <span class='pill'>events</span> <span class='pill'>microbatch</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>block_number</code></td><td>UInt64</td><td>Block containing the event.</td></tr><tr><td><code>block_timestamp</code></td><td>DateTime</td><td>On-chain timestamp of the event.</td></tr><tr><td><code>contract_address</code></td><td>String</td><td>Which settlement contract emitted the event. Stored BARE, with no 0x prefix, which is what decode_logs emits — joining it to seeds/celo_gpay_settlement_contracts.address (which is 0x-prefixed) needs replaceAll(lower(x),&#x27;0x&#x27;,&#x27;&#x27;) on both sides or every row silently falls to the ELSE branch of your CASE.</td></tr><tr><td><code>decoded_params</code></td><td>Map(String, String)</td><td>Map of decoded event parameters. Shapes differ between the two contracts: every settlement_current event carries an extra leading `sender`. The one that matters most is TokenPullSuccess.rolesModifier, the card&#x27;s Zodiac Roles module — it joins to int_celo_gpay_roles_modules and therefore identifies the card without going through transfers at all.</td></tr><tr><td><code>event_name</code></td><td>Nullable(String)</td><td>Decoded event name. TokenPullSuccess is the per-payment charge; TokenPullFailed and TokenPullFailedWithAmount are charge attempts that moved no money; SettlementBridged and SettlementTransferred are the treasury leg; NativeBridgeFeePaid is the CELO cost of a batch; BridgeMessageReceived and BridgeOftReceiptReceived are LayerZero receipts on settlement_current only. NULL means the emitting contract has no ABI loaded — see the no-undecoded-settlement-logs invariant.</td></tr><tr><td><code>log_index</code></td><td>UInt64</td><td>Log index within the block.</td></tr><tr><td><code>transaction_hash</code></td><td>String</td><td>Transaction hash (0x-prefixed).</td></tr><tr><td><code>transaction_index</code></td><td>UInt64</td><td>Index of the transaction within its block.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_settlement_batches</code></li></ul>
+    
+  </body>
+</html>

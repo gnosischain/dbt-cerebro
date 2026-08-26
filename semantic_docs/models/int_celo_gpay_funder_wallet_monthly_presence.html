@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_funder_wallet_monthly_presence</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_funder_wallet_monthly_presence</h1>
+    <p>One row per (month, funding wallet): earliest and latest Transfer leg that wallet had
+that month, plus leg counts. The batching-safe substrate for wallet TENURE.
+
+WHY A MONTHLY PRESENCE TABLE AND NOT A DIRECT min() PER WALLET. Tenure is
+`min(block_timestamp) per wallet` over all chain history, whose natural shape is a
+one-row-per-wallet table - but a table model CANNOT be batched. refresh.py re-runs
+the model per batch and a table materialisation does CREATE-OR-REPLACE each time, so
+every month would overwrite the last and the &quot;minimum&quot; would silently become the
+minimum of the final batch only. Folding presence per month into an incremental,
+partition-per-month table avoids that: each batch writes its own partition, and the
+min() is taken downstream over ~1k wallets x ~18 months instead of 2.7B raw logs.
+
+SCOPE IS WIDER THAN THE REST OF THE WALLET TREE ON PURPOSE. The floor is the start of
+coverage (2025-03), not the GP era (2026-01), because the question is what these
+wallets did BEFORE Gnosis Pay. And fee legs are COUNTED here, unlike
+int_celo_gpay_funder_wallet_daily: a CIP-64 gas receipt is not economic activity but
+it is proof the wallet existed and transacted that month. n_legs_nonfee carries the
+stricter reading.
+
+Left-censoring is handled downstream in fct_celo_gpay_wallet_tenure. This model
+reports what it observed and makes no claim that the first month it saw a wallet is
+the month that wallet began.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_funder_wallet_monthly_presence.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>funder_wallet</span> <span class='pill'>tenure</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>first_seen_at</code></td><td>DateTime</td><td>Earliest Transfer leg for this wallet in this month.</td></tr><tr><td><code>last_seen_at</code></td><td>DateTime</td><td>Latest Transfer leg for this wallet in this month.</td></tr><tr><td><code>month</code></td><td>Date</td><td>Month start (partition key).</td></tr><tr><td><code>n_legs</code></td><td>UInt64</td><td>All Transfer legs touching the wallet this month, gas receipts included - this is a presence count, not an activity count.</td></tr><tr><td><code>n_legs_nonfee</code></td><td>UInt64</td><td>Legs excluding transfers to the CIP-64 gas sink, for the stricter &quot;did something economic&quot; reading.</td></tr><tr><td><code>wallet_address</code></td><td>String</td><td>The funding wallet (0x-prefixed, lowercase).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>month</code> (time)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_funder_wallet_presence__wallets</code> (count_distinct)</li><li><code>celo_gpay_funder_wallet_presence__legs</code> (sum)</li><li><code>celo_gpay_funder_wallet_presence__legs_nonfee</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funder_wallets</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_wallet_tenure</code></li></ul>
+    
+  </body>
+</html>

@@ -16,8 +16,22 @@
     
     <h1>fct_celo_gpay_snapshots</h1>
     <p>All-time and trailing-7D headline snapshots per action (Volume/Count/Users),
-plus TotalBalance. Feeds the counter tiles. No Cashback branch (Gnosis Chain
-only). TotalBalance is the net-flow USDC+USDT float on the latest day.
+plus TotalBalance and RewardBalance. Feeds the counter tiles. No Cashback action
+branch (Gnosis Chain only).
+
+TotalBalance is the latest-day SPENDABLE float: mark-to-market USD across
+token_class = &#x27;STABLECOIN&#x27;. RewardBalance is the same for token_class = &#x27;RWA&#x27;
+(zero until the cashback program pays out). The split is driven by
+celo_tokens_whitelist.token_class, never a hardcoded symbol list, so a newly
+transacting token cannot be silently excluded from the headline. RWA is reported
+separately rather than blended because a reward token is not spendable at the
+settlement contract.
+
+FundedCards (added 2026-08-05) counts cards that have ever RECEIVED money and is
+deliberately distinct from PaymentUsers, which counts cards that have ever SPENT.
+The two were conflated: api_celo_gpay_total_funded served PaymentUsers, so the
+funded tile read 662 when 1087 cards had been funded. Funnel: issued (registry, not
+in this model) &gt; FundedCards &gt; PaymentUsers.
 </p>
     <p><strong>Module:</strong> celo</p>
     <p><strong>Status:</strong> docs_only</p>
@@ -25,11 +39,11 @@ only). TotalBalance is the net-flow USDC+USDT float on the latest day.
     <p><strong>Path:</strong> <code>models/celo/gpay/marts/fct_celo_gpay_snapshots.sql</code></p>
     <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span></p>
     <h2>Columns</h2>
-    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>change_pct</code></td><td>Nullable(Float64)</td><td>Percent change vs the prior 7-day window (7D rows only; NULL for All).</td></tr><tr><td><code>label</code></td><td>String</td><td>Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance.</td></tr><tr><td><code>value</code></td><td>Float64</td><td>Snapshot value.</td></tr><tr><td><code>window</code></td><td>String</td><td>&#x27;All&#x27; (all-time) or &#x27;7D&#x27; (trailing 7 days).</td></tr></tbody></table>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>change_pct</code></td><td>Nullable(Float64)</td><td>Percent change vs the prior 7-day window (7D rows only; NULL for All).</td></tr><tr><td><code>label</code></td><td>String</td><td>Metric label, e.g. PaymentVolume, TopupCount, WithdrawalUsers, TotalBalance, RewardBalance, FundedCards.</td></tr><tr><td><code>value</code></td><td>Nullable(Float64)</td><td>Snapshot value. For the balance labels, NULL means a position is held but unpriced (a visible failure) whereas 0 means no position — the two are deliberately distinguished so an outage cannot render as a plausible $0 tile.</td></tr><tr><td><code>window</code></td><td>String</td><td>&#x27;All&#x27; (all-time) or &#x27;7D&#x27; (trailing 7 days).</td></tr></tbody></table>
     <h2>Dimensions</h2><ul><li>None</li></ul>
     <h2>Measures</h2><ul><li>None</li></ul>
     <h2>Upstream</h2><ul><li><code>fct_celo_gpay_balances_by_token_daily</code></li><li><code>int_celo_gpay_activity_daily</code></li></ul>
-    <h2>Downstream</h2><ul><li><code>api_celo_gpay_active_users_7d</code></li><li><code>api_celo_gpay_payments_7d</code></li><li><code>api_celo_gpay_total_balance</code></li><li><code>api_celo_gpay_total_funded</code></li><li><code>api_celo_gpay_total_payments</code></li><li><code>api_celo_gpay_total_volume</code></li><li><code>api_celo_gpay_volume_7d</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>api_celo_gpay_active_users_7d</code></li><li><code>api_celo_gpay_payments_7d</code></li><li><code>api_celo_gpay_total_activated</code></li><li><code>api_celo_gpay_total_balance</code></li><li><code>api_celo_gpay_total_funded</code></li><li><code>api_celo_gpay_total_payments</code></li><li><code>api_celo_gpay_total_volume</code></li><li><code>api_celo_gpay_volume_7d</code></li></ul>
     
   </body>
 </html>

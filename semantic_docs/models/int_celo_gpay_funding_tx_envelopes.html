@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_funding_tx_envelopes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_funding_tx_envelopes</h1>
+    <p>One row per inbound ERC-20 transfer onto a GP card Safe, with the funding
+transaction&#x27;s envelope attached and a label-free funding_channel.
+
+funding_channel is a SHAPE classification, not an identity. CIP-64
+(transaction_type 123) is Celo&#x27;s fee-currency envelope and is used by most
+of the chain — it is necessary for MiniPay-style fee abstraction but not a
+MiniPay ID. Measured 2026-08-07: ~64% of all Celo txs and ~79% of calls to
+USDT/USDC were type 123; the discriminative signal for card funding is the
+composite of envelope + call shape + funder fan-out. feeCurrency is not in
+celo_execution.transactions.
+
+Channel values (assigned in this priority order):
+
+  unknown — no matching row in celo_execution.transactions for the transfer&#x27;s
+    tx hash (should be rare once the funding window is fully indexed).
+  mediated — the funding tx is NOT a direct EOA call of token.transfer()
+    (from != funder, or to != token, or selector != transfer). Typical cases
+    are Gnosis Safe execTransaction (0x6a761202) and routers.
+  hub — the call IS a direct EOA transfer, but this funder funds two or more
+    cards. Fan-out wins over envelope: even all-CIP-64 multi-card funders are
+    hub. Includes the legacy 0xa0dd… onboarding hub (~250 cards, type 0).
+  cip64_direct_solo — CIP-64 (type 123) + funder EOA called token.transfer()
+    + that funder funds exactly one card. MiniPay-shaped; do not rename to
+    &quot;minipay&quot; without an off-chain identity source.
+  other_direct — same direct EOA transfer() shape and solo fan-out, but the
+    envelope is not CIP-64 (type 0/2 — typically CELO gas).
+
+Consumed by fct_celo_gpay_card_funding (relationship-level channel, with
+mixed when transfers disagree) and fct_celo_gpay_card_funnel
+(first_fund_channel = channel of the card&#x27;s earliest inbound transfer).
+Full-table rebuild; bounded by inbound transfer count (~6k).
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> docs_only</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_funding_tx_envelopes.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>funding</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount</code></td><td>Nullable(Float64)</td><td>Human-unit amount; NULL when decimals unknown.</td></tr><tr><td><code>amount_raw</code></td><td>UInt256</td><td>Exact unscaled transfer amount (uint256).</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>USD value at transfer date; NULL when unpriced.</td></tr><tr><td><code>block_date</code></td><td>Date</td><td>UTC date of the transfer&#x27;s block.</td></tr><tr><td><code>block_time</code></td><td>DateTime</td><td>On-chain timestamp of the transfer.</td></tr><tr><td><code>funder</code></td><td>String</td><td>RAW inbound sender address from the Transfer event, deliberately unlabeled.</td></tr><tr><td><code>funder_n_cards_funded</code></td><td>UInt64</td><td>Distinct cards this funder funds across all inbound transfers.</td></tr><tr><td><code>funding_channel</code></td><td>String</td><td>Shape classification for this transfer. See model description for the channel glossary. Not an identity label.</td></tr><tr><td><code>is_direct_eoa_transfer</code></td><td>UInt8</td><td>1 when the funding tx has from=funder, to=token, and selector transfer (0xa9059cbb) — i.e. the funder EOA signed a direct ERC-20 transfer.</td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td>Log index of the Transfer event within the transaction.</td></tr><tr><td><code>safe_address</code></td><td>String</td><td>The GP card Safe that received the transfer (0x-prefixed, lowercase).</td></tr><tr><td><code>token_address</code></td><td>String</td><td>Token contract address (0x-prefixed, lowercase).</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelist symbol; NULL for non-whitelisted tokens.</td></tr><tr><td><code>transaction_type</code></td><td>Nullable(UInt32)</td><td>Envelope from celo_execution.transactions. 123 = CIP-64 fee-currency (not MiniPay-specific). NULL when the tx hash did not join.</td></tr><tr><td><code>tx_hash</code></td><td>String</td><td>Funding transaction hash (0x-prefixed, lowercase).</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li>None</li></ul>
+    <h2>Measures</h2><ul><li>None</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_safe_transfers_alltoken</code></li><li><code>transactions</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_card_funding</code></li><li><code>fct_celo_gpay_card_funnel</code></li><li><code>int_celo_gpay_funder_wallets</code></li></ul>
+    
+  </body>
+</html>

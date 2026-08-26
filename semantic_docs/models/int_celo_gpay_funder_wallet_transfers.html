@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>int_celo_gpay_funder_wallet_transfers</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; line-height: 1.5; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+      th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; vertical-align: top; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 4px; }
+      .pill { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eef2ff; margin-right: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    
+    <h1>int_celo_gpay_funder_wallet_transfers</h1>
+    <p>All-token ERC-20 Transfer activity touching a GP card FUNDING WALLET on either
+side, with the counterparty classified against the GP universe. The wallet-side
+twin of int_celo_gpay_safe_transfers_alltoken: that model sees what the card does,
+this one sees what the cardholder does with the rest of their money. On
+2026-08-05..08 the card boundary hid roughly ten times more transfer activity than
+it showed (18,157 wallet legs vs 1,674 card actions for the same people).
+
+Grain is (transfer, wallet-side): a transfer between two cardholder wallets
+yields two rows, one per side&#x27;s own footprint. Do not dedupe across sides.
+
+amount / amount_usd / token_symbol / token_class are populated only for
+whitelisted (address-gated) tokens; everything else keeps amount_raw and leaves
+the rest NULL rather than guessing a decimal scale.
+
+The floor is the GP era (2026-01-01), not the wallet&#x27;s whole life. Wallet TENURE
+needs history back to the L2 migration and is deliberately not modelled here.
+</p>
+    <p><strong>Module:</strong> celo</p>
+    <p><strong>Status:</strong> candidate</p>
+    <p><strong>Owner:</strong> analytics_team</p>
+    <p><strong>Path:</strong> <code>models/celo/gpay/intermediate/int_celo_gpay_funder_wallet_transfers.sql</code></p>
+    <p><strong>Tags:</strong> <span class='pill'>production</span> <span class='pill'>celo</span> <span class='pill'>gpay</span> <span class='pill'>native</span> <span class='pill'>transfers</span> <span class='pill'>funder_wallet</span></p>
+    <h2>Columns</h2>
+    <table><thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>amount</code></td><td>Nullable(Float64)</td><td>Human units; NULL when decimals are unknown.</td></tr><tr><td><code>amount_raw</code></td><td>UInt256</td><td>Exact integer transfer amount as emitted.</td></tr><tr><td><code>amount_usd</code></td><td>Nullable(Float64)</td><td>Priced at the transfer date via the Celo price hub; NULL when unpriced (visibly unpriced, never 0).</td></tr><tr><td><code>block_date</code></td><td>Date</td><td>Transfer date (partition key).</td></tr><tr><td><code>block_time</code></td><td>DateTime</td><td>Transfer block timestamp.</td></tr><tr><td><code>counterparty</code></td><td>String</td><td>The other side of the transfer (0x-prefixed, lowercase).</td></tr><tr><td><code>counterparty_class</code></td><td>String</td><td>fee_sink (the CIP-64 gas recipient 0x..0ce106a5 - highest-count counterparty on the chain and pure noise, $10.30 across 3,799 legs in a 3-day sample; excluded from int_celo_gpay_funder_wallet_daily) | zero_address (mint/burn) | gp_card (a Safe in int_celo_gpay_safe_registry) | cardholder_wallet (another funding wallet) | other. &#x27;other&#x27; is honestly unknown and must never be presented as &quot;merchants&quot; or &quot;P2P&quot;.</td></tr><tr><td><code>direction</code></td><td>String</td><td>&#x27;in&#x27; or &#x27;out&#x27;, from the wallet&#x27;s perspective.</td></tr><tr><td><code>log_index</code></td><td>UInt32</td><td>Log index within the block.</td></tr><tr><td><code>token_address</code></td><td>String</td><td>ERC-20 contract address (0x-prefixed, lowercase).</td></tr><tr><td><code>token_class</code></td><td>Nullable(String)</td><td>STABLECOIN / RWA from celo_tokens_whitelist; NULL for non-whitelisted.</td></tr><tr><td><code>token_symbol</code></td><td>Nullable(String)</td><td>Whitelisted tokens only; NULL otherwise (never guessed).</td></tr><tr><td><code>tx_hash</code></td><td>String</td><td>Transaction hash (0x-prefixed, lowercase).</td></tr><tr><td><code>wallet_address</code></td><td>String</td><td>The funding wallet whose footprint this row belongs to.</td></tr></tbody></table>
+    <h2>Dimensions</h2><ul><li><code>block_time</code> (time)</li><li><code>direction</code> (categorical)</li><li><code>counterparty_class</code> (categorical)</li><li><code>token_symbol</code> (categorical)</li><li><code>token_class</code> (categorical)</li></ul>
+    <h2>Measures</h2><ul><li><code>celo_gpay_funder_wallet_transfers__transfers</code> (count)</li><li><code>celo_gpay_funder_wallet_transfers__wallets</code> (count_distinct)</li><li><code>celo_gpay_funder_wallet_transfers__amount_usd</code> (sum)</li></ul>
+    <h2>Upstream</h2><ul><li><code>int_celo_gpay_funder_wallets</code></li><li><code>int_celo_gpay_safe_registry</code></li><li><code>int_celo_token_prices_daily</code></li><li><code>logs</code></li></ul>
+    <h2>Downstream</h2><ul><li><code>fct_celo_gpay_cardholder_engagement</code></li><li><code>fct_celo_gpay_wallet_share_of_spend_daily</code></li><li><code>int_celo_gpay_funder_wallet_daily</code></li></ul>
+    
+  </body>
+</html>
