@@ -73,6 +73,14 @@ META_AGENT_KEYS = {
 PRIVACY_TAG_MARKERS = ("privacy",)  # any tag containing these substrings
 PRIVACY_TAGS_EXACT = {"internal_only"}
 
+# The complete status vocabulary (docs/agents.md "Lesson lifecycle"): the
+# observed -> remediated -> enforced lifecycle, `proposed` for ideas with no
+# instance yet, and `primer` for conceptual background records that sit
+# outside the lifecycle. Enforced here because two undocumented synonyms
+# (`documented`, `resolved`) drifted in while nothing validated the field —
+# an out-of-vocabulary status reads as meaningful and sorts nowhere.
+VALID_LESSON_STATUSES = {"proposed", "observed", "remediated", "enforced", "primer"}
+
 
 # ---------------------------------------------------------------------------
 # Lessons
@@ -96,10 +104,17 @@ def load_lessons(lessons_dir: Path) -> Dict[str, dict]:
             raise SystemExit(f"ERROR: lesson {path} has no id")
         if lid != path.stem:
             raise SystemExit(f"ERROR: lesson id '{lid}' != filename '{path.stem}'")
+        status = meta.get("status", "observed")
+        if status not in VALID_LESSON_STATUSES:
+            raise SystemExit(
+                f"ERROR: lesson {path} has status '{status}' — not in the "
+                f"vocabulary {sorted(VALID_LESSON_STATUSES)} "
+                "(docs/agents.md 'Lesson lifecycle')"
+            )
         lessons[lid] = {
             "id": lid,
             "title": meta.get("title", ""),
-            "status": meta.get("status", "observed"),
+            "status": status,
             "scope": meta.get("scope", ""),
             "symptom": meta.get("symptom", ""),
             "last_verified": str(meta.get("last_verified", "")),

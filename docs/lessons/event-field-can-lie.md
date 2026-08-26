@@ -1,7 +1,7 @@
 ---
 id: event-field-can-lie
 title: A contract's own event can report the wrong value — ground-truth a decoded field against transfers before building on it
-status: documented
+status: remediated
 scope: any model built on decoded contract events where a field is taken at face value —
   models/celo/contracts/contracts_celo_gpay_settlement_events.sql and anything downstream
   of it; by extension every decode_logs model that exposes a token, amount or counterparty

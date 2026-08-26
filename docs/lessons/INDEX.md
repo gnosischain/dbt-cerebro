@@ -108,7 +108,7 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   event_signatures/contracts_abi; every decode_logs model then appended ZERO rows,
   all green, mimicking a date-cap. Verify row count + chain distribution after any
   seed deploy; seeds batch added to scheduled tests (pending deploy).
-- [event-field-can-lie](event-field-can-lie.md) `documented` — a contract emitted the wrong
+- [event-field-can-lie](event-field-can-lie.md) `remediated` — a contract emitted the wrong
   token on every one of its 1,752 charge events, consistently enough to look like a
   contract that only handled one token. Decoding succeeded, the address was valid, and
   contract-level value conservation still balanced. Ground-truth a decoded field against
