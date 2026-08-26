@@ -1,7 +1,7 @@
 ---
 id: circular-completeness-proof
 title: A completeness proof anchored on the identifier the model already knows cannot detect a second one
-status: resolved
+status: remediated
 scope: entity-discovery models that define a population from one contract fingerprint
   (int_celo_gpay_safe_registry, int_celo_gpay_roles_modules); any "every X is covered"
   verification that derives X from the model's own anchor

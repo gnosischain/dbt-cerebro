@@ -265,9 +265,14 @@ stateDiagram-v2
     end note
 ```
 
-`proposed` exists for ideas with no instance yet. The status is attached inline
-to every hazard in every change packet, so consumers always see whether a
-hazard is still live.
+`proposed` exists for ideas with no instance yet. `primer` marks a conceptual
+background record (e.g. `ch-merge-semantics-primer`) that explains platform
+semantics rather than an incident — it sits outside the lifecycle and never
+transitions. These five values are the complete vocabulary, enforced by
+`build_agent_context.py` (an out-of-vocabulary status fails the build — two
+undocumented synonyms, `documented` and `resolved`, drifted in before the
+gate existed). The status is attached inline to every hazard in every change
+packet, so consumers always see whether a hazard is still live.
 
 ## MCP serving
 
