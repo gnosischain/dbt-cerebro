@@ -18,6 +18,7 @@ evidence:
   - 'mechanism proof: for sampled addresses model_0715 == model_0714 EXACTLY (zero net integrated), while int_execution_tokens_address_diffs_daily held the correct 07-15 delta (+2,559.09 EURe for 0x2cbe..., matching raw execution.logs Int256 reconstruction)'
   - 'transfers/diffs self-healed because they recompute the latest month (insert_overwrite); the balances incremental branch only generates dates AFTER max(date), so the frozen day is never revisited'
   - 'repair: model-documented reprocess_overwrite window (start_month=end_month=2026-07-01), 471s run, July dup_excess stayed 0, negatives 201 -> 11 (the 11 are pre-July deficits, older class)'
+  - '2026-08-31 recurrence: during the Aug 26-30 server-saturation outage, the Aug-24 cron built the 2026-08-23 balances slice while diffs held only ~212 of the eventual 4,582 rows for that day; diffs self-healed, balances froze the hole — 4,370 of 4,582 Aug-23 deltas unapplied (95%), 135 new negative pairs on Aug 24 and rising daily after; every other day Aug 1-30 reconciles delta-for-delta. Detection query that scoped it: per-day count of diffs rows where balance(d) - balance(d-1) != net_delta(d) — a candidate DQ test that would make this class enforced'
   - 'sibling instance same week (the USD layer): int_execution_tokens_balances_daily 2026-07-13/14 built before those days'' prices landed -> 100% NULL balance_usd both days; repaired via scripts/maintenance/refill_after_price_gap.sh --from-date 2026-07-13'
 ---
 
