@@ -43,7 +43,9 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   identity-keyed under target/refresh_state/; refresh.py refuses overlapping starts.
 - [frontier-day-incomplete-inputs](frontier-day-incomplete-inputs.md) `remediated` — a
   cumulative chain that builds the frontier day before its inputs settle freezes the
-  hole; upstreams self-heal, the cumulative layer never revisits the day.
+  hole; upstreams self-heal, the cumulative layer never revisits the day. Recurred
+  2026-08-23 (4,370 unapplied deltas); gate now in tree
+  (dq_daily_balances_delta_reconciliation, pending deploy — then flip to enforced).
 - [microbatch-state-skips-data-holes](microbatch-state-skips-data-holes.md) `observed` —
   an unscoped `apply_monthly_incremental_filter` (no filters_sql=range_sql) watermarks
   off the global frontier, so later-band slices insert 0 rows "successfully" and the
