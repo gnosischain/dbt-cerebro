@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution','state','size']
+        tags=['deprecated','execution','state','size']
     )
 }}
 
