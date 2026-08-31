@@ -91,6 +91,25 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [date, symbol]
+      semantics: snapshot
+      invariants:
+      - id: one-price-per-feed-day
+        text: Exactly one row per (date, symbol); the price is the day's LAST oracle
+          answer and must be > 0.
+      - id: green-run-not-fresh
+        text: >-
+          A green run proves nothing about freshness — the model reprocesses whatever
+          the decode holds; when the upstream aggregator set rotates, max(date) freezes
+          while runs stay green. Check max(date) against today before trusting output.
+      hazards: [oracle-aggregator-rotation-silent-halt, staged-insert-overwrite-wipe]
+      ground_truth: latestRoundData()/description() on the current phase aggregators;
+        int_execution_token_prices_compare vs off-chain feeds
+      reprocess_runbook: >-
+        insert_overwrite partitioned by month with start_month/end_month vars — the
+        window must be whole months (partition grain = overwrite grain); never staged
+        batches or slice vars.
     full_refresh:
       start_date: "2021-01-01"
       batch_months: 2

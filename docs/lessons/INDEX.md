@@ -108,6 +108,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   event_signatures/contracts_abi; every decode_logs model then appended ZERO rows,
   all green, mimicking a date-cap. Verify row count + chain distribution after any
   seed deploy; seeds batch added to scheduled tests (pending deploy).
+- [oracle-aggregator-rotation-silent-halt](oracle-aggregator-rotation-silent-halt.md)
+  `observed` — Chainlink rotated every Gnosis aggregator 2026-08-06/07; the decode's
+  hardcoded address list went dry for 25 days while decode + downstreams ran green
+  (calendar forward-fill + price-hub demotion masked it). Register ABIs BEFORE running
+  a decode with new addresses. Fix in tree, pending deploy.
 - [event-field-can-lie](event-field-can-lie.md) `remediated` — a contract emitted the wrong
   token on every one of its 1,752 charge events, consistently enough to look like a
   contract that only handled one token. Decoding succeeded, the address was valid, and

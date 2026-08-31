@@ -14,7 +14,7 @@ models:
   description: >
     Decoded Chainlink price-feed AnswerUpdated events for all aggregators used on
     Gnosis (GNO/USD, ETH/USD, WBTC/USD, EUR/USD, CHF/USD, wstETH-ETH, USDC/USD,
-    USDT/USD, DAI/USD; both phase aggregators per feed). Single-pass decode of the
+    USDT/USD, DAI/USD; all phase aggregators per feed). Single-pass decode of the
     address set; contract_address identifies the feed.
   columns:
   - name: block_number
@@ -44,6 +44,33 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: [block_timestamp, log_index]
+      semantics: event
+      invariants:
+      - id: aggregator-set-current
+        text: >-
+          The hardcoded aggregator arrays must contain the operator's CURRENT phase
+          deployments; Chainlink rotated every Gnosis aggregator on 2026-08-06/07 and
+          the decode went silently dry while every run stayed green.
+      - id: abi-before-decode
+        text: >-
+          Every address in the array needs rows in event_signatures BEFORE the decode
+          runs; an unmatched address appends empty-decoded rows and advances the
+          watermark past them.
+      hazards: [oracle-aggregator-rotation-silent-halt, decode-watermark-late-logs,
+                stale-seed-deploy-silent-decode-halt]
+      ground_truth: >-
+        execution.logs AnswerUpdated (topic0 0559884f...) — the events never stop,
+        they move addresses; verify a candidate aggregator with description() /
+        latestAnswer() eth_calls before adding it.
+      validation:
+      - 'decode freshness: max(block_timestamp) within ~1 day of the chain head'
+      - per-feed daily event coverage for all tracked feeds since the last rotation
+      reprocess_runbook: >-
+        Rotation or empty-decoded rows: seed the new ABIs first, then
+        gap_window_refresh.py --months <month> --select contracts_chainlink_feeds_events
+        (drops the month partition to lower the watermark, then re-decodes).
     full_refresh:
       start_date: "2021-01-01"
       batch_months: 1

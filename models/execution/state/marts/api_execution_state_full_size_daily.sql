@@ -1,7 +1,7 @@
 {{ 
     config(
         materialized='view',
-        tags=['production','execution', 'tier1', 'api:state_size', 'granularity:daily']
+        tags=['deprecated','execution', 'tier1', 'granularity:daily']
     )
 }}
 

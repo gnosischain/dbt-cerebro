@@ -5,7 +5,7 @@
         engine='ReplacingMergeTree()',
         order_by='(date)',
         partition_by='toStartOfMonth(date)',
-        tags=['production','execution','state','size']
+        tags=['deprecated','execution','state','size']
     )
 }}
 

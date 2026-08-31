@@ -17,6 +17,7 @@ evidence:
   - "both were latent, not active: the committed CSVs were correct, generated under web3 v6 when the ABIs were still present. The landmine was armed for whoever next ran the documented command"
   - "fixed 2026-08-06 by slicing the prefix rather than the position (keccak_hex helper) and by restoring the 4 missing ABIs, after which regeneration is purely additive: 0 rows removed from either file"
   - "a third, compounding defect: output order followed whatever order the ABIs came back from ClickHouse, so a 22-row addition rendered as 5,409 insertions and 5,256 deletions and was unreviewable — which is precisely why the two data defects above survived. Fixed the same day by sorting on identity (chain, address, name, signature) in write_csv; two consecutive regenerations now produce byte-identical files"
+  - "2026-08-31, fourth instance: regenerating while the ClickHouse contracts_abi table lagged the CSV flipped the chain column on 78 rows for addresses deployed on more than one chain (celo<->gnosis, e.g. the Safe singleton 0x29fcb43b…) — row count and per-key set-diff both clean, only a full-row compare including chain caught it. Regen was discarded; the 9 new contracts' rows were appended via generate_signatures() on just their ABI rows (append-only diff, 180/423 rows, 0 deletions)"
 ---
 
 ## Symptom
