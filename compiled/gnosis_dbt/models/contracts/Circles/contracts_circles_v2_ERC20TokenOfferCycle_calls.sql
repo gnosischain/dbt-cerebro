@@ -72,8 +72,8 @@ WITH
             
           
           
-          AND block_number > 47828081
-          AND block_timestamp >= toDateTime('2026-08-20 20:30:05')
+          AND block_number > 47946546
+          AND block_timestamp >= toDateTime('2026-08-27 20:30:05')
           
           
           

@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 39,
+    "explicit_contracts": 42,
     "high_risk": 318,
     "models": 1277
   },
-  "inputs_fingerprint": "6861d3d8c9d15d145b1353b6d779a301ffbc5f77702975883b6cb790c8cd6d94",
+  "inputs_fingerprint": "867cc9c4f5f6c84cfba727fa8cf51dc3bd704f65c9e4eae12fd907c231612df8",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -228,7 +228,8 @@
         "seeds/event_signatures.csv also held 24 rows that no ABI in seeds/contracts_abi.csv could produce \u2014 4 contracts (2 UniswapV3Pool, OffchainScoreBasedMintPolicy 0x450d6827\u2026, ComposableStablePool 0xdd439304\u2026) whose signatures had been retained by hand after their ABIs left the store. A faithful regeneration DELETES those 24 rows, which would have silently broken Balancer pool decoding (0xdd439304 is the abi_source_address for the whole pool registry), the Circles score policy, and Circles/Uniswap liquidity",
         "both were latent, not active: the committed CSVs were correct, generated under web3 v6 when the ABIs were still present. The landmine was armed for whoever next ran the documented command",
         "fixed 2026-08-06 by slicing the prefix rather than the position (keccak_hex helper) and by restoring the 4 missing ABIs, after which regeneration is purely additive: 0 rows removed from either file",
-        "a third, compounding defect: output order followed whatever order the ABIs came back from ClickHouse, so a 22-row addition rendered as 5,409 insertions and 5,256 deletions and was unreviewable \u2014 which is precisely why the two data defects above survived. Fixed the same day by sorting on identity (chain, address, name, signature) in write_csv; two consecutive regenerations now produce byte-identical files"
+        "a third, compounding defect: output order followed whatever order the ABIs came back from ClickHouse, so a 22-row addition rendered as 5,409 insertions and 5,256 deletions and was unreviewable \u2014 which is precisely why the two data defects above survived. Fixed the same day by sorting on identity (chain, address, name, signature) in write_csv; two consecutive regenerations now produce byte-identical files",
+        "2026-08-31, fourth instance: regenerating while the ClickHouse contracts_abi table lagged the CSV flipped the chain column on 78 rows for addresses deployed on more than one chain (celo<->gnosis, e.g. the Safe singleton 0x29fcb43b\u2026) \u2014 row count and per-key set-diff both clean, only a full-row compare including chain caught it. Regen was discarded; the 9 new contracts' rows were appended via generate_signatures() on just their ABI rows (append-only diff, 180/423 rows, 0 deletions)"
       ],
       "id": "derived-seed-regen-unsafe",
       "last_verified": "2026-08-06",
@@ -334,6 +335,7 @@
         "mechanism proof: for sampled addresses model_0715 == model_0714 EXACTLY (zero net integrated), while int_execution_tokens_address_diffs_daily held the correct 07-15 delta (+2,559.09 EURe for 0x2cbe..., matching raw execution.logs Int256 reconstruction)",
         "transfers/diffs self-healed because they recompute the latest month (insert_overwrite); the balances incremental branch only generates dates AFTER max(date), so the frozen day is never revisited",
         "repair: model-documented reprocess_overwrite window (start_month=end_month=2026-07-01), 471s run, July dup_excess stayed 0, negatives 201 -> 11 (the 11 are pre-July deficits, older class)",
+        "2026-08-31 recurrence: during the Aug 26-30 server-saturation outage, the Aug-24 cron built the 2026-08-23 balances slice while diffs held only ~212 of the eventual 4,582 rows for that day; diffs self-healed, balances froze the hole \u2014 4,370 of 4,582 Aug-23 deltas unapplied (95%), 135 new negative pairs on Aug 24 and rising daily after; every other day Aug 1-30 reconciles delta-for-delta. Detection query that scoped it: per-day count of diffs rows where balance(d) - balance(d-1) != net_delta(d) \u2014 a candidate DQ test that would make this class enforced",
         "sibling instance same week (the USD layer): int_execution_tokens_balances_daily 2026-07-13/14 built before those days' prices landed -> 100% NULL balance_usd both days; repaired via scripts/maintenance/refill_after_price_gap.sh --from-date 2026-07-13"
       ],
       "id": "frontier-day-incomplete-inputs",
@@ -435,6 +437,23 @@
       "status": "observed",
       "symptom": "A supply series reconstructed from totalSupply() disagrees with a transfer-delta series (e.g. Dune's) by a large constant that appears after historical burn events; for mainnet GNO the gap is ~3,147,806 GNO (~31% of the 10M totalSupply).",
       "title": "A raw totalSupply() read overstates effective supply for pre-2018-style tokens \u2014 transfers to 0x0 accumulate at the zero address without decrementing totalSupply."
+    },
+    "oracle-aggregator-rotation-silent-halt": {
+      "body": "## Symptom\nA decode model over a fixed list of third-party contract addresses stops appending \u2014\nits max(block_timestamp) freezes at a specific minute \u2014 while the model itself and\nevery downstream keep running green. Downstream models that forward-fill over a daily\ncalendar keep advancing their max(date), so the freshness sweep that catches most\nhalts passes. If a demotion/fallback layer (price hub staleness demotion) sits\ndownstream, even the served VALUES stay plausible, and the halt can run for weeks.\n\n## Root cause\nThe address list names deployments the repo does not control. Chainlink feeds are\nproxies over phase aggregators; the operator can (and on 2026-08-06/07 did, for every\nGnosis feed at once) deploy a new aggregator generation and repoint the proxies. The\nold contracts simply stop emitting \u2014 no error, no tombstone event, nothing on our\nside fails. `AnswerUpdated` kept the same topic0 across versions, so the halt is not\neven visible as an unknown-topic pileup; the events continue under addresses the\nmodel has never heard of.\n\n## Forbidden action\nDo not \"fix\" the staleness by re-running, full-refreshing, or gap-refreshing the\ndecode with the OLD address list \u2014 there is nothing to recover; the source moved.\nAnd do not run the decode with NEW addresses before their ABIs are registered in\n`event_signatures`: the decode LEFT-joins the ABI, so unmatched rows append with\nempty event_name/decoded_params and the watermark advances past them \u2014 turning a\nclean gap into a corrupt-rows repair (partition drop + re-decode).\n\n## Detection\n- Freshness must be checked on the DECODE table (max(block_timestamp)), never only on\n  calendar-spine downstreams.\n- Rotation signature: `SELECT address, min(block_timestamp), max(block_timestamp)\n  FROM execution.logs WHERE topic0 = <event topic> AND block_timestamp > <halt - 2d>\n  GROUP BY address` \u2014 the old set's max and a new set's min bracket the halt within\n  hours.\n- Map candidate new emitters to feeds with `description()` / Blockscout ABI before\n  trusting them; exclude look-alikes (a `USDC / USD TEST CAPPED` contract emits the\n  same topic).\n\n## Safe remediation\nOrder matters:\n1. Fetch + register ABIs first: `scripts/signatures/fetch_abi_to_csv.py <addr>` per\n   new contract, regenerate/append `event_signatures` rows (see\n   derived-seed-regen-unsafe before trusting a full regen), `dbt seed`.\n2. Append the new addresses to the model's list and the downstream feed->symbol map.\n3. Then run the decode. If step 3 ever ran before step 1: drop the affected month\n   partition(s) via `gap_window_refresh.py --months <month> --select <decode>` and\n   re-run.\n4. Downstream oracle/native/hub models heal on their next normal run once the DEPLOYED\n   image carries the new mapping \u2014 a local rebuild of an insert_overwrite downstream\n   gets overwritten by the next cron running the old mapping.\n\n## Ground truth\n`execution.logs` is the authority: the events never stopped, they moved addresses.\nCross-check any new aggregator with an eth_call (`description()`, `latestAnswer()`)\nagainst the served price before adding it.",
+      "evidence": [
+        "contracts_chainlink_feeds_events max(block_timestamp) froze at 2026-08-06 13:13:15; int_execution_prices_oracle_daily kept completing green in 2-5s every day after (Elementary run history 2026-08-25..30), discovered 2026-08-31 \u2014 25 days later",
+        "execution.logs, topic0 0559884f\u2026 (AnswerUpdated): the 14 hardcoded aggregators' last events land 2026-08-05/06; a disjoint set of 44 emitters starts 2026-08-07 00:02 \u2014 Chainlink rotated every Gnosis feed to new AccessControlledOCR2Aggregator deployments (verified via Blockscout ABI + description() calls: GNO/USD 0xe2cd6230\u2026, ETH/USD 0x89baf01d\u2026, etc.)",
+        "masking layer: int_execution_token_prices_daily demotes native prices forward-filled > native_price_max_staleness_days (7) below off-chain feeds, so served USD prices stayed correct \u2014 which is exactly why nothing looked wrong for 25 days",
+        "second bite during repair: running the decode with the new addresses BEFORE their ABIs were in event_signatures appended ~1.9k rows with event_name='' and decoded_params={} and advanced the watermark to 2026-08-31; required gap_window_refresh.py --months 2026-08-01 to drop the partition and re-decode",
+        "fix in working tree 2026-08-31 (pending merge/deploy): new addresses appended in contracts_chainlink_feeds_events.sql + int_execution_prices_oracle_daily.sql mapping; ABIs via scripts/signatures/fetch_abi_to_csv.py x9 + targeted signature append; GNO daily closes continuous across the rotation boundary (105.54 -> 106.28)"
+      ],
+      "id": "oracle-aggregator-rotation-silent-halt",
+      "last_verified": "2026-08-31",
+      "path": "docs/lessons/oracle-aggregator-rotation-silent-halt.md",
+      "scope": "decode models whose contract_address is an inline list of externally-operated contracts (models/contracts/chainlink/contracts_chainlink_feeds_events.sql; by extension any oracle/aggregator/keeper decode where a third party controls the address set \u2014 Chainlink phase aggregators, celo_chainlink_feeds)",
+      "status": "observed",
+      "symptom": "the decode table's max(block_timestamp) freezes on a specific minute while every daily run of the decode AND its downstreams completes green in seconds; downstream calendar-spine models keep emitting rows (forward-fill), so max(date) checks on THEM pass \u2014 only max() on the decode table or a last-real-observation check exposes the halt",
+      "title": "A decode model with a hardcoded external contract list goes silently dry when the operator rotates its deployment \u2014 and every downstream run stays green"
     },
     "raw-logs-ingestion-holes": {
       "body": "## Symptom\nAfter a full decode-layer recovery, some rows are still missing. No dbt lever fixes it.\n\n## Root cause\n`execution.logs` is produced by an external node crawler outside this repo. An ingestion\nskip leaves a run of consecutive blocks with zero logs across **all** contracts. The\nlogs were never in the source, so no re-decode can recover them.\n\n## Forbidden action\nDon't keep re-running dbt refresh levers against a raw hole \u2014 if the raw source lacks\nthe rows, every downstream tool will faithfully reproduce the gap.\n\n## Detection\nBlock-continuity scan: a >5-block span with zero logs between two present blocks on a\nlive chain is not \"quiet blocks\". (See the data-quality test in tests/data_quality/.)\n\n## Safe remediation\nConfirm the flagged range on-chain (`eth_getLogs` \u2014 chain has logs, `execution.logs`\ndoesn't), then request a raw re-index of the block range from the ingestion side. After\nthe raw backfill lands, recover the decode layer with `gap_window_refresh.py` (see\ndecode-watermark-late-logs \u2014 the backfilled rows are below the watermark).\nCUMULATIVE downstreams of the affected decodes are wrong from the gap DAY forward,\nso their rebuild window is gap month through CURRENT month, chronologically \u2014 never\njust the gap month (see backfill-order-cumulative, gap-recovery corollary).\nClassify first: grep -rl '{{ this }}' models/ \u2229 dbt ls -s <decode>+.\n\n## Ground truth\nOn-chain `eth_getLogs` for the block range.\n\n## Enforcement\nBlock-continuity data-quality test on the observability schedule; remediation remains\nmanual (external system).",
@@ -25498,10 +25517,9 @@
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
-        "api:state_size",
+        "deprecated",
         "execution",
         "granularity:daily",
-        "production",
         "tier1"
       ],
       "unique_key": null
@@ -43106,7 +43124,11 @@
           "models/contracts/AGENTS.md",
           "scripts/full_refresh/AGENTS.md"
         ],
-        "ground_truth": "on-chain eth_getLogs over the contract + block range",
+        "grain": [
+          "block_timestamp",
+          "log_index"
+        ],
+        "ground_truth": "execution.logs AnswerUpdated (topic0 0559884f...) \u2014 the events never stop, they move addresses; verify a candidate aggregator with description() / latestAnswer() eth_calls before adding it.",
         "hazards": [
           {
             "id": "decode-watermark-late-logs",
@@ -43147,6 +43169,21 @@
             "id": "late-start-mis-staging",
             "status": "remediated",
             "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "oracle-aggregator-rotation-silent-halt",
+            "status": "observed",
+            "title": "A decode model with a hardcoded external contract list goes silently dry when the operator rotates its deployment \u2014 and every downstream run stays green"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "aggregator-set-current",
+            "text": "The hardcoded aggregator arrays must contain the operator's CURRENT phase deployments; Chainlink rotated every Gnosis aggregator on 2026-08-06/07 and the decode went silently dry while every run stayed green."
+          },
+          {
+            "id": "abi-before-decode",
+            "text": "Every address in the array needs rows in event_signatures BEFORE the decode runs; an unmatched address appends empty-decoded rows and advances the watermark past them."
           }
         ],
         "profiles": [
@@ -43154,7 +43191,7 @@
           "incremental_models",
           "staged_full_refresh"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "Rotation or empty-decoded rows: seed the new ABIs first, then gap_window_refresh.py --months <month> --select contracts_chainlink_feeds_events (drops the month partition to lower the watermark, then re-decodes).",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -43190,7 +43227,9 @@
         "semantics": "event",
         "validation": [
           "make check-fast",
-          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)"
+          "raw-vs-decoded monthly parity for the contract (see tests/data_quality/)",
+          "decode freshness: max(block_timestamp) within ~1 day of the chain head",
+          "per-feed daily event coverage for all tracked feeds since the last rotation"
         ]
       },
       "description_present": true,
@@ -43219,7 +43258,7 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 486,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
       "high_risk": true,
@@ -62507,8 +62546,8 @@
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
+        "deprecated",
         "execution",
-        "production",
         "size",
         "state"
       ],
@@ -82515,6 +82554,11 @@
           "scripts/full_refresh/AGENTS.md",
           "models/execution/AGENTS.md"
         ],
+        "grain": [
+          "date",
+          "symbol"
+        ],
+        "ground_truth": "latestRoundData()/description() on the current phase aggregators; int_execution_token_prices_compare vs off-chain feeds",
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -82550,6 +82594,21 @@
             "id": "unpriced-wrapper-token",
             "status": "remediated",
             "title": "Every wrapper/vault token needs a price path or it reads $0 everywhere"
+          },
+          {
+            "id": "oracle-aggregator-rotation-silent-halt",
+            "status": "observed",
+            "title": "A decode model with a hardcoded external contract list goes silently dry when the operator rotates its deployment \u2014 and every downstream run stays green"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "one-price-per-feed-day",
+            "text": "Exactly one row per (date, symbol); the price is the day's LAST oracle answer and must be > 0."
+          },
+          {
+            "id": "green-run-not-fresh",
+            "text": "A green run proves nothing about freshness \u2014 the model reprocesses whatever the decode holds; when the upstream aggregator set rotates, max(date) freezes while runs stay green. Check max(date) against today before trusting output."
           }
         ],
         "profiles": [
@@ -82558,7 +82617,7 @@
           "staged_full_refresh",
           "prices_models"
         ],
-        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "reprocess_runbook": "insert_overwrite partitioned by month with start_month/end_month vars \u2014 the window must be whole months (partition grain = overwrite grain); never staged batches or slice vars.",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -82576,6 +82635,7 @@
             "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
         ],
+        "semantics": "snapshot",
         "validation": [
           "make check-fast"
         ]
@@ -82606,7 +82666,7 @@
       ],
       "downstream_direct_count": 2,
       "downstream_transitive_count": 485,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": [
         "all"
       ],
@@ -83209,6 +83269,9 @@
     },
     "int_execution_state_size_full_diff_daily": {
       "contract": {
+        "grain": [
+          "date"
+        ],
         "hazards": [
           {
             "id": "never-seeded-incremental",
@@ -83229,6 +83292,12 @@
             "id": "ch-partition-cap",
             "status": "remediated",
             "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          }
+        ],
+        "invariants": [
+          {
+            "id": "frozen-series",
+            "text": "Source execution.storage_diffs ingestion intentionally ended 2026-01-30; the series is frozen at that date. Deprecated 2026-08 \u2014 do not refresh, backfill, or diagnose it as stale."
           }
         ],
         "profiles": [
@@ -83263,7 +83332,7 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 2,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
       "high_risk": true,
@@ -83277,8 +83346,8 @@
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
+        "deprecated",
         "execution",
-        "production",
         "size",
         "state"
       ],
@@ -94476,7 +94545,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "58e427c20b98afd10e805f9f76eb50871dcd0e35a1dc4fdb0bd607b19cc51152",
+  "models_hash": "f631ec4a5209518664f598f1b316c6ec7da497cac00fc7938ca7c785d728b729",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
