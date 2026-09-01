@@ -9,9 +9,10 @@
 
 -- Per-proposal voting-power turnout: cast vp / eligible vp.
 --
--- Eligible vp = circulating GNO on both chains (crawlers_data.dune_gno_supply,
--- 'Ethereum Circ. Supply' + 'Gnosis Circ. Supply' -- excludes 'Non-Circ.
--- Supply': non-circulating GNO -- treasury/locked/vesting -- cannot vote)
+-- Eligible vp = circulating GNO on both chains (api_gno_supply_daily, the
+-- rpc-state-indexer derivation; 'Ethereum Circ. Supply' + 'Gnosis Circ.
+-- Supply' -- excludes 'Non-Circ. Supply': non-circulating GNO --
+-- treasury/locked/vesting -- cannot vote)
 -- plus staked GNO (api_consensus_staked_daily), but the staked component is
 -- included ONLY when THIS proposal's own strategy_names contains
 -- 'beacon-chain'. Different eras used different strategy sets -- 219/253
@@ -45,7 +46,7 @@ WITH supply_wide AS (
         date,
         sumIf(supply, label = 'Ethereum Circ. Supply') AS eth_circ_supply,
         sumIf(supply, label = 'Gnosis Circ. Supply')   AS gnosis_circ_supply
-    FROM {{ ref('api_crawlers_data_gno_supply_daily') }}
+    FROM {{ ref('api_gno_supply_daily') }}
     GROUP BY date
 ),
 staked AS (
