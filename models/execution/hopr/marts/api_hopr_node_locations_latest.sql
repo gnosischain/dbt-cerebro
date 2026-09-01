@@ -36,6 +36,7 @@ SELECT
           coalesce(last_channel_activity_at, toDateTime(0))
       )))
       FROM {{ ref('int_hopr_nodes') }}
+      WHERE NOT is_testnet
   )                                                               AS as_of_date,
     ip_country                                                      AS country_code,
     coalesce(nullIf(ip_city, ''), 'UNKNOWN_CITY')                   AS city,
@@ -53,5 +54,8 @@ FROM {{ ref('int_hopr_nodes') }}
 WHERE ip_latitude IS NOT NULL
   AND ip_longitude IS NOT NULL
   AND ip_country IS NOT NULL
+  -- TESTNET EXCLUDED BY DESIGN: rotsee's nodes are not production topology. Same contract
+  -- as api_hopr_protocol_params_daily's NOT is_testnet; the schema doc promises dufour/jura.
+  AND NOT is_testnet
 GROUP BY network, country_code, city
 ORDER BY network, nodes DESC
