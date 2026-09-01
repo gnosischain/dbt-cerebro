@@ -51,9 +51,9 @@
       },
       "crawlers_data": {
         "api": 2,
-        "approved": 3,
+        "approved": 2,
         "candidate": 1,
-        "docs_only": 23,
+        "docs_only": 24,
         "fct": 1,
         "int": 2,
         "model": 14,
@@ -138,7 +138,8 @@
       },
       "rpc_state_indexer": {
         "api": 1,
-        "docs_only": 6,
+        "approved": 1,
+        "docs_only": 5,
         "int": 1,
         "model": 4,
         "source": 2,
@@ -378,10 +379,10 @@
     }
   },
   "metadata": {
-    "catalog_hash": "2187c9238b80f2c86ff53f8ada6262562927c0c2e7da68567d69584fef3ada4d",
-    "generated_at": "2026-08-31T14:09:05.069988+00:00",
-    "graph_catalog_hash": "a0c6b5998b90402816658af9db1fe2b48672047c218d3cd9e0626422b6816072",
-    "manifest_hash": "cae49a5a3d22d5e366c87387c95fffa0d4ae42937e5b41407a9b0561cf20bf3e",
+    "catalog_hash": "b5e90cf979bb3e1412a781381368ccd81830f3a311eb33a095de5d178b1d86b1",
+    "generated_at": "2026-09-01T14:08:13.532112+00:00",
+    "graph_catalog_hash": "7a3689ffcedb0c5be4a9e36f19445cd5fc274c272f646ae3ca4a06cfd5ac6a03",
+    "manifest_hash": "33d0b414a73b75a5482b68979fe22edc0ff6c248f753409ed5140879f430c3a1",
     "model_count": 1328,
     "project_name": "gnosis_dbt",
     "semantic_manifest_hash": "b663ffd7d80a9a729a7cb23b123ee404bd2d4c5b5b8f107c5c76b82186099fc1",
@@ -35989,10 +35990,10 @@
         "date"
       ],
       "default_filters": [],
-      "description": "Daily GNO token supply sourced from the Dune GNO-supply query, broken down by supply-category label. Summed over labels gives the total; filter by label for a specific category. Units are GNO token quantities.",
+      "description": "Daily GNO token supply derived from on-chain state (rpc-state-indexer), broken down by supply-category label; history from 2020-08-23. Summed over labels gives the total; filter by label for a specific category. Units are GNO token quantities.",
       "label": "GNO Supply (daily, by label)",
       "measure": "crawlers_data_gno_supply_daily__supply_value",
-      "module": "crawlers_data",
+      "module": "rpc_state_indexer",
       "name": "gno_supply_daily",
       "quality_tier": "approved",
       "question_synonyms": [
@@ -36000,7 +36001,7 @@
         "gno supply by category",
         "gnosis daily token supply"
       ],
-      "root_model": "api_crawlers_data_gno_supply_daily",
+      "root_model": "api_gno_supply_daily",
       "semantic_status": "approved",
       "source_file": "authoring/crawlers_data/semantic_models.yml",
       "supported_time_grains": [
@@ -62097,22 +62098,8 @@
           "name": "supply"
         }
       },
-      "description": "The api_crawlers_data_gno_supply_daily model aggregates daily GNO supply data from crawler sources to support trend analysis and reporting.",
-      "dimensions": [
-        {
-          "expr": "label",
-          "name": "label",
-          "type": "categorical"
-        },
-        {
-          "expr": "date",
-          "name": "date",
-          "type": "time",
-          "type_params": {
-            "time_granularity": "day"
-          }
-        }
-      ],
+      "description": "DEPRECATED (kept queryable, never deleted) \u2014 the Dune-fed GNO supply endpoint, succeeded by api_gno_supply_daily (rpc-state-indexer derivation). Serves the frozen Dune history 2017-04-18 \u2192 the freeze date; the only source of the pre-2020 series. Not built by cron (no production tag).",
+      "dimensions": [],
       "entities": [],
       "fqn": [
         "gnosis_dbt",
@@ -62121,55 +62108,31 @@
         "api_crawlers_data_gno_supply_daily"
       ],
       "lineage": {
-        "downstream": [
-          "int_governance_turnout"
-        ],
+        "downstream": [],
         "upstream": [
           "stg_crawlers_data__dune_gno_supply"
         ]
       },
       "materialized": "view",
-      "measures": [
-        {
-          "agg": "sum",
-          "expr": "supply",
-          "name": "crawlers_data_gno_supply_daily__supply_value"
-        }
-      ],
-      "metric_names": [
-        "gno_supply_daily"
-      ],
+      "measures": [],
+      "metric_names": [],
       "module": "crawlers_data",
       "name": "api_crawlers_data_gno_supply_daily",
       "owner": "analytics_team",
       "package_name": "gnosis_dbt",
       "path": "models/crawlers_data/marts/api_crawlers_data_gno_supply_daily.sql",
-      "quality_tier": "approved",
+      "quality_tier": "",
       "relation_name": "`dbt`.`api_crawlers_data_gno_supply_daily`",
       "resource_type": "model",
       "semantic": {
-        "defaults": {
-          "agg_time_dimension": "date"
-        },
-        "meta": {
-          "grain": "day",
-          "owner": "analytics_team",
-          "quality_tier": "approved",
-          "question_synonyms": [
-            "gno token supply by label",
-            "daily gno supply breakdown",
-            "gnosis token supply over time"
-          ]
-        }
+        "defaults": {},
+        "meta": {}
       },
-      "semantic_source_file": "authoring/crawlers_data/semantic_models.yml",
-      "semantic_status": "approved",
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
       "tags": [
-        "production",
-        "crawlers_data",
-        "tier1",
-        "api:gno_supply",
-        "granularity:daily"
+        "deprecated",
+        "crawlers_data"
       ]
     },
     "api_dao_treasury_allocation_latest": {
@@ -100449,8 +100412,22 @@
           "name": "supply"
         }
       },
-      "description": "Daily GNO supply by category label served from the rpc-state-indexer derivation. History starts 2020-08-23 (Gnosis leg; ETH legs from 2020-11-01, the chain-1 day-anchor start) \u2014 the pre-2020 series remains queryable in the deprecated Dune models. Takes over the api:gno_supply endpoint from api_crawlers_data_gno_supply_daily at the switch.",
-      "dimensions": [],
+      "description": "Daily GNO supply by category label served from the rpc-state-indexer derivation; the api:gno_supply endpoint (succeeding the Dune-fed api_crawlers_data_gno_supply_daily, deprecated). History starts 2020-08-23 (Gnosis leg; ETH legs from 2020-11-01, the chain-1 day-anchor start) \u2014 the pre-2020 series remains queryable in the deprecated Dune models.",
+      "dimensions": [
+        {
+          "expr": "label",
+          "name": "label",
+          "type": "categorical"
+        },
+        {
+          "expr": "date",
+          "name": "date",
+          "type": "time",
+          "type_params": {
+            "time_granularity": "day"
+          }
+        }
+      ],
       "entities": [],
       "fqn": [
         "gnosis_dbt",
@@ -100459,32 +100436,54 @@
         "api_gno_supply_daily"
       ],
       "lineage": {
-        "downstream": [],
+        "downstream": [
+          "int_governance_turnout"
+        ],
         "upstream": [
           "int_rpc_state_indexer_gno_supply_daily"
         ]
       },
       "materialized": "view",
-      "measures": [],
-      "metric_names": [],
+      "measures": [
+        {
+          "agg": "sum",
+          "expr": "supply",
+          "name": "crawlers_data_gno_supply_daily__supply_value"
+        }
+      ],
+      "metric_names": [
+        "gno_supply_daily"
+      ],
       "module": "rpc_state_indexer",
       "name": "api_gno_supply_daily",
       "owner": "analytics_team",
       "package_name": "gnosis_dbt",
       "path": "models/rpc_state_indexer/marts/api_gno_supply_daily.sql",
-      "quality_tier": "",
+      "quality_tier": "approved",
       "relation_name": "`dbt`.`api_gno_supply_daily`",
       "resource_type": "model",
       "semantic": {
-        "defaults": {},
-        "meta": {}
+        "defaults": {
+          "agg_time_dimension": "date"
+        },
+        "meta": {
+          "grain": "day",
+          "owner": "analytics_team",
+          "quality_tier": "approved",
+          "question_synonyms": [
+            "gno token supply by label",
+            "daily gno supply breakdown",
+            "gnosis token supply over time"
+          ]
+        }
       },
-      "semantic_source_file": "",
-      "semantic_status": "docs_only",
+      "semantic_source_file": "authoring/crawlers_data/semantic_models.yml",
+      "semantic_status": "approved",
       "tags": [
         "production",
         "rpc_state_indexer",
         "tier1",
+        "api:gno_supply",
         "granularity:daily"
       ]
     },
@@ -128323,7 +128322,7 @@
           "name": "supply"
         }
       },
-      "description": "Daily GNO supply breakdown crawled from Dune. One row per (block_date, label) with the token supply attributed to that label bucket; passed through by stg_crawlers_data__dune_gno_supply.\n",
+      "description": "FROZEN HISTORY \u2014 daily GNO supply breakdown crawled from Dune, one row per (block_date, label), intentionally frozen at the switch to the rpc_state_indexer derivation (api_gno_supply_daily). Sole source for 2017-04-18 \u2192 the freeze date; served by the deprecated stg_crawlers_data__dune_gno_supply / api_crawlers_data_gno_supply_daily. The click-runner dune-gno-supply ingestors are decommissioned.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -199873,7 +199872,7 @@
         ],
         "upstream": [
           "api_consensus_staked_daily",
-          "api_crawlers_data_gno_supply_daily",
+          "api_gno_supply_daily",
           "int_governance_proposals"
         ]
       },
@@ -208038,7 +208037,7 @@
           "name": "value_kind"
         }
       },
-      "description": "Published per-day (token, holder) balances from the rpc-state-indexer service. The same (token, date, holder) can appear under multiple job_names (e.g. GNO under both curated_balances and treasury) \u2014 always filter chain_id and job_name or sums double-count. No freshness yet; it moves here from dune_gno_supply at the Dune cutover.\n",
+      "description": "Published per-day (token, holder) balances from the rpc-state-indexer service. The same (token, date, holder) can appear under multiple job_names (e.g. GNO under both curated_balances and treasury) \u2014 always filter chain_id and job_name or sums double-count.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -208142,7 +208141,7 @@
           "name": "token_address"
         }
       },
-      "description": "Published per-day token scalars (totalSupply etc.) from the rpc-state-indexer service. Read the published views only, never the raw attempt tables. Grain includes job_name and attempt_id \u2014 the same (token, date) scalar appears under multiple jobs and attempts, so consumers must filter chain_id + job_name and dedup per day. No freshness yet; it moves here from dune_gno_supply at the Dune cutover.\n",
+      "description": "Published per-day token scalars (totalSupply etc.) from the rpc-state-indexer service. Read the published views only, never the raw attempt tables. Grain includes job_name and attempt_id \u2014 the same (token, date) scalar appears under multiple jobs and attempts, so consumers must filter chain_id + job_name and dedup per day.\n",
       "dimensions": [],
       "entities": [],
       "fqn": [
@@ -210566,7 +210565,7 @@
       "semantic_source_file": "",
       "semantic_status": "docs_only",
       "tags": [
-        "production",
+        "deprecated",
         "staging",
         "crawlers_data"
       ]
@@ -215918,9 +215917,9 @@
     },
     "crawlers_data": {
       "api": 2,
-      "approved": 3,
+      "approved": 2,
       "candidate": 1,
-      "docs_only": 23,
+      "docs_only": 24,
       "fct": 1,
       "int": 2,
       "model": 14,
@@ -216005,7 +216004,8 @@
     },
     "rpc_state_indexer": {
       "api": 1,
-      "docs_only": 6,
+      "approved": 1,
+      "docs_only": 5,
       "int": 1,
       "model": 4,
       "source": 2,
@@ -221774,11 +221774,6 @@
           "status": "approved"
         },
         {
-          "model": "api_crawlers_data_gno_supply_daily",
-          "module": "crawlers_data",
-          "status": "approved"
-        },
-        {
           "model": "api_dao_treasury_holdings_by_class_ts",
           "module": "execution",
           "status": "candidate"
@@ -223301,6 +223296,11 @@
         {
           "model": "int_revenue_sdai_fees_daily",
           "module": "revenue",
+          "status": "approved"
+        },
+        {
+          "model": "api_gno_supply_daily",
+          "module": "rpc_state_indexer",
           "status": "approved"
         }
       ],
@@ -226038,11 +226038,6 @@
           "status": "approved"
         },
         {
-          "model": "api_crawlers_data_gno_supply_daily",
-          "module": "crawlers_data",
-          "status": "approved"
-        },
-        {
           "model": "api_dao_treasury_holdings_by_class_ts",
           "module": "execution",
           "status": "candidate"
@@ -226451,6 +226446,11 @@
           "model": "int_p2p_discv5_forks_daily",
           "module": "p2p",
           "status": "candidate"
+        },
+        {
+          "model": "api_gno_supply_daily",
+          "module": "rpc_state_indexer",
+          "status": "approved"
         }
       ],
       "type": "categorical"
@@ -245540,7 +245540,7 @@
       "right_keys": [
         "date"
       ],
-      "right_model": "api_crawlers_data_gno_supply_daily",
+      "right_model": "api_gno_supply_daily",
       "safe_for_dimension_enrichment": true,
       "source_file": "/home/runner/work/dbt-cerebro/dbt-cerebro/semantic/relationships/time_spines.yml",
       "via_entity": "day"

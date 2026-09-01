@@ -4,9 +4,6 @@
 -- labels per day, so a day with fewer labels silently zeroes a series instead
 -- of failing. Returns offending days; passing = zero rows. Yesterday is
 -- excluded because the feed legitimately lags to D-1.
--- severity warn until the chain-100 history backfill completes; flip to error
--- at the endpoint switch.
-
 SELECT
     date AS d
     ,count() AS label_rows

@@ -14,7 +14,7 @@ WITH gnosis_supply AS (
     FROM `dbt`.`stg_rpc_state_indexer__token_scalars_published`
     WHERE chain_id = 100
       AND token_address = '0x9c58bacc331c9aa871afd802db6379a98e80cedb'
-      AND job_name = 'daily_token_supply'
+      AND job_name IN ('daily_token_supply', 'daily_gno_supply_scalar')
       AND scalar_name = 'totalSupply'
     GROUP BY snapshot_date
 ),
