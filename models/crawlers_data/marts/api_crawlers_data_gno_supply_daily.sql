@@ -1,7 +1,7 @@
-{{ 
+{{
   config(
-    materialized='view', 
-    tags=['production','crawlers_data', 'tier1', 'api:gno_supply', 'granularity:daily']) 
+    materialized='view',
+    tags=['deprecated','crawlers_data'])
 }}
 
 SELECT

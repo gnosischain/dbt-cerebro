@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','rpc_state_indexer','tier1','granularity:daily']
+    tags=['production','rpc_state_indexer','tier1','api:gno_supply','granularity:daily']
   )
 }}
 

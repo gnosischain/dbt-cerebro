@@ -1,7 +1,7 @@
 {{
   config(
     materialized='view',
-    tags=['production','staging','crawlers_data']
+    tags=['deprecated','staging','crawlers_data']
   )
 }}
 
