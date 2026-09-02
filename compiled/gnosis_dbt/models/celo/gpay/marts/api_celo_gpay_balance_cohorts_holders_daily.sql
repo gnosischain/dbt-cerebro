@@ -7,4 +7,5 @@ SELECT
     balance_bucket AS label,
     holders        AS value
 FROM `dbt`.`fct_celo_gpay_balance_cohorts_daily`
+WHERE date < today()
 ORDER BY date, token, cohort_unit, label

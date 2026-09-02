@@ -8,4 +8,5 @@ SELECT
     value_native,
     value_usd
 FROM `dbt`.`fct_celo_gpay_balance_cohorts_daily`
+WHERE date < today()
 ORDER BY date, token, cohort_unit, label

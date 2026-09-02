@@ -8,6 +8,7 @@ FROM (
         deployed_date,
         count() AS daily_deployed
     FROM `dbt`.`int_execution_gpay_accounts_deployed`
+    WHERE deployed_date < today()
     GROUP BY deployed_date
 )
 ORDER BY date

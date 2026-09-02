@@ -21,4 +21,5 @@ SELECT
     toFloat64(sum(amount_raw)) / pow(10, 18)            AS amount_minted
 FROM `dbt`.`int_execution_circles_v2_mint_events`
 WHERE mint_kind = 'personal'
+  AND block_timestamp < today()
 GROUP BY to_address, toDate(block_timestamp)

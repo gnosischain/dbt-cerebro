@@ -42,4 +42,5 @@ SELECT
     redeemed_wxhopr         AS redeemed_wxhopr,
     channels_active         AS channels_active
 FROM `dbt`.`fct_hopr_gnosisvpn_users_daily`
+WHERE date < today()
 ORDER BY network, date
