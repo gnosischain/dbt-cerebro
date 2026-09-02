@@ -34,6 +34,7 @@ SELECT
           coalesce(last_channel_activity_at, toDateTime(0))
       )))
       FROM {{ ref('int_hopr_nodes') }}
+      WHERE NOT is_testnet
   )                                                               AS as_of_date,
     multiIf(
         hosting_provider IS NOT NULL, hosting_provider,
@@ -47,5 +48,8 @@ SELECT
     countIf(node_class = 'cover_traffic')                           AS cover_traffic_nodes,
     countIf(node_class = 'gnosisvpn_exit')                          AS gnosisvpn_exit_nodes
 FROM {{ ref('int_hopr_nodes') }}
+-- TESTNET EXCLUDED BY DESIGN: rotsee's nodes are not production topology. Same contract
+-- as api_hopr_protocol_params_daily's NOT is_testnet; the schema doc promises dufour/jura.
+WHERE NOT is_testnet
 GROUP BY network, hosting_provider
 ORDER BY network, nodes DESC
