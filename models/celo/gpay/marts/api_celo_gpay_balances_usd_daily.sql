@@ -23,4 +23,5 @@ SELECT
     balance_usd AS value
 FROM {{ ref('fct_celo_gpay_balances_by_token_daily') }}
 WHERE symbol IN ('USDC', 'USDT')
+  AND date < today()
 ORDER BY date, label

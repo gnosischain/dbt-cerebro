@@ -45,4 +45,5 @@ SELECT
     safes_balance_wxhopr + channels_open_balance_wxhopr             AS total_wxhopr_committed
 FROM {{ ref('stg_hopr_db__blokli_network_snapshot') }}
 WHERE NOT is_testnet
+  AND snapshot_date < today()
 ORDER BY network, date

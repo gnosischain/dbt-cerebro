@@ -40,4 +40,5 @@ SELECT
     p50_latency_ms,
     avg_availability_24h
 FROM {{ ref('fct_hopr_network_health_daily') }}
+WHERE date < today()
 ORDER BY network, date
