@@ -29,6 +29,7 @@ SELECT
           coalesce(last_channel_activity_at, toDateTime(0))
       )))
       FROM `dbt`.`int_hopr_nodes`
+      WHERE NOT is_testnet
   )                                                               AS as_of_date,
     coalesce(nullIf(ip_country, ''), 'UNKNOWN')                     AS country_code,
     if(ip_country IS NULL OR ip_country = '', 0, 1)                 AS geo_resolved,
@@ -39,5 +40,8 @@ SELECT
     uniqExact(safe_address)                                         AS distinct_operators,
     uniqExactIf(announced_ip, announced_ip IS NOT NULL)             AS distinct_hosts
 FROM `dbt`.`int_hopr_nodes`
+-- TESTNET EXCLUDED BY DESIGN: rotsee's nodes are not production topology. Same contract
+-- as api_hopr_protocol_params_daily's NOT is_testnet; the schema doc promises dufour/jura.
+WHERE NOT is_testnet
 GROUP BY network, country_code, geo_resolved
 ORDER BY network, nodes DESC
