@@ -40,4 +40,5 @@ SELECT
     unique_destination_nodes,
     events
 FROM {{ ref('fct_hopr_network_daily') }}
+WHERE activity_date < today()
 ORDER BY network, date, is_cover_traffic
