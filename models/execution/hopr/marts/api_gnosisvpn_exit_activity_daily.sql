@@ -63,6 +63,7 @@ WITH ev AS (
         ON e.destination_node = lower(x.node_address)
        AND x.node_class = 'gnosisvpn_exit'
     WHERE e.network = 'jura'
+      AND e.block_timestamp < today()
 )
 
 SELECT

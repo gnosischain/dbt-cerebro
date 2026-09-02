@@ -48,4 +48,5 @@ SELECT
     redeemed_wxhopr         AS redeemed_wxhopr,
     channels_active         AS channels_active
 FROM {{ ref('fct_hopr_gnosisvpn_users_daily') }}
+WHERE date < today()
 ORDER BY network, date
