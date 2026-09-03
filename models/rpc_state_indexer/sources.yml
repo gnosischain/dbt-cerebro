@@ -41,6 +41,12 @@ sources:
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
+          # token_balances is ~2.48e9 rows (vs ~2.1e6 for scalars), so an unfiltered
+          # max(snapshot_date) over the published view is an OvercommitTracker victim
+          # every run (code 241) — it errored on every cron since the freshness config
+          # landed. The filter prunes to the last monthly partitions; the window is far
+          # wider than error_after, so real staleness still trips the gate.
+          filter: "snapshot_date >= today() - 30"
         columns:
           - name: chain_id
             data_type: UInt64
