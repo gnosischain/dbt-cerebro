@@ -86,3 +86,16 @@ FROM (
     INNER JOIN eth_minted m ON m.block_date = w.block_date
     ORDER BY block_date WITH FILL STEP 1 INTERPOLATE (supply AS supply)
 )
+
+UNION ALL
+
+SELECT 'Total Circ. Supply' AS label, block_date, supply
+FROM (
+    SELECT
+        w.block_date AS block_date,
+        m.minted - w.burned_bal - w.non_circ - w.bridge_bal + g.supply AS supply
+    FROM eth_wallets w
+    INNER JOIN eth_minted m ON m.block_date = w.block_date
+    INNER JOIN gnosis_supply g ON g.block_date = w.block_date
+    ORDER BY block_date WITH FILL STEP 1 INTERPOLATE (supply AS supply)
+)
