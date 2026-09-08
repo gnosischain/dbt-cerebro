@@ -153,7 +153,7 @@ WHERE chain = 'gnosis'
                         substring(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + j*64,
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + j*64,
                             64
                           ),
                           25, 40
@@ -162,7 +162,7 @@ WHERE chain = 'gnosis'
                       concat('0x',
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + j*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + j*64,
                           64
                         )
                       )
@@ -183,34 +183,34 @@ WHERE chain = 'gnosis'
                         reinterpretAsString(unhex(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2)
-                              + toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2)
+                              + least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                                   substring(args_raw_hex,
-                                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                                             64)
-                              )))) * 2
+                              )))), toUInt64(length(args_raw_hex))) * 2
                               + 64,
-                            toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                               substring(args_raw_hex,
-                                        (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2)
-                                          + toUInt64(reinterpretAsUInt256(reverse(unhex(
+                                        (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2)
+                                          + least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                                               substring(args_raw_hex,
-                                                        (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                                                        (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                                                         64)
-                                          )))) * 2,
+                                          )))), toUInt64(length(args_raw_hex))) * 2,
                                         64)
-                            )))) * 2
+                            )))), toUInt64(length(args_raw_hex))) * 2
                           )
                         )),
                         '\0',''
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -222,7 +222,7 @@ WHERE chain = 'gnosis'
                         substring(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                             64
                           ),
                           25, 40
@@ -230,11 +230,11 @@ WHERE chain = 'gnosis'
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -244,17 +244,17 @@ WHERE chain = 'gnosis'
                       concat('0x',
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -268,17 +268,17 @@ WHERE chain = 'gnosis'
                       toString(reinterpretAsUInt256(reverse(unhex(
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       )))),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -288,17 +288,17 @@ WHERE chain = 'gnosis'
                       toString(reinterpretAsInt256(reverse(unhex(
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       )))),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -311,11 +311,11 @@ WHERE chain = 'gnosis'
                 (param_types[i+1] = 'bytes') OR (param_types[i+1] = 'string'),
                 substring(
                   args_raw_hex,
-                  (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64,
-                  toUInt64(reinterpretAsUInt256(reverse(unhex(
+                  (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64,
+                  least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                     substring(args_raw_hex,
-                              (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2), 64)
-                  )))) * 2
+                              (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2), 64)
+                  )))), toUInt64(length(args_raw_hex))) * 2
                 ),
                 if(arrayElement(head_words,i+1) IS NULL, NULL,
                   multiIf(

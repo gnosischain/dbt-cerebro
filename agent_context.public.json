@@ -4,7 +4,7 @@
     "high_risk": 318,
     "models": 1277
   },
-  "inputs_fingerprint": "2a3cc66b583a4b13506d045432f4b9798484c63384af2a601be4bca092e0fdb3",
+  "inputs_fingerprint": "deaed1f91e47d55e1cad50a0c7619efe0361a6a8cbcfe0b3bedf1b36c6c1e51b",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -189,6 +189,24 @@
       "symptom": "a bucket is far larger than reality and nobody notices, because the ELSE branch silently assigns it to every input the rules failed to match",
       "title": "A classifier's ELSE branch must not assert a category \u2014 unmatched input is 'Unknown'"
     },
+    "decode-arms-evaluated-for-every-param": {
+      "body": "## Symptom\nOne microbatch slice of a `contracts_*_calls` model fails every day with Code 69\n\"Overflow in length argument of substring-like function\" while the slices around it\npass. Because the append watermark never advances past the slice, every later day\nre-fails on the same transaction and the model silently stops decoding.\n\n## Root cause\nThe decode tree is `if(type = 'tuple', \u2026, if(endsWith(type,'[]'), <array arms>, <scalar\narms>))` inside an `arrayMap` over params. ClickHouse evaluates every arm for every\nparam on the deployed path (old-analyzer `INSERT \u2026 SELECT`; reproducible with\n`short_circuit_function_evaluation=disable`). For a param that is *not* a `string[]`,\nthe `string[]` arm still reads its head word as an array offset, the word there as an\narray length, and the following words as element offsets and lengths. Those words are\narbitrary calldata (for a tuple: inner offsets and UTF-8 string bytes). A word whose low\n64 bits are \u2265 2^62 doubles to \u2265 2^63, which `substring` rejects as an Int64 length.\nThe earlier `range()` cap (commit 0bd7821f) bounded only the element count, not the\noffsets and lengths.\n\n## Forbidden action\nDo not filter the transaction away or skip the slice; the calldata is valid and the\ntuple arm decodes it correctly. Do not rely on short-circuit evaluation to protect an\narm \u2014 it is not guaranteed on every execution path.\n\n## Detection\nElementary `dbt_run_results` with Code 69 on a decode model and a frozen\n`max(block_timestamp)`; reproduce any compiled decode SELECT with\n`SETTINGS short_circuit_function_evaluation='disable'` \u2014 it must not throw.\n\n## Safe remediation\nMake every arm a total function of the calldata: clamp each offset/length word to\n`length(args_raw_hex)` before multiplying (a real ABI offset or length is always below\nthe calldata length, so valid decodes are unchanged), and keep the `range()` cap. Then\nre-run the model plainly; the daily path appends everything above the watermark.\n\n## Ground truth\nThe raw `execution.transactions.input` for the failing hash, decoded with an external\nABI decoder, versus the model's `decoded_input`.\n\n## Enforcement\nNone yet. Candidate: a compile-time smoke test that runs each decode macro's compiled\nSELECT over a fixed set of awkward calldata rows with\n`short_circuit_function_evaluation='disable'`.",
+      "evidence": [
+        "elementary.dbt_run_results contracts_Seer_MarketFactory_calls: 5 Code 69 errors 2026-09-03..09-07 (slices incremental_end_date=2026-09-02 and the plain run), target max(block_timestamp) frozen at 2026-08-12 01:43:35",
+        "offending input: execution.transactions 0x18efa37b15c1ef7cc1aa3095028230a254d1408f3c193226f0339609b4bd413b (2026-09-02 16:03:40, createCategoricalMarket, single tuple param with string/string[] components, 88 calldata words, well-formed)",
+        "reproduction: the compiled SELECT succeeds by default but throws the identical Code 69 with short_circuit_function_evaluation=disable, and via INSERT INTO FUNCTION null(...) SELECT under the dbt session settings (allow_experimental_analyzer=0, compatibility=24.6) \u2014 the deployed insert path evaluates every arm",
+        "mechanism: the string[] arm reads the tuple offset word (0x20) as an array offset, the tuple's first word (a string offset, 0x1c0) as the array length, then string bytes as element offsets/lengths; toUInt64(word)*2 wraps to 2^63 and substring rejects the Int64 length",
+        "fix in tree, pending deploy: macros/decoding/decode_calls.sql \u2014 all 26 toUInt64(reinterpretAsUInt256(reverse(unhex(...)))) offset/length reads in the decode_calls body are wrapped in least(..., toUInt64(length(args_raw_hex))); verified decoded_input byte-identical pre/post for the Seer tx and for contracts_circles_v2_Hub_calls (Aug 2026) and contracts_circles_v2_NameRegistry_calls (Jun\u2013Jul 2026) under short_circuit_function_evaluation=disable",
+        "prior instance of the same class: commit 0bd7821f (2026-06-17) capped the dynamic range() length for approve(spender,0) misreads (ARGUMENT_OUT_OF_BOUND)"
+      ],
+      "id": "decode-arms-evaluated-for-every-param",
+      "last_verified": "2026-09-07",
+      "path": "docs/lessons/decode-arms-evaluated-for-every-param.md",
+      "scope": "macros/decoding/decode_calls.sql (every contracts_*_calls model); the same evaluate-every-arm behaviour applies to any if/multiIf decode tree in ClickHouse",
+      "status": "observed",
+      "symptom": "a decode model fails deterministically on one microbatch slice with \"Code: 69. DB::Exception: Overflow in length argument of substring-like function: -9223372036854775808\" while neighbouring slices succeed; the watermark stops at the last good slice and the runner re-tries the same slice every day",
+      "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+    },
     "decode-watermark-late-logs": {
       "body": "## Symptom\nA metric built on decoded events silently undercounts, or cumulative balances go\nnegative for real holders. Balances are the canary because a dropped *inflow* flips a\ncumulative sum negative; counts and aggregates just drift low.\n\n## Root cause\nDecode models are `incremental_strategy='append'` wrappers over `decode_logs()`. At\nrender time the macro embeds literal `AND block_number > <max>` (+ timestamp bound)\nfrom the target table. There is **no lookback**: a log backfilled into\n`execution.logs` for an already-passed range sits below the watermark and is excluded\nby every subsequent run, forever.\n\n## Forbidden action\nDo not add a daily lookback to the decode layer. On `append` models a lookback\nduplicates rows until a background merge, and downstreams read without `FINAL` \u2192\ndouble-count. (A lookback is dup-safe only on `insert_overwrite` models.)\n\n## Detection\nRaw-vs-decoded parity per contract per month: count in `execution.logs` filtered to the\ncontract vs count in the decode model, grouped by `toStartOfMonth(block_timestamp)`;\nnonzero deficit = dropped logs. Cheapest, earliest signal \u2014 fires before balances do.\n\n## Safe remediation\n`scripts/refresh/gap_window_refresh.py --months <gap months> --select <decode>+` \u2014\ndrops the gap-month partition (lowering the watermark) and re-runs scoped. Never the\ndaily runner (only advances the watermark); a full-history rebuild is hours slower for\nthe same result.\n\n## Ground truth\nOn-chain `eth_getLogs` over the affected range: if the chain has the logs and\n`execution.logs` does too, this lesson applies; if `execution.logs` is missing them,\nsee raw-logs-ingestion-holes (layer below dbt).\n\n## Enforcement\nNone automatic yet \u2014 parity/continuity checks exist as data-quality tests (see\ntests/data_quality/) and run on the observability schedule; a weekly sweep +\ngap-window recovery is the operating posture. Long-term option (not built): convert\ndecode models to month-partitioned insert_overwrite, making a lookback dup-safe.",
       "evidence": [
@@ -219,6 +237,25 @@
       "status": "enforced",
       "symptom": "every decode run reads the full raw-table span (measured 112s/run vs 9s with literal bounds); an empty target full-scans on every run",
       "title": "Decode watermarks must be embedded literals \u2014 scalar subqueries can't prune partitions"
+    },
+    "delete-insert-unbounded-delete-timeout": {
+      "body": "## Symptom\nA daily delete+insert model that usually completes in a few minutes errors with\n\"The read operation timed out\" after exactly `send_receive_timeout` (3000s in\nprofiles.yml). Its `max(date)` freezes while the upstream keeps advancing. Elementary\nshows the failure as a timeout, not as a query error, and the cron's retry\nclassifier treats it as permanent, so nothing retries it. Every cumulative consumer\nfreezes on the same day (the token chain served 2026-09-03 for four days).\n\n## Root cause\ndbt-clickhouse's delete+insert issues\n`delete from <target> where (<unique_key>) in (select <unique_key> from <new_data>)`.\nThat predicate carries no date bound, so the lightweight-delete mutation must evaluate\nevery part of the table (six years of month partitions for the token balances table).\nUnder server saturation the mutation took 450s. On ClickHouse Cloud (SharedMergeTree) a\nlightweight delete additionally creates a new version of EVERY active part of the table,\neven parts the predicate cannot touch (~1s per part here, 369 parts), so the delete's\nfloor is proportional to the part count, not to the rows matched. During a mutation wait the server sends\nno HTTP progress headers, so the idle connection was dropped by an intermediary; the\nserver finished the delete at 09:33:53 but the client never received the response and\nwaited the full 3000s. Because the materialization is sequential, the follow-up\n`insert into <target> select ... from <new_data>` never ran. The delete matched zero\nrows this time (the new days did not exist yet), so no data was lost \u2014 on an\noverlapping window it would have deleted and never re-inserted\n(see [wide-delete-insert-wipe](wide-delete-insert-wipe.md)).\n\n## Forbidden action\nDo not raise `send_receive_timeout` or retry blindly \u2014 the server already finished;\nthe wait is for a response that will never arrive. Do not leave a delete+insert on a\nwide table with the adapter's default unbounded delete-set.\n\n## Detection\nWhen a delete+insert model reports a timeout: correlate `system.query_log` (the\n`delete from ...` QueryFinish time) with the dbt error time; a gap equal to\n`send_receive_timeout` measured from the delete's start means the response was lost,\nnot the query. Confirm in `system.mutations` (`is_done=1`) and check that no\n`insert into <target> select ... from ...__dbt_new_data` followed.\nPer-model freshness: `max(date)` vs the direct upstream's `max(date)`.\n\n## Safe remediation\nBound the delete with `incremental_predicates` so the mutation prunes by the partition\nkey: on the daily path a `date >= addDays(today(), -N)` predicate (the model's\ncalendar starts at `max(date WHERE date < yesterday()) + 1`, so only yesterday can\noverlap existing rows); on a windowed reprocess the explicit\n`toStartOfMonth(date) BETWEEN start_month AND end_month`. Then re-run the model\nplainly \u2014 the daily path recomputes the missing days from the last good seed \u2014 and\nlet downstream self-heal (microbatch models resume from their data watermark).\nThe bound halves the cost but does not remove the per-part clone: keep the part count\nof such tables low (merge old month partitions down to one part), or move the daily\npath off mutations entirely (a mutation-free strategy) if the delete stays in the\nminutes range.\n\n## Ground truth\n`system.query_log` / `system.mutations` for the run's invocation, Elementary\n`dbt_run_results.message`, and the table's `max(date)` against its upstream.\n\n## Enforcement\nNone yet. Candidate: extend `scripts/checks/no_delete_insert.py` so a grandfathered\ndelete+insert model whose target is partitioned must declare `incremental_predicates`\non its partition column.",
+      "evidence": [
+        "elementary.dbt_run_results int_execution_tokens_balances_native_daily: error 2026-09-05T11:50 (3431s) and 2026-09-07T10:16:23 (3231s) \"ClickHouse exception: The read operation timed out\"; 2026-09-06 two Code 241 (total) overcommit kills; last success 2026-09-04 (282s)",
+        "system.query_log 2026-09-07: 09:26:23 insert into ...__dbt_new_data (228s, 1,194,393 rows = 09-04..09-06); 09:26:23\u219209:33:53 delete from dbt.int_execution_tokens_balances_native_daily where (date, token_address, address) in (select ... from __dbt_new_data) QueryFinish 450s exception_code 0; NO subsequent insert into the target; dbt error time 10:16:23 = 09:26:23 + 3000s",
+        "system.mutations dbt.int_execution_tokens_balances_native_daily mutation 0000000084 create_time 2026-09-07 09:26:23, is_done=1 on both replicas, parts_to_do=0",
+        "same-day contrast: insert into int_execution_gnosis_app_gpay_wallets__dbt_new_data ran 2794s and succeeded (clickhouse-connect sends send_progress_in_http_headers=1 on every request, so a streaming INSERT keeps the connection alive; a mutation wait emits no progress)",
+        "downstream impact: 38 physical + 81 api_ production models served 2026-09-03 as latest through 2026-09-07; fct_execution_tokens_metrics_daily rows for 09-04..09-06 had holders=0 and supply=0 while volume was populated",
+        "system.part_log 2026-09-07: the unbounded delete (09:26) produced 367 MutatePart events (= every active part, 0 rows changed, ~904s part-time, 450s wall); the bounded delete after the fix (15:01, mutation 0000000085) still produced 367 MutatePart events (0 rows changed) but ~360s part-time / 243s wall under the same saturation \u2014 the bound removes the per-part scan, not the per-part version clone; the table has 369 active parts over 75 month partitions",
+        "fix in tree, pending deploy: models/execution/tokens/intermediate/int_execution_tokens_balances_native_daily.sql config incremental_predicates (date >= addDays(today(), -7) on the daily path; explicit month bounds when start_month/end_month are set); dbt-clickhouse 1.9.1 appends predicates to the delete+insert DELETE only (dbt/include/clickhouse/macros/materializations/incremental/incremental.sql clickhouse__incremental_delete_insert)"
+      ],
+      "id": "delete-insert-unbounded-delete-timeout",
+      "last_verified": "2026-09-07",
+      "path": "docs/lessons/delete-insert-unbounded-delete-timeout.md",
+      "scope": "any delete+insert model whose target spans many month partitions and whose daily delete-set is a tuple-IN over the new keys with no date bound (the dbt-clickhouse default); bites hardest on cumulative tables in the 100M+ row class",
+      "status": "observed",
+      "symptom": "dbt reports \"The read operation timed out\" after exactly the profile's send_receive_timeout (3000s) on a model that normally finishes in minutes; the table's max(date) stops advancing while its upstream is current; system.mutations shows the run's lightweight delete is_done=1 long before dbt gave up",
+      "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
     },
     "derived-seed-regen-unsafe": {
       "body": "## Symptom\nYou run the documented refresh step for a generated seed. It reports success. Either a\ndecoded model then rebuilds to zero rows with no error, or nothing appears wrong at all\nuntil some unrelated contract quietly stops decoding weeks later. The diff is thousands\nof lines because the generator reorders as well as regenerates, so nobody reads it.\n\n## Root cause\nThree failures that all hide inside \"the generator ran fine\", and the third is what let\nthe first two survive.\n\n**Position-slicing a hex string across a library upgrade.** `HexBytes.hex()` returned a\n`0x`-prefixed string up to hexbytes 0.x and returns it bare from 1.0. Code that strips\nthe prefix with `[2:]` keeps working syntactically and starts eating real payload. For a\n32-byte topic0 you lose two hex characters; for a 4-byte selector you get bytes 1\u20134\ninstead of 0\u20133. The output is still a plausible-looking hex string of nearly the right\nlength, and the failure surfaces as a JOIN that matches nothing.\n\n**A derived artefact that is not actually derivable from its declared source.** The\nseed was documented as generated from `contracts_abi.csv`, but rows had been retained\nby hand after their ABIs were removed from the store. That inconsistency is invisible\nwhile nobody regenerates, and the moment somebody does, the \"regeneration\" is a\ndeletion. The generator cannot warn you, because from its point of view those rows\nsimply do not exist.\n\n**Nondeterministic output order, which is what made the other two undetectable.** The\ngenerator wrote rows in source order, so an unrelated change to the ABI store reshuffled\nthe file and a two-row change presented as thousands of modified lines. Nobody reviews\nthat diff, so nobody would have noticed truncated hashes or deleted rows inside it. An\nunreadable diff is not a cosmetic problem \u2014 it is the mechanism by which real defects\nship.\n\n## Forbidden action\nDo not commit a regenerated seed on the strength of the generator exiting 0. Do not\njudge it by the line diff alone even now that ordering is stable \u2014 a diff being small is\nevidence about ordering, not about content. Do not assume a generated file is\nreproducible just because a script exists that claims to produce it.\n\n## Detection\nCompare as SETS against HEAD, not as text, and insist that the removed set is empty:\n\n```python\nold = set(subprocess.run([\"git\",\"show\",f\"HEAD:{path}\"],capture_output=True,\n                         text=True).stdout.splitlines()[1:])\nnew = set(open(path,encoding=\"utf-8\").read().splitlines()[1:])\nprint(\"added\", len(new - old), \"REMOVED\", len(old - new))   # REMOVED must be 0\n```\n\nPlus a shape assertion the corruption cannot survive \u2014 every event signature is exactly\n64 hex characters, every selector exactly 8:\n\n```python\nbad = [r for r in rows if len(r[\"signature\"]) != 64]\n```\n\nAnd one known-answer check, which is the cheapest of all: the canonical ERC-20\n`Transfer(address,address,uint256)` must hash to\n`ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef`. If it does not, the\nhashing is wrong and nothing else you generated is trustworthy.\n\n## Safe remediation\nSlice by prefix, never by position \u2014 `.hex().removeprefix(\"0x\")` \u2014 so the same code is\ncorrect on both library generations. Then make the source complete rather than patching\nthe output: restore the missing ABIs so the declared source really does produce every\nrow, and re-run until the removed set is empty. A generated file that cannot be\nregenerated byte-for-equivalent from its input is not generated, it is hand-maintained\nwith extra steps, and it will lose data the first time someone believes the docstring.\n\nMake the output deterministic in the same change. Sorting on identity (chain, address,\nname, signature \u2014 never on the JSON payload columns, whose formatting is not stable) costs\none line in the writer and converts every future regeneration into a reviewable diff.\nVerify it by regenerating twice and requiring the two files to be byte-identical; a\ngenerator that is not idempotent cannot be reasoned about.\n\nOrder matters: `signature_generator.py` reads ABIs from the ClickHouse table, not the\nCSV, so `dbt seed --select contracts_abi` must run BEFORE the generator or it silently\nregenerates from a stale ABI set. The documented sequence is right; running the\ngenerator first is the easy mistake.\n\n## Ground truth\nKnown-answer vectors. Canonical event hashes and selectors are public and fixed \u2014\n`Transfer`, `Approval`, any well-known signature. A generator that reproduces those is\nalmost certainly right; one that does not is wrong regardless of how confidently it\nreports success.\n\n## Enforcement\nCode fix in `scripts/signatures/signature_generator.py` (prefix-strip helper and a\ndeterministic sort in `write_csv`) plus the 4 restored ABIs, so regeneration is now\nadditive by construction and reviewable by default. No CI gate: the seeds\nchange rarely and legitimately, and a gate that fires on every genuine ABI addition\nwould be turned off. The durable protection is the set-diff above \u2014 run it before\ncommitting any regenerated seed, and treat a non-empty removed set as a bug in the\nsource, never as an expected cleanup.",
@@ -505,6 +542,23 @@
       "symptom": "a pending --resume becomes unresumable (or resumes the wrong plan) after a different --select run was started in between",
       "title": "Refresh runners used a single global state file \u2014 a new run clobbered a pending resume"
     },
+    "runner-refusal-invisible": {
+      "body": "## Symptom\nA production model quietly stops being executed. Elementary's last row for it is a\nsuccess from weeks ago, `dbt_model_status` shows `pending` (or `success` if another\nstage ran), and nothing alerts. Only the cron pod's stderr for that day carries\n`[error] <model> stage=<s>: gap is N day(s) ... exceeds --max-slices-per-stage=30`.\n\n## Root cause\n`plan_for_model` treats a refusal as \"nothing to do\": it prints, appends an empty slice\nlist and returns; the runner's exit code, failure stash, Elementary upload and the\nPrometheus emitter all key off dbt invocations, and a refused stage never produces one.\nSparse decode models make this chronic: their watermark is the timestamp of the last\ndecoded event, so a contract with no events for 31+ days is refused every day from then\non, whether or not it has since emitted anything. The bootstrap fallback for an\nunreadable watermark has the same shape (a `[warn]` line, then 7 slices).\n\n## Forbidden action\nDo not read a `pending`/`success` status or an Elementary `success` row as \"this model\nis current\" for a microbatch model; check its data watermark against its source.\nDo not raise `--max-slices-per-stage` on the cron path to make the refusals go away \u2014\nthe cap exists so a multi-month gap is backfilled by `scripts/full_refresh/refresh.py`,\nnot chewed through by the daily runner.\n\n## Detection\n`dbt_model_status{status=\"refused\"}` and `dbt_runner_refused_gap_days` after this\nfix; before it, `target/failed_batches/runner-refused-*.json` in the pod, or the stderr\ngrep above. Independently: for every microbatch model, `max(date_column)` older than\n`--max-slices-per-stage` days means the runner is refusing it.\n\n## Safe remediation\nFor a genuinely stale model: `scripts/full_refresh/refresh.py --select <model>` for\nthe gap, then the daily runner resumes. For a dormant sparse decode: first check the\nraw source (`execution.logs` for the contract since the watermark); if it is empty\nthe refusal is harmless today, but the model still needs a policy \u2014 either an\nexplicit \"scanned-through\" watermark that advances on empty days, or running the\nrefused decode with a bounded `incremental_end_date` so its block watermark can\nmove. Neither exists yet; the cap stays and the refusal is now visible.\n\n## Ground truth\nThe model's `max(date_column)` versus the raw source's latest row for the same key\n(contract address, validator band, ...).\n\n## Enforcement\nNone yet: refusals are visible (status, gauge, stash) but still exit 0 by default.\nCandidate: run the cron with `--fail-on-refusal` once the known sparse decodes are\neither given a scanned-through watermark or moved off the production tag.",
+      "evidence": [
+        "scripts/refresh/dbt_incremental_runner.py plan_for_model (pre-fix): on a refusal it printed to stderr, appended (stage, []) and continued; the refusal was not in `failures`, not stashed, not in the exit code, not in Elementary, not in the Prometheus status",
+        "2026-09-07 sweep of 113 microbatch models: 39 had a data watermark more than 30 slices old; Elementary last execution for them: contracts_AgentResultMapping_calls 2026-05-12, contracts_CowProtocol_GPv2AllowListAuthentication_events 2026-07-15, contracts_circles_v2_StandardTreasury_events 2026-08-24, contracts_circles_v2_CMGroupDeployer_events 2026-08-26 (0 runs in the last 7 days for ~20 of them)",
+        "spot check that this was an observability gap rather than a data gap: execution.logs has 0 rows for the StandardTreasury contract 0x08f90ab73a515308f03a718257ff9887ed330c6e since 2026-07-01, so nothing was missed there \u2014 but a dormant contract that wakes up is never decoded until someone runs it by hand",
+        "same day, the sibling silent path: int_celo_gpay_funder_wallet_transfers / _monthly_presence declared date_column block_timestamp which their tables do not have; get_max_date failed (rc=1) and the runner bootstrapped 7 slices every day with only a [warn] line (fixed in models/celo/gpay/intermediate/schema.yml)",
+        "fix in tree, pending deploy: record_runner_event() in the runner writes target/failed_batches/runner-refused-*.json and runner-watermark-fallback-*.json; emit_model_status_metrics.py reports status=\"refused\", dbt_runner_refused_gap_days and dbt_runner_watermark_fallback; --fail-on-refusal exit 3; tests in tests/test_dbt_incremental_runner.py and tests/test_emit_model_status_metrics.py"
+      ],
+      "id": "runner-refusal-invisible",
+      "last_verified": "2026-09-07",
+      "path": "docs/lessons/runner-refusal-invisible.md",
+      "scope": "every microbatch model run by scripts/refresh/dbt_incremental_runner.py; bites sparse decode models (contracts_*) whose last event is older than --max-slices-per-stage days, and any model whose meta date_column cannot be read",
+      "status": "observed",
+      "symptom": "a production model has not been executed by the cron for weeks while Elementary shows its last run as success and dbt_model_status reports it pending or success; the only trace is a \"[error] ... exceeds --max-slices-per-stage\" line in the pod's stderr for that day",
+      "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+    },
     "semantic-retirement-gate": {
       "body": "## Symptom\nA model rename/retire passes `dbt build` locally but fails CI at the semantic-registry\nstep: metrics defined on the old model orphan.\n\n## Root cause\nSemantic authoring is deliberately decoupled from model files \u2014 metrics in\n`semantic/authoring/` reference models by name. dbt has no knowledge of those\nreferences, so nothing in a dbt-only workflow flags the break. The CI gate is strict\n(`--max-warnings 0`; even a lone missing description fails).\n\n## Forbidden action\nDon't retire, rename, or delete a model based only on dbt-side usage (`dbt ls`,\n`grep ref(`); semantic authoring is a second reference surface, and the\nmetrics-dashboard SQL is a third.\n\n## Detection\nBefore retiring/renaming: `grep -r \"<model_name>\" semantic/` and run\n`python scripts/semantic/build_registry.py --target-dir target --validate\n--max-warnings 0`. Details land in `target/semantic_validation_report.json`.\n\n## Safe remediation\nMove/retire the semantic authoring block together with the model change; re-point\nmetrics to the successor model or delete them explicitly.\n\n## Ground truth\ntarget/semantic_validation_report.json after a local registry build.\n\n## Enforcement\nCI gate (strict, zero-warning) since the validation backlog was zeroed.",
       "evidence": [
@@ -582,7 +636,7 @@
       "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
     },
     "stale-seed-deploy-silent-decode-halt": {
-      "body": "## Symptom\n\nA decode model's backfill or daily run completes green but appends nothing; the\ntable's max(block_timestamp) freezes at some boundary (here 2024-08-31 23:55\nfor the mid-backfill model, 2026-08-23 06:27 for the daily fleet) while raw\n`execution.logs` demonstrably continues. Because failure is a zero-row SELECT,\nno error, no test failure, no log line distinguishes it from \"no new events\".\n\n## Root cause\n\n`decode_logs` builds its ABI CTE from `event_signatures` filtered by\n`WHERE chain = 'gnosis'`. A manual `dbt seed` executed from a stale checkout\n(the pre-rebuild branch tip, whose CSVs predate the populated `chain` column)\nreplaced `event_signatures` and `contracts_abi` wholesale with versions where\nevery `chain` is the empty string. From that instant every decode invocation\nmatched zero ABI rows and appended zero rows \u2014 including the very backfill the\nseed deploy was meant to unblock (its batches 1\u20135 ran before the deploy and\nlanded 232k rows; batches 6+ ran after it and landed nothing, which mimicked a\ndate-cap and sent the next session down the wrong path).\n\n## Forbidden action\n\nNever run `dbt seed` (or any manual seed load) without first confirming the\ncheckout is the intended branch tip, and never walk away from a seed deploy\nwithout verifying the loaded table against the working-tree CSV (row count and\na value-distribution spot check on the discriminator columns, `chain` above\nall). A seed deploy is a full-table REPLACE \u2014 a stale checkout is a silent\nmass-revert.\n\n## Detection\n\n- `SELECT chain, count() FROM dbt.event_signatures GROUP BY chain` \u2014 any ''\n  bucket means this lesson fired (same for contracts_abi / function_signatures).\n- Freshness sweep: `max(block_timestamp)` over decode models vs now; a shared\n  freeze timestamp across independent decode models points at the shared seed,\n  not at the models.\n- The seed schema tests (`accepted_values` on chain) fail on '' \u2014 they run in\n  CI and, once the `path:seeds` batch deploys, in every scheduled test run.\n\n## Safe remediation\n\nRe-run `dbt seed --select event_signatures contracts_abi function_signatures\n--full-refresh` from the correct checkout (the dbt container bind-mounts the\nworking tree), verify counts + chain distribution, then let watermark-based\nincrementals catch up on their own (`--incremental-only` refresh for a\nmid-backfill model; the daily runner for the fleet). No partitions were wiped \u2014\nthe failure mode is pure non-append, so no history recovery is needed beyond\nre-running the silent window.\n\n## Ground truth\n\nRaw `execution.logs` for the affected contracts (address IN registry, bounded\nblock_timestamp window) versus the decoded table's per-month counts. The raw\nside is untouched by this failure class.\n\n## Enforcement\n\n`path:seeds` test batch in `scripts/run_dbt_observability.sh` (in tree, pending\ndeploy) makes the existing seed `chain` tests run on schedule; flip this lesson\nto `enforced` once that batch has demonstrably failed-or-passed in a production\nrun.",
+      "body": "## Symptom\n\nA decode model's backfill or daily run completes green but appends nothing; the\ntable's max(block_timestamp) freezes at some boundary (here 2024-08-31 23:55\nfor the mid-backfill model, 2026-08-23 06:27 for the daily fleet) while raw\n`execution.logs` demonstrably continues. Because failure is a zero-row SELECT,\nno error, no test failure, no log line distinguishes it from \"no new events\".\n\n## Root cause\n\n`decode_logs` builds its ABI CTE from `event_signatures` filtered by\n`WHERE chain = 'gnosis'`. A manual `dbt seed` executed from a stale checkout\n(the pre-rebuild branch tip, whose CSVs predate the populated `chain` column)\nreplaced `event_signatures` and `contracts_abi` wholesale with versions where\nevery `chain` is the empty string. From that instant every decode invocation\nmatched zero ABI rows and appended zero rows \u2014 including the very backfill the\nseed deploy was meant to unblock (its batches 1\u20135 ran before the deploy and\nlanded 232k rows; batches 6+ ran after it and landed nothing, which mimicked a\ndate-cap and sent the next session down the wrong path).\n\n## Forbidden action\n\nNever run `dbt seed` (or any manual seed load) without first confirming the\ncheckout is the intended branch tip, and never walk away from a seed deploy\nwithout verifying the loaded table against the working-tree CSV (row count and\na value-distribution spot check on the discriminator columns, `chain` above\nall). A seed deploy is a full-table REPLACE \u2014 a stale checkout is a silent\nmass-revert.\n\n## Detection\n\n- `SELECT chain, count() FROM dbt.event_signatures GROUP BY chain` \u2014 any ''\n  bucket means this lesson fired (same for contracts_abi / function_signatures).\n- For proxy registries: every distinct `abi_source_address` must have signature\n  rows on its chain \u2014 `tests/data_quality/dq_daily_registry_abi_coverage.sql`\n  (severity error) checks `contracts_gpay_modules_registry`; a registry that gains\n  a mastercopy without an ABI row freezes exactly at the migration timestamp.\n- Freshness sweep: `max(block_timestamp)` over decode models vs now; a shared\n  freeze timestamp across independent decode models points at the shared seed,\n  not at the models.\n- The seed schema tests (`accepted_values` on chain) fail on '' \u2014 they run in\n  CI and, once the `path:seeds` batch deploys, in every scheduled test run.\n\n## Safe remediation\n\nRe-run `dbt seed --select event_signatures contracts_abi function_signatures\n--full-refresh` from the correct checkout (the dbt container bind-mounts the\nworking tree), verify counts + chain distribution, then let watermark-based\nincrementals catch up on their own (`--incremental-only` refresh for a\nmid-backfill model; the daily runner for the fleet). For a missing mastercopy\nABI: `python scripts/signatures/fetch_abi_to_csv.py 0xMASTERCOPY --name <Name>\n--chain gnosis`, regenerate the signature seeds, SET-diff them against HEAD\n(zero removed rows), seed, then catch the frozen decode up in month-sized\n`incremental_end_date` chunks \u2014 its block watermark makes each chunk append-only. No partitions were wiped \u2014\nthe failure mode is pure non-append, so no history recovery is needed beyond\nre-running the silent window.\n\n## Ground truth\n\nRaw `execution.logs` for the affected contracts (address IN registry, bounded\nblock_timestamp window) versus the decoded table's per-month counts. The raw\nside is untouched by this failure class.\n\n## Enforcement\n\n`path:seeds` test batch in `scripts/run_dbt_observability.sh` (in tree, pending\ndeploy) makes the existing seed `chain` tests run on schedule; flip this lesson\nto `enforced` once that batch has demonstrably failed-or-passed in a production\nrun.",
       "evidence": [
         "prod fingerprint 2026-08-24 ~09:00 UTC: dbt.event_signatures 1,356 rows ALL chain='' , dbt.contracts_abi 180 rows ALL chain='' \u2014 exactly matches the CSVs at commit 3a210482 (the pre-rebuild fix/gpay-spender-registry tip: 1,356 / 180 rows, zero ',gnosis'); branch tip e076d2c7 CSVs are 1,432 / 199 rows all gnosis",
         "filter locus: macros/decoding/decode_logs.sql:169 (WHERE chain = '{{ chain }}') and :184 (topic0 subquery) \u2014 empty chain values make the ABI CTE empty, decode SELECT returns 0 rows, append inserts nothing, dbt reports OK",
@@ -590,12 +644,14 @@
         "disproof of the rival theory: compiled batch SQL (container target/run/.../int_execution_gpay_spender_events.sql, 2026-08-24 08:21) had correct window 2026-06\u21922026-08, watermark block_number > 35769220, and NO incremental_end_date cap \u2014 yet inserted 0 rows; WL-027 handover's DBT_MB_INCREMENTAL_END_DATE theory was wrong",
         "guard hole: seeds/schema.yml already carried not_null + accepted_values('gnosis','celo') on chain, but scripts/run_dbt_observability.sh build_test_batches selected only tag:production model paths + sources \u2014 seeds were in no batch, so the tripwire never ran on schedule",
         "remediation 2026-08-24 09:17 UTC: dbt seed --select event_signatures contracts_abi --full-refresh from the bind-mounted branch tip; verified 1,432 / 199 rows, 0 empty chain, 22 Spender signature rows; function_signatures was untouched by the bad deploy (4,139 rows, chain intact) so decode_calls never broke",
-        "enforcement fix in tree, pending deploy: path:seeds batch added to build_test_batches in scripts/run_dbt_observability.sh (both full and preview_subset scopes)"
+        "enforcement fix in tree, pending deploy: path:seeds batch added to build_test_batches in scripts/run_dbt_observability.sh (both full and preview_subset scopes)",
+        "second shape of the same halt, 2026-09-07: contracts_gpay_modules_registry carried the post-June-2026-migration Roles mastercopy 0x732b9e9f259fba6f65a1a12dc89c20872ffbd2f (35,743 proxies, first_seen 2026-06-03) but event_signatures had RolesMod_v2 rows only for 0x9646fdad...; decode_logs resolves the ABI by abi_source_address, so every new-generation proxy decoded to nothing and int_execution_gpay_roles_events froze at 2026-06-03 10:12:10 (1,845 June rows vs ~200k/month before) while runs stayed green and the runner then refused it daily (gap > 30). Raw execution.logs at registry RolesModule addresses 2026-06-01..15: 355,029 logs, 9 topics, all 9 already seeded for the old mastercopy \u2014 the ABI is byte-identical (sha256 076465a63e04a142)",
+        "fix 2026-09-07 (seeds in tree, deployed to dbt.event_signatures/function_signatures/contracts_abi from the working tree): fetch_abi_to_csv.py 0x732b9e9f... --name RolesMod_v2 --chain gnosis, signature seeds regenerated and set-diffed vs HEAD (0 removed, +22 event / +32 function rows, chain distribution unchanged); new tripwire tests/data_quality/dq_daily_registry_abi_coverage.sql (severity error) flagged the gap before the deploy and passes after"
       ],
       "id": "stale-seed-deploy-silent-decode-halt",
-      "last_verified": "2026-08-24",
+      "last_verified": "2026-09-07",
       "path": "docs/lessons/stale-seed-deploy-silent-decode-halt.md",
-      "scope": "seeds (event_signatures, contracts_abi, function_signatures); every decode_logs model; any manual dbt seed run",
+      "scope": "seeds (event_signatures, contracts_abi, function_signatures); every decode_logs model; any manual dbt seed run; any proxy registry (abi_source_address) that gains a new mastercopy",
       "status": "remediated",
       "symptom": "Decode models stop appending (max(block_timestamp) frozen) while runs and refreshes complete green; a refresh window with verified raw data inserts 0 rows; compiled SQL shows correct filters.",
       "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
@@ -36397,6 +36453,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36517,6 +36583,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36635,6 +36711,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -36778,6 +36864,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -36919,6 +37015,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37041,6 +37147,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           }
         ],
         "profiles": [
@@ -37150,6 +37266,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -37293,6 +37419,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37418,6 +37554,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37536,6 +37682,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -37658,6 +37814,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -37776,6 +37942,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -37899,6 +38075,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -38042,6 +38228,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38160,6 +38356,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -38286,6 +38492,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38410,6 +38626,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38528,6 +38754,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -38650,6 +38886,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -38768,6 +39014,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -38890,6 +39146,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39008,6 +39274,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -39130,6 +39406,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39248,6 +39534,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -39370,6 +39666,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39490,6 +39796,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39608,6 +39924,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -39731,6 +40057,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39852,6 +40188,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -39970,6 +40316,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -40113,6 +40469,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40231,6 +40597,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -40374,6 +40750,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40499,6 +40885,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40621,6 +41017,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -40764,6 +41170,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -40886,6 +41302,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -41029,6 +41455,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41152,6 +41588,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -41297,6 +41743,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41416,6 +41872,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -41560,6 +42026,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41699,6 +42175,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -41842,6 +42328,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -41981,6 +42477,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -42124,6 +42630,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42263,6 +42779,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -42406,6 +42932,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42547,6 +43083,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -42686,6 +43232,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -43145,6 +43701,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43300,6 +43866,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           }
         ],
         "profiles": [
@@ -43409,6 +43985,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -43531,6 +44117,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43649,6 +44245,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -43771,6 +44377,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -43891,6 +44507,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44009,6 +44635,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -44152,6 +44788,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44272,6 +44918,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44390,6 +45046,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -44514,6 +45180,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44634,6 +45310,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -44752,6 +45438,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -44895,6 +45591,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45015,6 +45721,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45133,6 +45849,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -45276,6 +46002,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45394,6 +46130,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -45537,6 +46283,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45655,6 +46411,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -45798,6 +46564,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -45916,6 +46692,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -46059,6 +46845,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -46177,6 +46973,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -46299,6 +47105,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -46417,6 +47233,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -46539,6 +47365,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -46657,6 +47493,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -46800,6 +47646,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -46918,6 +47774,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -47040,6 +47906,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47158,6 +48034,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -47282,6 +48168,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47400,6 +48296,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -47543,6 +48449,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47661,6 +48577,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -47783,6 +48709,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -47903,6 +48839,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -48021,6 +48967,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -48164,6 +49120,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -48303,6 +49269,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -48446,6 +49422,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -48564,6 +49550,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -48686,6 +49682,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -48804,6 +49810,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -48926,6 +49942,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -49044,6 +50070,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -49169,6 +50205,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -49354,6 +50400,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -49518,6 +50574,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -49687,6 +50753,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -49823,6 +50899,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -49971,6 +51057,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -50115,6 +51211,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -50263,6 +51369,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -50405,6 +51521,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           }
         ],
         "invariants": [
@@ -50526,6 +51652,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -50737,6 +51873,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -50876,6 +52022,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -51020,6 +52176,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -51138,6 +52304,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -51281,6 +52457,16 @@
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
           },
           {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
+          },
+          {
             "id": "never-seeded-incremental",
             "status": "remediated",
             "title": "An incremental model created before its input existed stays empty forever"
@@ -51399,6 +52585,16 @@
             "id": "stale-seed-deploy-silent-decode-halt",
             "status": "remediated",
             "title": "A seed deploy from a stale checkout reverted the chain column to empty and every decode_logs model appended zero rows, all green"
+          },
+          {
+            "id": "decode-arms-evaluated-for-every-param",
+            "status": "observed",
+            "title": "A decode macro's per-type arms run for every param, so a garbage offset word in another type's arm can overflow substring and kill the slice"
+          },
+          {
+            "id": "runner-refusal-invisible",
+            "status": "observed",
+            "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
           },
           {
             "id": "never-seeded-incremental",
@@ -56664,6 +57860,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -56841,6 +58042,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -56964,6 +58170,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -61940,6 +63151,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -65578,6 +66794,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -66031,6 +67252,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -66451,6 +67677,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -66587,6 +67818,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -67293,6 +68529,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -68770,6 +70011,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -69095,6 +70341,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -69204,6 +70455,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -69443,6 +70699,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -69571,6 +70832,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -69697,6 +70963,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -70009,6 +71280,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -71093,6 +72369,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -71910,6 +73191,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -72112,6 +73398,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -72348,6 +73639,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -72471,6 +73767,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -73274,6 +74575,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -74930,6 +76236,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -79937,6 +81248,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -80284,6 +81600,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -80699,6 +82020,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           }
         ],
         "profiles": [
@@ -80784,6 +82110,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -80936,6 +82267,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -82049,6 +83385,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -82211,6 +83552,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -83715,6 +85061,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -83854,6 +85205,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -83988,6 +85344,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -84133,6 +85494,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -84579,6 +85945,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -87712,6 +89083,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -87842,6 +89218,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -88173,6 +89554,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -89112,6 +90498,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -89337,6 +90728,11 @@
             "title": "Scoped append over already-populated months exactly doubles the data"
           },
           {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
             "id": "backfill-order-cumulative",
             "status": "observed",
             "title": "Backfill order matters \u2014 cumulative downstreams need history first"
@@ -89456,6 +90852,11 @@
             "id": "append-over-populated-duplicates",
             "status": "remediated",
             "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
           },
           {
             "id": "backfill-order-cumulative",
@@ -94548,7 +95949,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "df734560bc0bf23a5c3338d229a224c2944b38d25cac80033750b0e0f4926378",
+  "models_hash": "df50b429fa79fba1c3da69dabb10192f22c58689778fb1b987ff0875bce662a4",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
