@@ -26,9 +26,14 @@ from pathlib import Path
 # `dbt-run:retry-transient` step in the 2026-06-08 run). The real fix is a
 # bounded build / memory hooks, not a retry. Connection drops (SSL EOF,
 # HTTPSConnectionPool, RemoteDisconnected, broken pipe) ARE genuine transients
-# and were previously misclassified as permanent (no retry).
+# and were previously misclassified as permanent (no retry). Code 394
+# QUERY_WAS_CANCELLED is the server dropping in-flight queries during a
+# replica restart/replacement (2026-09-08 11:10: replica dkczd1i came up at
+# 11:10:25 and int_execution_gnosis_app_gpay_wallets died 11 s earlier with
+# 394; 81 descendants were skipped because it was filed as permanent).
 TRANSIENT_RE = re.compile(
-    r"Code:\s*(?:159|209|210)\b"
+    r"Code:\s*(?:159|209|210|394)\b"
+    r"|QUERY_WAS_CANCELLED"
     r"|TIMEOUT_EXCEEDED"
     r"|SOCKET_TIMEOUT"
     r"|NETWORK_ERROR"
