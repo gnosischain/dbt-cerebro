@@ -8,6 +8,12 @@
 - It **cannot** seed an empty table (bootstraps only `--bootstrap-lookback-days` back),
   and it **never recovers backfilled history** — anything below a model's watermark is
   invisible to it.
+- A refused stage (and a watermark read that fell back to bootstrap) is recorded in
+  `target/failed_batches/runner-*.json` and surfaced as `dbt_model_status{status="refused"}`
+  / `dbt_runner_watermark_fallback` — the runner still exits 0 (`--fail-on-refusal` to
+  change that). A sparse decode model with no event in >30 days is refused every day
+  and is NOT being advanced; see `docs/lessons/runner-refusal-invisible.md` before
+  concluding it is "green".
 - Resume state: see the runner `--help` for the state-file flags. Never point two
   concurrent runs at the same state file; never start a different selection expecting a
   pending `--resume` to survive.
