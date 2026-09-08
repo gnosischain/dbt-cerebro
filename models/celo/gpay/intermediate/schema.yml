@@ -1003,12 +1003,15 @@ models:
         rebuild int_celo_gpay_funder_wallet_daily and the two wallet-side marts.
     # HEAVY: scans all Celo Transfer logs in the GP era, same hazard profile as
     # int_celo_gpay_safe_transfers_alltoken. Keep batch_months at 1.
+    # date_column must be a column of THIS table (the runner reads max() from it):
+    # block_date is the partition column here; block_timestamp does not exist on
+    # the output and made the runner fall back to a 7-day bootstrap every day.
     full_refresh:
       start_date: "2026-01-01"
       batch_months: 1
       incremental:
         enabled: true
-        date_column: block_timestamp
+        date_column: block_date
         batch_days: 1
 
 - name: int_celo_gpay_funder_wallet_daily
@@ -1175,10 +1178,14 @@ models:
         partition first (macros/db/drop_partition.sql). Then rebuild
         fct_celo_gpay_wallet_tenure, which is cheap.
     # HEAVIEST model in this tree: ~18 monthly batches of all-Transfer scanning.
+    # date_column must be a column of THIS table. last_seen_at (the latest leg
+    # observed) is the day watermark; `month` would sit at the 1st and make the
+    # runner re-run the month-to-date partition for every day of the month, and
+    # block_timestamp does not exist on the output (7-day bootstrap every day).
     full_refresh:
       start_date: "2025-03-01"
       batch_months: 1
       incremental:
         enabled: true
-        date_column: block_timestamp
+        date_column: last_seen_at
         batch_days: 1

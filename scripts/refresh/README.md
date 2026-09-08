@@ -150,6 +150,8 @@ Synthesized stages flow through the same `--max-slices-per-stage` cap as declare
 | Daily path issues no `ALTER … DELETE` mutations | Three-branch strategy expression resolves to `append` whenever `incremental_end_date` is set |
 | No duplicate rows produced by the runner | Macro's no-overlap branch: strict `> max(date)` lower bound, `<= incremental_end_date` upper bound |
 | Multi-month gaps are refused, not silently chewed | `--max-slices-per-stage` cap with a clear error pointing at `full_refresh.py` |
+| A refusal is recorded, not just printed | `record_runner_event` writes `target/failed_batches/runner-refused-<model>-<stage>-<invocation>.json`; `emit_model_status_metrics.py` reports the model as `dbt_model_status{status="refused"}` with `dbt_runner_refused_gap_days`; `--fail-on-refusal` turns it into exit 3 |
+| A watermark read that fails is visible | `runner-watermark-fallback-*.json` + `dbt_runner_watermark_fallback{model,stage}` (the runner still bootstraps from `today − N`) |
 | Plain models that depend on a microbatch model see it built first | Topo-interleaved buffer-flush in `main()` |
 | Plain models that a microbatch model depends on are built first | Same — flush happens at every microbatch boundary |
 | Empty target tables don't try to backfill from `meta.start_date` | Bootstrap uses `today − --bootstrap-lookback-days` (default 7) |
@@ -192,6 +194,19 @@ The cron orchestrator runs `classify_failed_nodes.py` against this directory and
 - **PERMANENT** — everything else. Surfaced in the cron summary; needs a human.
 
 This is why the orchestrator's `dbt-run:<batch_id>` step always uses `|| true` in the wrapper — failures are routed to the classifier rather than killing the whole pipeline.
+
+### Runner events (not failures)
+
+Two runner decisions are not dbt failures and used to exist only as stderr lines: a
+stage **refused** because its gap exceeds `--max-slices-per-stage`, and a watermark read
+that failed and fell back to the bootstrap window. Both are now written to the same
+directory as `runner-<kind>-<model>-<stage>-<invocation_id>.json` (no `results` key, so
+`classify_failed_nodes.py` ignores them). `scripts/observability/emit_model_status_metrics.py`
+reads them and reports a refused model as `status="refused"` (overriding pending/success,
+never a real error) plus `dbt_runner_refused_gap_days{model,stage}` and
+`dbt_runner_watermark_fallback{model,stage}`. The runner still exits 0 on a refusal unless
+`--fail-on-refusal` is passed. Background and the sparse-decode caveat:
+`docs/lessons/runner-refusal-invisible.md`.
 
 ---
 

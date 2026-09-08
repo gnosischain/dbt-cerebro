@@ -7,6 +7,11 @@ Grafana can show, for the *last run*:
 
   - which production models succeeded / errored / were skipped
   - which production models were never touched (``status="pending"``)
+  - which production models the microbatch runner REFUSED to advance because
+    their data gap exceeds ``--max-slices-per-stage`` (``status="refused"``,
+    read from ``target/failed_batches/runner-refused-*.json``; the runner
+    exits 0 on a refusal, so without this the model reads as pending/success
+    while it is silently not being advanced)
   - a real total-vs-done progress ratio
   - per-model build duration
 
@@ -72,7 +77,40 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="production",
         help="manifest node tag identifying the run selection.",
     )
+    p.add_argument(
+        "--failed-batches-dir",
+        default=os.path.join(project, "target", "failed_batches"),
+        help=(
+            "Directory holding the runner's per-run event records "
+            "(runner-refused-*.json, runner-watermark-fallback-*.json)."
+        ),
+    )
     return p.parse_args(argv)
+
+
+def load_runner_events(failed_batches_dir: str) -> list[dict]:
+    """Return the microbatch runner's decision records for this run.
+
+    scripts/refresh/dbt_incremental_runner.py writes one
+    ``runner-<kind>-<model>-<stage>-<invocation>.json`` per refused stage and
+    per watermark-read fallback (record_runner_event). Unreadable files are
+    skipped; a missing directory means no events.
+    """
+    events: list[dict] = []
+    try:
+        paths = sorted(Path(failed_batches_dir).glob("runner-*.json"))
+    except OSError:
+        return events
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError) as exc:
+            print(f"[warn] skipping unreadable runner event {path}: {exc}", file=sys.stderr)
+            continue
+        if isinstance(data, dict) and data.get("runner_event"):
+            events.append(data)
+    return events
 
 
 def load_production_models(manifest_path: str, tag: str) -> dict[str, dict]:
@@ -153,18 +191,38 @@ def build_payload(
     models: dict[str, dict],
     status: dict[str, str],
     seconds: dict[str, float],
+    events: list[dict] | None = None,
 ) -> str:
     lines: list[str] = []
-    counts = {"success": 0, "error": 0, "skipped": 0, "pending": 0}
+    counts = {"success": 0, "error": 0, "skipped": 0, "pending": 0, "refused": 0}
+
+    # A refused stage means the model was NOT advanced this run even if some
+    # other stage (or a plain retry) logged OK, so `refused` overrides
+    # success/pending/skipped; a real dbt error still wins.
+    refused: dict[str, list[dict]] = {}
+    fallbacks: list[dict] = []
+    for ev in events or []:
+        kind = ev.get("runner_event")
+        model = ev.get("model") or ""
+        if model not in models:
+            continue
+        if kind == "refused":
+            refused.setdefault(model, []).append(ev)
+        elif kind == "watermark-fallback":
+            fallbacks.append(ev)
 
     lines.append(
         "# HELP dbt_model_status Last-run status of each production dbt model "
-        "(1 = current status; status one of success|error|skipped|pending)."
+        "(1 = current status; status one of success|error|skipped|pending|refused; "
+        "refused = the microbatch runner declined to advance a stage because its "
+        "gap exceeds --max-slices-per-stage)."
     )
     lines.append("# TYPE dbt_model_status gauge")
     for name in sorted(models):
         meta = models[name]
         st = status.get(name, "pending")
+        if name in refused and st != "error":
+            st = "refused"
         counts[st] = counts.get(st, 0) + 1
         lines.append(
             'dbt_model_status{model="%s",materialization="%s",layer="%s",status="%s"} 1'
@@ -181,11 +239,34 @@ def build_payload(
         if name in models:
             lines.append('dbt_model_run_seconds{model="%s"} %g' % (_label(name), seconds[name]))
 
+    lines.append(
+        "# HELP dbt_runner_refused_gap_days Days between a refused stage's data "
+        "watermark and today (the gap the runner declined to chew through)."
+    )
+    lines.append("# TYPE dbt_runner_refused_gap_days gauge")
+    for name in sorted(refused):
+        for ev in refused[name]:
+            lines.append(
+                'dbt_runner_refused_gap_days{model="%s",stage="%s"} %g'
+                % (_label(name), _label(str(ev.get("stage", ""))), float(ev.get("gap_days") or 0))
+            )
+
+    lines.append(
+        "# HELP dbt_runner_watermark_fallback The runner could not read a stage's "
+        "watermark (max(date_column) failed) and bootstrapped from today - N days instead."
+    )
+    lines.append("# TYPE dbt_runner_watermark_fallback gauge")
+    for ev in sorted(fallbacks, key=lambda e: (str(e.get("model")), str(e.get("stage")))):
+        lines.append(
+            'dbt_runner_watermark_fallback{model="%s",stage="%s"} 1'
+            % (_label(str(ev.get("model"))), _label(str(ev.get("stage", ""))))
+        )
+
     total = len(models)
     lines.append("# HELP dbt_run_models_total Production models expected in the last run.")
     lines.append("# TYPE dbt_run_models_total gauge")
     lines.append("dbt_run_models_total %d" % total)
-    for key in ("success", "error", "skipped", "pending"):
+    for key in ("success", "error", "skipped", "pending", "refused"):
         lines.append("# TYPE dbt_run_models_%s gauge" % key)
         lines.append("dbt_run_models_%s %d" % (key, counts.get(key, 0)))
 
@@ -200,7 +281,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
     models = load_production_models(args.manifest, args.production_tag)
     status, seconds = parse_log(args.log)
-    payload = build_payload(models, status, seconds)
+    events = load_runner_events(args.failed_batches_dir)
+    payload = build_payload(models, status, seconds, events)
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,16 +290,18 @@ def main(argv: list[str] | None = None) -> int:
     tmp_path.write_text(payload, encoding="utf-8")
     tmp_path.replace(out_path)  # atomic — server never reads a half-written file
 
-    done = sum(1 for m in models if status.get(m) == "success")
+    refused_models = {e.get("model") for e in events if e.get("runner_event") == "refused"}
+    done = sum(1 for m in models if status.get(m) == "success" and m not in refused_models)
     print(
         "[info] emit_model_status_metrics: %d production models, %d success, "
-        "%d error, %d skipped, %d pending -> %s"
+        "%d error, %d skipped, %d pending, %d refused -> %s"
         % (
             len(models),
             done,
             sum(1 for m in models if status.get(m) == "error"),
-            sum(1 for m in models if status.get(m) == "skipped"),
-            sum(1 for m in models if m not in status),
+            sum(1 for m in models if status.get(m) == "skipped" and m not in refused_models),
+            sum(1 for m in models if m not in status and m not in refused_models),
+            sum(1 for m in models if m in refused_models and status.get(m) != "error"),
             out_path,
         )
     )

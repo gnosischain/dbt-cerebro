@@ -981,6 +981,45 @@ def stash_failure(
     shutil.copy2(rr, dest)
 
 
+def record_runner_event(
+    project_dir: Path,
+    kind: str,
+    model: str,
+    stage_name: str,
+    invocation_id: str | None = None,
+    **fields,
+) -> Path:
+    """Durably record a runner DECISION that is not a dbt failure.
+
+    Two decisions used to be stderr-only and exit 0: a stage refused because its
+    gap exceeds --max-slices-per-stage, and a watermark read that failed and
+    fell back to the bootstrap window. Both left the model looking green
+    (pending/success in dbt_model_status) while it was not being advanced —
+    ~20 sparse decode models went unexecuted for weeks in 2026-09 without any
+    surface showing it (docs/lessons/runner-refusal-invisible.md).
+
+    The record lives next to the failure stashes so the orchestrator's per-run
+    cleanup of target/failed_batches covers it. classify_failed_nodes.py
+    ignores these files (no `results` key); emit_model_status_metrics.py reads
+    them and reports the model as status="refused" with the gap size.
+    """
+    failed_dir = project_dir / "target" / "failed_batches"
+    failed_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"-{invocation_id}" if invocation_id else ""
+    dest = failed_dir / f"runner-{kind}-{model}-{stage_name}{suffix}.json"
+    payload = {
+        "runner_event": kind,
+        "model": model,
+        "stage": stage_name,
+        "recorded_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        **fields,
+    }
+    tmp = dest.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, sort_keys=True, default=str), encoding="utf-8")
+    tmp.replace(dest)
+    return dest
+
+
 # ---------------------------------------------------------------------------
 # Plan / execute
 # ---------------------------------------------------------------------------
@@ -1024,8 +1063,14 @@ def plan_for_model(
     stage_filter: list[str] | None = None,
     max_slices_per_stage: int = 30,
     heal_lookback_days: int = 3,
+    events: list[dict] | None = None,
 ) -> list[tuple[dict, list[dt.date]]]:
     """Compute (stage, [slice_end_dates]) list for a single microbatch model.
+
+    `events`, when given, collects the runner's silent decisions for the caller
+    to record durably (see record_runner_event): one dict per refused stage
+    (`kind="refused"`) and per watermark read that fell back to the bootstrap
+    window (`kind="watermark-fallback"`).
 
     `max_date` is fetched **per stage** using a derived WHERE filter from the
     stage's vars (see `stage_filter_sql`). This ensures that a stage which is
@@ -1063,6 +1108,15 @@ def plan_for_model(
                 file=sys.stderr,
             )
             max_t = today - dt.timedelta(days=bootstrap_lookback_days)
+            if events is not None:
+                events.append({
+                    "kind": "watermark-fallback",
+                    "stage": stage["name"],
+                    "date_column": meta["date_column"],
+                    "error": str(exc)[:500],
+                    "assumed_max": max_t.isoformat(),
+                    "bootstrap_lookback_days": bootstrap_lookback_days,
+                })
 
         # Bootstrap policy: when the per-stage query returns the macro's
         # 1970 sentinel (target empty for this range) we bootstrap from
@@ -1149,6 +1203,16 @@ def plan_for_model(
                 f"the microbatch runner.",
                 file=sys.stderr,
             )
+            if events is not None:
+                events.append({
+                    "kind": "refused",
+                    "stage": stage["name"],
+                    "gap_days": len(slices),
+                    "batch_days": batch_days,
+                    "target_max": max_t.isoformat(),
+                    "today": today.isoformat(),
+                    "max_slices_per_stage": max_slices_per_stage,
+                })
             plan.append((stage, []))
             continue
         plan.append((stage, slices))
@@ -1227,6 +1291,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "multi-month historical backfill belongs to "
             "scripts/full_refresh/refresh.py. Default 30 (≈ one month). "
             "Set to 0 to disable the cap (not recommended on the cron path)."
+        ),
+    )
+    p.add_argument(
+        "--fail-on-refusal",
+        action="store_true",
+        help=(
+            "Exit 3 when any stage was refused by --max-slices-per-stage. "
+            "Refusals are always recorded in target/failed_batches/ and "
+            "surfaced as dbt_model_status{status=\"refused\"}; by default the "
+            "runner still exits 0 so a chronically sparse decode does not fail "
+            "the whole cron step."
         ),
     )
     p.add_argument(
@@ -1344,6 +1419,8 @@ def main(argv: list[str] | None = None) -> int:
     plain_flush_counter = {"n": 0}
 
     failures: list[tuple[str, str, str]] = []
+    # (model, stage, gap_days) for every stage the cap refused this run.
+    refused: list[tuple[str, str, int]] = []
 
     def flush_plain(buf: list[str]) -> None:
         """Run accumulated plain models as a single `dbt run --select` and
@@ -1398,6 +1475,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Auto-extend stages from range_template if the model declared one.
         maybe_extend_stages(name, meta, today, project_dir, profiles_dir)
+        model_events: list[dict] = []
         try:
             plan = plan_for_model(
                 name,
@@ -1412,17 +1490,36 @@ def main(argv: list[str] | None = None) -> int:
                 stage_filter=args.stage,
                 max_slices_per_stage=args.max_slices_per_stage,
                 heal_lookback_days=args.heal_lookback_days,
+                events=model_events,
             )
         except Exception as exc:
             print(f"[error] planning {name} failed: {exc}", file=sys.stderr)
             failures.append((name, "_plan", "-"))
             continue
+        for ev in model_events:
+            ev_kind = ev["kind"]
+            ev_stage = ev["stage"]
+            if ev_kind == "refused":
+                refused.append((name, ev_stage, ev["gap_days"]))
+            if not args.dry_run:
+                record_runner_event(
+                    project_dir,
+                    ev_kind,
+                    name,
+                    ev_stage,
+                    invocation_id=invocation_id,
+                    **{k: v for k, v in ev.items() if k not in ("kind", "stage")},
+                )
 
+        refused_stages = {ev["stage"] for ev in model_events if ev["kind"] == "refused"}
         for stage, slices in plan:
             stage_name = stage["name"]
             if not slices:
                 tag = "[dry-run]" if args.dry_run else "[info]"
-                print(f"{tag} {name} stage={stage_name}: nothing to do (caught up or filtered)")
+                if stage_name in refused_stages:
+                    print(f"{tag} {name} stage={stage_name}: REFUSED (gap exceeds --max-slices-per-stage); not advanced")
+                else:
+                    print(f"{tag} {name} stage={stage_name}: nothing to do (caught up or filtered)")
                 continue
             for end_date in slices:
                 if args.dry_run:
@@ -1465,6 +1562,17 @@ def main(argv: list[str] | None = None) -> int:
     # plain when no microbatch was matched).
     flush_plain(plain_buffer)
 
+    if refused:
+        print(
+            f"[warn] runner refused {len(refused)} stage(s) "
+            f"(gap > --max-slices-per-stage={args.max_slices_per_stage}); "
+            f"recorded in target/failed_batches/runner-refused-*.json and "
+            f"reported as dbt_model_status{{status=\"refused\"}}:",
+            file=sys.stderr,
+        )
+        for model, stage_name, gap in refused:
+            print(f"  - {model} stage={stage_name} gap_days={gap}", file=sys.stderr)
+
     if failures:
         print("[error] runner failures:", file=sys.stderr)
         for f in failures:
@@ -1479,6 +1587,8 @@ def main(argv: list[str] | None = None) -> int:
     # as a pending run to other invocations' overlap checks.
     if not args.dry_run and state_path.exists():
         state_path.unlink()
+    if refused and args.fail_on_refusal:
+        return 3
     return 0
 
 

@@ -367,12 +367,25 @@ WITH
   {% endif %}
   abi AS ( {{ sig_sql }} ),
 
-  {# Array-length guard: ClickHouse does not short-circuit if/multiIf, so the
-     dynamic-array decode arm (and its range(length_word)) is evaluated for
-     EVERY param regardless of type. A misread length (e.g. approve(spender,0),
-     where amount=0 is read as offset 0 and the spender's low bytes become the
-     "length") can exceed range()'s 500M cap -> Code 69 ARGUMENT_OUT_OF_BOUND,
-     killing the whole slice. Each dynamic range() is therefore capped at
+  {# Offset/length guard: ClickHouse does not short-circuit if/multiIf (the old
+     analyzer's INSERT ... SELECT path evaluates every branch, and
+     short_circuit_function_evaluation=disable reproduces it in a SELECT), so
+     every dynamic decode arm reads offsets and lengths for EVERY param
+     regardless of type. When the param is not that type, the words it reads
+     are arbitrary calldata (a tuple's inner offsets, string bytes, ...) and a
+     huge "length" word overflows substring's Int64 length argument -> Code 69
+     "Overflow in length argument of substring-like function", killing the
+     whole slice (contracts_Seer_MarketFactory_calls, createCategoricalMarket
+     tuple param, 2026-09-02). Every word read as an offset or length is
+     therefore clamped with least(..., length(args_raw_hex)) before it is
+     multiplied: a real ABI offset/length is always below the calldata length,
+     so valid decodes are byte-identical, and a garbage word can no longer
+     overflow an offset or length argument.
+
+     Array-length guard: the same evaluate-every-arm behaviour means a misread
+     array length (e.g. approve(spender,0), where amount=0 is read as offset 0
+     and the spender's low bytes become the "length") can exceed range()'s 500M
+     cap -> Code 69 ARGUMENT_OUT_OF_BOUND. Each dynamic range() is therefore capped at
      intDiv(length(args_raw_hex),64) = the max 32-byte words the calldata can
      hold; a real array can never exceed that, so valid decodes are unchanged. #}
   process AS (
@@ -426,7 +439,7 @@ WITH
                         substring(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + j*64,
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + j*64,
                             64
                           ),
                           25, 40
@@ -435,7 +448,7 @@ WITH
                       concat('0x',
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + j*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + j*64,
                           64
                         )
                       )
@@ -456,34 +469,34 @@ WITH
                         reinterpretAsString(unhex(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2)
-                              + toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2)
+                              + least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                                   substring(args_raw_hex,
-                                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                                             64)
-                              )))) * 2
+                              )))), toUInt64(length(args_raw_hex))) * 2
                               + 64,
-                            toUInt64(reinterpretAsUInt256(reverse(unhex(
+                            least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                               substring(args_raw_hex,
-                                        (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2)
-                                          + toUInt64(reinterpretAsUInt256(reverse(unhex(
+                                        (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2)
+                                          + least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                                               substring(args_raw_hex,
-                                                        (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                                                        (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                                                         64)
-                                          )))) * 2,
+                                          )))), toUInt64(length(args_raw_hex))) * 2,
                                         64)
-                            )))) * 2
+                            )))), toUInt64(length(args_raw_hex))) * 2
                           )
                         )),
                         '\0',''
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -495,7 +508,7 @@ WITH
                         substring(
                           substring(
                             args_raw_hex,
-                            (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                            (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                             64
                           ),
                           25, 40
@@ -503,11 +516,11 @@ WITH
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -517,17 +530,17 @@ WITH
                       concat('0x',
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       ),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -541,17 +554,17 @@ WITH
                       toString(reinterpretAsUInt256(reverse(unhex(
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       )))),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -561,17 +574,17 @@ WITH
                       toString(reinterpretAsInt256(reverse(unhex(
                         substring(
                           args_raw_hex,
-                          (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64 + k*64,
+                          (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64 + k*64,
                           64
                         )
                       )))),
                       range(
                         least(
-                          toUInt64(reinterpretAsUInt256(reverse(unhex(
+                          least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                             substring(args_raw_hex,
-                                      (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2),
+                                      (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2),
                                       64)
-                          )))),
+                          )))), toUInt64(length(args_raw_hex))),
                           intDiv(length(args_raw_hex), 64)
                         )
                       )
@@ -584,11 +597,11 @@ WITH
                 (param_types[i+1] = 'bytes') OR (param_types[i+1] = 'string'),
                 substring(
                   args_raw_hex,
-                  (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2) + 64,
-                  toUInt64(reinterpretAsUInt256(reverse(unhex(
+                  (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2) + 64,
+                  least(toUInt64(reinterpretAsUInt256(reverse(unhex(
                     substring(args_raw_hex,
-                              (1 + toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))) * 2), 64)
-                  )))) * 2
+                              (1 + least(toUInt64(reinterpretAsUInt256(reverse(unhex(arrayElement(head_words,i+1))))), toUInt64(length(args_raw_hex))) * 2), 64)
+                  )))), toUInt64(length(args_raw_hex))) * 2
                 ),
                 if(arrayElement(head_words,i+1) IS NULL, NULL,
                   multiIf(

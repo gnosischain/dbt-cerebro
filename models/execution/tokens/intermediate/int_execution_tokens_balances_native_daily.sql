@@ -7,11 +7,24 @@
   this makes a corrupted month self-healing:
     dbt run -s int_execution_tokens_balances_native_daily \
       --vars 'start_month: 2026-07-01, end_month: 2026-07-01, reprocess_overwrite: true'
+
+  incremental_predicates bounds the delete+insert DELETE by date so the
+  lightweight-delete mutation prunes to the touched month partitions instead of
+  scanning every part of the table (an unbounded tuple-IN delete ran 450s on
+  2026-09-07, the idle connection was dropped, dbt timed out after 3000s and the
+  insert never ran -- 4 days of lag). Daily runs only ever overlap yesterday
+  (the calendar starts at max(date WHERE date < yesterday()) + 1); a windowed
+  reprocess uses its explicit month bounds.
 #}
 {{
   config(
     materialized='incremental',
     incremental_strategy=('delete+insert' if var('reprocess_overwrite', false) else ('append' if var('start_month', none) else 'delete+insert')),
+    incremental_predicates=[
+      ("toStartOfMonth(date) >= toDate('" ~ var('start_month') ~ "') AND toStartOfMonth(date) <= toDate('" ~ var('end_month') ~ "')")
+      if (var('start_month', none) and var('end_month', none))
+      else "date >= addDays(today(), -7)"
+    ],
     engine='ReplacingMergeTree()',
     order_by='(date, token_address, address)',
     partition_by='toStartOfMonth(date)',

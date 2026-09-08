@@ -20,6 +20,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   duplicates every other token, honoured on insert_overwrite it wipes them.
 - [wide-delete-insert-wipe](wide-delete-insert-wipe.md) `enforced` — a failed
   delete+insert keeps deleting in the background after dbt errors; reprocess per slice.
+- [delete-insert-unbounded-delete-timeout](delete-insert-unbounded-delete-timeout.md)
+  `observed` — the adapter's unbounded delete-set on a wide table finishes server-side
+  but the idle connection drops, dbt times out and the INSERT never runs (token chain
+  froze 4 days, 2026-09-07); bound the DELETE with incremental_predicates. Fix in
+  tree, pending deploy.
 - [table-mat-batch-vars-truncation](table-mat-batch-vars-truncation.md) `observed` —
   batched refreshes truncate table-materialized month-var models to the last batch.
 
@@ -27,6 +32,15 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 
 - [decode-watermark-late-logs](decode-watermark-late-logs.md) `remediated` — append
   decode watermarks drop backfilled logs forever; recover with gap_window_refresh.py.
+- [decode-arms-evaluated-for-every-param](decode-arms-evaluated-for-every-param.md)
+  `observed` — decode_calls evaluates every per-type arm for every param, so garbage
+  offset words overflow substring (Code 69) and freeze the slice; clamp every
+  offset/length read to the calldata length. Fix in tree, pending deploy.
+- [runner-refusal-invisible](runner-refusal-invisible.md) `observed` — a stage the
+  microbatch runner refuses (gap > --max-slices-per-stage) or whose watermark read
+  fails leaves only a stderr line and exit 0, so unexecuted models look green; now
+  recorded as runner-*.json and dbt_model_status{status="refused"}. Fix in tree,
+  pending deploy.
 - [backfill-order-cumulative](backfill-order-cumulative.md) `observed` — downstreams
   reading `{{ this }}` need history backfilled first, chronologically.
 - [late-start-mis-staging](late-start-mis-staging.md) `remediated` — a stage start_date

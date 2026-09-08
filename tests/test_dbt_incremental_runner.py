@@ -1276,3 +1276,89 @@ def test_plan_for_model_per_stage_state_independent(tmp_path):
         dt.date(2026, 4, 21),
         dt.date(2026, 4, 22),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Refusal / watermark-fallback visibility (docs/lessons/runner-refusal-invisible.md)
+# ---------------------------------------------------------------------------
+
+
+def _microbatch_meta():
+    node = {
+        "meta": {
+            "full_refresh": {
+                "incremental": {"enabled": True, "date_column": "date", "batch_days": 1}
+            }
+        }
+    }
+    return runner.get_microbatch_meta(node)
+
+
+def test_plan_for_model_records_refusal_event(tmp_path, capsys):
+    meta = _microbatch_meta()
+    today = dt.date(2026, 9, 7)
+    events: list[dict] = []
+    with mock.patch.object(runner, "fetch_max_date", return_value=today - dt.timedelta(days=100)):
+        plan = runner.plan_for_model(
+            "contracts_sparse_events", meta, today, {}, tmp_path, tmp_path,
+            None, 7, True, max_slices_per_stage=30, events=events,
+        )
+    assert plan == [(meta["stages"][0], [])]
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["kind"] == "refused"
+    assert ev["stage"] == meta["stages"][0]["name"]
+    assert ev["gap_days"] == 100
+    assert ev["target_max"] == "2026-05-30"
+    assert ev["max_slices_per_stage"] == 30
+    assert "exceeds --max-slices-per-stage=30" in capsys.readouterr().err
+
+
+def test_plan_for_model_no_event_when_within_cap(tmp_path):
+    meta = _microbatch_meta()
+    today = dt.date(2026, 9, 7)
+    events: list[dict] = []
+    with mock.patch.object(runner, "fetch_max_date", return_value=today - dt.timedelta(days=3)):
+        plan = runner.plan_for_model(
+            "int_x", meta, today, {}, tmp_path, tmp_path,
+            None, 7, True, max_slices_per_stage=30, events=events,
+        )
+    assert [d.isoformat() for d in plan[0][1]] == [
+        "2026-09-05", "2026-09-06", "2026-09-07",
+    ]
+    assert events == []
+
+
+def test_plan_for_model_records_watermark_fallback(tmp_path):
+    meta = _microbatch_meta()
+    today = dt.date(2026, 9, 7)
+    events: list[dict] = []
+    with mock.patch.object(
+        runner, "fetch_max_date", side_effect=RuntimeError("get_max_date failed (rc=1)")
+    ):
+        plan = runner.plan_for_model(
+            "int_celo_x", meta, today, {}, tmp_path, tmp_path,
+            None, 7, True, max_slices_per_stage=30, events=events,
+        )
+    # Bootstrap window: today - 7 -> floor 09-01, seven daily slices.
+    assert len(plan[0][1]) == 7
+    assert events[0]["kind"] == "watermark-fallback"
+    assert events[0]["assumed_max"] == "2026-08-31"
+    assert "rc=1" in events[0]["error"]
+
+
+def test_record_runner_event_writes_classifier_safe_json(tmp_path):
+    dest = runner.record_runner_event(
+        tmp_path, "refused", "contracts_sparse_events", "_default",
+        invocation_id="1700000000-42", gap_days=100, target_max="2026-05-30",
+    )
+    assert dest == tmp_path / "target" / "failed_batches" / (
+        "runner-refused-contracts_sparse_events-_default-1700000000-42.json"
+    )
+    data = json.loads(dest.read_text())
+    assert data["runner_event"] == "refused"
+    assert data["model"] == "contracts_sparse_events"
+    assert data["gap_days"] == 100
+    # classify_failed_nodes iterates `results`; a runner event must carry none.
+    assert "results" not in data
+    assert not dest.with_suffix(".json.tmp").exists()
