@@ -17,11 +17,16 @@ Modes:
                    semantic steps (CI full mode; needs warehouse credentials)
   --base-ref REF   base for the change-aware contract gate (default: main)
 
-Two-tier design (why --full exists): `dbt parse` needs no warehouse, so every
-static gate can run on any checkout/PR. The semantic registry, graph gate and
-entity overlay hard-require target/catalog.json, which only a credentialed
-`dbt docs generate` produces — those steps are the full tier, run on main
-before the Docker image publishes.
+Tiers (why --full exists): `dbt parse` needs no warehouse, so every static gate
+can run on any checkout/PR. The semantic registry, graph gate and entity overlay
+read target/catalog.json; because dbt-clickhouse emits NO model nodes into the
+catalog, those gates are manifest-only in practice — verified 2026-09-08: real vs
+stub catalog gives identical gate results (the catalog only adds source column
+types to the registry artifact). So `--full` is the IMAGE GATE and needs no
+warehouse: when target/catalog.json is missing it writes an empty stub first.
+`--full --docs-generate` is the WAREHOUSE tier (real catalog, docs site); it runs
+in the deploy-docs job AFTER the image is published and must never gate the image
+(a saturated ClickHouse blocked an image publish on 2026-09-08).
 
 Bootstrap: if target/manifest.json is missing (or older than the newest model/
 seed/dbt_project.yml file), runs `dbt parse` when dbt is installed; otherwise
@@ -111,6 +116,37 @@ class Runner:
     def record(self, name: str, ok: bool, elapsed: float = 0.0) -> None:
         self.results.append((name, "PASS" if ok else "FAIL", elapsed))
 
+    def run_retrying_overcommit(self, name: str, argv: list, attempts: int = 5,
+                                base_sleep: int = 60) -> bool:
+        """Like run(), but retry when the step died as a ClickHouse
+        OvercommitTracker VICTIM (Code 241 with the `(total)` server-wide limit).
+
+        `dbt docs generate` compiles every decode model, and each one runs its
+        watermark query at compile time; on a saturated warehouse any of those
+        allocations can be the one the server kills. That is the cluster's
+        problem, not the change's (docs/lessons/ch-overcommit-victim.md), yet it
+        blocked an image publish on 2026-09-08. Only the `(total)` signature is
+        retried; a per-query memory limit or any other error fails immediately.
+        """
+        print(f"\n=== {name} ===", flush=True)
+        start = time.time()
+        for attempt in range(1, attempts + 1):
+            rc = subprocess.call([str(a) for a in argv], cwd=REPO_ROOT, env=dict(os.environ))
+            if rc == 0:
+                self.results.append((name, "PASS", time.time() - start))
+                return True
+            if attempt == attempts or not _dbt_log_shows_overcommit_victim():
+                break
+            wait = base_sleep * attempt
+            print(f"[retry] {name}: ClickHouse Code 241 `(total)` -- the server is "
+                  f"saturated and picked this query as the victim; attempt "
+                  f"{attempt}/{attempts} failed, sleeping {wait}s before retrying.",
+                  flush=True)
+            time.sleep(wait)
+        self.results.append((name, "FAIL", time.time() - start))
+        return False
+
+
     def summary(self) -> int:
         print("\n" + "=" * 62)
         print(f"{'step':<40} {'result':<6} {'secs':>6}")
@@ -121,11 +157,53 @@ class Runner:
             if result == "FAIL":
                 failed += 1
         print("-" * 62)
+        skipped = [name for name, result, _ in self.results if result == "SKIP"]
         if failed:
             print(f"{failed} step(s) FAILED")
             return 1
+        if skipped:
+            print("all steps passed (image-gate tier, manifest-only; "
+                  f"{', '.join(skipped)} belongs to the warehouse tier that runs "
+                  "in deploy-docs after the image)")
+            return 0
         print("all steps passed")
         return 0
+
+
+def write_stub_catalog(path: Path) -> None:
+    """Write an empty dbt catalog so the semantic gates can run without a warehouse.
+
+    dbt-clickhouse's `docs generate` emits sources only (0 model nodes), so the
+    registry/graph/entity gates never see model columns from the catalog; an empty
+    one yields the same gate verdicts. The real catalog is still produced by the
+    warehouse tier (deploy-docs) for the published artifacts.
+    """
+    import json
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "metadata": {
+            "dbt_schema_version": "https://schemas.getdbt.com/dbt/catalog/v1.json",
+            "generated_at": "1970-01-01T00:00:00Z",
+            "invocation_id": None,
+            "env": {},
+            "stub": "written by scripts/checks/run_all.py (no warehouse)",
+        },
+        "nodes": {},
+        "sources": {},
+        "errors": None,
+    }, indent=2), encoding="utf-8")
+
+
+def _dbt_log_shows_overcommit_victim(tail_lines: int = 400) -> bool:
+    """True when the newest dbt log lines carry the server-wide 241 signature."""
+    log_dir = Path(os.environ.get("DBT_LOG_PATH") or (REPO_ROOT / "logs"))
+    log = log_dir / "dbt.log"
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-tail_lines:]
+    except OSError:
+        return False
+    tail = "\n".join(lines)
+    return "Code: 241" in tail and "(total) memory limit exceeded" in tail
 
 
 def determinism_check(runner: Runner) -> None:
@@ -199,13 +277,19 @@ def main() -> int:
 
     if args.full:
         if args.docs_generate:
-            r.run("dbt-docs-generate",
-                  ["dbt", "docs", "generate", "--exclude", "tag:dev"])
+            r.run_retrying_overcommit("dbt-docs-generate",
+                                      ["dbt", "docs", "generate", "--exclude", "tag:dev"])
+        else:
+            r.results.append(("dbt-docs-generate", "SKIP", 0.0))
+            if not CATALOG.exists():
+                write_stub_catalog(CATALOG)
+                print("\n=== catalog-stub ===\ntarget/catalog.json missing -> wrote an "
+                      "empty stub; the semantic gates run manifest-only (identical "
+                      "results to a real catalog, which carries no model nodes here).")
+                r.record("catalog-stub", True)
         if not CATALOG.exists():
-            print("\n=== semantic steps ===\nFAIL: target/catalog.json missing — "
-                  "the semantic registry/graph/entity gates need a warehouse-"
-                  "connected `dbt docs generate` (or pass --docs-generate with "
-                  "credentials).")
+            print("\n=== semantic steps ===\nFAIL: target/catalog.json missing and "
+                  "could not be stubbed.")
             r.record("semantic-registry", False)
         else:
             r.run("semantic-registry",

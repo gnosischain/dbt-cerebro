@@ -43,9 +43,14 @@ Repeatable workflows (vendor-neutral; Claude slash commands are thin wrappers):
    fresh checkout and inside the dbt container; `make check-fast` / `make check` are
    thin aliases for its `--fast` / `--full` modes); plus the model-specific selectors
    from the change packet. `--fast` is for iteration only: before declaring work
-   done or giving any green light, run the FULL mode and confirm every step passes —
-   CI blocks on steps fast skips (e.g. `agent-context-check` requires a `meta.agent`
-   contract on any changed high-risk model).
+   done or giving any green light, run the image gate — `python scripts/checks/run_all.py
+   --full` — and confirm every step passes. That is exactly what CI runs before the
+   Docker image publishes; it needs no warehouse (the semantic gates are manifest-only
+   and a stub catalog is written when none exists). `--full --docs-generate` is the
+   warehouse tier (real `dbt docs generate`); it runs in the deploy-docs job AFTER the
+   image and must never be made a condition of the image build. CI blocks on steps fast
+   skips (e.g. `agent-context-check` requires a `meta.agent` contract on any changed
+   high-risk model).
 6. **Record new lessons** — if you diagnosed a new mistake class, add a record under
    `docs/lessons/` (follow `docs/workflows/incident.md`; every lesson needs evidence
    refs).

@@ -1,12 +1,13 @@
 name: PR Checks
 
-# Parse-tier validation on every pull request — no warehouse, no secrets.
+# Image-gate validation on every pull request — no warehouse, no secrets.
 # `dbt parse` renders profiles.yml but never connects, so dummy connection env
-# is sufficient; every static gate + the agent-context and change-aware
-# contract checks run against the parsed manifest. The catalog-dependent
-# semantic gates (registry/graph/entities need target/catalog.json from a
-# credentialed `dbt docs generate`) run in the full tier on main —
-# see build-and-release.yaml's validate job, which also gates image publish.
+# is sufficient. This runs the SAME `run_all.py --full` tier that gates the
+# Docker image on main (static gates, agent-context + change-aware contract
+# checks, pytest, and the manifest-only semantic gates against a stub
+# catalog), so a PR that is green here cannot fail the image build after
+# merge. The warehouse tier (real `dbt docs generate`) runs only in
+# build-and-release.yaml's deploy-docs job, after the image is published.
 
 on:
   pull_request:
@@ -58,4 +59,4 @@ jobs:
         # --ci: base ref must resolve (fail closed), stale manifest is an error.
         run: |
           dbt parse
-          python scripts/checks/run_all.py --ci --base-ref "origin/${{ github.base_ref }}"
+          python scripts/checks/run_all.py --ci --full --base-ref "origin/${{ github.base_ref }}"

@@ -10,13 +10,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Full-tier validation gates image publication: every policy gate, the
-  # agent-context checks, pytest, AND the catalog-dependent semantic gates
-  # (registry/graph/entities — these need a credentialed `dbt docs generate`,
-  # which is why this tier runs here with secrets and not on PRs; PRs run the
-  # parse tier via pr-checks.yaml). Nothing is pushed until this passes.
+  # Image gate: every policy gate, the agent-context checks, pytest AND the
+  # semantic registry/graph/entity gates — all WITHOUT touching the warehouse.
+  # dbt-clickhouse emits no model nodes into the catalog, so those gates are
+  # manifest-only; run_all.py writes a stub catalog when none exists. The
+  # warehouse-connected tier (real `dbt docs generate`, published registry) runs
+  # in deploy-docs AFTER the image. A saturated ClickHouse blocked an image
+  # publish on 2026-09-08 when docs generate still lived here; it must not
+  # be able to do that again. The CLICKHOUSE_* values below only let
+  # profiles.yml render for `dbt parse`; nothing connects.
   validate:
-    name: Validate (full tier, before any image publish)
+    name: Validate (image gate, no warehouse)
     runs-on: ubuntu-latest
 
     env:
@@ -62,13 +66,14 @@ jobs:
           fi
           echo "sha=$BASE" >> "$GITHUB_OUTPUT"
 
-      - name: Run all gates (full tier)
-        # run_all.py --full --docs-generate: static policy gates, agent-context
-        # build + determinism + change-aware contract gate, pytest, then
-        # dbt docs generate + semantic registry/graph/entity gates.
+      - name: Run all gates (image gate, manifest-only)
+        # run_all.py --full: static policy gates, agent-context build +
+        # determinism + change-aware contract gate, pytest, then the semantic
+        # registry/graph/entity gates against a stub catalog. No --docs-generate
+        # here on purpose: the image must never wait on the warehouse.
         run: |
           dbt parse
-          python scripts/checks/run_all.py --ci --full --docs-generate --base-ref "${{ steps.base.outputs.sha }}"
+          python scripts/checks/run_all.py --ci --full --base-ref "${{ steps.base.outputs.sha }}"
 
   build:
     name: Build & Push Docker Images
@@ -215,6 +220,15 @@ jobs:
           else
             echo "no validation report produced"
           fi
+
+      - name: Semantic graph gate + entity overlay check (real catalog)
+        # The image gate already ran these manifest-only; re-run them here
+        # against the warehouse catalog so the published artifacts are checked
+        # with the same inputs they were built from. Blocks the docs publish
+        # only — the image is already out.
+        run: |
+          python scripts/semantic/graph_gate.py --target-dir target
+          python scripts/semantic/generate_entities.py --target-dir target --check
 
       - name: Build semantic docs
         run: |
