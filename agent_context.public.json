@@ -2,9 +2,9 @@
   "counts": {
     "explicit_contracts": 42,
     "high_risk": 318,
-    "models": 1277
+    "models": 1278
   },
-  "inputs_fingerprint": "deaed1f91e47d55e1cad50a0c7619efe0361a6a8cbcfe0b3bedf1b36c6c1e51b",
+  "inputs_fingerprint": "09ccc31edf0b21d3c54362827c824bbb7ec1cecce719f242830d4ec68dbf8998",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -701,6 +701,25 @@
       "status": "remediated",
       "symptom": "real supply/balances but $0 USD on every USD-valued surface",
       "title": "Every wrapper/vault token needs a price path or it reads $0 everywhere"
+    },
+    "vendor-published-view-config-hash-gate": {
+      "body": "## Symptom\n`api_gno_supply_daily` served two dates. The staging views over the indexer's\n`v_*_published` views returned only the last two days for the GNO job; the indexer's\n`census_publications` still held 2,208 days.\n\n## Root cause\nThe indexer's `v_publications_eligible` keeps a publication only if its `config_hash`\nequals the target's **current** registry hash. The canonical config JSON serialises the\nwhole target model, so adding a field to that model (a new optional list, default\nempty) changed the hash of every token target at the next deploy. From that moment\nevery earlier publication was ineligible; only days censused by the new image remained.\nPool targets, whose model did not change, kept their history \u2014 the confirming detail.\nThe next dbt cron rebuilt the table-materialised int model from what it could see.\n\n## Forbidden action\nNever point dbt staging at a vendor's curated/\"published\" view when the base tables\nare available: the selection policy (which attempt counts) then lives behind a service\ndeploy and a migration, and a service-side change can remove history from every mart\nwithout any dbt change. Never treat a sudden \"only recent days\" symptom as a dbt\nregression before checking the source view against its base tables.\n\n## Detection\nCompare the source view with its base table per job:\n`uniqExact(snapshot_date)` in `rpc_state_indexer.v_publications_eligible` vs\n`rpc_state_indexer.census_publications` for the same `chain_id, job_name`. A ratio far\nbelow 1 with unchanged base counts is this class. Source freshness does not catch it\n(the newest day is present).\n\n## Safe remediation\nSelect the published attempt in dbt: `stg_rpc_state_indexer__publications` takes, per\n(chain, job, target, day), the newest publication whose attempt is verified (all batches\nverified, no failed observations, no terminal error) at the chain's canonical finalized\nday anchor \u2014 no config-hash condition. The two staging views join the raw\n`token_scalars` / `token_balances` (FINAL) to it by `attempt_id`; `sources.yml` declares\nthe base tables. Rebuild the int model afterwards (`dbt run -s +int_rpc_state_indexer_gno_supply_daily`).\nStatus becomes `remediated` once the PR is merged and the cron has built from it.",
+      "evidence": [
+        "rpc-state-indexer migrations/007_views.sql (v_publications_eligible INNER JOINs v_config_registry_current ON config_hash)",
+        "rpc-state-indexer commit fa80947 (2026-09-08, TokenConfig.universe_aliases serialised into canonical_config_json \u2192 every token target's config_hash changed at deploy)",
+        "ClickHouse 2026-09-09 09:40 UTC \u2014 census_publications daily_gno_supply_scalar 2,208 days vs v_publications_eligible 1; daily_token_supply eligible 1 day; pool targets (config unchanged) unaffected",
+        "dbt cron 2026-09-09 09:08 UTC rebuilt int_rpc_state_indexer_gno_supply_daily with 6 rows (query_log written_rows=6); api_gno_supply_daily showed two dates on the dashboard",
+        {
+          "fix": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__publications.sql (selection in dbt over base tables, no config-hash gate) \u2014 working tree 2026-09-09, PR pending"
+        }
+      ],
+      "id": "vendor-published-view-config-hash-gate",
+      "last_verified": "2026-09-09",
+      "path": "docs/lessons/vendor-published-view-config-hash-gate.md",
+      "scope": "any dbt model reading a service's curated/\"published\" view instead of its base tables (canonical: the rpc_state_indexer v_token_scalars_published / v_token_balances_published views feeding int_rpc_state_indexer_gno_supply_daily)",
+      "status": "observed",
+      "symptom": "an api mart collapses to the last day or two while the service's base tables still hold the full history; nothing in dbt changed",
+      "title": "A vendor \"published\" view gated on the current config hash hides all earlier history"
     },
     "wide-delete-insert-wipe": {
       "body": "## Symptom\nA reprocess fails with a memory error \u2014 and afterwards the window it targeted is\n*empty*, not unchanged. Partitions stay physically bloated (masked rows).\n\n## Root cause\nClickHouse `delete+insert` issues a lightweight delete (`UPDATE _row_exists = 0`) that\nkeeps executing in the background after the client (dbt) has already reported failure.\nThe DELETE finishes; the INSERT never ran. On a model that unions many slices, one\nwhole-window delete-set (`WHERE (key) IN (SELECT \u2026 every slice \u2026)`) also OOMs the set\nbuild (Code 341).\n\n## Forbidden action\nNever run a wide `delete+insert` \u2014 not as a model strategy (CI gate blocks it), not as\na manual repair. Do not assume a failed dbt run left the table unchanged: check\n`system.mutations` (`is_done`) after any delete+insert failure.\n\n## Detection\nAfter any failed reprocess: row counts per month vs a pre-run baseline;\n`system.mutations` for the failure window. A mutation showing `is_done=0` with a\nfail reason and `is_killed=0` is NOT dead \u2014 it can retry in the background and\ncomplete the wipe later. `KILL MUTATION` it explicitly before re-running anything\n(the runners' pre-flight `kill_failed_mutations` macro does this; plain `dbt run`\ndoes not).\n\n## Safe remediation\nReprocess per `slice` (small delete-sets, e.g. `stream:SYMBOL`) \u2014 a 9-slice loop\nrestored and de-duplicated the incident window with every slice PASS. For partitioned\nmodels prefer `insert_overwrite` (atomic REPLACE PARTITION) where its constraints fit\n(see staged-insert-overwrite-wipe for when they don't).\n\n## Ground truth\nPre-incident row counts (query log / baseline) per month.\n\n## Enforcement\n`scripts/checks/no_delete_insert.py` in CI blocks the strategy repo-wide (allowlist for\ngrandfathered cases); per-slice reprocess documented in models/revenue/AGENTS.md.",
@@ -95848,6 +95867,56 @@
       ],
       "unique_key": null
     },
+    "stg_rpc_state_indexer__publications": {
+      "contract": {
+        "hazards": [],
+        "profiles": [],
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          }
+        ],
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 3,
+      "downstream_api_models": [
+        "api_gno_supply_daily",
+        "api_governance_turnout_latest",
+        "api_governance_turnout_monthly"
+      ],
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 7,
+      "explicit_contract": false,
+      "full_refresh_stages": null,
+      "has_meta_full_refresh": false,
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "view",
+      "name": "stg_rpc_state_indexer__publications",
+      "owner": "analytics_team",
+      "partition_by": null,
+      "path": "models/rpc_state_indexer/staging/stg_rpc_state_indexer__publications.sql",
+      "reads_this": false,
+      "strategy_expression": false,
+      "strategy_scoped_append": null,
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "staging"
+      ],
+      "unique_key": null
+    },
     "stg_rpc_state_indexer__token_balances_published": {
       "contract": {
         "hazards": [],
@@ -95949,7 +96018,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "df50b429fa79fba1c3da69dabb10192f22c58689778fb1b987ff0875bce662a4",
+  "models_hash": "638ba8bd888f2bdeacd74a926af9c32017c5a5989e2592d4d3b882657a323b23",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
