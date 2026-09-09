@@ -143,6 +143,11 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   silently serve the last ingested (possibly partial) day; check max(date) first.
 - [elementary-artifact-upload-tax](elementary-artifact-upload-tax.md) `enforced` —
   Elementary artifact autoupload is disabled globally, refreshed once per run.
+- [vendor-published-view-config-hash-gate](vendor-published-view-config-hash-gate.md) `observed` —
+  a service's "published" view gated on the target's current config hash
+  hid 2,207 days of GNO supply after an indexer config-model change; select the
+  published attempt in dbt over the base tables (fix pending PR).
+
 
 ## Process / registry
 

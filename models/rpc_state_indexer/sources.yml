@@ -6,57 +6,29 @@ sources:
     meta:
       owner: analytics_team
       authoritative: false
+    description: >
+      Base tables of the rpc-state-indexer service. The selection of which attempt
+      counts as the published observation for a (target, day) is made in dbt
+      (stg_rpc_state_indexer__publications), not by the indexer's v_*_published
+      views: those gate on the target's current config hash, so any change to the
+      indexer's config model silently hides all earlier history (2026-09-09).
     tables:
-      - name: v_token_scalars_published
+      - name: census_publications
         description: >
-          Published per-day token scalars (totalSupply etc.) from the
-          rpc-state-indexer service. Read the published views only, never the
-          raw attempt tables. Grain includes job_name and attempt_id — the same
-          (token, date) scalar appears under multiple jobs and attempts, so
-          consumers must filter chain_id + job_name and dedup per day.
-        loaded_at_field: "toDateTime(snapshot_date)"
+          One row per publication of a verified census attempt (chain, job, target,
+          day). A target-day can carry several publications (re-censused under a new
+          config hash); stg_rpc_state_indexer__publications keeps the newest verified one.
+        loaded_at_field: published_at
         freshness:
           warn_after: {count: 36, period: hour}
           error_after: {count: 48, period: hour}
-        columns:
-          - name: chain_id
-            data_type: UInt64
-          - name: job_name
-            data_type: LowCardinality(String)
-          - name: token_address
-            data_type: String
-          - name: snapshot_date
-            data_type: Date
-          - name: scalar_name
-            data_type: LowCardinality(String)
-          - name: scalar_raw
-            data_type: UInt256
-      - name: v_token_balances_published
-        description: >
-          Published per-day (token, holder) balances from the rpc-state-indexer
-          service. The same (token, date, holder) can appear under multiple
-          job_names (e.g. GNO under both curated_balances and treasury) —
-          always filter chain_id and job_name or sums double-count.
-        loaded_at_field: "toDateTime(snapshot_date)"
-        freshness:
-          warn_after: {count: 36, period: hour}
-          error_after: {count: 48, period: hour}
-          # token_balances is ~2.48e9 rows (vs ~2.1e6 for scalars), so an unfiltered
-          # max(snapshot_date) over the published view is an OvercommitTracker victim
-          # every run (code 241) — it errored on every cron since the freshness config
-          # landed. The filter prunes to the last monthly partitions; the window is far
-          # wider than error_after, so real staleness still trips the gate.
-          filter: "snapshot_date >= today() - 30"
-        columns:
-          - name: chain_id
-            data_type: UInt64
-          - name: job_name
-            data_type: LowCardinality(String)
-          - name: token_address
-            data_type: String
-          - name: snapshot_date
-            data_type: Date
-          - name: holder_address
-            data_type: String
-          - name: balance_raw
-            data_type: UInt256
+      - name: census_attempts
+        description: Every census attempt with its verification outcome (ReplacingMergeTree; read FINAL).
+      - name: census_errors
+        description: Terminal errors per attempt; an attempt with an error row is never published.
+      - name: day_anchors
+        description: Per-chain day anchor resolutions; canonical when exactly one finalized resolution exists.
+      - name: token_scalars
+        description: Raw per-attempt token scalars (totalSupply etc.); join to the published attempt.
+      - name: token_balances
+        description: Raw per-attempt (token, holder) balances, ~2.5e9 rows; join to the published attempt and always filter chain_id + job_name.

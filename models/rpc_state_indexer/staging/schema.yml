@@ -1,8 +1,58 @@
 version: 2
 
 models:
+- name: stg_rpc_state_indexer__publications
+  description: The published census attempt per (chain, job, target, day), selected in dbt from the indexer base tables. An attempt qualifies when it is verified (all batches verified, no failed observations, no terminal error) and its anchor is the chain's canonical finalized day anchor; when a target-day was published more than once (re-censused under a newer indexer config) the newest publication wins. Deliberately no config-hash gate.
+  columns:
+  - name: chain_id
+    description: EVM chain id.
+    data_type: UInt64
+  - name: job_name
+    description: Indexer census job.
+    data_type: LowCardinality(String)
+  - name: target_kind
+    description: token or pool.
+    data_type: LowCardinality(String)
+  - name: target_address
+    description: Target contract address, lowercased 0x hex.
+    data_type: String
+  - name: snapshot_date
+    description: Snapshot date at the chain's canonical day anchor.
+    data_type: Date
+  - name: attempt_id
+    description: The selected (published) attempt; raw observation rows join on it.
+    data_type: UUID
+  - name: config_hash
+    description: Indexer config hash the attempt ran under (informational).
+    data_type: FixedString(64)
+  - name: anchor_block
+    description: Canonical anchor block number.
+    data_type: UInt64
+  - name: anchor_hash
+    description: Canonical anchor block hash.
+    data_type: String
+  - name: universe_hash
+    description: Digest of the frozen holder universe.
+    data_type: FixedString(64)
+  - name: universe_size
+    description: Holder universe size.
+    data_type: UInt64
+  - name: result_digest
+    description: Digest of the observation rows.
+    data_type: FixedString(64)
+  - name: published_at
+    description: Publication time of the selected attempt.
+    data_type: DateTime64(9)
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns: [chain_id, job_name, target_kind, target_address, snapshot_date]
+      config:
+        where: "snapshot_date >= today() - {{ var('test_lookback_days', 7) }}"
+  meta:
+    owner: analytics_team
+    authoritative: false
 - name: stg_rpc_state_indexer__token_scalars_published
-  description: Cleanup view over the rpc-state-indexer published token scalars — lowercases token addresses, passes the published columns through. Grain includes job_name and attempt duplicates, so downstream consumers must filter chain_id + job_name and dedup per day.
+  description: Token scalars of the published attempt per (token, day) — raw token_scalars joined to stg_rpc_state_indexer__publications; lowercases token addresses. Grain includes job_name and attempt duplicates, so downstream consumers must filter chain_id + job_name and dedup per day.
   columns:
 
   - name: chain_id
@@ -32,7 +82,7 @@ models:
     owner: analytics_team
     authoritative: false
 - name: stg_rpc_state_indexer__token_balances_published
-  description: Cleanup view over the rpc-state-indexer published token balances — lowercases token and holder addresses, passes the published columns through. The same (token, date, holder) can appear under multiple job_names, so downstream consumers must filter chain_id + job_name or sums double-count.
+  description: Token balances of the published attempt per (token, day) — raw token_balances joined to stg_rpc_state_indexer__publications; lowercases token and holder addresses. The same (token, date, holder) can appear under multiple job_names, so downstream consumers must filter chain_id + job_name or sums double-count.
   columns:
 
   - name: chain_id
