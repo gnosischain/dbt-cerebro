@@ -1,7 +1,7 @@
 ---
 id: vendor-published-view-config-hash-gate
 title: A vendor "published" view gated on the current config hash hides all earlier history
-status: observed
+status: remediated
 scope: >-
   any dbt model reading a service's curated/"published" view instead of its base
   tables (canonical: the rpc_state_indexer v_token_scalars_published /
@@ -15,7 +15,7 @@ evidence:
   - rpc-state-indexer commit fa80947 (2026-09-08, TokenConfig.universe_aliases serialised into canonical_config_json → every token target's config_hash changed at deploy)
   - ClickHouse 2026-09-09 09:40 UTC — census_publications daily_gno_supply_scalar 2,208 days vs v_publications_eligible 1; daily_token_supply eligible 1 day; pool targets (config unchanged) unaffected
   - dbt cron 2026-09-09 09:08 UTC rebuilt int_rpc_state_indexer_gno_supply_daily with 6 rows (query_log written_rows=6); api_gno_supply_daily showed two dates on the dashboard
-  - fix: models/rpc_state_indexer/staging/stg_rpc_state_indexer__publications.sql (selection in dbt over base tables, no config-hash gate) — working tree 2026-09-09, PR pending
+  - fix: models/rpc_state_indexer/staging/stg_rpc_state_indexer__publications.sql (selection in dbt over base tables, no config-hash gate) — PR #77 merged 2026-09-09 09:57 UTC, image e27c954 deployed 13:45 UTC (deployment, live pod, CronJob verified)
 ---
 
 ## Symptom
@@ -53,4 +53,4 @@ verified, no failed observations, no terminal error) at the chain's canonical fi
 day anchor — no config-hash condition. The two staging views join the raw
 `token_scalars` / `token_balances` (FINAL) to it by `attempt_id`; `sources.yml` declares
 the base tables. Rebuild the int model afterwards (`dbt run -s +int_rpc_state_indexer_gno_supply_daily`).
-Status becomes `remediated` once the PR is merged and the cron has built from it.
+`remediated` since 2026-09-09 (PR #77 deployed). `enforced` would need a CI rule that no dbt model declares a `v_*_published` source — follow-up.
