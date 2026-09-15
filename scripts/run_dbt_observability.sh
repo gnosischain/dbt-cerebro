@@ -1,18 +1,23 @@
 #!/bin/bash
 # Shared dbt observability orchestrator.
 #
-# Called by cron.sh (production) and cron_preview.sh (preview) after they
-# set environment-specific defaults.
+# Called by cron_preview.sh (the GKE CronJob's entrypoint; the "preview" name is the
+# AWS-era stack name it inherited) after it sets environment defaults. cron.sh is the
+# retired AWS production wrapper.
 #
 # Required env vars:
 #   EDR_REPORT_ENV        - "dev" or "prod"
 #
 # Optional env vars:
-#   EDR_MONITOR_ENV       - set to enable edr monitor (e.g., "dev" or "prod")
-#   SLACK_WEBHOOK         - Slack webhook URL for edr monitor alerts
-#   OBSERVABILITY_ARTIFACT_MODE - "none" (default) or "s3"
+#   ELEMENTARY_ENABLED    - "1" to run the Elementary steps (orphan-table cleanup,
+#                           artifact-catalog refresh, edr monitor, edr report) and the
+#                           Elementary anomaly/schema tests. Default "0": off since
+#                           2026-09-15 — the result tables were never created on the GCP
+#                           warehouse and the dbt-run Slack alarms are Grafana-managed.
+#   EDR_MONITOR_ENV       - with ELEMENTARY_ENABLED=1, set to enable edr monitor
+#   SLACK_WEBHOOK         - with ELEMENTARY_ENABLED=1, webhook for edr monitor alerts
 #   MANDATORY_STEPS       - comma-separated list of step names that must pass
-#                           for exit 0 (default: "dbt-run,edr-report")
+#                           for exit 0 (default: "dbt-run")
 #   DBT_TEST_SCOPE        - "full" (default) or "preview_subset"
 #   DBT_RUN_BATCH_SLEEP_SECONDS - pause between generated dbt-run batches
 #                                 (default: 0)
@@ -30,8 +35,18 @@ SEMANTIC_METRICS_DIR="${SEMANTIC_METRICS_DIR:-${RUNTIME_DATA_DIR}/metrics}"
 SEMANTIC_BUILD_SUMMARY_PATH="${PROJECT_DIR}/target/semantic_build_summary.json"
 SEMANTIC_BUILD_METRICS_PATH="${PROJECT_DIR}/target/semantic_build_metrics.prom"
 
-# Default mandatory steps (preview). Prod wrapper overrides this.
-MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run,edr-report}"
+# Default mandatory steps. edr-report left this list when Elementary was switched off.
+MANDATORY_STEPS="${MANDATORY_STEPS:-dbt-run}"
+ELEMENTARY_ENABLED="${ELEMENTARY_ENABLED:-0}"
+# With Elementary off (dbt_project.yml: elementary +enabled: false) its ~960 anomaly/schema
+# tests compile to no-ops, but they would still be scheduled: they are declared in this
+# project's schema files (package gnosis_dbt, only the macro is Elementary's) and the batches
+# reach them indirectly through their models. Exclude them by test name so they cost nothing.
+if [ "$ELEMENTARY_ENABLED" = "1" ]; then
+  ELEMENTARY_TEST_EXCLUDE=""
+else
+  ELEMENTARY_TEST_EXCLUDE="--exclude test_name:volume_anomalies test_name:freshness_anomalies test_name:column_anomalies test_name:schema_changes"
+fi
 
 # Force orchestrator-driven dbt runs to use the writable runtime dir rather than
 # bind-mounted /app/logs, which can be owned by a different host UID/GID.
@@ -135,10 +150,12 @@ build_test_batches() {
 }
 
 # ── 0. Clean orphaned tmp tables from previous crashed runs ──────────────
-run_step "cleanup-tmp-tables" \
-  dbt run-operation clean_elementary_orphaned_tables \
-  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-  || true
+if [ "$ELEMENTARY_ENABLED" = "1" ]; then
+  run_step "cleanup-tmp-tables" \
+    dbt run-operation clean_elementary_orphaned_tables \
+    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+    || true
+fi
 
 run_step "cleanup-dbt-trash" \
   dbt run-operation drop_dbt_trash --args '{"database_name": "dbt"}' \
@@ -372,6 +389,7 @@ run_step "model-status-metrics" \
 # must ride a real `dbt run` (a run-operation has none); a single view rebuild is
 # cheap, idempotent, and always produces results. Override the selector with
 # ARTIFACT_REFRESH_SELECTOR if this model is renamed.
+if [ "$ELEMENTARY_ENABLED" = "1" ]; then
 ARTIFACT_REFRESH_SELECTOR="${ARTIFACT_REFRESH_SELECTOR:-api_execution_live_trades_freshness}"
 _artifact_uploads_before="$(grep -c 'Uploading dbt artifacts' "$DBT_LOG_PATH/dbt.log" 2>/dev/null)"
 _artifact_uploads_before="${_artifact_uploads_before:-0}"
@@ -387,6 +405,7 @@ _artifact_uploads_after="$(grep -c 'Uploading dbt artifacts' "$DBT_LOG_PATH/dbt.
 _artifact_uploads_after="${_artifact_uploads_after:-0}"
 if [ "$_artifact_uploads_after" -le "$_artifact_uploads_before" ]; then
   echo "[$(date -u)] WARNING: elementary-artifacts-refresh uploaded no artifacts (before=$_artifact_uploads_before after=$_artifact_uploads_after, selector '$ARTIFACT_REFRESH_SELECTOR') — Elementary catalog may be stale"
+fi
 fi
 
 # ── 3. Tests (batched to stay under ClickHouse max_table_num_to_throw) ──
@@ -412,6 +431,7 @@ if build_test_batches; then
     batch_name="dbt-test:${test_batch#tag:production,}"
     run_step "$batch_name" \
       dbt test --select "$test_batch" \
+      $ELEMENTARY_TEST_EXCLUDE \
       $DBT_TEST_VARS \
       --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
       || true
@@ -429,12 +449,12 @@ fi
 # sparse carry-forward series). Daily set every run; the heavier weekly set
 # (raw-vs-decoded parity, density sweeps) rides the TEST_MODE=full run.
 run_step "dbt-test:data-quality-daily" \
-  dbt test --select tag:data_quality_daily --exclude tag:data_quality_weekly \
+  dbt test --select tag:data_quality_daily --exclude tag:data_quality_weekly $ELEMENTARY_TEST_EXCLUDE \
   --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
   || true
 if [ "$TEST_MODE" = "full" ]; then
   run_step "dbt-test:data-quality-weekly" \
-    dbt test --select tag:data_quality_weekly \
+    dbt test --select tag:data_quality_weekly $ELEMENTARY_TEST_EXCLUDE \
     --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
     || true
 fi
@@ -460,8 +480,8 @@ if [ -f "$SEMANTIC_BUILD_METRICS_PATH" ]; then
   cp "$SEMANTIC_BUILD_METRICS_PATH" "$SEMANTIC_METRICS_DIR/semantic_build_metrics.prom"
 fi
 
-# ── 5. Elementary monitor (only when webhook + env are set) ──────────────
-if [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
+# ── 5. Elementary monitor (only when enabled and webhook + env are set) ──
+if [ "$ELEMENTARY_ENABLED" = "1" ] && [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
   run_step "edr-monitor" \
     edr monitor \
     --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
@@ -470,14 +490,16 @@ if [ -n "$SLACK_WEBHOOK" ] && [ -n "$EDR_MONITOR_ENV" ]; then
     || true
 fi
 
-# ── 6. Elementary report (always) ────────────────────────────────────────
-run_step "edr-report" \
-  edr report \
-  --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-  --env "${EDR_REPORT_ENV:-dev}" \
-  --file-path "$REPORT_PATH" \
-  --target-path "$EDR_TARGET" \
-  || true
+# ── 6. Elementary report (only when enabled) ─────────────────────────────
+if [ "$ELEMENTARY_ENABLED" = "1" ]; then
+  run_step "edr-report" \
+    edr report \
+    --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
+    --env "${EDR_REPORT_ENV:-dev}" \
+    --file-path "$REPORT_PATH" \
+    --target-path "$EDR_TARGET" \
+    || true
+fi
 
 # ── Summary ──────────────────────────────────────────────────────────────
 echo ""

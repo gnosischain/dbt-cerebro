@@ -186,7 +186,15 @@ models:
           +materialized: table
   elementary:
     +schema: "elementary"
-    +enabled: true
+    # Elementary switched off 2026-09-15. Its result tables were never created on the GCP
+    # warehouse, edr report/monitor had nothing to read, and the Slack alarms for dbt runs are
+    # Grafana-managed. This one flag is the package's own kill switch:
+    # elementary.is_elementary_enabled() resolves False once its models leave the DAG, so
+    # the on-run-start/on-run-end hooks return early and the anomaly test macros compile to
+    # no-ops. The cron additionally skips the edr CLI steps (ELEMENTARY_ENABLED in
+    # scripts/run_dbt_observability.sh) and excludes the anomaly tests by test_name so they
+    # are not even scheduled. Flip this to true (and ELEMENTARY_ENABLED=1) to bring it back.
+    +enabled: false
 
 seeds:
   gnosis_dbt:

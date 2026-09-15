@@ -276,14 +276,14 @@ open reports/elementary_report.html  # macOS
 
 ### The daily cron pipeline
 
-The daily pipeline is a single Kubernetes `CronJob` (defined in `infrastructure-gnosis-analytics-deployments/aws/deployments/gnosis-analytics/dbt/{preview,prod}/6_cron.tf`) that fires at 06:00 UTC, spins up one pod, and runs a shared orchestrator script end-to-end. The same script runs locally and in cluster — preview and prod only differ in which steps are marked mandatory.
+The daily pipeline is a single Kubernetes `CronJob` on GKE (defined in `infrastructure-gnosis-analytics-deployments/google/deployments/gnosis-analytics/dbt-cerebro/cronjob.tf`, namespace `analytics`) that fires at 06:00 UTC, spins up one pod, and runs a shared orchestrator script end-to-end. The same script runs locally and in cluster; the wrappers only differ in which steps are marked mandatory.
 
 #### Entry points
 
 | Wrapper | Env | `MANDATORY_STEPS` | `DBT_TEST_SCOPE` | Script called |
 |---|---|---|---|---|
-| [`cron_preview.sh`](cron_preview.sh) | preview | `dbt-run,edr-report` | `preview_subset` | `scripts/run_dbt_observability.sh` |
-| [`cron.sh`](cron.sh) | prod | full list (incl. `dbt-test`) | `full` | `scripts/run_dbt_observability.sh` |
+| [`cron_preview.sh`](cron_preview.sh) | GKE cron (name inherited from the AWS-era stack) | `dbt-run` | `preview_subset` | `scripts/run_dbt_observability.sh` |
+| [`cron.sh`](cron.sh) | retired AWS prod wrapper, no cluster runs it | `dbt-run,dbt-test,source-freshness` | `full` | `scripts/run_dbt_observability.sh` |
 
 Both wrappers just set env vars and exec the orchestrator. All pipeline logic lives in [`scripts/run_dbt_observability.sh`](scripts/run_dbt_observability.sh).
 
@@ -439,8 +439,8 @@ The cron pod mounts a `ReadWriteOnce` PVC (`dbt-cerebro-data`, 2 GiB) at `/data`
 #### Observability
 
 - **Grafana dashboard**: `Cerebro DBT Observability` (uid `dbt-cerebro-observability`). Loki queries extract ClickHouse error codes (`Code: N. DB::Exception: ... (CATEGORY)`) into structured panels: a "ClickHouse Errors by Code" table, "Failures by Category" bar chart, and a "Transient vs Permanent" stat showing whether the in-pod retry likely helped. Dashboard source: [docs/grafana/dbt-cerebro-observability.json](docs/grafana/dbt-cerebro-observability.json).
-- **Slack alerts**: via `edr monitor` (section 5).
-- **Elementary HTML report**: served over HTTP at port 8080; port-forward with `kubectl -n analytics-preview port-forward svc/dbt-cerebro 8080:80` and open `/reports/elementary_report.html`.
+- **Slack alerts**: Grafana-managed alerting (`infrastructure-gnosis-analytics-deployments/aws/deployments/gnosis-analytics/alerting/alerts/dbt-cerebro.yaml`, evaluated against Thanos/Loki, posting to the analytics Slack contact points). Not Elementary: `edr monitor` never had a webhook on either cluster.
+- **Elementary**: off since 2026-09-15 (`elementary: +enabled: false` in `dbt_project.yml` flips the package's own kill switch, so its hooks return early and its anomaly tests compile to no-ops; the cron also skips the edr steps via `ELEMENTARY_ENABLED=0` and excludes those tests by `test_name:`). Its result tables were never created on the GCP warehouse. Set `+enabled: true` and `ELEMENTARY_ENABLED=1` to bring the report back; it is then served by the observability server under `/reports/elementary_report.html` (`kubectl -n analytics port-forward svc/dbt-cerebro 8080:80`).
 
 #### Local log / permission caveat
 
