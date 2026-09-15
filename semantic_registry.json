@@ -139,12 +139,12 @@
       "rpc_state_indexer": {
         "api": 1,
         "approved": 1,
-        "docs_only": 10,
-        "int": 1,
-        "model": 5,
+        "docs_only": 13,
+        "int": 4,
+        "model": 8,
         "source": 6,
         "stg": 3,
-        "total_nodes": 11
+        "total_nodes": 14
       },
       "shared": {
         "approved": 3,
@@ -152,11 +152,11 @@
         "total_nodes": 3
       }
     },
-    "relationship_count": 769,
+    "relationship_count": 771,
     "semantic_status_counts": {
       "approved": 483,
       "candidate": 511,
-      "docs_only": 457
+      "docs_only": 460
     }
   },
   "entity_dictionary": {
@@ -379,11 +379,11 @@
     }
   },
   "metadata": {
-    "catalog_hash": "0226a2bd718af1055eece42d45a5aea3682b502e3780c64dab311fb314ccd12f",
-    "generated_at": "2026-09-11T11:55:54.709736+00:00",
-    "graph_catalog_hash": "afd30c77386a47f871625d1b79a93deeb0438ad258047bb9e3fcc1dcf49aab9f",
-    "manifest_hash": "d8fe1255173b18334e436df9d1120b859a96135f4d3570c15d1482672d076b80",
-    "model_count": 1329,
+    "catalog_hash": "2f88cbe14d9e8b72ef35009efb9a5eb8a2d411179c144181e08c38e2303ef29a",
+    "generated_at": "2026-09-15T21:07:42.138969+00:00",
+    "graph_catalog_hash": "8d3f2a59e8405655c3976faa9eaca9cee562f041cfefccbc0e6961eec2466e7e",
+    "manifest_hash": "90864ed9f9b07cc7faf9dd95dc1021bccd6f27d38437fe2bc58b3d69b1ff2ebf",
+    "model_count": 1332,
     "project_name": "gnosis_dbt",
     "semantic_manifest_hash": "b663ffd7d80a9a729a7cb23b123ee404bd2d4c5b5b8f107c5c76b82186099fc1",
     "source_count": 122
@@ -195578,6 +195578,7 @@
           "int_live__dex_trades_raw",
           "int_revenue_gpay_fees_daily",
           "int_revenue_ocsdai_user_balances_daily",
+          "int_rpc_state_indexer_token_balances_priced_daily",
           "int_ubo_claims_balancer_v2_daily",
           "int_ubo_claims_swapr_v3_daily",
           "int_ubo_claims_uniswap_v3_daily"
@@ -205379,6 +205380,292 @@
       "tags": [
         "production",
         "rpc_state_indexer"
+      ]
+    },
+    "int_rpc_state_indexer_token_balances_daily": {
+      "columns": {
+        "address": {
+          "data_type": "String",
+          "description": "Holder address, lowercased. The zero address is retained and carries its real on-chain balance, which is the burned amount. This is the opposite sign to the transfer-derived model, where the zero address accumulates minus the minted supply because mints are counted as transfers out of it; consumers that count holders or sum supply must exclude it in both.",
+          "name": "address"
+        },
+        "balance": {
+          "data_type": "Float64",
+          "description": "balance_raw normalized by the token's decimals.",
+          "name": "balance"
+        },
+        "balance_raw": {
+          "data_type": "Int256",
+          "description": "Observed balance in raw atomic units, exact Int256.",
+          "name": "balance_raw"
+        },
+        "date": {
+          "data_type": "Date",
+          "description": "Census snapshot date, from the chain's canonical day anchor.",
+          "name": "date"
+        },
+        "symbol": {
+          "data_type": "String",
+          "description": "Token symbol, from the tokens_whitelist seed.",
+          "name": "symbol"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "Token contract address, lowercased.",
+          "name": "token_address"
+        },
+        "token_class": {
+          "data_type": "String",
+          "description": "Token classification, from the tokens_whitelist seed.",
+          "name": "token_class"
+        }
+      },
+      "description": "Daily holder balances per token, read from the rpc-state-indexer census (balanceOf at the day's verified anchor block) instead of accumulated from Transfer logs. Scoped to the tokens_whitelist seed, which supplies symbol, token_class and decimals. Census-derived successor to int_execution_tokens_balances_native_daily; every day stands alone, so there is no carry-forward and no seed day.",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "address",
+          "name": "address",
+          "type": "foreign"
+        },
+        {
+          "expr": "token_address",
+          "name": "token",
+          "type": "foreign"
+        },
+        {
+          "expr": "symbol",
+          "name": "token_symbol",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "intermediate",
+        "int_rpc_state_indexer_token_balances_daily"
+      ],
+      "lineage": {
+        "downstream": [
+          "int_rpc_state_indexer_token_balances_priced_daily"
+        ],
+        "upstream": [
+          "stg_rpc_state_indexer__token_balances_published"
+        ]
+      },
+      "materialized": "incremental",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "int_rpc_state_indexer_token_balances_daily",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_balances_daily.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_rpc_state_indexer_token_balances_daily`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "tokens",
+        "balances_daily",
+        "microbatch"
+      ]
+    },
+    "int_rpc_state_indexer_token_balances_priced_daily": {
+      "columns": {
+        "address": {
+          "data_type": "String",
+          "description": "Holder address, lowercased.",
+          "name": "address"
+        },
+        "balance": {
+          "data_type": "Float64",
+          "description": "balance_raw normalized by the token's decimals.",
+          "name": "balance"
+        },
+        "balance_raw": {
+          "data_type": "Int256",
+          "description": "Observed balance in raw atomic units, exact Int256.",
+          "name": "balance_raw"
+        },
+        "balance_usd": {
+          "data_type": "Float64",
+          "description": "balance multiplied by the day's token price. Null where the price feed has no row for that date and symbol.",
+          "name": "balance_usd"
+        },
+        "date": {
+          "data_type": "Date",
+          "description": "Census snapshot date, from the chain's canonical day anchor.",
+          "name": "date"
+        },
+        "symbol": {
+          "data_type": "String",
+          "description": "Token symbol, from the tokens_whitelist seed.",
+          "name": "symbol"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "Token contract address, lowercased.",
+          "name": "token_address"
+        },
+        "token_class": {
+          "data_type": "String",
+          "description": "Token classification, from the tokens_whitelist seed.",
+          "name": "token_class"
+        }
+      },
+      "description": "USD layer over int_rpc_state_indexer_token_balances_daily, left-joining int_execution_token_prices_daily on (date, upper(symbol)) so a price backfill rewrites only this thin model. Census-derived successor to int_execution_tokens_balances_daily.",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "address",
+          "name": "address",
+          "type": "foreign"
+        },
+        {
+          "expr": "token_address",
+          "name": "token",
+          "type": "foreign"
+        },
+        {
+          "expr": "symbol",
+          "name": "token_symbol",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "intermediate",
+        "int_rpc_state_indexer_token_balances_priced_daily"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "int_execution_token_prices_daily",
+          "int_rpc_state_indexer_token_balances_daily"
+        ]
+      },
+      "materialized": "incremental",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "int_rpc_state_indexer_token_balances_priced_daily",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_balances_priced_daily.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_rpc_state_indexer_token_balances_priced_daily`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "tokens",
+        "balances_daily",
+        "microbatch"
+      ]
+    },
+    "int_rpc_state_indexer_token_supply_daily": {
+      "columns": {
+        "date": {
+          "data_type": "Date",
+          "description": "Census snapshot date, from the chain's canonical day anchor.",
+          "name": "date"
+        },
+        "holders": {
+          "data_type": "UInt64",
+          "description": "Count of addresses with a balance greater than zero, excluding the zero address. Null for tokens not in the curated balances set.",
+          "name": "holders"
+        },
+        "supply_holders": {
+          "data_type": "Float64",
+          "description": "Sum of observed holder balances excluding the zero address, normalized by decimals. Null for tokens that carry a supply scalar but are not in the curated balances set.",
+          "name": "supply_holders"
+        },
+        "supply_total": {
+          "data_type": "Float64",
+          "description": "The contract's totalSupply at the day's anchor, less the balance held at the zero address, normalized by decimals. Available for every whitelist token the census reads a scalar for.",
+          "name": "supply_total"
+        },
+        "symbol": {
+          "data_type": "String",
+          "description": "Token symbol, from the tokens_whitelist seed.",
+          "name": "symbol"
+        },
+        "token_address": {
+          "data_type": "String",
+          "description": "Token contract address, lowercased.",
+          "name": "token_address"
+        },
+        "token_class": {
+          "data_type": "String",
+          "description": "Token classification, from the tokens_whitelist seed.",
+          "name": "token_class"
+        }
+      },
+      "description": "Daily supply and holder counts per token from the census. Publishes both supply definitions \u2014 supply_total from the contract's own totalSupply less the zero-address balance, and supply_holders from the observed holder balances \u2014 so the cutover from the transfer-derived series is measurable. Census-derived successor to int_execution_tokens_supply_holders_daily.",
+      "dimensions": [],
+      "entities": [
+        {
+          "expr": "token_address",
+          "name": "token",
+          "type": "foreign"
+        },
+        {
+          "expr": "symbol",
+          "name": "token_symbol",
+          "type": "foreign"
+        }
+      ],
+      "fqn": [
+        "gnosis_dbt",
+        "rpc_state_indexer",
+        "intermediate",
+        "int_rpc_state_indexer_token_supply_daily"
+      ],
+      "lineage": {
+        "downstream": [],
+        "upstream": [
+          "stg_rpc_state_indexer__token_balances_published",
+          "stg_rpc_state_indexer__token_scalars_published"
+        ]
+      },
+      "materialized": "incremental",
+      "measures": [],
+      "metric_names": [],
+      "module": "rpc_state_indexer",
+      "name": "int_rpc_state_indexer_token_supply_daily",
+      "owner": "analytics_team",
+      "package_name": "gnosis_dbt",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_supply_daily.sql",
+      "quality_tier": "",
+      "relation_name": "`dbt`.`int_rpc_state_indexer_token_supply_daily`",
+      "resource_type": "model",
+      "semantic": {
+        "defaults": {},
+        "meta": {}
+      },
+      "semantic_source_file": "",
+      "semantic_status": "docs_only",
+      "tags": [
+        "production",
+        "rpc_state_indexer",
+        "tokens",
+        "supply_holders_daily",
+        "microbatch"
       ]
     },
     "int_ubo_claims_aave_daily": {
@@ -216367,7 +216654,9 @@
       ],
       "lineage": {
         "downstream": [
-          "int_rpc_state_indexer_gno_supply_daily"
+          "int_rpc_state_indexer_gno_supply_daily",
+          "int_rpc_state_indexer_token_balances_daily",
+          "int_rpc_state_indexer_token_supply_daily"
         ],
         "upstream": [
           "stg_rpc_state_indexer__publications",
@@ -216447,7 +216736,8 @@
       ],
       "lineage": {
         "downstream": [
-          "int_rpc_state_indexer_gno_supply_daily"
+          "int_rpc_state_indexer_gno_supply_daily",
+          "int_rpc_state_indexer_token_supply_daily"
         ],
         "upstream": [
           "stg_rpc_state_indexer__publications",
@@ -216616,12 +216906,12 @@
     "rpc_state_indexer": {
       "api": 1,
       "approved": 1,
-      "docs_only": 10,
-      "int": 1,
-      "model": 5,
+      "docs_only": 13,
+      "int": 4,
+      "model": 8,
       "source": 6,
       "stg": 3,
-      "total_nodes": 11
+      "total_nodes": 14
     },
     "shared": {
       "approved": 3,
@@ -217749,6 +218039,16 @@
         {
           "model": "stg_execution__storage_diffs",
           "module": "execution",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_balances_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_balances_priced_daily",
+          "module": "rpc_state_indexer",
           "status": "docs_only"
         },
         {
@@ -234034,6 +234334,21 @@
           "status": "docs_only"
         },
         {
+          "model": "int_rpc_state_indexer_token_balances_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_balances_priced_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_supply_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
           "model": "stg_rpc_state_indexer__token_balances_published",
           "module": "rpc_state_indexer",
           "status": "docs_only"
@@ -235588,6 +235903,21 @@
           "model": "int_revenue_sdai_fees_daily",
           "module": "revenue",
           "status": "approved"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_balances_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_balances_priced_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
+        },
+        {
+          "model": "int_rpc_state_indexer_token_supply_daily",
+          "module": "rpc_state_indexer",
+          "status": "docs_only"
         }
       ],
       "type": "foreign"
@@ -242698,6 +243028,46 @@
       ],
       "left_model": "int_live__gpay_activity_raw",
       "name": "gen_address__int_live__gpay_activity_raw__wallet_address__to__api_execution_account_profile_latest",
+      "preferred_bridge": false,
+      "quality_tier": "candidate",
+      "right_keys": [
+        "address"
+      ],
+      "right_model": "api_execution_account_profile_latest",
+      "safe_for_dimension_enrichment": true,
+      "source_file": "/home/runner/work/dbt-cerebro/dbt-cerebro/semantic/relationships/entities_generated.yml",
+      "via_entity": "address"
+    },
+    {
+      "aggregate_then_join_only": false,
+      "allow_any_join": false,
+      "cardinality": "many_to_one",
+      "join_semantics": "left",
+      "left_keys": [
+        "address"
+      ],
+      "left_model": "int_rpc_state_indexer_token_balances_daily",
+      "name": "gen_address__int_rpc_state_indexer_token_balances_daily__address__to__api_execution_account_profile_latest",
+      "preferred_bridge": false,
+      "quality_tier": "candidate",
+      "right_keys": [
+        "address"
+      ],
+      "right_model": "api_execution_account_profile_latest",
+      "safe_for_dimension_enrichment": true,
+      "source_file": "/home/runner/work/dbt-cerebro/dbt-cerebro/semantic/relationships/entities_generated.yml",
+      "via_entity": "address"
+    },
+    {
+      "aggregate_then_join_only": false,
+      "allow_any_join": false,
+      "cardinality": "many_to_one",
+      "join_semantics": "left",
+      "left_keys": [
+        "address"
+      ],
+      "left_model": "int_rpc_state_indexer_token_balances_priced_daily",
+      "name": "gen_address__int_rpc_state_indexer_token_balances_priced_daily__address__to__api_execution_account_profile_latest",
       "preferred_bridge": false,
       "quality_tier": "candidate",
       "right_keys": [

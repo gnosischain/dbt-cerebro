@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 42,
-    "high_risk": 318,
-    "models": 1278
+    "explicit_contracts": 45,
+    "high_risk": 321,
+    "models": 1281
   },
-  "inputs_fingerprint": "566c1be022ac1321a7c8e4b4b545d74a3551fa22e05f22441e8583973b05f76a",
+  "inputs_fingerprint": "6c7acb02c3d1645d8cb07851a92859e386ff1c03829d81e4090b00be24d41809",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -397,6 +397,28 @@
       "status": "enforced",
       "symptom": "sparse per-entity date coverage that tracks the entity's activity frequency; gaps surface raw in downstream marts that don't re-densify",
       "title": "Global-frontier carry-forward silently drops thin series"
+    },
+    "indexer-deployment-block-truncates-history": {
+      "body": "## Symptom\nThe retired GBPe contract was added to `daily_curated_balances` and a backfill over\n2023-11-10..2024-08-25 ran to completion. It published other historical gaps it found on\nthe way and never mentioned GBPe. `execution.logs` shows the contract active from\n2022-11-30. In dbt the census-derived balances model had the token's successor contract\nonly, so a per-symbol comparison looked fine while a per-address one showed 289 missing days.\n\n## Root cause\nThe indexer treats `deployment_block` as the floor below which a token cannot have state:\nno day whose anchor block precedes it is censused. The value for this token had been\nentered as 31866249 (2024-01-09), fourteen months after the real deployment. Nothing\nvalidates the field against the chain, and a late value produces no error \u2014 only absence.\n\n## Forbidden action\nNever enter or copy a `deployment_block` without the archive `eth_getCode` boundary check\n(no code at N-1, code at N), and record the check in a comment next to the value as the GNO\nentry does. A first-log block from `execution.logs` is an acceptable floor only when the\nboundary check is impossible; it can still be later than the true deployment.\n\n## Detection\nFor a chain's curated selector, join each configured `deployment_block` to\n`min(block_number)` from `execution.logs` for the same address and list `configured >\nfirst_log`. Any hit is a truncation. In dbt, compare per-token `min(date)` in the\ncensus-derived model to the whitelist `date_start`, joining on the contract **address**\nrather than the symbol, because migrated symbols (EURe, GBPe on 2024-08-25) carry two\naddresses and a symbol-level comparison hides the retired one.\n\n## Enforced / remediated\nRemediated: both values corrected and the windows re-backfilled. Not enforced: the indexer\nhas no config-time check against the chain. A cheap gate is a startup or validate-config\nstep that reads `eth_getCode` at `deployment_block - 1` and refuses a non-empty result.",
+      "evidence": [
+        "rpc-state-indexer config/gnosis/tokens.yaml \u2014 retired GBPe 0x5cb9073902f2035222b9749f8fb0c9bfe5527108 carried deployment_block 31866249 (2024-01-09); execution.logs min(block_number) for that address is 25223106 (2022-11-30)",
+        "archive RPC eth_getCode 2026-09-15 via the GKE backfill pod \u2014 no code at 25223105, code at 25223106 (the same no-code/code boundary the GNO entry documents)",
+        "backfill Job rpc-state-indexer-backfill-20260915-164135 (2023-11-10..2024-08-25) \u2014 0 GBPe publications while other targets published, because every anchor before block 31866249 predates the configured deployment",
+        "svZCHF 0x6165946250dd04740ab1409217e95a4f38374fe9 \u2014 configured 42168425, verified boundary 42067508/42067509 (2025-09-11); census history began 2025-09-17 instead of 2025-09-11",
+        {
+          "audit": "values() of the curated selector joined to execution.logs min(block_number) per address, filtered configured > first_log \u2014 exactly these two of 66 curated tokens"
+        },
+        {
+          "fix": "both deployment_block values corrected with archive-verified comments (indexer commit after 48cc0f2, 2026-09-15); the truncated windows re-backfilled"
+        }
+      ],
+      "id": "indexer-deployment-block-truncates-history",
+      "last_verified": "2026-09-15",
+      "path": "docs/lessons/indexer-deployment-block-truncates-history.md",
+      "scope": "any rpc-state-indexer token entry (config/<chain>/tokens.yaml) whose deployment_block was estimated rather than verified; surfaces in dbt as a census-derived model whose per-token history starts later than the tokens_whitelist date_start",
+      "status": "remediated",
+      "symptom": "a curated-balances backfill over a token's full window publishes nothing (or starts weeks/months late) with no error, while execution.logs shows the contract active from a much earlier block",
+      "title": "A token's configured deployment_block later than its real deployment silently truncates its census history"
     },
     "late-start-mis-staging": {
       "body": "## Symptom\nA token's balances go negative (or history looks short) even though the decode layer is\ncomplete. Backfilling with the configured window makes it *worse* \u2014 more outflows become\nvisible while the older inflows stay missing.\n\n## Root cause\nThe orchestrator only builds from the stage `start_date`. If that date post-dates the\ntoken's real first activity, all earlier inflows are permanently absent from the staged\nrebuild.\n\n## Forbidden action\nDon't assume a whitelist/stage start date is correct because it's written down \u2014 it\nencodes someone's belief, not chain reality.\n\n## Detection\nCompare each whitelisted token's `min(date)` in the transfers model against\n`tokens_whitelist.date_start`; flag when the model's first-seen is materially later\n(the token never got its early history), and independently verify a token's true first\nactivity on-chain before setting any stage date.\n\n## Safe remediation\nGive the token its own stage with a verified `start_date`, then a staged rebuild of the\naffected window (history first \u2014 the balances chain is cumulative).\n\n## Ground truth\nFirst `Transfer` log for the token contract on-chain (eth_getLogs from genesis /\ndeployment block), not any model.\n\n## Enforcement\nData-quality test comparing whitelist start vs model first-seen (see tests/data_quality/).",
@@ -36987,7 +37009,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 6,
-      "downstream_transitive_count": 494,
+      "downstream_transitive_count": 495,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -37391,7 +37413,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 8,
-      "downstream_transitive_count": 492,
+      "downstream_transitive_count": 493,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -38200,7 +38222,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 4,
-      "downstream_transitive_count": 488,
+      "downstream_transitive_count": 489,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -40441,7 +40463,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 496,
+      "downstream_transitive_count": 497,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -40722,7 +40744,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 11,
-      "downstream_transitive_count": 499,
+      "downstream_transitive_count": 500,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -41142,7 +41164,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 496,
+      "downstream_transitive_count": 497,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -41427,7 +41449,7 @@
         "api_execution_circles_v2_pools_daily"
       ],
       "downstream_direct_count": 9,
-      "downstream_transitive_count": 500,
+      "downstream_transitive_count": 501,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42149,7 +42171,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42300,7 +42322,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42451,7 +42473,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42602,7 +42624,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42753,7 +42775,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -42904,7 +42926,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -43055,7 +43077,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -43206,7 +43228,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -43357,7 +43379,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -43841,7 +43863,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -51777,7 +51799,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -51996,7 +52018,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 488,
+      "downstream_transitive_count": 489,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -52826,7 +52848,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 491,
+      "downstream_transitive_count": 492,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -63668,7 +63690,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -82841,7 +82863,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 486,
+      "downstream_transitive_count": 487,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -83805,7 +83827,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -83888,7 +83910,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -84029,7 +84051,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": true,
       "full_refresh_stages": [
         "all"
@@ -84144,7 +84166,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": [
         "all"
@@ -84832,8 +84854,8 @@
         "api_execution_circles_v2_pools_daily",
         "api_execution_circles_v2_pools_latest"
       ],
-      "downstream_direct_count": 27,
-      "downstream_transitive_count": 482,
+      "downstream_direct_count": 28,
+      "downstream_transitive_count": 483,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -90392,6 +90414,409 @@
       ],
       "unique_key": null
     },
+    "int_rpc_state_indexer_token_balances_daily": {
+      "contract": {
+        "agents_md": [
+          "scripts/full_refresh/AGENTS.md"
+        ],
+        "grain": "(date, token_address, address) \u2014 one row per holder per token per census day; only balances greater than zero are stored.",
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "duplicate-seed-drift",
+            "status": "remediated",
+            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+          },
+          {
+            "id": "frontier-day-incomplete-inputs",
+            "status": "remediated",
+            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          }
+        ],
+        "invariants": [
+          "Not cumulative. Each day is an independent observation of on-chain state, so a wrong day cannot propagate forward and a repaired day needs no reseeding.",
+          "The incremental filter cuts on whole months, never on days, because insert_overwrite REPLACEs a whole partition. A day-bounded window would delete the remainder of the month it lands in.",
+          "Scope is the tokens_whitelist seed via INNER JOIN. A token missing from the census yields no rows rather than a wrong number; check the indexer's daily_curated_balances selector before treating an absence as a model bug.",
+          "Rows are per (chain_id, job_name) in the source. Both are pinned to chain 100 and daily_curated_balances; removing either filter double-counts holders across jobs.",
+          "Summing balance across every address returns circulating supply, not zero. The transfer-derived model it replaces sums to zero by construction because the zero address holds minus the minted supply there; here the zero address holds the real burned balance. Verified on GNO 2026-08-31 \u2014 census zero-address 0, transfer-derived zero-address -1,438,522, and the two agree to 0.038% once the zero address is excluded."
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "staged_full_refresh",
+          "cumulative_self_referencing"
+        ],
+        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "backfill-order-cumulative",
+            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
+          },
+          {
+            "lesson": "frontier-day-incomplete-inputs",
+            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
+          }
+        ],
+        "semantics": "cumulative",
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 1,
+      "downstream_transitive_count": 1,
+      "explicit_contract": true,
+      "full_refresh_stages": [
+        "all"
+      ],
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_rpc_state_indexer_token_balances_daily",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(date)",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_balances_daily.sql",
+      "reads_this": true,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
+      "tags": [
+        "balances_daily",
+        "microbatch",
+        "production",
+        "rpc_state_indexer",
+        "tokens"
+      ],
+      "unique_key": null
+    },
+    "int_rpc_state_indexer_token_balances_priced_daily": {
+      "contract": {
+        "agents_md": [
+          "scripts/full_refresh/AGENTS.md"
+        ],
+        "grain": "(date, token_address, address) \u2014 the balances model's grain, carried through unchanged.",
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "duplicate-seed-drift",
+            "status": "remediated",
+            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+          },
+          {
+            "id": "frontier-day-incomplete-inputs",
+            "status": "remediated",
+            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          }
+        ],
+        "invariants": [
+          "Pricing is a LEFT join, so balance_usd is null for unpriced token-days and must never be read as zero.",
+          "Whole-month incremental filter, as in the model it reads; see that model's contract."
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "staged_full_refresh",
+          "cumulative_self_referencing"
+        ],
+        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "backfill-order-cumulative",
+            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
+          },
+          {
+            "lesson": "frontier-day-incomplete-inputs",
+            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
+          }
+        ],
+        "semantics": "cumulative",
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": [
+        "all"
+      ],
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_rpc_state_indexer_token_balances_priced_daily",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(date)",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_balances_priced_daily.sql",
+      "reads_this": true,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
+      "tags": [
+        "balances_daily",
+        "microbatch",
+        "production",
+        "rpc_state_indexer",
+        "tokens"
+      ],
+      "unique_key": null
+    },
+    "int_rpc_state_indexer_token_supply_daily": {
+      "contract": {
+        "agents_md": [
+          "scripts/full_refresh/AGENTS.md"
+        ],
+        "grain": "(date, token_address) \u2014 driven by the supply scalars, which are a superset of the curated balances.",
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "late-start-mis-staging",
+            "status": "remediated",
+            "title": "Stage start_date later than real first activity silently truncates history"
+          },
+          {
+            "id": "duplicate-seed-drift",
+            "status": "remediated",
+            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+          },
+          {
+            "id": "frontier-day-incomplete-inputs",
+            "status": "remediated",
+            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          }
+        ],
+        "invariants": [
+          "For tokens in the curated balances set, supply_holders equals supply_total exactly. The indexer publishes a curated census only when the holder sum reconciles to totalSupply, so a non-zero gap means the census changed shape, not that a token drifted.",
+          "supply_holders and holders are null, never zero, for supply-only tokens. The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook.",
+          "The scalar is deduplicated with max() per token-day because several census jobs record totalSupply for the same anchor block."
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "staged_full_refresh",
+          "cumulative_self_referencing"
+        ],
+        "reprocess_runbook": "scripts/full_refresh/refresh.py (staged; batch 1 --full-refresh recreates)",
+        "rules": [
+          {
+            "lesson": "wide-delete-insert-wipe",
+            "text": "Never a wide delete+insert \u2014 the background delete can complete after dbt reports failure and silently wipe the window; reprocess per slice/partition."
+          },
+          {
+            "lesson": "staged-insert-overwrite-wipe",
+            "text": "insert_overwrite REPLACEs whole partitions: partition grain must equal the overwrite grain; never combine with unique_key, slice vars, or staged batches."
+          },
+          {
+            "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "backfill-order-cumulative",
+            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
+          },
+          {
+            "lesson": "frontier-day-incomplete-inputs",
+            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
+          }
+        ],
+        "semantics": "cumulative",
+        "validation": [
+          "make check-fast"
+        ]
+      },
+      "description_present": true,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
+      "explicit_contract": true,
+      "full_refresh_stages": [
+        "all"
+      ],
+      "has_meta_full_refresh": true,
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
+      "name": "int_rpc_state_indexer_token_supply_daily",
+      "owner": "analytics_team",
+      "partition_by": "toStartOfMonth(date)",
+      "path": "models/rpc_state_indexer/intermediate/int_rpc_state_indexer_token_supply_daily.sql",
+      "reads_this": true,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
+      "tags": [
+        "microbatch",
+        "production",
+        "rpc_state_indexer",
+        "supply_holders_daily",
+        "tokens"
+      ],
+      "unique_key": null
+    },
     "int_ubo_claims_aave_daily": {
       "contract": {
         "agents_md": [
@@ -91137,7 +91562,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 483,
+      "downstream_transitive_count": 484,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": true,
@@ -91206,7 +91631,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -92338,7 +92763,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 485,
+      "downstream_transitive_count": 486,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -92462,7 +92887,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -92647,7 +93072,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 484,
+      "downstream_transitive_count": 485,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -92938,7 +93363,7 @@
         "api_celo_gpay_funnel_cohorts_monthly"
       ],
       "downstream_direct_count": 3,
-      "downstream_transitive_count": 560,
+      "downstream_transitive_count": 561,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -94861,7 +95286,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 5,
-      "downstream_transitive_count": 490,
+      "downstream_transitive_count": 491,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95214,7 +95639,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95292,7 +95717,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95370,7 +95795,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95448,7 +95873,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 1,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95610,7 +96035,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 13,
-      "downstream_transitive_count": 487,
+      "downstream_transitive_count": 488,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95845,7 +96270,7 @@
         "api_execution_circles_v2_pools_latest"
       ],
       "downstream_direct_count": 19,
-      "downstream_transitive_count": 495,
+      "downstream_transitive_count": 496,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95896,7 +96321,7 @@
         "api_governance_turnout_monthly"
       ],
       "downstream_direct_count": 2,
-      "downstream_transitive_count": 7,
+      "downstream_transitive_count": 10,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95945,8 +96370,8 @@
         "api_governance_turnout_latest",
         "api_governance_turnout_monthly"
       ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_direct_count": 3,
+      "downstream_transitive_count": 8,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -95995,8 +96420,8 @@
         "api_governance_turnout_latest",
         "api_governance_turnout_monthly"
       ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 5,
+      "downstream_direct_count": 2,
+      "downstream_transitive_count": 6,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -96018,7 +96443,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "638ba8bd888f2bdeacd74a926af9c32017c5a5989e2592d4d3b882657a323b23",
+  "models_hash": "52e399f7a0fed8f343604129b4db3074ddfec8c8955fef9347a8f69c21e39c57",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
