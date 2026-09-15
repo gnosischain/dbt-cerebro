@@ -167,3 +167,5 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 - [ch-merge-semantics-primer](ch-merge-semantics-primer.md) `primer` — why the engine
   zoo exists (merge-time collision policies), the three duplication traps, and why the
   repo's write conventions are all idempotency moves. Read when RMT duplicates confuse.
+- [indexer-deployment-block-truncates-history](indexer-deployment-block-truncates-history.md) — a deployment_block later than the real deployment makes the census skip every earlier
+  day with no error; verify the eth_getCode boundary, compare per address not per symbol.

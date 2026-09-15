@@ -19,3 +19,205 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+
+- name: int_rpc_state_indexer_token_balances_daily
+  description: Daily holder balances per token, read from the rpc-state-indexer census (balanceOf at the day's verified anchor block) instead of accumulated from Transfer logs. Scoped to the tokens_whitelist seed, which supplies symbol, token_class and decimals. Census-derived successor to int_execution_tokens_balances_native_daily; every day stands alone, so there is no carry-forward and no seed day.
+  columns:
+
+  - name: date
+    description: Census snapshot date, from the chain's canonical day anchor.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: token_address
+    description: Token contract address, lowercased.
+    data_type: String
+
+  - name: symbol
+    description: Token symbol, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: token_class
+    description: Token classification, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: address
+    description: Holder address, lowercased. The zero address is retained and carries its real on-chain balance, which is the burned amount. This is the opposite sign to the transfer-derived model, where the zero address accumulates minus the minted supply because mints are counted as transfers out of it; consumers that count holders or sum supply must exclude it in both.
+    data_type: String
+
+  - name: balance_raw
+    description: Observed balance in raw atomic units, exact Int256.
+    data_type: Int256
+
+  - name: balance
+    description: balance_raw normalized by the token's decimals.
+    data_type: Float64
+  meta:
+    authoritative: false
+    agent:
+      grain: (date, token_address, address) — one row per holder per token per census day; only balances greater than zero are stored.
+      invariants:
+      - Not cumulative. Each day is an independent observation of on-chain state, so a wrong day cannot propagate forward and a repaired day needs no reseeding.
+      - The incremental filter cuts on whole months, never on days, because insert_overwrite REPLACEs a whole partition. A day-bounded window would delete the remainder of the month it lands in.
+      - Scope is the tokens_whitelist seed via INNER JOIN. A token missing from the census yields no rows rather than a wrong number; check the indexer's daily_curated_balances selector before treating an absence as a model bug.
+      - Rows are per (chain_id, job_name) in the source. Both are pinned to chain 100 and daily_curated_balances; removing either filter double-counts holders across jobs.
+      - Summing balance across every address returns circulating supply, not zero. The transfer-derived model it replaces sums to zero by construction because the zero address holds minus the minted supply there; here the zero address holds the real burned balance. Verified on GNO 2026-08-31 — census zero-address 0, transfer-derived zero-address -1,438,522, and the two agree to 0.038% once the zero address is excluded.
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 6
+      stages:
+      - name: all
+      incremental:
+        enabled: true
+        date_column: date
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      - address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_rpc_state_indexer_token_balances_priced_daily
+  description: USD layer over int_rpc_state_indexer_token_balances_daily, left-joining int_execution_token_prices_daily on (date, upper(symbol)) so a price backfill rewrites only this thin model. Census-derived successor to int_execution_tokens_balances_daily.
+  columns:
+
+  - name: date
+    description: Census snapshot date, from the chain's canonical day anchor.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: token_address
+    description: Token contract address, lowercased.
+    data_type: String
+
+  - name: symbol
+    description: Token symbol, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: token_class
+    description: Token classification, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: address
+    description: Holder address, lowercased.
+    data_type: String
+
+  - name: balance_raw
+    description: Observed balance in raw atomic units, exact Int256.
+    data_type: Int256
+
+  - name: balance
+    description: balance_raw normalized by the token's decimals.
+    data_type: Float64
+
+  - name: balance_usd
+    description: balance multiplied by the day's token price. Null where the price feed has no row for that date and symbol.
+    data_type: Float64
+  meta:
+    authoritative: false
+    agent:
+      grain: (date, token_address, address) — the balances model's grain, carried through unchanged.
+      invariants:
+      - Pricing is a LEFT join, so balance_usd is null for unpriced token-days and must never be read as zero.
+      - Whole-month incremental filter, as in the model it reads; see that model's contract.
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 6
+      stages:
+      - name: all
+      incremental:
+        enabled: true
+        date_column: date
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      - address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+- name: int_rpc_state_indexer_token_supply_daily
+  description: Daily supply and holder counts per token from the census. Publishes both supply definitions — supply_total from the contract's own totalSupply less the zero-address balance, and supply_holders from the observed holder balances — so the cutover from the transfer-derived series is measurable. Census-derived successor to int_execution_tokens_supply_holders_daily.
+  columns:
+
+  - name: date
+    description: Census snapshot date, from the chain's canonical day anchor.
+    data_type: Date
+    tests:
+    - not_null:
+        config:
+          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
+
+  - name: token_address
+    description: Token contract address, lowercased.
+    data_type: String
+
+  - name: symbol
+    description: Token symbol, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: token_class
+    description: Token classification, from the tokens_whitelist seed.
+    data_type: String
+
+  - name: supply_total
+    description: The contract's totalSupply at the day's anchor, less the balance held at the zero address, normalized by decimals. Available for every whitelist token the census reads a scalar for.
+    data_type: Float64
+
+  - name: supply_holders
+    description: Sum of observed holder balances excluding the zero address, normalized by decimals. Null for tokens that carry a supply scalar but are not in the curated balances set.
+    data_type: Float64
+
+  - name: holders
+    description: Count of addresses with a balance greater than zero, excluding the zero address. Null for tokens not in the curated balances set.
+    data_type: UInt64
+  meta:
+    authoritative: false
+    agent:
+      grain: (date, token_address) — driven by the supply scalars, which are a superset of the curated balances.
+      invariants:
+      - For tokens in the curated balances set, supply_holders equals supply_total exactly. The indexer publishes a curated census only when the holder sum reconciles to totalSupply, so a non-zero gap means the census changed shape, not that a token drifted.
+      - supply_holders and holders are null, never zero, for supply-only tokens. The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook.
+      - The scalar is deduplicated with max() per token-day because several census jobs record totalSupply for the same anchor block.
+    full_refresh:
+      start_date: "2020-07-01"
+      batch_months: 12
+      stages:
+      - name: all
+      incremental:
+        enabled: true
+        date_column: date
+        batch_days: 1
+  tests:
+  - elementary.schema_changes:
+      severity: warn
+      tags:
+      - elementary
+
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - date
+      - token_address
+      config:
+        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
