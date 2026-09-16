@@ -18,9 +18,27 @@ WITH balances AS (
     FROM `dbt`.`int_rpc_state_indexer_token_balances_daily`
     WHERE date < today()
       
-        AND toStartOfMonth(date) >= (
-            SELECT toStartOfMonth(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
-        )
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
       
 ),
 
@@ -32,9 +50,27 @@ prices AS (
     FROM `dbt`.`int_execution_token_prices_daily` AS p
     WHERE p.date < today()
       
-        AND toStartOfMonth(p.date) >= (
-            SELECT toStartOfMonth(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
-        )
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(p.date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
       
 )
 

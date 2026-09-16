@@ -17,12 +17,31 @@ WITH scalars AS (
         max(toInt256(s.scalar_raw)) AS total_supply_raw
     FROM `dbt`.`stg_rpc_state_indexer__token_scalars_published` AS s
     WHERE s.chain_id = 100
+      AND s.job_name = 'daily_curated_balances'
       AND s.scalar_name = 'totalSupply'
       AND s.snapshot_date < today()
       
-        AND toStartOfMonth(s.snapshot_date) >= (
-            SELECT toStartOfMonth(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_supply_daily`
-        )
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(s.snapshot_date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_rpc_state_indexer_token_supply_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
       
     GROUP BY date, token_address
 ),
@@ -39,9 +58,27 @@ balances AS (
       AND b.job_name = 'daily_curated_balances'
       AND b.snapshot_date < today()
       
-        AND toStartOfMonth(b.snapshot_date) >= (
-            SELECT toStartOfMonth(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_supply_daily`
-        )
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(b.snapshot_date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_rpc_state_indexer_token_supply_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
       
     GROUP BY date, token_address
 )

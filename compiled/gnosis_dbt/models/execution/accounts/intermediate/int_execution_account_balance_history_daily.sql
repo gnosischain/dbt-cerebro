@@ -15,7 +15,7 @@ WITH balances AS (
     symbol,
     balance,
     ifNull(balance_usd, 0) AS balance_usd
-  FROM `dbt`.`int_execution_tokens_balances_daily`
+  FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
   WHERE address IS NOT NULL
     AND address != ''
     AND date < today()

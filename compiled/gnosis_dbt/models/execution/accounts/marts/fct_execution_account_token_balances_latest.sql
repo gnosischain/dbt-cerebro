@@ -6,7 +6,7 @@
 -- cluster cap.
 WITH latest_date AS (
   SELECT max(date) AS max_date
-  FROM `dbt`.`int_execution_tokens_balances_daily`
+  FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
   WHERE date >= today() - 14
     AND date < today()
 ),
@@ -21,7 +21,7 @@ latest_balances AS (
     balance_raw,
     balance,
     ifNull(balance_usd, 0) AS balance_usd
-  FROM `dbt`.`int_execution_tokens_balances_daily`
+  FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
   WHERE date >= today() - 14
     AND date = (SELECT max_date FROM latest_date)
     AND address IS NOT NULL

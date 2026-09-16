@@ -12,7 +12,7 @@ sdai_holders AS (
         date,
         lower(address) AS holder,
         balance        AS sdai_balance
-    FROM `dbt`.`int_execution_tokens_balances_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
     WHERE lower(token_address) = lower('0xaf204776c7245bf4147c2612bf6e5972ee483701')
       AND balance > 0
       AND lower(address) != lower('0xaf204776c7245bf4147c2612bf6e5972ee483701')
@@ -35,7 +35,7 @@ wxdai_reserve AS (
         balance_raw          AS reserve_raw,
         balance              AS reserve,
         balance_usd          AS reserve_usd
-    FROM `dbt`.`int_execution_tokens_balances_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
     WHERE lower(address) = lower('0xaf204776c7245bf4147c2612bf6e5972ee483701')
       AND symbol = 'WxDAI'
       AND balance > 0

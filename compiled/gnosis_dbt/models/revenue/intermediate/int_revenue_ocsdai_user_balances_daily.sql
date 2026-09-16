@@ -30,7 +30,7 @@ WITH shares AS (
         date,
         address AS user,
         balance AS oc_shares
-    FROM `dbt`.`int_execution_tokens_balances_native_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_daily`
     WHERE symbol = 'OC-sDAI'
       AND date < today()
       AND balance > 0

@@ -1,6 +1,6 @@
 
 
-SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_execution_tokens_balances_daily`) AS as_of_date
+SELECT sub.*, (SELECT toDate(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`) AS as_of_date
 FROM (
 SELECT
     token_address,

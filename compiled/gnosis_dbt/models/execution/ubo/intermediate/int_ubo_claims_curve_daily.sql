@@ -201,7 +201,7 @@ pool_reserves AS (
         balance_raw,
         balance,
         balance_usd
-    FROM `dbt`.`int_execution_tokens_balances_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
     WHERE lower(address) = lower('0x7f90122bf0700f9e7e1f688fe926940e8839f353')
       AND balance > 0
       AND date < today()

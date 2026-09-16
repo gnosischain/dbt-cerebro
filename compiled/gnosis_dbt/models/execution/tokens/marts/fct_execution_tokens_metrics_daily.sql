@@ -8,9 +8,9 @@ supply_holders AS (
         token_address,
         symbol,
         token_class,
-        supply,
+        supply_total AS supply,
         holders
-    FROM `dbt`.`int_execution_tokens_supply_holders_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_supply_daily`
     WHERE date < today()
 ),
 

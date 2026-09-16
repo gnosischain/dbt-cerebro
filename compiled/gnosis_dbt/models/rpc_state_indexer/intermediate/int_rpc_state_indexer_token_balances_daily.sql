@@ -9,6 +9,7 @@
 
 
 
+
 WITH census AS (
     SELECT
         b.snapshot_date AS date,
@@ -19,11 +20,30 @@ WITH census AS (
     WHERE b.chain_id = 100
       AND b.job_name = 'daily_curated_balances'
       AND b.balance_raw > 0
+      AND b.holder_address != '0x0000000000000000000000000000000000000000'
       AND b.snapshot_date < today()
       
-        AND toStartOfMonth(b.snapshot_date) >= (
-            SELECT toStartOfMonth(max(date)) FROM `dbt`.`int_rpc_state_indexer_token_balances_daily`
-        )
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(b.snapshot_date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_rpc_state_indexer_token_balances_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
       
 )
 

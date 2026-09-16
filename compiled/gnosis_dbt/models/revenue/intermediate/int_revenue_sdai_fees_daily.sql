@@ -27,7 +27,7 @@ WITH non_users AS (
 base AS (
     -- Native sDAI balances.
     SELECT date, address AS user, balance_usd
-    FROM `dbt`.`int_execution_tokens_balances_daily`
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily`
     WHERE date < today()
       AND balance_usd > 0
       AND address IS NOT NULL

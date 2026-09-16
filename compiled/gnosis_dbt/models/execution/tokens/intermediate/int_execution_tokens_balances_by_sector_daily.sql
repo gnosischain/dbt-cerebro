@@ -18,7 +18,7 @@ balances_filtered AS (
         lower(b.address) AS address,
         b.balance,
         b.balance_usd
-    FROM `dbt`.`int_execution_tokens_balances_daily` b
+    FROM `dbt`.`int_rpc_state_indexer_token_balances_priced_daily` b
     WHERE b.date < today()
       AND b.balance > 0
       AND lower(b.address) != '0x0000000000000000000000000000000000000000'
