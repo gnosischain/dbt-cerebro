@@ -17,7 +17,7 @@ SELECT
     b.symbol,
     sum(b.balance)                          AS balance,
     round(toFloat64(sum(b.balance_usd)), 2) AS balance_usd
-FROM {{ ref('int_execution_tokens_balances_daily') }} b
+FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }} b
 WHERE b.address IN (SELECT address FROM gpay_owners)
   AND b.date >= '2023-06-01'
   AND b.date < today()

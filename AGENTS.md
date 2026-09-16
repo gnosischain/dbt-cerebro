@@ -10,6 +10,7 @@ Scoped guides with domain-specific rules live next to the code:
 [models/contracts/AGENTS.md](models/contracts/AGENTS.md),
 [models/execution/AGENTS.md](models/execution/AGENTS.md),
 [models/execution/gnosis_app_gt/AGENTS.md](models/execution/gnosis_app_gt/AGENTS.md),
+[models/rpc_state_indexer/AGENTS.md](models/rpc_state_indexer/AGENTS.md),
 [models/revenue/AGENTS.md](models/revenue/AGENTS.md),
 [models/consensus/AGENTS.md](models/consensus/AGENTS.md),
 [models/mixpanel_ga/AGENTS.md](models/mixpanel_ga/AGENTS.md),

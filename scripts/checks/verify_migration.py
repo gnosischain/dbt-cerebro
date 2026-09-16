@@ -416,7 +416,6 @@ def main():
     names = sorted(names)
     # reconciliation config for known balance models
     recon_map = {
-        "int_execution_tokens_balances_native_daily": dict(diff="int_execution_tokens_address_diffs_daily", key=["token_address","address"], bal="balance_raw", delta="net_delta_raw"),
         "int_execution_circles_v2_balances_daily": dict(diff="int_execution_circles_v2_balance_diffs_daily", key=["account","token_address","circles_type"], bal="balance_raw", delta="delta_raw"),
     }
     run(mm, names, a.dataloss, recon_map)

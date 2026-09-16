@@ -43,9 +43,9 @@ Every new token needs one or it renders `$0` everywhere
 symbol. Wrapper/vault tokens instead need a derived-price branch in
 `int_execution_token_prices_daily`.
 
-Casing is load-bearing: `int_execution_tokens_balances_daily` filters prices with an
-**exact-case** `symbol IN (…)`, and the hub takes its display casing from the seed. Seed
-first, then rebuild prices, then balances.
+Casing is load-bearing: the price join is `upper(symbol)` on both sides, but the seed's
+display casing flows through every mart and the census models take `symbol` from the seed.
+Seed first, then rebuild prices, then the census months.
 
 ### 4. Add stages — but only to models that can honour them
 
@@ -65,7 +65,7 @@ other token. `scripts/checks/no_delete_insert.py` rules `stage_var_not_read` and
 If a model *should* be scopable but isn't, add the wiring rather than working around it:
 `{% set symbol = var('symbol', none) %}` + `symbol_exclude`, the `{{ symbol_filter(...) }}`
 calls, and `filters_sql=symbol_sql` on `apply_monthly_incremental_filter` so the watermark
-subquery is scoped too. Mirror `int_execution_tokens_balances_daily.sql`. When adding a
+subquery is scoped too. Mirror `int_execution_tokens_balances_by_sector_daily.sql`. When adding a
 `stages:` key to a `meta.full_refresh` that had none, also add an explicit `all` stage
 carrying `symbol_exclude: "{{ var('symbol_exclude') }}"` — otherwise you change what a
 plain `refresh.py --select <model>` does. Editing a high-risk model's `.sql` puts it in
@@ -84,9 +84,8 @@ Capture a per-symbol baseline for the affected window **before** the first write
 | Seed | `dbt seed -s tokens_whitelist --full-refresh` | clean recreate; a duplicate seed row propagates forever (`duplicate-seed-drift`) |
 | Prices | `dbt run -s <staging price views> int_execution_token_prices_daily` | table rebuild, no vars; must precede balances |
 | Transfers/diffs | `dbt run -s int_execution_transfers_whitelisted_daily --vars '{"start_month":"<first month>","end_month":"<last month>"}'` then the same for `int_execution_tokens_address_diffs_daily` and `int_execution_tokens_transfers_daily` | literal `insert_overwrite`, **never** pass `symbol` — REPLACE PARTITION is atomic and idempotent, so whole-month recompute reproduces existing tokens exactly |
-| Balances | `python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_native_daily --stage <stage> --incremental-only`, then `int_execution_tokens_balances_daily` | cumulative model first; `--incremental-only` is mandatory or batch 1 recreates the table |
+| Balances (census) | no per-token stage: the token must be in the indexer's `daily_curated_balances` selector with a **verified** `deployment_block` (`indexer-deployment-block-truncates-history`), then rebuild the affected months of the three `int_rpc_state_indexer_token_*` models with the DROP-PARTITION → single append → OPTIMIZE FINAL protocol (their append path duplicates a populated month) | no symbol var; month-scoped only |
 | Scopable marts | same `refresh.py --stage … --incremental-only` | purely additive: new rows land at a new `token_address` |
-| Non-scopable marts | `dbt run -s int_execution_tokens_supply_holders_daily --vars '{"start_month":…,"end_month":…}'` | literal `insert_overwrite`, no symbol var |
 | Table/view marts | plain `dbt run` | self-healing; **never** with month vars (`table-mat-batch-vars-truncation`) |
 
 Do **not** pass `--inprocess` to `refresh.py` here. It parses once and reuses the
@@ -125,9 +124,6 @@ phantom failure.
 
 Steps using `REPLACE PARTITION` are idempotent — retry freely. The `append` steps are
 exactly-once **into empty space**; a retry after a partial write appends a second copy.
-Repair per month, chronologically, with the model's documented overlapping-window path:
-
-```bash
-dbt run -s int_execution_tokens_balances_native_daily \
-  --vars '{"start_month":"<M>","end_month":"<M>","symbol":"<tokens>","reprocess_overwrite":true}'
-```
+Repair per month with the census protocol: DROP the month partition on the three
+`int_rpc_state_indexer_token_*` models, append it once (`start_month = end_month = <M>`),
+then OPTIMIZE PARTITION FINAL; the transfer-derived reprocess path is frozen with its chain.

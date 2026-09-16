@@ -59,4 +59,4 @@ SELECT
     address,
     balance,
     balance_usd
-FROM {{ ref('int_execution_tokens_balances_daily') }}
+FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}

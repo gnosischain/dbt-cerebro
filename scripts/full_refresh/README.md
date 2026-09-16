@@ -60,7 +60,7 @@ For models where certain field values create much larger datasets:
 
 ```yaml
 models:
-  - name: int_execution_tokens_balances_daily
+  - name: int_execution_tokens_balances_by_sector_daily
     description: "Daily token balances per address"
     meta:
       full_refresh:
@@ -91,7 +91,7 @@ For models where different token classes have different chain history (newer tok
 
 ```yaml
 models:
-  - name: int_execution_tokens_balances_daily
+  - name: int_execution_tokens_balances_by_sector_daily
     description: "Daily token balances per address"
     meta:
       full_refresh:
@@ -132,7 +132,7 @@ For maximum optimization - tokens with low activity can use larger batches:
 
 ```yaml
 models:
-  - name: int_execution_tokens_balances_daily
+  - name: int_execution_tokens_balances_by_sector_daily
     description: "Daily token balances per address"
     meta:
       full_refresh:
@@ -311,7 +311,7 @@ models:
 
 ```bash
 # Full refresh single model
-python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_daily
+python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_by_sector_daily
 
 # Full refresh by tag
 python scripts/full_refresh/refresh.py --select tag:production
@@ -340,13 +340,13 @@ When you add a new token to the whitelist and want to backfill its data without 
 
 # 2. Run ONLY the new stage, without --full-refresh (append only)
 python scripts/full_refresh/refresh.py \
-    --select int_execution_tokens_balances_daily \
+    --select int_execution_tokens_balances_by_sector_daily \
     --stage new_token \
     --incremental-only
 
 # Preview what would run:
 python scripts/full_refresh/refresh.py \
-    --select int_execution_tokens_balances_daily \
+    --select int_execution_tokens_balances_by_sector_daily \
     --stage new_token \
     --incremental-only \
     --dry-run
@@ -355,7 +355,7 @@ python scripts/full_refresh/refresh.py \
 Output:
 ```
 ============================================================
-Model: int_execution_tokens_balances_daily
+Model: int_execution_tokens_balances_by_sector_daily
   Mode: INCREMENTAL (append only)
   Stage filter: ['new_token'] (1/6 stages)
   Stages: 1
@@ -373,7 +373,7 @@ Model: int_execution_tokens_balances_daily
 ```bash
 # Run only usdc and sdai stages (e.g., after fixing price data)
 python scripts/full_refresh/refresh.py \
-    --select int_execution_tokens_balances_daily \
+    --select int_execution_tokens_balances_by_sector_daily \
     --stage usdc,sdai \
     --incremental-only
 ```
@@ -418,7 +418,7 @@ The script will skip completed models and batches, resuming from where it left o
 Models must support the vars being passed. Ensure your models use the vars:
 
 ```sql
--- Example: int_execution_tokens_balances_daily.sql
+-- Example: int_execution_tokens_balances_by_sector_daily.sql
 {% set start_month = var('start_month', none) %}
 {% set end_month = var('end_month', none) %}
 {% set symbol = var('symbol', none) %}
@@ -461,7 +461,7 @@ original arguments, or discard it with `--clear-state <id>`). See
     "int_execution_transfers_whitelisted_daily",
     "int_execution_tokens_address_diffs_daily"
   ],
-  "current_model": "int_execution_tokens_balances_daily",
+  "current_model": "int_execution_tokens_balances_by_sector_daily",
   "current_batch": 47,
   "created_at": "2026-07-17T09:00:00+00:00",
   "updated_at": "2026-07-17T11:32:10+00:00"

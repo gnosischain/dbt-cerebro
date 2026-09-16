@@ -113,6 +113,7 @@ build_test_batches() {
         "tag:production,path:models/contracts"
         "tag:production,path:models/consensus/marts"
         "tag:production,path:models/execution/marts"
+        "tag:production,path:models/rpc_state_indexer"
         "tag:production,path:models/p2p/marts"
         "tag:production,path:models/probelab"
         "tag:production,path:models/crawlers_data"

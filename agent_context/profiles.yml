@@ -166,6 +166,29 @@ profiles:
     ground_truth: "on-chain balanceOf / eth_getBalance at the day's last block (see balance-diagnosis-playbook)"
     agents_md: models/execution/AGENTS.md
 
+  - name: rpc_state_indexer_models
+    description: Census-derived state models — balanceOf/totalSupply read at the chain's verified day-anchor block, one independent observation per day
+    match:
+      path_prefix: models/rpc_state_indexer/
+    hazards: [vendor-published-view-config-hash-gate, indexer-deployment-block-truncates-history, old-token-burned-supply-overstatement, append-over-populated-duplicates, staged-insert-overwrite-wipe, unpriced-wrapper-token, microbatch-append-window-must-be-strategy-aware, census-scalars-cross-job-scope, zero-address-sign-flip-across-derivations, migrated-token-contract-alias-not-end-date]
+    rules:
+      - text: >-
+          Every day stands alone: no carry-forward, no seed day. A missing token-day means the
+          indexer did not census it (check the daily_curated_balances selector and the token's
+          deployment_block), never a dbt carry-forward bug.
+        lesson: indexer-deployment-block-truncates-history
+      - text: >-
+          Read the published attempt from the base tables through the stg_*_published views,
+          never the service's config-hash-gated v_*_published views.
+        lesson: vendor-published-view-config-hash-gate
+      - text: >-
+          The incremental window is strategy-aware: whole months under insert_overwrite,
+          strictly after max(date) under the runner's append path. Never hand-roll a month
+          window; after a killed append DROP the partition before retrying.
+        lesson: append-over-populated-duplicates
+    ground_truth: "on-chain balanceOf()/totalSupply() at the canonical day-anchor block recorded by rpc-state-indexer (eth_call at that block reproduces the census)"
+    agents_md: models/rpc_state_indexer/AGENTS.md
+
   - name: prices_models
     description: Token price derivation
     match:

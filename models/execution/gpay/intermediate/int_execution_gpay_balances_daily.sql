@@ -21,7 +21,7 @@ SELECT
     b.symbol,
     b.balance,
     b.balance_usd
-FROM {{ ref('int_execution_tokens_balances_daily') }} b
+FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }} b
 INNER JOIN gpay_wallets w 
   ON b.address = w.address
 WHERE 

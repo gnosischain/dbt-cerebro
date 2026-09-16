@@ -30,14 +30,14 @@ direct_rows AS (
         lower(b.address)                     AS address,
         b.balance_usd                        AS balance_usd,
         CAST([] AS Array(String))            AS unwound_from
-    FROM {{ ref('int_execution_tokens_balances_daily') }} b
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }} b
     LEFT ANTI JOIN {{ ref('fct_ubo_known_containers_daily') }} k
         ON  k.date                     = b.date
         AND lower(k.token_address)     = lower(b.token_address)
         AND lower(k.container_address) = lower(b.address)
     WHERE b.date = (
             SELECT max(date)
-            FROM {{ ref('int_execution_tokens_balances_daily') }}
+            FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
             WHERE date < today() AND balance > 0
           )
       AND b.balance > 0
@@ -55,7 +55,7 @@ unwound_rows AS (
     FROM {{ ref('fct_ubo_supply_claims_resolved_daily') }} c
     WHERE c.date = (
             SELECT max(date)
-            FROM {{ ref('int_execution_tokens_balances_daily') }}
+            FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
             WHERE date < today() AND balance > 0
           )
       AND c.balance > 0

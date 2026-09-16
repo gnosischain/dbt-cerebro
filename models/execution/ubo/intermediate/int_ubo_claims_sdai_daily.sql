@@ -32,7 +32,7 @@ sdai_holders AS (
         date,
         lower(address) AS holder,
         balance        AS sdai_balance
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE lower(token_address) = lower('{{ sdai_address }}')
       AND balance > 0
       AND lower(address) != lower('{{ sdai_address }}')
@@ -55,7 +55,7 @@ wxdai_reserve AS (
         balance_raw          AS reserve_raw,
         balance              AS reserve,
         balance_usd          AS reserve_usd
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE lower(address) = lower('{{ sdai_address }}')
       AND symbol = 'WxDAI'
       AND balance > 0

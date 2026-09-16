@@ -9,7 +9,8 @@
 
   Prices join on (date, upper(symbol)) and are LEFT: balance_usd is null wherever the
   price feed has no row for that token-day, which is the documented contract downstream
-  consumers already handle. Whole-month incremental filter, as in the model below it.
+  consumers already handle. The incremental window comes from
+  apply_monthly_incremental_filter, as in the model below it.
 #}
 
 {{
@@ -20,7 +21,7 @@
     order_by='(date, token_address, address)',
     partition_by='toStartOfMonth(date)',
     settings={ 'allow_nullable_key': 1 },
-    tags=['production','rpc_state_indexer','tokens','balances_daily','microbatch']
+    tags=['production','rpc_state_indexer','tokens','balances_daily','microbatch','refill_append']
   )
 }}
 
@@ -38,10 +39,8 @@ WITH balances AS (
       {% if start_month and end_month %}
         AND toStartOfMonth(date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(date) <= toDate('{{ end_month }}')
-      {% elif is_incremental() %}
-        AND toStartOfMonth(date) >= (
-            SELECT toStartOfMonth(max(date)) FROM {{ this }}
-        )
+      {% else %}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
       {% endif %}
 ),
 
@@ -55,10 +54,8 @@ prices AS (
       {% if start_month and end_month %}
         AND toStartOfMonth(p.date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(p.date) <= toDate('{{ end_month }}')
-      {% elif is_incremental() %}
-        AND toStartOfMonth(p.date) >= (
-            SELECT toStartOfMonth(max(date)) FROM {{ this }}
-        )
+      {% else %}
+        {{ apply_monthly_incremental_filter('p.date', 'date', 'true') }}
       {% endif %}
 )
 

@@ -11,7 +11,7 @@ symptom: >-
   a handful of rows survive every reprocess unchanged — always keys whose
   CORRECTED value is exactly zero (e.g. addresses that spent their full balance);
   rebuilds fix everything else and reliably skip these
-last_verified: 2026-07-19
+last_verified: 2026-09-16
 evidence:
   - '2026-07-17: all 11 residual negative balances that survived TWO clean July reprocesses classified as this bug — every one had corrected cumulative balance exactly 0 (windowed diffs cum = 0, e.g. ZCHF EOA 0x9a76 spent 10,010 to zero; on-chain balanceOf confirmed ~0/75) while the stale negative row persisted'
   - 'mechanism: the final WHERE balance_raw != 0 keeps the table sparse, but delete+insert deletes keys IN (SELECT ... FROM new data) — a key whose corrected state is "no row" is absent from new data, so its stale row is never deleted. The daily frontier-recompute path has the same hole for spend-to-zero addresses'
@@ -24,6 +24,7 @@ evidence:
   - 'DEPLOYED 2026-07-18: the tombstone fix + conservation test + whitelist seed correction landed in commit a96374d3 (committed 2026-07-18 17:46) and shipped in the production image b930150 (2026-07-18 17:49). Verified in git: a96374d3 is an ancestor of b930150; the deployed model SQL carries the tombstone rule. Status observed -> remediated accordingly'
   - '2026-07-19 forward-fix HOLDING, backlog PERSISTS (as designed): conservation residuals per day — 07-15 15 symbols, 07-16 15, 07-17 19 (worst 7.3e24), 07-18 19 (IDENTICAL to 07-17). The 15->19 / 300x jump is between 07-16 and 07-17, both PRE-deploy; 07-18 (first post-deploy day) added NO new stale rows, only carried 07-17 forward. So the forward-only fix prevents new spend-to-zero staleness but does not retro-clean the pre-deploy backlog — the cumulative chain carries it forward every day until the one-time re-clean reprocesses those token-months'
   - '2026-07-19 RE-CLEAN COMPLETE: per-symbol July reprocess (reprocess_overwrite=true) of the native model for all 19 affected tokens (BRZ..USDC, smallest->largest, mutation-guarded) -> native conservation 0 on every July day. Cascaded: balances_daily (USD) drop+append, then by_sector/cohorts/supply_holders drop+reprocess, then the tokens fct tables rebuilt. dq_daily_balance_conservation now PASSES (was WARN on 49 rows); full data_quality_daily suite 8 PASS/0 WARN; GNO supply 07-16 back to 1,430,920.92 == on-chain totalSupply(). Status remediated -> enforced: prevention deployed + detection deployed & green + backlog cleared'
+  - '2026-09 census cutover (WL-054 Stage 2): the canonical instance is frozen (int_execution_tokens_balances_native_daily deprecated, never rebuilt) and dq_daily_balance_conservation is disabled with it — the census successor int_rpc_state_indexer_token_balances_daily is not cumulative, uses insert_overwrite/append (no delete-set) and stores no tombstones, so the class is structurally absent there. Status stays enforced for every other sparse delete+insert model.'
   - 'CAUTION recorded during the re-clean: a Code 241 (server-saturation victim) that KILLS an append mid-insert can leave PARTIAL rows; a naive retry that appends on top produces identical RMT duplicates (SharedReplacingMergeTree) that FINAL-less downstreams double-count (9/18 July days hit this on balances_daily). Safe protocol: after a killed append, DROP the partition before retrying (never append-on-top), and use OPTIMIZE ... PARTITION .. FINAL as a dedup barrier before reading downstream. See refill-append-aggregator-inflation'
 ---
 
@@ -69,7 +70,7 @@ ENFORCED (2026-07-19). Three layers, all in place:
    incremental branches) is live on the production cron since image b930150
    (commit a96374d3, 2026-07-18). Demonstrated forward: 07-18 (first post-deploy
    day) added no new stale rows.
-2. DETECTION — dq_daily_balance_conservation (tag data_quality_daily) ships in the
+2. DETECTION — dq_daily_balance_conservation (tag data_quality_daily) ran every cron from 2026-07-18 until the 2026-09 census cutover, when it was retired (enabled=false) together with the chain it guarded. Originally it shipped in the
    same image and runs every cron; it PASSES post-reclean (was WARN on 49 rows).
 3. BACKLOG CLEARED — the pre-deploy stale-positive rows (19 tokens, residuals
    2026-07-15..18, carried forward by the cumulative chain) were reprocessed

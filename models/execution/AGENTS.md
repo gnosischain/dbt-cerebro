@@ -42,11 +42,14 @@ them — dbt does not error on an unread var. Only the intersection is safe: the
 execution.logs + tokens_whitelist
   → int_execution_transfers_whitelisted_daily   literal insert_overwrite, no symbol var → month-scoped only
   → int_execution_tokens_address_diffs_daily    literal insert_overwrite, HAS symbol var → NEVER symbol-scope
-  → int_execution_tokens_balances_native_daily  append-if-start_month, cumulative        → safe to symbol-scope
-  → int_execution_tokens_balances_daily         append-if-start_month                    → safe to symbol-scope
+  (int_execution_tokens_balances_native_daily / _balances_daily / _supply_holders_daily:
+   DEPRECATED at the 2026-09 census cutover — frozen, never run; see models/rpc_state_indexer)
+  models/rpc_state_indexer:
+  int_rpc_state_indexer_token_balances_daily    append-if-start_month, no symbol var    → month-scoped only, EMPTY months only
+  → int_rpc_state_indexer_token_balances_priced_daily  same                              → month-scoped only, EMPTY months only
+  int_rpc_state_indexer_token_supply_daily      same                                     → month-scoped only, EMPTY months only
   → int_execution_tokens_balance_cohorts_daily  append-if-start_month                    → safe to symbol-scope
   → int_execution_tokens_balances_by_sector_daily  append-if-start_month                 → safe to symbol-scope
-  → int_execution_tokens_supply_holders_daily   literal insert_overwrite, no symbol var  → month-scoped only
   int_execution_tokens_transfers_daily          literal insert_overwrite, HAS symbol var → NEVER symbol-scope
 ```
 

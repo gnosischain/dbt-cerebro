@@ -122,7 +122,7 @@ PHASE1_TAG="refill_append"
 # (see docs/lessons/refill-append-aggregator-inflation.md). Pass A appends
 # + OPTIMIZEs sources only; pass B runs aggregators only, against merged
 # sources.
-PHASE1_SOURCES="int_execution_tokens_balances_daily int_execution_lending_aave_user_balances_daily int_execution_gpay_activity int_execution_pools_fees_daily int_revenue_gpay_fees_daily"
+PHASE1_SOURCES="int_rpc_state_indexer_token_balances_priced_daily int_execution_tokens_balances_daily int_execution_lending_aave_user_balances_daily int_execution_gpay_activity int_execution_pools_fees_daily int_revenue_gpay_fees_daily"
 PHASE1_AGGREGATORS="int_execution_account_balance_history_daily int_execution_lending_aave_balance_cohorts_daily int_execution_tokens_balance_cohorts_daily int_execution_tokens_balances_by_sector_daily int_execution_tokens_supply_holders_daily int_revenue_holdings_fees_daily int_revenue_sdai_fees_daily"
 
 usage() {
@@ -228,7 +228,7 @@ OVERALL_RC=0
 # -- Phase 1 ------------------------------------------------------------------
 # Two-pass per month:
 #   Pass A — append-rewrite + OPTIMIZE every model. After this, source-of-
-#            truth tables (e.g. int_execution_tokens_balances_daily) have
+#            truth tables (e.g. int_rpc_state_indexer_token_balances_priced_daily) have
 #            their correct, merged rows. But aggregators that ran during
 #            Pass A may have read upstream BEFORE OPTIMIZE collapsed it,
 #            so their rows can hold the inflated sums of unmerged duplicates.
@@ -318,14 +318,14 @@ fi
 # holds inflated values from an earlier write — a sign Phase 1 didn't fully
 # converge. Refill is a no-op if the canary is clean.
 if [ "$SKIP_PHASE1" = "false" ] && [ "$OVERALL_RC" -eq 0 ] && [ "$DRY_RUN" = "false" ]; then
-  echo "=== Phase 1.5: canary check on int_execution_tokens_supply_holders_daily (GNO) ==="
+  echo "=== Phase 1.5: canary check on int_execution_tokens_balances_by_sector_daily (GNO, pass-B aggregator) ==="
   # Scan from 3 days BEFORE the first affected month through today: the
   # 2026-07-17 supply-doubling sat exactly at the month boundary (06-30 ->
   # 07-01), which a +/-7d window around FROM_DATE missed entirely — inside
   # the refilled month everything was uniformly 2x, so no intra-month jump.
   CANARY_START="${MONTHS[0]}"
-  CANARY_SQL="WITH s AS (SELECT date, supply FROM dbt.int_execution_tokens_supply_holders_daily \
-WHERE symbol='GNO' AND date >= toDate('${CANARY_START}') - 3 AND date <= today()) \
+  CANARY_SQL="WITH s AS (SELECT date, sum(supply) AS supply FROM dbt.int_execution_tokens_balances_by_sector_daily \
+WHERE symbol='GNO' AND date >= toDate('${CANARY_START}') - 3 AND date <= today() GROUP BY date) \
 SELECT date, supply, supply / nullIf(lagInFrame(supply) OVER (ORDER BY date), 0) AS ratio \
 FROM s ORDER BY date"
   CANARY_OUT=$(dbt run-operation run_query --args "{sql: \"$CANARY_SQL\"}" \

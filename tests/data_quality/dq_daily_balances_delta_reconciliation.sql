@@ -1,4 +1,5 @@
-{{ config(severity='warn', tags=['production', 'data_quality', 'data_quality_daily', 'balances']) }}
+{{ config(enabled=false, severity='warn', tags=['data_quality', 'balances', 'deprecated']) }}
+-- RETIRED 2026-09 (WL-054 Stage 2): guarded the frontier-integration step of the cumulative chain (docs/lessons/frontier-day-incomplete-inputs.md). The census successor has no integration step: each day is an independent balanceOf read at the day anchor, so there is no delta to reconcile. Kept disabled, not deleted, as the lesson's evidence.
 -- Frontier-day integration check: every diff the diffs model holds for a day must be
 -- reflected in the balances model's day-over-day movement for that (token, address).
 -- The balances chain is cumulative and never revisits a built day, so when a daily

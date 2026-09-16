@@ -709,7 +709,7 @@ docker exec dbt dbt run-operation optimize_table_final \
 
 The recovery is **lineage-driven**: instead of a manual `price_dependent` tag (which had to be plumbed onto every prices consumer and was easy to miss), the script uses dbt's graph selector `int_execution_token_prices_daily+` to pick up every descendant of the prices view transitively. The macro `apply_monthly_incremental_filter` reads `var('price_lookback_days', N)` directly, so a single `--vars '{"price_lookback_days": N}'` widens the window for every model in the subtree — no per-model edits, no tag registry to maintain.
 
-The only model that needs a different recovery path is `int_execution_tokens_balances_daily` — its `delete+insert` lookback OOMs at multi-day windows (CH 341), so Phase 1 of the script rewrites the affected month in `append` mode and runs `OPTIMIZE PARTITION FINAL DEDUPLICATE` to converge. Phase 2 then `--exclude`s it from the lineage run.
+The only model that needs a different recovery path is `int_rpc_state_indexer_token_balances_priced_daily` — its default `insert_overwrite` branch would REPLACE whole months, which is fine on its own but leaves the pass-B aggregators reading un-repriced rows, so Phase 1 of the script rewrites the affected month in `append` mode and runs `OPTIMIZE PARTITION FINAL DEDUPLICATE` to converge. Phase 2 then `--exclude`s it from the lineage run.
 
 `scripts/maintenance/refill_after_price_gap.sh` wraps the **two-phase recovery flow**:
 
@@ -770,12 +770,9 @@ The buffer covers cases where the gap window has soft edges (e.g. partial data o
 
 Adding a new prices consumer to the workflow: **nothing**. The model is already in `int_execution_token_prices_daily+` by virtue of its `ref()` chain, and `apply_monthly_incremental_filter` reads `var('price_lookback_days', …)` directly. No tag, no per-model var plumbing.
 
-#### Why `int_execution_tokens_balances_daily` needs the append + OPTIMIZE phase
+#### Why `int_rpc_state_indexer_token_balances_priced_daily` needs the append + OPTIMIZE phase
 
-The two recovery paths the macro can produce are incompatible with this specific model:
-
-- **Microbatch path** (active when `incremental_end_date` is set) uses the no-overlap branch: strict `> max(date)`. It cannot re-pull historical days because the slice filter is exclusive.
-- **Lookback path** (`price_lookback_days` → `delete+insert` over a multi-day window) triggers `CH 341 — Mutation … memory limit exceeded` on this model — the same OOM the microbatch annotation was added to escape.
+Neither branch of the macro repairs a populated month for the pass-B aggregators: the microbatch path (`incremental_end_date` set) is strictly `> max(date)` and cannot re-pull historical days, and the default branch REPLACEs whole partitions, which is correct for the priced model alone but would run *after* the aggregators in Phase 2, so they would bake un-repriced USD.
 
 So Phase 1 of the script bypasses the macro entirely: `start_month=end_month=<month>` puts the model in **append** mode, writing fresh rows for every date in the affected month(s). RMT collapses the duplicates lazily on background merges; the explicit `OPTIMIZE PARTITION '<month>' FINAL DEDUPLICATE` collapses them immediately so downstream Phase 2 reads the corrected values. The OPTIMIZE is scoped to one partition (one month), not the whole table — the cost is bounded.
 
@@ -2069,10 +2066,10 @@ For batched backfills of large models, use the full refresh orchestrator:
 
 ```bash
 # Dry run — preview the batch plan
-python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_daily --dry-run
+python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_by_sector_daily --dry-run
 
 # Execute with resume support
-python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_daily --resume
+python scripts/full_refresh/refresh.py --select int_execution_tokens_balances_by_sector_daily --resume
 ```
 
 See [scripts/full_refresh/README.md](scripts/full_refresh/README.md) for configuration details.

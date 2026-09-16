@@ -59,7 +59,8 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   cumulative chain that builds the frontier day before its inputs settle freezes the
   hole; upstreams self-heal, the cumulative layer never revisits the day. Recurred
   2026-08-23 (4,370 unapplied deltas); gate now in tree
-  (dq_daily_balances_delta_reconciliation, pending deploy — then flip to enforced).
+  (dq_daily_balances_delta_reconciliation); canonical chain frozen at the 2026-09 census
+  cutover and the gate retired with it — the price-join layer stays in scope.
 - [microbatch-state-skips-data-holes](microbatch-state-skips-data-holes.md) `observed` —
   an unscoped `apply_monthly_incremental_filter` (no filters_sql=range_sql) watermarks
   off the global frontier, so later-band slices insert 0 rows "successfully" and the
@@ -73,7 +74,8 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   spend-to-zero keys survive every reprocess and inflate apparent supply. Tombstone
   fix + dq_daily_balance_conservation DEPLOYED 2026-07-18 (image b930150); 19-token
   pre-deploy backlog re-cleaned 2026-07-19 (conservation 0 all July days, dq suite
-  8 PASS/0 WARN). Detection: dq_daily_balance_conservation.
+  8 PASS/0 WARN). Detection: dq_daily_balance_conservation — retired with the chain at
+  the 2026-09 census cutover (class structurally absent in the census successor).
 
 ## ClickHouse platform
 
@@ -169,3 +171,16 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
   repo's write conventions are all idempotency moves. Read when RMT duplicates confuse.
 - [indexer-deployment-block-truncates-history](indexer-deployment-block-truncates-history.md) — a deployment_block later than the real deployment makes the census skip every earlier
   day with no error; verify the eth_getCode boundary, compare per address not per symbol.
+- [microbatch-append-window-must-be-strategy-aware](microbatch-append-window-must-be-strategy-aware.md)
+  `remediated` — a hand-rolled whole-month window on a strategy-expression model re-appends
+  the month on every runner slice; call apply_monthly_incremental_filter, check
+  count() - uniqExact(grain) per month before pinning.
+- [census-scalars-cross-job-scope](census-scalars-cross-job-scope.md) `remediated` — census
+  scalars read across jobs admit tokens with no holder census (14 wrapper tokens); pin
+  job_name to the job whose token set you serve.
+- [zero-address-sign-flip-across-derivations](zero-address-sign-flip-across-derivations.md)
+  `remediated` — transfer-derived balances hold MINUS minted supply at 0x0, the census holds
+  the burned balance; consumers' `balance > 0` excluded it silently. Dropped at the source.
+- [migrated-token-contract-alias-not-end-date](migrated-token-contract-alias-not-end-date.md)
+  `remediated` — a retired contract fronting the live ledger (EURe/GBPe v1) must carry
+  universe_aliases, never a date_end; compare coverage per address.

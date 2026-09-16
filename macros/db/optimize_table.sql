@@ -1,7 +1,7 @@
 {% macro optimize_partition_final(database, table_name, partition) %}
   {# Run `OPTIMIZE TABLE <db>.<table> PARTITION '<p>' FINAL DEDUPLICATE`.
      Use after an append-mode rewrite of a single partition (typically the
-     prices-gap recovery flow for `int_execution_tokens_balances_daily`).
+     prices-gap recovery flow for `int_rpc_state_indexer_token_balances_priced_daily`).
      Cheaper than a full-table OPTIMIZE — touches only the named partition.
   #}
   {% set sql %}

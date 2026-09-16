@@ -11,7 +11,7 @@ symptom: >-
   a burst of negative real-holder balances (or 100% NULL joined values) all
   dated to ONE recent day; upstream models look complete when you inspect them
   later, because they self-healed and the cumulative layer did not
-last_verified: 2026-07-17
+last_verified: 2026-09-16
 evidence:
   - '2026-07-17 incident: dq_daily_negative_real_holder_balances found 201 negatives, ALL dated 2026-07-16, across 11 tokens'
   - '2026-07-15 was a near-dead day in the balances chain: EURe had 3,330 addresses with transfers but only 151 balance changes; GBPe 79 vs 0; WxDAI 1,301 vs 53'
@@ -20,6 +20,7 @@ evidence:
   - 'repair: model-documented reprocess_overwrite window (start_month=end_month=2026-07-01), 471s run, July dup_excess stayed 0, negatives 201 -> 11 (the 11 are pre-July deficits, older class)'
   - '2026-08-31 recurrence: during the Aug 26-30 server-saturation outage, the Aug-24 cron built the 2026-08-23 balances slice while diffs held only ~212 of the eventual 4,582 rows for that day; diffs self-healed, balances froze the hole — 4,370 of 4,582 Aug-23 deltas unapplied (95%), 135 new negative pairs on Aug 24 and rising daily after; every other day Aug 1-30 reconciles delta-for-delta. Repaired same day via the model-documented reprocess_overwrite August window + downstream rebuild (plain runs for insert_overwrite, gap_window_refresh for append-if-window, reprocess_overwrite for fees weekly)'
   - 'gate added 2026-08-31 (pending deploy; flip status to enforced once live): tests/data_quality/dq_daily_balances_delta_reconciliation.sql — per-day countIf(balance(d) - balance(d-1) != net_delta(d)) joining diffs x balances over a 3-day window capped at the balances watermark; runs in the cron tag:data_quality_daily batch. Negative control: perturbing every delta by 1 fires on all ~5k diff rows/day; passes clean on repaired data. Would have caught both the 2026-07-15 and 2026-08-23 instances the morning after'
+  - '2026-09 census cutover (WL-054 Stage 2): the canonical cumulative instance is frozen and tests/data_quality/dq_daily_balances_delta_reconciliation.sql is disabled before it ever flipped this lesson to enforced — the census successor has no frontier-integration step (each day is an independent balanceOf read). Remaining live scope is the price-join layer: int_rpc_state_indexer_token_balances_priced_daily built before a day''s prices land, recovered with refill_after_price_gap.sh --from-date (Phase 1 now covers the census priced model).'
   - 'sibling instance same week (the USD layer): int_execution_tokens_balances_daily 2026-07-13/14 built before those days'' prices landed -> 100% NULL balance_usd both days; repaired via scripts/maintenance/refill_after_price_gap.sh --from-date 2026-07-13'
 ---
 

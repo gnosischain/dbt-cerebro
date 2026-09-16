@@ -26,7 +26,7 @@ token_holdings AS (
         ''                      AS protocol,
         b.balance               AS balance,
         b.balance_usd           AS balance_usd
-    FROM {{ ref('int_execution_tokens_balances_daily') }} b
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }} b
     INNER JOIN wallets w ON w.address = b.address
     WHERE b.date < today()
       AND b.balance > 0

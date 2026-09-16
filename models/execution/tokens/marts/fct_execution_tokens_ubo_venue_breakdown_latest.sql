@@ -9,7 +9,7 @@ WITH
 
 latest_date AS (
     SELECT max(date) AS d
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE date < today() AND balance > 0
 ),
 
@@ -20,7 +20,7 @@ total_supply AS (
         any(token_class) AS token_class,
         sum(balance)     AS total_balance,
         sum(balance_usd) AS total_balance_usd
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE date = (SELECT d FROM latest_date)
       AND balance > 0
       AND lower(address) != '0x0000000000000000000000000000000000000000'

@@ -4,8 +4,8 @@
 -- tokens before they render blank. Lesson: unpriced-wrapper-token (OC-sDAI: 265k
 -- shares shown as $0). date = today()-2 tolerates the price feed's normal 1-day lag.
 WITH latest_supply AS (
-    SELECT symbol, token_class, argMax(supply, date) AS supply, max(date) AS supply_date
-    FROM {{ ref('int_execution_tokens_supply_holders_daily') }}
+    SELECT symbol, token_class, argMax(supply_total, date) AS supply, max(date) AS supply_date
+    FROM {{ ref('int_rpc_state_indexer_token_supply_daily') }}
     WHERE date >= today() - 7
     GROUP BY symbol, token_class
     HAVING supply > 0

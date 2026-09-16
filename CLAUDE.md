@@ -7,7 +7,7 @@ changing anything.
 
 Scoped domain guides (read the one for the directory you touch):
 `models/contracts/AGENTS.md`, `models/execution/AGENTS.md`,
-`models/execution/gnosis_app_gt/AGENTS.md`, `models/revenue/AGENTS.md`,
+`models/execution/gnosis_app_gt/AGENTS.md`, `models/rpc_state_indexer/AGENTS.md`, `models/revenue/AGENTS.md`,
 `models/consensus/AGENTS.md`, `models/mixpanel_ga/AGENTS.md`,
 `models/quarterly_data/AGENTS.md`, `models/celo/AGENTS.md`,
 `models/bridges/AGENTS.md`, `scripts/refresh/AGENTS.md`,

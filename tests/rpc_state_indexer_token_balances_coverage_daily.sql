@@ -1,3 +1,4 @@
+{{ config(severity='error', tags=['production', 'data_quality', 'data_quality_daily', 'balances', 'rpc_state_indexer']) }}
 -- Every whitelist token the census reads must carry holder balances on every day of the
 -- lookback window, and those balances must reconcile to the token's own totalSupply.
 --
@@ -26,3 +27,24 @@ WHERE s.date >= today() - {{ var('test_lookback_days', 7) }}
         (s.holders = 0 AND s.supply_total > 0)
      OR abs(s.supply_total - s.supply_holders) > 1e-9 * greatest(abs(s.supply_total), 1)
   )
+
+UNION ALL
+
+-- Density: every token censused in the window must have all 7 days of [today()-8, today()-2].
+-- A missing day is an indexer outage for that token (no rows, no error), which the census
+-- consumers would read as zero balance for the day until the census lands.
+SELECT
+    toDate(today() - 2) AS d
+    ,g.token_address AS token_address
+    ,g.symbol AS symbol
+    ,toFloat64(g.days_present) AS supply_total
+    ,toFloat64(7) AS supply_holders
+    ,toUInt64(0) AS holders
+FROM (
+    SELECT token_address, any(symbol) AS symbol, uniqExact(date) AS days_present
+    FROM {{ ref('int_rpc_state_indexer_token_supply_daily') }}
+    WHERE date BETWEEN today() - 8 AND today() - 2
+      AND supply_holders IS NOT NULL
+    GROUP BY token_address
+) AS g
+WHERE g.days_present < 7

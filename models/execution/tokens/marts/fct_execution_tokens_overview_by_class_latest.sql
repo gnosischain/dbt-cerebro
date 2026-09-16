@@ -37,7 +37,7 @@ holders_latest AS (
     SELECT
         token_class,
         CAST(COUNT(DISTINCT address) AS Float64) AS value
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     CROSS JOIN latest_date
     WHERE date = latest_date.max_date
       AND balance_raw > 0
@@ -48,7 +48,7 @@ holders_7d AS (
     SELECT
         token_class,
         CAST(COUNT(DISTINCT address) AS Float64) AS value
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     CROSS JOIN latest_date
     WHERE date = subtractDays(latest_date.max_date, 7)
       AND balance_raw > 0

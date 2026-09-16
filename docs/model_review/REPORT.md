@@ -276,7 +276,7 @@ CH Cloud blocks inserts with code 252 when a single statement touches >100 parti
 | Execution Shared | `is_safe_owner` returns 1 for GPay sentinel 0x...0002 | HIGH |
 | Execution State | Pipeline 132 days stale at source (cryo-indexer) | HIGH |
 | Execution Tokens | `supply_usd` can go negative; no test guard prevents negative values shipping | HIGH |
-| Execution Tokens | Semantic model for `int_execution_tokens_balances_daily` exposes entirely wrong columns | HIGH |
+| Execution Tokens | Semantic model for `int_execution_tokens_balances_daily` exposes entirely wrong columns — RESOLVED by the 2026-09 census cutover (phantom dims/measures/metrics deleted, block repointed) | HIGH |
 | Execution Transactions | `gas_price_avg/median` CAST to Int32 truncates sub-Gwei type-4 transactions to 0 | HIGH |
 | Execution Transactions | `unique_addresses` carries ~209k unmerged duplicate rows | HIGH |
 | Execution Transfers | `whitelisted_daily` schema.yml documents 5 phantom columns; omits actual `amount_raw` | HIGH |
@@ -405,7 +405,7 @@ Revenue `int_revenue_fees_weekly_per_user` is on the allowlist as "acknowledged 
 |---|---|---|
 | 21 | Fix 4 seed rows in `seeds/event_signatures.csv`: set `indexed:true` on owner for AddedOwner/RemovedOwner on v1.4.1 and v1.4.1L2 Safe singletons | Safe |
 | 22 | Add FINAL to `int_execution_safes` reads in `api_execution_safe_details_latest` and `fct_execution_account_safes_latest` | Safe |
-| 23 | Fix `int_execution_tokens_supply_holders_daily`: add `balance > 0` guard; add `not_negative` test | Tokens |
+| 23 | Fix `int_execution_tokens_supply_holders_daily`: add `balance > 0` guard; add `not_negative` test — RESOLVED by the 2026-09 census cutover (supply is now census totalSupply less burn; model deprecated) | Tokens |
 | 24 | Fix `gas_price_avg/median` CAST to Int32 to Float32 in `int_execution_transactions_info_daily`; backfill | Transactions |
 | 25 | Run monthly revenue backfill for Jan-Sep 2023/2024/2025 and Jan-Mar 2026 | Revenue |
 | 26 | Investigate GPay settlement address vs post-April 2025 Spender router architecture | Revenue |

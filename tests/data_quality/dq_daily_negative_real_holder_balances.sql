@@ -1,4 +1,5 @@
-{{ config(severity='warn', tags=['production', 'data_quality', 'data_quality_daily', 'balances']) }}
+{{ config(enabled=false, severity='warn', tags=['data_quality', 'balances', 'deprecated']) }}
+-- RETIRED 2026-09 (WL-054 Stage 2): guarded against negative real-holder balances in the transfer-accumulated chain. The census successor stores only balance_raw > 0 (UInt256 at the source) and excludes the zero address, so a negative balance is impossible by construction and this test would pass vacuously. Kept disabled, not deleted.
 -- A non-rebasing ERC-20 holder can't be negative on-chain; a negative balance for a
 -- REAL holder (not the 0x00..00 mint/burn sink) = a dropped inflow upstream.
 -- Lessons: decode-watermark-late-logs, raw-logs-ingestion-holes, duplicate-seed-drift.

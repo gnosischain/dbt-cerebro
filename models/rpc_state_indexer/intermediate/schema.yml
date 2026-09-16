@@ -45,7 +45,7 @@ models:
     data_type: String
 
   - name: address
-    description: Holder address, lowercased. The zero address is retained and carries its real on-chain balance, which is the burned amount. This is the opposite sign to the transfer-derived model, where the zero address accumulates minus the minted supply because mints are counted as transfers out of it; consumers that count holders or sum supply must exclude it in both.
+    description: Holder address, lowercased. The zero address is excluded at the source; its real on-chain balance (the burned amount) is published once, as the burn term of int_rpc_state_indexer_token_supply_daily.supply_total. Consumers need no zero-address exclusion.
     data_type: String
 
   - name: balance_raw
@@ -58,13 +58,14 @@ models:
   meta:
     authoritative: false
     agent:
-      grain: (date, token_address, address) — one row per holder per token per census day; only balances greater than zero are stored.
+      grain: (date, token_address, address) — one row per holder per token per census day; only balances greater than zero are stored and the zero address is excluded.
       invariants:
       - Not cumulative. Each day is an independent observation of on-chain state, so a wrong day cannot propagate forward and a repaired day needs no reseeding.
       - The incremental filter cuts on whole months, never on days, because insert_overwrite REPLACEs a whole partition. A day-bounded window would delete the remainder of the month it lands in.
       - Scope is the tokens_whitelist seed via INNER JOIN. A token missing from the census yields no rows rather than a wrong number; check the indexer's daily_curated_balances selector before treating an absence as a model bug.
       - Rows are per (chain_id, job_name) in the source. Both are pinned to chain 100 and daily_curated_balances; removing either filter double-counts holders across jobs.
-      - Summing balance across every address returns circulating supply, not zero. The transfer-derived model it replaces sums to zero by construction because the zero address holds minus the minted supply there; here the zero address holds the real burned balance. Verified on GNO 2026-08-31 — census zero-address 0, transfer-derived zero-address -1,438,522, and the two agree to 0.038% once the zero address is excluded.
+      - The zero address is excluded at the source, so sum(balance) per token-day is the holder-held supply and equals int_rpc_state_indexer_token_supply_daily.supply_holders; the burned balance lives only in that model's supply_total. Verified on GNO 2026-08-31 — census and transfer-derived holder sums agree to 0.038%.
+      - Token scope is the intersection of tokens_whitelist and the indexer's daily_curated_balances selector. dbt applies no symbol_exclude here; the 15 aGno*/sp* wrapper tokens stay out because the selector omits them (verified 2026-09-16). Adding a wrapper to the selector would surface it in every consumer.
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
@@ -133,7 +134,8 @@ models:
       grain: (date, token_address, address) — the balances model's grain, carried through unchanged.
       invariants:
       - Pricing is a LEFT join, so balance_usd is null for unpriced token-days and must never be read as zero.
-      - Whole-month incremental filter, as in the model it reads; see that model's contract.
+      - Incremental window from apply_monthly_incremental_filter, as in the model it reads; see that model's contract.
+      - Price-gap recovery is Phase 1 of scripts/maintenance/refill_after_price_gap.sh (tag refill_append, PHASE1_SOURCES): per-month append under start_month plus OPTIMIZE PARTITION FINAL DEDUPLICATE, then the aggregators in pass B. Never a bare start_month run over a populated month (append duplicates).
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 6
@@ -186,20 +188,20 @@ models:
     data_type: Float64
 
   - name: supply_holders
-    description: Sum of observed holder balances excluding the zero address, normalized by decimals. Null for tokens that carry a supply scalar but are not in the curated balances set.
+    description: Sum of observed holder balances excluding the zero address, normalized by decimals. Null only on days a curated token has no holders at all (supply_total is zero on those days; bHIGH May-Jun 2023, bCSPX and bCOIN Feb 2023, sGNO Mar 2022 — 31 token-days over the full history), never for a supply-only token, because both inputs come from the curated job.
     data_type: Float64
 
   - name: holders
-    description: Count of addresses with a balance greater than zero, excluding the zero address. Null for tokens not in the curated balances set.
+    description: Count of addresses with a balance greater than zero, excluding the zero address. Null on the same no-holder days as supply_holders, never zero.
     data_type: UInt64
   meta:
     authoritative: false
     agent:
-      grain: (date, token_address) — driven by the supply scalars, which are a superset of the curated balances.
+      grain: (date, token_address) — one row per curated token per census day.
       invariants:
       - For tokens in the curated balances set, supply_holders equals supply_total exactly. The indexer publishes a curated census only when the holder sum reconciles to totalSupply, so a non-zero gap means the census changed shape, not that a token drifted.
-      - supply_holders and holders are null, never zero, for supply-only tokens. The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook.
-      - The scalar is deduplicated with max() per token-day because several census jobs record totalSupply for the same anchor block.
+      - supply_holders and holders are null, never zero, on the rare days a curated token has no holders (supply_total is zero then; 31 token-days over the full history). The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook. Consumers that count holders must treat null as zero.
+      - Scalars and balances both come from the curated job. Every curated token-day carries its own totalSupply (verified over the full history), and reading scalars from all jobs would admit the 14 aGno*/sp* wrapper tokens as supply-only rows. max() remains only as a dedup guard.
     full_refresh:
       start_date: "2020-07-01"
       batch_months: 12

@@ -11,7 +11,7 @@ WITH
 
 latest_date AS (
     SELECT max(date) AS d
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE date < today() AND balance > 0
 ),
 
@@ -25,7 +25,7 @@ direct_rows AS (
         b.balance_usd                        AS balance_usd,
         CAST([] AS Array(String))            AS unwound_from,
         CAST([] AS Array(String))            AS protocols
-    FROM {{ ref('int_execution_tokens_balances_daily') }} b
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }} b
     LEFT ANTI JOIN (
         SELECT token_address, container_address
         FROM {{ ref('fct_ubo_known_containers_daily') }}

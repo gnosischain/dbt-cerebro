@@ -19,15 +19,17 @@
   or a holder universe the discovery scan has not reached. A test on that gap belongs here
   once the history is built and a tolerance has been measured.
 
-  Grain is driven by the scalars, which are a superset of the balances: daily_token_supply
-  covers ~3,400 tokens and daily_curated_balances records a totalSupply of its own for each
-  of its tokens, so every token-day with balances also has a scalar. supply_holders and
-  holders are therefore NULL (not zero) for whitelist tokens that carry supply but are not
-  in the curated balances set — hence join_use_nulls, paired with its reset.
+  Grain is the curated token-day. supply_holders and holders are LEFT-joined and are NULL
+  (not zero) on the rare days a curated token has no holders at all — supply_total is zero
+  then (31 token-days over the full history: bHIGH, bCSPX, bCOIN, sGNO) — or if a day's
+  balances failed to publish while its scalar did. Hence join_use_nulls, paired with its reset.
 
-  Several jobs record totalSupply for the same token-day and all read the same anchor
-  block, so the scalar is deduplicated with max() per token-day rather than filtered to one
-  job. Balances are read from the curated job only: mixing jobs there would double-count.
+  Both CTEs read the curated job only. The curated census records a totalSupply of its own
+  for every curated token-day (verified over the whole history: none missing), and reading
+  scalars from every job would pull in whitelist wrappers (aGno*, sp*) that carry a supply
+  scalar but no holder census — 14 supply-only tokens a day that the old chain excluded via
+  symbol_exclude and that would double-count EURe/WxDAI in the class overview. max() stays
+  as a dedup guard for repeated publications of the same token-day.
 #}
 
 {{
@@ -55,15 +57,14 @@ WITH scalars AS (
         max(toInt256(s.scalar_raw)) AS total_supply_raw
     FROM {{ ref('stg_rpc_state_indexer__token_scalars_published') }} AS s
     WHERE s.chain_id = {{ chain_id }}
+      AND s.job_name = {{ balances_job }}
       AND s.scalar_name = 'totalSupply'
       AND s.snapshot_date < today()
       {% if start_month and end_month %}
         AND toStartOfMonth(s.snapshot_date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(s.snapshot_date) <= toDate('{{ end_month }}')
-      {% elif is_incremental() %}
-        AND toStartOfMonth(s.snapshot_date) >= (
-            SELECT toStartOfMonth(max(date)) FROM {{ this }}
-        )
+      {% else %}
+        {{ apply_monthly_incremental_filter('s.snapshot_date', 'date', 'true') }}
       {% endif %}
     GROUP BY date, token_address
 ),
@@ -82,10 +83,8 @@ balances AS (
       {% if start_month and end_month %}
         AND toStartOfMonth(b.snapshot_date) >= toDate('{{ start_month }}')
         AND toStartOfMonth(b.snapshot_date) <= toDate('{{ end_month }}')
-      {% elif is_incremental() %}
-        AND toStartOfMonth(b.snapshot_date) >= (
-            SELECT toStartOfMonth(max(date)) FROM {{ this }}
-        )
+      {% else %}
+        {{ apply_monthly_incremental_filter('b.snapshot_date', 'date', 'true') }}
       {% endif %}
     GROUP BY date, token_address
 )

@@ -10,7 +10,7 @@ WITH
 
 prev_7d_date AS (
     SELECT addDays(max(date), -7) AS d
-    FROM {{ ref('int_execution_tokens_balances_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
     WHERE date < today() AND balance > 0
 ),
 
@@ -22,7 +22,7 @@ prev_direct AS (
     FROM {{ ref('fct_execution_tokens_top_holders_ranked') }} r
     LEFT JOIN (
         SELECT token_address, lower(address) AS address, balance_usd
-        FROM {{ ref('int_execution_tokens_balances_daily') }}
+        FROM {{ ref('int_rpc_state_indexer_token_balances_priced_daily') }}
         WHERE date = (SELECT d FROM prev_7d_date)
           AND balance > 0
     ) b ON b.token_address = r.token_address AND b.address = r.address

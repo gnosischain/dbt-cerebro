@@ -17,9 +17,9 @@ supply_holders AS (
         token_address,
         symbol,
         token_class,
-        supply,
+        supply_total AS supply,
         holders
-    FROM {{ ref('int_execution_tokens_supply_holders_daily') }}
+    FROM {{ ref('int_rpc_state_indexer_token_supply_daily') }}
     WHERE date < today()
 ),
 
