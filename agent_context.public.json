@@ -4,7 +4,7 @@
     "high_risk": 321,
     "models": 1281
   },
-  "inputs_fingerprint": "d5df1e7ecced419ee2845f49957c1c101b773c1d950a303ed3a26c705490f222",
+  "inputs_fingerprint": "71219edc95598d089d1f06e3512b27fedc86b7bdc4911f12a753cda45bb1009a",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -91029,7 +91029,7 @@
         ],
         "invariants": [
           "For tokens in the curated balances set, supply_holders equals supply_total exactly. The indexer publishes a curated census only when the holder sum reconciles to totalSupply, so a non-zero gap means the census changed shape, not that a token drifted.",
-          "supply_holders and holders are null, never zero, on the rare days a curated token has no holders (supply_total is zero then; 31 token-days over the full history). The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook. Consumers that count holders must treat null as zero.",
+          "supply_holders and holders are null, never zero, on the rare days a curated token has no holders (supply_total is zero then; 130 token-days across 14 tokens over the full history, verified after the 2026-09-16 rebuild). The join relies on join_use_nulls, set in a pre_hook and reset in the paired post_hook. Consumers that count holders must treat null as zero.",
           "Scalars and balances both come from the curated job. Every curated token-day carries its own totalSupply (verified over the full history), and reading scalars from all jobs would admit the 14 aGno*/sp* wrapper tokens as supply-only rows. max() remains only as a dedup guard."
         ],
         "profiles": [
@@ -97010,7 +97010,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "5b475b6fe96aa3f0777f9699479948899f12e0a6e2ee5e1470ea26579d24244b",
+  "models_hash": "310e796bcb5c7d1978e0f402b4468388cc81121862d296c4a13ef4f103fadcd5",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
