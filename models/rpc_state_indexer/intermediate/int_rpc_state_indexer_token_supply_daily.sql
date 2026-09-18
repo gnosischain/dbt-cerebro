@@ -21,7 +21,7 @@
 
   Grain is the curated token-day. supply_holders and holders are LEFT-joined and are NULL
   (not zero) on the rare days a curated token has no holders at all — supply_total is zero
-  then (31 token-days over the full history: bHIGH, bCSPX, bCOIN, sGNO) — or if a day's
+  then (130 token-days across 14 tokens over the full history, e.g. bHIGH, bCSPX, bCOIN, sGNO) — or if a day's
   balances failed to publish while its scalar did. Hence join_use_nulls, paired with its reset.
 
   Both CTEs read the curated job only. The curated census records a totalSupply of its own

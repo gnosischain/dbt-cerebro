@@ -99,3 +99,12 @@ block matched the census to six decimals) and wiped a month on 2026-09-15.
 cutover (WL-054): kept queryable, never rebuilt, never deleted. Their feeders
 `int_execution_transfers_whitelisted_daily` and `int_execution_tokens_address_diffs_daily`
 stay in production; the diffs table is a flow table the metrics dashboard reads directly.
+
+Measured cost of one day-slice (2026-09-15, read-only probe of the compiled cron SQL, query_log
+across all replicas, 2026-09-16): the transfer-derived native model ran 163.6 s, peaked at
+469 MiB and read 2.13 billion rows (111 GiB) because it re-derives the day from the whole
+transfer history plus its own previous day; the census balances model ran 0.4 s, 121 MiB,
+3.07 million rows (443 MiB). The old supply model rereads its whole current month every day
+(1.4 s, 1.03 GiB peak); the census supply model reads one day (0.8 s, 137 MiB). The priced
+layers cost the same either way (about 0.2 s, 35 MiB). Per day the old chain is roughly
+165 s and 112 GiB read; the census chain about 1.3 s and 1 GiB.
