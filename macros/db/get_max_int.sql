@@ -7,12 +7,16 @@
 
      Output format (parsed by dbt_incremental_runner.maybe_extend_stages):
        MAX_INT_RESULT::<model_name>::<column_name>::<integer or NULL>
+
+     NOTE: deliberately NOT `FINAL` -- see get_max_date.sql. A single max() cannot be
+     changed by deduplication, while `FINAL` forces a full merge-on-read that blows the
+     memory ceiling on the large balance tables (measured 2026-09-19, code 241).
   #}
   {% if execute %}
     {% set rel = ref(model_name) %}
     {% set sql %}
       SELECT toString(max({{ column_name }}))
-      FROM {{ rel }} FINAL
+      FROM {{ rel }}
     {% endset %}
     {% set result = run_query(sql) %}
     {% set value = 'NULL' %}
@@ -69,12 +73,16 @@
 
      Output:
        FIRST_SEEN_DATE_RESULT::<model_name>::<date_column>::<YYYY-MM-DD or NULL>
+
+     NOTE: deliberately NOT `FINAL` -- see get_max_date.sql. A single min() over a key
+     column cannot be changed by deduplication, while `FINAL` forces a full merge-on-read
+     that blows the memory ceiling on the large balance tables (measured 2026-09-19).
   #}
   {% if execute %}
     {% set rel = ref(model_name) %}
     {% set sql %}
       SELECT toString(min(toDate({{ date_column }})))
-      FROM {{ rel }} FINAL
+      FROM {{ rel }}
       {% if where_filter %}
       WHERE {{ where_filter }}
       {% endif %}

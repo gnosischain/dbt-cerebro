@@ -10,12 +10,20 @@
      whose stages cover disjoint key ranges with different historical maxes
      would only see the global max, leading the runner to schedule slices
      that the per-stage macro filter then expands into a huge backfill.
+  
+     NOTE: deliberately NOT `FINAL`. This macro only reads max() of one column, and
+     deduplication cannot change a maximum -- duplicate copies of a key carry the same
+     or a lower value. `FINAL` forces a full merge-on-read instead: measured 2026-09-19
+     on int_rpc_state_indexer_token_balances_daily (425M rows) it died with ClickHouse
+     code 241 (memory limit exceeded) while the same query without it returned in 42 s.
+     The runner swallowed that failure and silently re-bootstrapped 7 slices every night
+     on both large balance models, which also masked the real watermark.
   #}
   {% if execute %}
     {% set rel = ref(model_name) %}
     {% set sql %}
       SELECT toString(coalesce(max(toDate({{ date_column }})), toDate('1970-01-01')))
-      FROM {{ rel }} FINAL
+      FROM {{ rel }}
       {% if where_filter %}
       WHERE {{ where_filter }}
       {% endif %}
