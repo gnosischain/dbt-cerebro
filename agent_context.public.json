@@ -1,10 +1,10 @@
 {
   "counts": {
-    "explicit_contracts": 50,
-    "high_risk": 321,
+    "explicit_contracts": 51,
+    "high_risk": 322,
     "models": 1281
   },
-  "inputs_fingerprint": "71219edc95598d089d1f06e3512b27fedc86b7bdc4911f12a753cda45bb1009a",
+  "inputs_fingerprint": "f348d2ae879ebeba726506380196c0d88061ba1b9d5b7a9b3f865ce91db1b9db",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -91404,8 +91404,70 @@
     },
     "int_ubo_claims_sdai_daily": {
       "contract": {
-        "hazards": [],
-        "profiles": [],
+        "grain": "(date, container_address, ubo_address, token_address) \u2014 one row per sDAI holder per day, giving that holder's proportional claim on the vault's WxDAI reserve.",
+        "hazards": [
+          {
+            "id": "never-seeded-incremental",
+            "status": "remediated",
+            "title": "An incremental model created before its input existed stays empty forever"
+          },
+          {
+            "id": "ch-overcommit-victim",
+            "status": "remediated",
+            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+          },
+          {
+            "id": "staged-insert-overwrite-wipe",
+            "status": "enforced",
+            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
+          },
+          {
+            "id": "ch-partition-cap",
+            "status": "remediated",
+            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+          },
+          {
+            "id": "append-over-populated-duplicates",
+            "status": "remediated",
+            "title": "Scoped append over already-populated months exactly doubles the data"
+          },
+          {
+            "id": "delete-insert-unbounded-delete-timeout",
+            "status": "observed",
+            "title": "An unbounded delete+insert DELETE on a wide table finishes server-side but dbt times out and the INSERT never runs"
+          },
+          {
+            "id": "backfill-order-cumulative",
+            "status": "observed",
+            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+          },
+          {
+            "id": "duplicate-seed-drift",
+            "status": "remediated",
+            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+          },
+          {
+            "id": "frontier-day-incomplete-inputs",
+            "status": "remediated",
+            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          }
+        ],
+        "invariants": [
+          "Not cumulative. Each day is computed solely from that day's census balances, so a wrong day cannot propagate and a repaired day needs no reseeding.",
+          "Incremental with insert_overwrite on toStartOfMonth(date). The window comes from apply_monthly_incremental_filter, which returns WHOLE months under this strategy \u2014 a day-bounded window would REPLACE the partition and delete the rest of the month.",
+          "No unique_key. insert_overwrite replaces whole partitions and must never be combined with one; dedup is the ReplacingMergeTree order_by.",
+          "Claims are proportional, so they only reconcile against the vault's own WxDAI balance for that day. A day where the census lacks either sDAI holders or the vault's WxDAI row yields no rows rather than a partial total.",
+          {
+            "Converted from materialized='table' on 2026-09-21": "the full rebuild scanned the entire census priced model (~426M rows) nightly and exceeded the server memory ceiling on three consecutive crons once the census repair grew that input."
+          }
+        ],
+        "profiles": [
+          "incremental_models",
+          "insert_overwrite_models",
+          "strategy_expression_models",
+          "cumulative_self_referencing"
+        ],
+        "reprocess_runbook": "Month repair: re-run with vars {start_month, end_month} (append path) into an EMPTY range, or drop the month partition first. Full history: dbt run --full-refresh when the server is idle.",
         "rules": [
           {
             "lesson": "wide-delete-insert-wipe",
@@ -91417,8 +91479,25 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
+          },
+          {
+            "lesson": "never-seeded-incremental",
+            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
+          },
+          {
+            "lesson": "append-over-populated-duplicates",
+            "text": "The strategy branches on run vars: scoped windows must take the append path and append only into EMPTY months; verify which branch a given invocation resolves to before running."
+          },
+          {
+            "lesson": "backfill-order-cumulative",
+            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
+          },
+          {
+            "lesson": "frontier-day-incomplete-inputs",
+            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
           }
         ],
+        "semantics": "cumulative",
         "validation": [
           "make check-fast"
         ]
@@ -91432,19 +91511,19 @@
       ],
       "downstream_direct_count": 1,
       "downstream_transitive_count": 11,
-      "explicit_contract": false,
+      "explicit_contract": true,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": false,
-      "incremental_strategy": null,
-      "materialized": "table",
+      "high_risk": true,
+      "incremental_strategy": "insert_overwrite",
+      "materialized": "incremental",
       "name": "int_ubo_claims_sdai_daily",
       "owner": "analytics_team",
       "partition_by": "toStartOfMonth(date)",
       "path": "models/execution/ubo/intermediate/int_ubo_claims_sdai_daily.sql",
-      "reads_this": false,
-      "strategy_expression": false,
-      "strategy_scoped_append": null,
+      "reads_this": true,
+      "strategy_expression": true,
+      "strategy_scoped_append": true,
       "tags": [
         "claims",
         "execution",
@@ -91452,7 +91531,7 @@
         "sdai",
         "ubo"
       ],
-      "unique_key": "(date, container_address, ubo_address, token_address)"
+      "unique_key": null
     },
     "int_ubo_claims_swapr_v3_daily": {
       "contract": {
@@ -97010,7 +97089,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "310e796bcb5c7d1978e0f402b4468388cc81121862d296c4a13ef4f103fadcd5",
+  "models_hash": "d2eef480eec59a0c51d9a41825636767a60d0b3282750319fe626ecdb40e5444",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

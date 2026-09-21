@@ -2,6 +2,12 @@
 
 
 
+
+
+
+
+
+
 WITH
 
 -- ─── sDAI HOLDER BALANCES PER DAY ─────────────────────────────────────────────
@@ -17,6 +23,29 @@ sdai_holders AS (
       AND balance > 0
       AND lower(address) != lower('0xaf204776c7245bf4147c2612bf6e5972ee483701')
       AND date < today()
+      
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_ubo_claims_sdai_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
+      
 ),
 
 total_sdai_supply AS (
@@ -40,6 +69,29 @@ wxdai_reserve AS (
       AND symbol = 'WxDAI'
       AND balance > 0
       AND date < today()
+      
+        
+  
+    
+    
+    
+    
+    
+    
+
+    AND 
+    
+      
+      toStartOfMonth(toDate(date)) >= (
+        SELECT toStartOfMonth(addDays(max(toDate(x1.date)), -0))
+        FROM `dbt`.`int_ubo_claims_sdai_daily` AS x1
+        WHERE 1=1 
+      )
+      
+    
+  
+
+      
 )
 
 -- ─── PROPORTIONAL WxDAI CLAIMS ────────────────────────────────────────────────

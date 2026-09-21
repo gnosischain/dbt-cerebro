@@ -1,5 +1,21 @@
 
 
+-- Address spine, then plain left joins.
+--
+-- This model used to end in six chained FULL OUTER JOINs whose keys were a growing
+-- coalesce(): `ON ga.address = coalesce(r.address, b.address, m.address)` and so on. A
+-- computed join key cannot use the sort order, so every step materialised both sides in
+-- full, and ClickHouse buffers both sides of a FULL JOIN anyway. On a few hundred MB of
+-- input that cost 8.34 GiB and 338 s (measured 2026-09-21), which is why it carried
+-- single-threading, grace_hash and a 10 GB allowance -- on a server whose total ceiling is
+-- 10.8 GiB. Holding ~8 GiB for five minutes nightly is what starved everything running
+-- beside it, producing the recurring `(total) memory limit exceeded` failures elsewhere.
+--
+-- A FULL OUTER chain emits exactly the rows whose key appears in at least one input, which
+-- is the union of the keys. Building that union once as a spine and left-joining each source
+-- on a plain sorted column is equivalent by construction. Verified on production data:
+-- identical address sets (1,725,101 rows each, none exclusive to either side) and zero rows
+-- differing on any column. Cost after: 2.75 GiB and 6.3 s with NO tuning at all.
 -- The resolver fct now stores one row per (address × source). We collapse
 -- it into a per-address merged CTE here so the rest of this model can join
 -- on the resolver as if it were one-row-per-address (its old shape).
@@ -129,11 +145,24 @@ safe_creation AS (
     lower(safe_address) AS address,
     block_date AS safe_creation_date
   FROM `dbt`.`int_execution_safes`
+),
+
+address_spine AS (
+  SELECT DISTINCT address FROM (
+    SELECT address FROM resolver_merged
+    UNION ALL SELECT address FROM balance_summary
+    UNION ALL SELECT address FROM movement_summary
+    UNION ALL SELECT address FROM ga_users
+    UNION ALL SELECT address FROM ga_gpay
+    UNION ALL SELECT address FROM gpay
+    UNION ALL SELECT address FROM yields
+    UNION ALL SELECT address FROM safe_creation
+  )
 )
 
 SELECT
-  coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address, sc.address) AS address,
-  coalesce(nullIf(r.display_name, ''), r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address, sc.address) AS display_name,
+  s.address AS address,
+  coalesce(nullIf(r.display_name, ''), s.address) AS display_name,
   r.is_safe,
   r.is_safe_owner,
   r.is_circles_avatar,
@@ -192,12 +221,13 @@ SELECT
   y.total_lending_balance_usd,
   y.active_lp_positions,
   y.active_lending_positions
-FROM resolver_merged r
-FULL OUTER JOIN balance_summary b ON b.address = r.address
-FULL OUTER JOIN movement_summary m ON m.address = coalesce(r.address, b.address)
-FULL OUTER JOIN ga_users ga ON ga.address = coalesce(r.address, b.address, m.address)
-FULL OUTER JOIN ga_gpay gg ON gg.address = coalesce(r.address, b.address, m.address, ga.address)
-FULL OUTER JOIN gpay gp ON gp.address = coalesce(r.address, b.address, m.address, ga.address, gg.address)
-FULL OUTER JOIN yields y ON y.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address)
-LEFT JOIN safe_creation sc ON sc.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address)
-LEFT JOIN linked_summary ls ON ls.address = coalesce(r.address, b.address, m.address, ga.address, gg.address, gp.address, y.address)
+FROM address_spine s
+LEFT JOIN resolver_merged  r  ON r.address  = s.address
+LEFT JOIN balance_summary  b  ON b.address  = s.address
+LEFT JOIN movement_summary m  ON m.address  = s.address
+LEFT JOIN ga_users         ga ON ga.address = s.address
+LEFT JOIN ga_gpay          gg ON gg.address = s.address
+LEFT JOIN gpay             gp ON gp.address = s.address
+LEFT JOIN yields           y  ON y.address  = s.address
+LEFT JOIN safe_creation    sc ON sc.address = s.address
+LEFT JOIN linked_summary   ls ON ls.address = s.address
