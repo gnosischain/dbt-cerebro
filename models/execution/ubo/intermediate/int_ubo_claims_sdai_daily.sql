@@ -1,9 +1,32 @@
-﻿{{
+﻿{% set start_month = var('start_month', none) %}
+{% set end_month   = var('end_month', none) %}
+{% set incr_end    = var('incremental_end_date', none) %}
+
+{#
+  Was materialized='table': it rebuilt six years of claims from the full census priced
+  model every night. That input grew from ~390M to ~426M rows when the 2026-09 census
+  repair recovered WxDAI's missing days, and the rebuild then exceeded the server's
+  10.8 GiB ceiling -- ClickHouse code 241 on three consecutive nightly crons
+  (2026-09-19/20/21), retries included, despite the spill settings below.
+
+  Each day is computed independently from that day's balances -- no carry-forward, no
+  {{ this }} -- so the model is naturally incremental. insert_overwrite on the existing
+  monthly partition rebuilds the current month (~7M input rows) instead of all history.
+  The window comes from apply_monthly_incremental_filter, which is strategy-aware: under
+  insert_overwrite it returns WHOLE months, because REPLACE PARTITION would otherwise
+  delete the rest of the month a narrower window landed in.
+
+  unique_key is dropped deliberately: insert_overwrite replaces whole partitions and must
+  never be combined with a unique_key (see docs/lessons/staged-insert-overwrite-wipe.md).
+  Dedup is still handled by the ReplacingMergeTree order_by.
+#}
+
+{{
     config(
-        materialized='table',
+        materialized='incremental',
+        incremental_strategy=('append' if (start_month or incr_end) else 'insert_overwrite'),
         engine='ReplacingMergeTree()',
         order_by='(date, container_address, ubo_address, token_address)',
-        unique_key='(date, container_address, ubo_address, token_address)',
         partition_by='toStartOfMonth(date)',
         settings={'allow_nullable_key': 1},
         pre_hook=[
@@ -37,6 +60,12 @@ sdai_holders AS (
       AND balance > 0
       AND lower(address) != lower('{{ sdai_address }}')
       AND date < today()
+      {% if start_month and end_month %}
+        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+      {% endif %}
 ),
 
 total_sdai_supply AS (
@@ -60,6 +89,12 @@ wxdai_reserve AS (
       AND symbol = 'WxDAI'
       AND balance > 0
       AND date < today()
+      {% if start_month and end_month %}
+        AND toStartOfMonth(date) >= toDate('{{ start_month }}')
+        AND toStartOfMonth(date) <= toDate('{{ end_month }}')
+      {% else %}
+        {{ apply_monthly_incremental_filter('date', 'date', 'true') }}
+      {% endif %}
 )
 
 -- ─── PROPORTIONAL WxDAI CLAIMS ────────────────────────────────────────────────

@@ -601,6 +601,15 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
+    agent:
+      grain: (date, container_address, ubo_address, token_address) — one row per sDAI holder per day, giving that holder's proportional claim on the vault's WxDAI reserve.
+      invariants:
+      - Not cumulative. Each day is computed solely from that day's census balances, so a wrong day cannot propagate and a repaired day needs no reseeding.
+      - Incremental with insert_overwrite on toStartOfMonth(date). The window comes from apply_monthly_incremental_filter, which returns WHOLE months under this strategy — a day-bounded window would REPLACE the partition and delete the rest of the month.
+      - No unique_key. insert_overwrite replaces whole partitions and must never be combined with one; dedup is the ReplacingMergeTree order_by.
+      - Claims are proportional, so they only reconcile against the vault's own WxDAI balance for that day. A day where the census lacks either sDAI holders or the vault's WxDAI row yields no rows rather than a partial total.
+      - Converted from materialized='table' on 2026-09-21: the full rebuild scanned the entire census priced model (~426M rows) nightly and exceeded the server memory ceiling on three consecutive crons once the census repair grew that input.
+      reprocess_runbook: "Month repair: re-run with vars {start_month, end_month} (append path) into an EMPTY range, or drop the month partition first. Full history: dbt run --full-refresh when the server is idle."
   tests:
   - elementary.schema_changes:
       severity: warn
