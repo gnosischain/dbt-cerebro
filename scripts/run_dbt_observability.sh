@@ -503,8 +503,24 @@ if [ "$ELEMENTARY_ENABLED" = "1" ]; then
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────
+# step_results is appended by run_step at the moment a step finishes, so it still
+# reads FAIL for a batch that dbt-run:retry-transient later recovered (the recovery
+# flips step_exit_codes, which is what the exit code below actually uses). That made
+# a fully-recovered run print "dbt-run:all=FAIL(rc=2)" on its last line while exiting
+# 0 -- read on its own it looks like a failed run, and it was reported as one.
+# Reconcile the display against the authoritative map before printing.
+summary_results=()
+for entry in "${step_results[@]}"; do
+  entry_name="${entry%%=*}"
+  if [[ "$entry" == *"=FAIL"* ]] && [ "${step_exit_codes[$entry_name]:-1}" -eq 0 ]; then
+    summary_results+=("${entry_name}=PASS(recovered)")
+  else
+    summary_results+=("$entry")
+  fi
+done
+
 echo ""
-echo "[$(date -u)] Run complete. Results: ${step_results[*]}"
+echo "[$(date -u)] Run complete. Results: ${summary_results[*]}"
 
 # Determine exit code based on mandatory steps
 overall_exit=0
