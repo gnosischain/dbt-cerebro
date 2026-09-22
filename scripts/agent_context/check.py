@@ -13,6 +13,10 @@ Steps:
      (meta.agent grain/invariants) fails unless listed in
      agent_context/contract_ratchet.allow. Untouched legacy gaps are only
      reported. --strict also fails on any reported (non-allowlisted) gap.
+     A FROZEN model (tagged `deprecated`, no longer tagged `production`) is
+     exempt: the cron selects on tag:production, so it is never built and its
+     hazards can never fire. Retiring models in bulk must not force contract
+     authoring on the very models being retired.
   4. Composes the static CI gates (no_delete_insert, check_api_tags,
      check_doc_coverage) so local == CI.
 
@@ -104,6 +108,18 @@ def load_artifact() -> dict:
     return json.loads(path.read_text())
 
 
+def is_frozen_deprecated(model: dict) -> bool:
+    """True for a model tagged `deprecated` that no longer carries `production`.
+
+    The cron selects on tag:production, so such a model is never built: its
+    hazards cannot fire and there is no run for a contract to guard. Distinct
+    from the ratchet allowlist, which defers contract authoring on models that
+    are still live.
+    """
+    tags = model.get("tags") or []
+    return "deprecated" in tags and "production" not in tags
+
+
 def load_allowlist() -> set[str]:
     if not RATCHET_ALLOW.exists():
         return set()
@@ -170,7 +186,9 @@ def main() -> int:
         for v in c.get("validation", []):
             if v not in validations:
                 validations.append(v)
-        if m["high_risk"] and not m["explicit_contract"] and name not in allow:
+        if is_frozen_deprecated(m):
+            print("    frozen (deprecated, not production) — contract not required")
+        elif m["high_risk"] and not m["explicit_contract"] and name not in allow:
             blocking.append(
                 f"{name}: changed high-risk model without meta.agent grain/invariants "
                 f"(add the contract, or allowlist in {RATCHET_ALLOW.name})"
@@ -180,6 +198,7 @@ def main() -> int:
     gaps = [
         n for n, m in models.items()
         if m["high_risk"] and not m["explicit_contract"] and n not in allow and n not in known
+        and not is_frozen_deprecated(m)
     ]
     print(f"\nRatchet: {len(gaps)} untouched high-risk models still lack explicit contracts "
           f"(reported only{'; --strict blocks' if args.strict else ''}).")
