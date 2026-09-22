@@ -9,11 +9,13 @@
     pre_hook=["SET allow_experimental_json_type = 1"],
     post_hook=["SET allow_experimental_json_type = 0"],
     query_settings={
-        'max_threads': '2',
+        'max_threads': '1',
         'max_memory_usage': '6000000000',
         'memory_usage_overcommit_max_wait_microseconds': '60000000',
-        'max_bytes_before_external_sort': '500000000',
-        'max_bytes_before_external_group_by': '500000000'
+        'max_bytes_before_external_sort': '100000000',
+        'max_bytes_before_external_group_by': '100000000',
+        'max_insert_block_size': '262144',
+        'min_insert_block_size_rows': '262144'
     }
   )
 }}
@@ -23,10 +25,27 @@
 
   Materialized as a table, not an incremental append, on purpose: the expensive
   work (scanning execution.logs) already happened in
-  contracts_hopr_Channels_events. This model reads only that small decoded table
-  (~2M rows), so a full rebuild is cheap and it sidesteps the append-watermark
-  hazard class entirely (logs landing below a high-water mark never being
-  decoded, and appending over a populated partition duplicating rows).
+  contracts_hopr_Channels_events. This model reads only that decoded table, so a
+  full rebuild stays bounded and it sidesteps the append-watermark hazard class
+  entirely (logs landing below a high-water mark never being decoded, and
+  appending over a populated partition duplicating rows).
+
+  That source is 5.2M rows as of 2026-09, not the ~2M this header used to claim,
+  so "cheap" is no longer the word. Re-measure before assuming a table rebuild is
+  still the right trade.
+
+  WHY THE query_settings ARE WHAT THEY ARE. Measured 2026-09-22, same data, same
+  server: the rebuild peaked at 3.68 GiB and was repeatedly killed by the
+  OvercommitTracker at 2.4-2.8 GiB because the replica had under 2 GiB free. Two
+  changes took it to 1.79 GiB / 26s, byte-identical output (5,158,181 rows,
+  cityHash64 fingerprint 6100965447899039257 at the 2026-09-21 12:59:35 cutoff):
+
+    * the single-scope window below (two sorts -> one)
+    * max_threads 2 -> 1, spill thresholds 500MB -> 100MB, and a bounded
+      insert block (262144 rows) so the write side stops buffering whole parts
+
+  max_threads=1 costs ~10s of wall clock and is the point: two threads means two
+  sort buffers. Do not raise these back without re-measuring peak memory.
 
   Three things this model reconciles:
 
@@ -184,28 +203,40 @@ unpacked AS (
     FROM typed
 ),
 
--- channel_id <-> (source, destination) is a bijection, so the endpoints can be
--- filled across the whole partition from whichever event carried them.
-filled AS (
+-- Two window computations, ONE scope, on purpose. DO NOT split these back into
+-- separate CTEs for readability:
+--
+--   * `source_node`/`destination_node` -- channel_id <-> (source, destination) is a
+--     bijection, so the endpoints are filled across the whole partition from whichever
+--     event carried them.
+--   * `prev_balance_wei` -- neither network emits an amount; every balance-bearing event
+--     reports the NEW balance, so redeemed / funded value is the diff against the previous
+--     balance-bearing event in the same channel.
+--
+-- A CTE boundary is a sort boundary: ClickHouse sorts the whole 5.2M-row set once PER
+-- SCOPE, so having these in two CTEs cost two full sorts. Measured 2026-09-22 on the
+-- compiled SQL: two scopes = 2 `Sorting for window` steps, 1.67 GiB peak, 15.6M rows read;
+-- one scope = 1 sort, 1.13 GiB, 10.4M rows read, byte-identical output. Giving the first
+-- window an explicit ORDER BY is NOT enough -- the specs then match but sit on different
+-- table aliases, and it still sorts twice.
+--
+-- The frames differ and that is fine: one sort feeds both WindowTransforms. w_all's
+-- UNBOUNDED/UNBOUNDED frame is the max over the whole partition, i.e. exactly the
+-- unordered window it replaces.
+windowed AS (
     SELECT
         u.* EXCEPT (source_node_raw, destination_node_raw),
-        max(u.source_node_raw)      OVER (PARTITION BY u.network, u.channel_id) AS source_node,
-        max(u.destination_node_raw) OVER (PARTITION BY u.network, u.channel_id) AS destination_node
+        max(u.source_node_raw)      OVER w_all  AS source_node,
+        max(u.destination_node_raw) OVER w_all  AS destination_node,
+        anyLast(u.balance_wei)      OVER w_prev AS prev_balance_wei
     FROM unpacked AS u
-),
-
--- Neither network emits an amount: every balance-bearing event reports the NEW
--- balance. Redeemed / funded value is therefore the diff against the previous
--- balance-bearing event in the same channel.
-delta AS (
-    SELECT
-        f.*,
-        anyLast(f.balance_wei) OVER (
-            PARTITION BY f.network, f.channel_id
-            ORDER BY f.block_number, f.log_index
-            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-        )                                                        AS prev_balance_wei
-    FROM filled AS f
+    WINDOW
+        w_all  AS (PARTITION BY u.network, u.channel_id
+                   ORDER BY u.block_number, u.log_index
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING),
+        w_prev AS (PARTITION BY u.network, u.channel_id
+                   ORDER BY u.block_number, u.log_index
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
 )
 
 SELECT
@@ -249,4 +280,4 @@ SELECT
             status_code = 2, 'PENDING_TO_CLOSE',
             'unexpected')                                             AS channel_status,
     packing_overflow_check
-FROM delta
+FROM windowed
