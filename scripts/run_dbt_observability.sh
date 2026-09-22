@@ -306,16 +306,91 @@ if [ -d "$FAILED_BATCHES_DIR" ]; then
   if [ -n "$TRANSIENT_IDS" ]; then
     # dbt's --select accepts fqn selectors; unique_ids look like
     # "model.project.name" — strip to "name+" for descendants.
-    retry_selector=""
+    # Retry policy. The old behaviour was ONE pass over `<model>+` for every
+    # transient failure at once, run immediately after the batch that failed.
+    # Two consequences, both seen on 2026-09-22:
+    #   * No backoff. A Code 241 means the SERVER is out of memory; retrying
+    #     seconds later hits the same saturated server. Both models failed again
+    #     within 59s and were left failed for the night.
+    #   * One batch. Three parents and their 62 descendants went in a single
+    #     invocation, so when two parents failed dbt skipped all 58 children --
+    #     including 34 user-facing api marts (28 revenue, 6 HOPR) whose OTHER
+    #     parent had recovered fine.
+    # Now: retry the PARENTS only, several times, waiting longer each round; then
+    # build descendants for whichever parents came back. A stubborn model no
+    # longer takes its siblings' subtrees down with it.
+    RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
+    RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-300}"
+
+    pending=""
     for uid in $TRANSIENT_IDS; do
-      node_name="${uid##*.}"
-      retry_selector="$retry_selector $node_name+"
+      pending="$pending ${uid##*.}"
     done
-    echo "[$(date -u)] Retrying transient failures: $retry_selector"
-    run_step "dbt-run:retry-transient" \
-      dbt run --select $retry_selector --threads 1 \
-      --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" \
-      || true
+    recovered_parents=""
+    retry_rc=0
+    attempt=1
+
+    while [ -n "$(echo "$pending" | tr -d ' ')" ] && [ "$attempt" -le "$RETRY_ATTEMPTS" ]; do
+      if [ "$attempt" -gt 1 ]; then
+        wait_s=$(( RETRY_BACKOFF_SECONDS * (attempt - 1) ))
+        echo "[$(date -u)] Waiting ${wait_s}s before retry attempt ${attempt} (memory pressure needs time to clear)"
+        sleep "$wait_s"
+      fi
+      echo "[$(date -u)] Retry attempt ${attempt}/${RETRY_ATTEMPTS} for:$pending"
+      dbt run --select $pending --threads 1 \
+        --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || true
+
+      # Fail CLOSED: if this cannot be determined, keep every model pending.
+      # Returning "nothing is still failing" on an error would mark broken models
+      # recovered and then build descendants on top of them.
+      still_failing="$(python - "$pending" "$PROJECT_DIR" <<'PYSTILL'
+import json, sys
+from pathlib import Path
+
+pending = set(sys.argv[1].split())
+results = Path(sys.argv[2]) / 'target' / 'run_results.json'
+try:
+    data = json.loads(results.read_text())
+    ok = {r['unique_id'].split('.')[-1]
+          for r in data.get('results', []) if r.get('status') == 'success'}
+except Exception:
+    ok = set()
+print(' '.join(sorted(pending - ok)))
+PYSTILL
+)" || still_failing="$pending"
+      if [ -z "${still_failing+x}" ]; then still_failing="$pending"; fi
+      for n in $pending; do
+        case " $still_failing " in *" $n "*) ;; *) recovered_parents="$recovered_parents $n" ;; esac
+      done
+      pending="$still_failing"
+      attempt=$(( attempt + 1 ))
+    done
+
+    if [ -n "$(echo "$pending" | tr -d ' ')" ]; then
+      retry_rc=1
+      echo "[$(date -u)] Still failing after ${RETRY_ATTEMPTS} attempts:$pending"
+    fi
+
+    # Build descendants of the parents that came back, so a sibling's failure
+    # does not strand them. `<name>+` includes the parent, which is a no-op here.
+    if [ -n "$(echo "$recovered_parents" | tr -d ' ')" ]; then
+      desc_selector=""
+      for n in $recovered_parents; do
+        desc_selector="$desc_selector ${n}+"
+      done
+      echo "[$(date -u)] Building descendants of recovered parents:$desc_selector"
+      dbt run --select $desc_selector --threads 1 \
+        --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || retry_rc=1
+    fi
+
+    step_exit_codes["dbt-run:retry-transient"]=$retry_rc
+    if [ "$retry_rc" -eq 0 ]; then
+      step_results+=("dbt-run:retry-transient=PASS")
+      echo "[$(date -u)] Completed: dbt-run:retry-transient"
+    else
+      step_results+=("dbt-run:retry-transient=FAIL(rc=$retry_rc)")
+      echo "[$(date -u)] Failed: dbt-run:retry-transient (exit $retry_rc)"
+    fi
 
     # Flip original batch exit codes for nodes that the retry recovered.
     if [ -f "${PROJECT_DIR}/target/run_results.json" ]; then
