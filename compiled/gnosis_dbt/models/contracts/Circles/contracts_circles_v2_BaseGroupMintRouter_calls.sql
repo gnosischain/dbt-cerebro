@@ -1,3 +1,5 @@
+-- DEPRECATED: no downstream consumers; frozen at cutover, not built by cron (no production tag).
+-- To re-enable: restore the production tag and seed with dbt run --full-refresh -s <model>.
 
 
 

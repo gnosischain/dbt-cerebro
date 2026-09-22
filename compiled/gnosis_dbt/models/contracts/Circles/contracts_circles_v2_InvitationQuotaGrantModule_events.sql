@@ -1,3 +1,5 @@
+-- DEPRECATED: no downstream consumers; frozen at cutover, not built by cron (no production tag).
+-- To re-enable: restore the production tag and seed with dbt run --full-refresh -s <model>.
 
 
 
@@ -65,8 +67,8 @@ logs AS (
           
         
         
-        AND block_number > 48313957
-        AND block_timestamp >= toDateTime('2026-09-18 13:13:40')
+        AND block_number > 48379789
+        AND block_timestamp >= toDateTime('2026-09-22 10:29:45')
         
         
         

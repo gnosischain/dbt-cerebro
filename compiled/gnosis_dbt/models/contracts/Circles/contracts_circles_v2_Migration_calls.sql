@@ -1,3 +1,5 @@
+-- DEPRECATED: no downstream consumers; frozen at cutover, not built by cron (no production tag).
+-- To re-enable: restore the production tag and seed with dbt run --full-refresh -s <model>.
 
 -- Trace-based decoder (source = execution.traces, not execution.transactions).
 -- Almost every migrate() call comes through a Safe / AA bundler, so the
@@ -79,8 +81,8 @@ WITH
             
           
           
-          AND block_number > 48283976
-          AND block_timestamp >= toDateTime('2026-09-16 18:43:50')
+          AND block_number > 48378717
+          AND block_timestamp >= toDateTime('2026-09-22 08:58:50')
           
           
           
