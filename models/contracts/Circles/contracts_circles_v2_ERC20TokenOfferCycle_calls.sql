@@ -1,3 +1,5 @@
+-- DEPRECATED: no downstream consumers; frozen at cutover, not built by cron (no production tag).
+-- To re-enable: restore the production tag and seed with dbt run --full-refresh -s <model>.
 {{
     config(
         materialized='incremental',
@@ -7,7 +9,7 @@
         unique_key='(contract_address, block_timestamp, transaction_hash)',
         partition_by='toStartOfMonth(block_timestamp)',
         settings={'allow_nullable_key': 1},
-        tags=['production', 'contracts', 'circles_v2', 'calls', 'microbatch'],
+        tags=['deprecated', 'contracts', 'circles_v2', 'calls', 'microbatch'],
         pre_hook=["SET allow_experimental_json_type = 1"],
         post_hook=["SET allow_experimental_json_type = 0"]
     )
