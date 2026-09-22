@@ -4,7 +4,7 @@
     "high_risk": 322,
     "models": 1281
   },
-  "inputs_fingerprint": "f775535e73eb1b5e1ce0e05056783559187e81655a5b52f9318ae1ba8da895f7",
+  "inputs_fingerprint": "9d97c8f61e10fcef4b3fea02b52559471f8ce4f0ab0c6be9ae44b33dd304babc",
   "lessons": {
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
@@ -97089,7 +97089,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "209f66eda9731f7a25ff80f76df496b52fa04cc73519284926246e1643b52bba",
+  "models_hash": "a9f624ec89631bb2c5fbc44c2d334edd43d245e97487dec4d2752328ecb65f04",
   "project": "gnosis_dbt",
   "schema_version": 2
 }
