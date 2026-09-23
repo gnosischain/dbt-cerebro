@@ -38,7 +38,12 @@ TRANSIENT_RE = re.compile(
     r"|SOCKET_TIMEOUT"
     r"|NETWORK_ERROR"
     r"|SSLError"
-    r"|UNEXPECTED_EOF_WHILE_READING"
+    # Both spellings: ClickHouse names the constant UNEXPECTED_EOF_WHILE_READING,
+    # but dbt-clickhouse surfaces the prose form "Unexpected EOF while reading
+    # bytes". Matching only the underscored constant silently filed every dropped
+    # connection as PERMANENT -- on 2026-09-23 that cost int_hopr_channels_events
+    # and fct_execution_circles_v2_avatar_tokens_held_count their retries.
+    r"|UNEXPECTED[_ ]EOF[_ ]WHILE[_ ]READING"
     r"|HTTPSConnectionPool"
     r"|RemoteDisconnected"
     r"|ConnectionResetError"
