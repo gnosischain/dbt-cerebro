@@ -21,35 +21,57 @@ import sys
 from pathlib import Path
 
 
-# NOTE: Code 241 / MEMORY_LIMIT_EXCEEDED are intentionally NOT transient.
-# An OOM is deterministic — retrying the identical query re-OOMs (wasted the
-# `dbt-run:retry-transient` step in the 2026-06-08 run). The real fix is a
-# bounded build / memory hooks, not a retry. Connection drops (SSL EOF,
-# HTTPSConnectionPool, RemoteDisconnected, broken pipe) ARE genuine transients
-# and were previously misclassified as permanent (no retry). Code 394
-# QUERY_WAS_CANCELLED is the server dropping in-flight queries during a
-# replica restart/replacement (2026-09-08 11:10: replica dkczd1i came up at
-# 11:10:25 and int_execution_gnosis_app_gpay_wallets died 11 s earlier with
-# 394; 81 descendants were skipped because it was filed as permanent).
-TRANSIENT_RE = re.compile(
-    r"Code:\s*(?:159|209|210|394)\b"
-    r"|QUERY_WAS_CANCELLED"
-    r"|TIMEOUT_EXCEEDED"
-    r"|SOCKET_TIMEOUT"
-    r"|NETWORK_ERROR"
-    r"|SSLError"
-    # Both spellings: ClickHouse names the constant UNEXPECTED_EOF_WHILE_READING,
-    # but dbt-clickhouse surfaces the prose form "Unexpected EOF while reading
-    # bytes". Matching only the underscored constant silently filed every dropped
-    # connection as PERMANENT -- on 2026-09-23 that cost int_hopr_channels_events
-    # and fct_execution_circles_v2_avatar_tokens_held_count their retries.
-    r"|UNEXPECTED[_ ]EOF[_ ]WHILE[_ ]READING"
-    r"|HTTPSConnectionPool"
-    r"|RemoteDisconnected"
-    r"|ConnectionResetError"
-    r"|Broken pipe",
+# RETRY BY DEFAULT. This used to be an allowlist of known-transient patterns,
+# with everything else filed PERMANENT (no retry). That default is wrong, and it
+# failed twice in two days: 2026-09-23 the prose spelling "Unexpected EOF while
+# reading bytes" did not match the constant UNEXPECTED_EOF_WHILE_READING, costing
+# int_hopr_channels_events and fct_execution_circles_v2_avatar_tokens_held_count
+# their retries; 2026-09-24 a Code 241 that did not carry the literal string
+# "OvercommitTracker" cost int_execution_circles_v2_wrapper_transfers its retry
+# and left it a day stale while the job reported success.
+#
+# An allowlist cannot win: every new error spelling falls through to "don't
+# retry", silently. The cost is also lopsided -- a needless retry of a real SQL
+# bug is one fast re-run (wrapper_transfers failed in 0.11 s) and still reports
+# failed, whereas a missed retry is 24 h of stale data reported as success.
+#
+# So: a node is PERMANENT only when the error is provably deterministic and will
+# fail identically on a re-run -- SQL and schema bugs. Everything else retries.
+PERMANENT_RE = re.compile(
+    # Deterministic ClickHouse query errors: the SQL itself is wrong.
+    r"Code:\s*(?:"
+    r"10"      # NOT_FOUND_COLUMN_IN_BLOCK
+    r"|16"     # NO_SUCH_COLUMN_IN_TABLE
+    r"|43"     # ILLEGAL_TYPE_OF_ARGUMENT
+    r"|44"     # ILLEGAL_COLUMN
+    r"|47"     # UNKNOWN_IDENTIFIER
+    r"|53"     # TYPE_MISMATCH
+    r"|60"     # UNKNOWN_TABLE
+    r"|62"     # SYNTAX_ERROR
+    r"|81"     # UNKNOWN_DATABASE
+    r"|122"    # INCOMPATIBLE_COLUMNS
+    r"|179"    # MULTIPLE_EXPRESSIONS_FOR_ALIAS
+    r"|352"    # AMBIGUOUS_COLUMN_NAME
+    r"|452"    # SETTING_CONSTRAINT_VIOLATION (CH Cloud refuses the setting)
+    r")\b"
+    r"|UNKNOWN_IDENTIFIER|SYNTAX_ERROR|UNKNOWN_TABLE|NOT_FOUND_COLUMN_IN_BLOCK"
+    r"|ILLEGAL_TYPE_OF_ARGUMENT|TYPE_MISMATCH|INCOMPATIBLE_COLUMNS"
+    r"|AMBIGUOUS_COLUMN_NAME"
+    # dbt-side failures: jinja, ref() and contract errors are deterministic too.
+    r"|Compilation Error"
+    r"|Parsing Error",
     re.IGNORECASE,
 )
+
+# A per-query OOM IS deterministic: our own query asked for more than the limit,
+# so it re-OOMs on retry (the 2026-06-08 run wasted its retry step this way).
+# But a Code 241 naming `(total)` is the opposite -- the SERVER was saturated and
+# this query was picked as the victim, which clears once the cron goes quiet.
+# AGENTS.md states the marker explicitly: "(total)" plus "allocate chunk 0.00 B".
+# Match the signature, never the presence of the word "OvercommitTracker", which
+# only some builds emit.
+OOM_RE = re.compile(r"Code:\s*241\b|MEMORY_LIMIT_EXCEEDED", re.IGNORECASE)
+OOM_VICTIM_RE = re.compile(r"\(total\)|OvercommitTracker", re.IGNORECASE)
 
 
 def classify_run_results(path: Path) -> tuple[set[str], set[str]]:
@@ -68,18 +90,26 @@ def classify_run_results(path: Path) -> tuple[set[str], set[str]]:
         if not unique_id:
             continue
         message = result.get("message") or ""
-        # A memory error (Code 241 / MEMORY_LIMIT_EXCEEDED) is deterministic for
-        # our own query (do NOT retry) UNLESS the cluster OvercommitTracker picked
-        # us as a cross-tenant victim — that is independent of our batch and clears
-        # on retry. Mirrors the policy in scripts/full_refresh/refresh.py.
-        is_overcommit_victim = "OvercommitTracker" in message and (
-            "Code: 241" in message or "MEMORY_LIMIT_EXCEEDED" in message
-        )
-        if TRANSIENT_RE.search(message) or is_overcommit_victim:
-            transient.add(unique_id)
-        else:
+        if classify_message(message) == "permanent":
             permanent.add(unique_id)
+        else:
+            transient.add(unique_id)
     return transient, permanent
+
+
+def classify_message(message: str) -> str:
+    """Return "permanent" only for errors that will fail identically on a re-run.
+
+    Default is "transient": retrying costs one fast re-run, not retrying costs a
+    day of stale data reported as success. See the PERMANENT_RE note above.
+    """
+    # A per-query OOM is deterministic; the same query re-OOMs. A `(total)` OOM
+    # means the server was saturated and we were the victim -- that clears.
+    if OOM_RE.search(message):
+        return "transient" if OOM_VICTIM_RE.search(message) else "permanent"
+    if PERMANENT_RE.search(message):
+        return "permanent"
+    return "transient"
 
 
 def main() -> int:
