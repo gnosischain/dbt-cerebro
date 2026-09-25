@@ -319,6 +319,27 @@ if [ -d "$FAILED_BATCHES_DIR" ]; then
     # Now: retry the PARENTS only, several times, waiting longer each round; then
     # build descendants for whichever parents came back. A stubborn model no
     # longer takes its siblings' subtrees down with it.
+    # Of the given model names, print those that did NOT succeed in the most recent
+    # `dbt run` (target/run_results.json). Fails CLOSED: if the results cannot be read,
+    # every name is reported still failing. Returning "nothing is still failing" on an
+    # error would mark broken models recovered and then build descendants on top of them.
+    still_failing_in_last_run() {
+      python - "$1" "$PROJECT_DIR" <<'PYSTILL'
+import json, sys
+from pathlib import Path
+
+pending = set(sys.argv[1].split())
+results = Path(sys.argv[2]) / 'target' / 'run_results.json'
+try:
+    data = json.loads(results.read_text())
+    ok = {r['unique_id'].split('.')[-1]
+          for r in data.get('results', []) if r.get('status') == 'success'}
+except Exception:
+    ok = set()
+print(' '.join(sorted(pending - ok)))
+PYSTILL
+    }
+
     RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
     RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-300}"
 
@@ -340,24 +361,7 @@ if [ -d "$FAILED_BATCHES_DIR" ]; then
       dbt run --select $pending --threads 1 \
         --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || true
 
-      # Fail CLOSED: if this cannot be determined, keep every model pending.
-      # Returning "nothing is still failing" on an error would mark broken models
-      # recovered and then build descendants on top of them.
-      still_failing="$(python - "$pending" "$PROJECT_DIR" <<'PYSTILL'
-import json, sys
-from pathlib import Path
-
-pending = set(sys.argv[1].split())
-results = Path(sys.argv[2]) / 'target' / 'run_results.json'
-try:
-    data = json.loads(results.read_text())
-    ok = {r['unique_id'].split('.')[-1]
-          for r in data.get('results', []) if r.get('status') == 'success'}
-except Exception:
-    ok = set()
-print(' '.join(sorted(pending - ok)))
-PYSTILL
-)" || still_failing="$pending"
+      still_failing="$(still_failing_in_last_run "$pending")" || still_failing="$pending"
       if [ -z "${still_failing+x}" ]; then still_failing="$pending"; fi
       for n in $pending; do
         case " $still_failing " in *" $n "*) ;; *) recovered_parents="$recovered_parents $n" ;; esac
@@ -367,12 +371,12 @@ PYSTILL
     done
 
     if [ -n "$(echo "$pending" | tr -d ' ')" ]; then
-      retry_rc=1
       echo "[$(date -u)] Still failing after ${RETRY_ATTEMPTS} attempts:$pending"
     fi
 
     # Build descendants of the parents that came back, so a sibling's failure
     # does not strand them. `<name>+` includes the parent, which is a no-op here.
+    desc_rc=0
     if [ -n "$(echo "$recovered_parents" | tr -d ' ')" ]; then
       desc_selector=""
       for n in $recovered_parents; do
@@ -380,7 +384,33 @@ PYSTILL
       done
       echo "[$(date -u)] Building descendants of recovered parents:$desc_selector"
       dbt run --select $desc_selector --threads 1 \
-        --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || retry_rc=1
+        --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || desc_rc=1
+
+      # This run can rebuild a model the ladder gave up on: when a still-failing model
+      # is a CHILD of a parent that recovered, `<parent>+` builds it again, by which
+      # time the warehouse has often cleared. So decide the verdict only now, against
+      # THIS run's results. The verdict used to be latched before this step: on
+      # 2026-09-25 int_execution_gnosis_app_user_events failed all three attempts, then
+      # built here at 09:24, and the job still exited 1 on a FAIL fixed at 09:17.
+      if [ -n "$(echo "$pending" | tr -d ' ')" ]; then
+        rescued_from="$pending"
+        pending="$(still_failing_in_last_run "$pending")" || pending="$rescued_from"
+        for n in $rescued_from; do
+          case " $pending " in *" $n "*) ;; *)
+            echo "[$(date -u)] Rescued by the descendants build: $n" ;;
+          esac
+        done
+      fi
+    fi
+
+    # Fail only on what is genuinely left: a model no attempt could build, or a real
+    # failure in the descendants build itself.
+    retry_rc=0
+    if [ -n "$(echo "$pending" | tr -d ' ')" ] || [ "$desc_rc" -ne 0 ]; then
+      retry_rc=1
+    fi
+    if [ -n "$(echo "$pending" | tr -d ' ')" ]; then
+      echo "[$(date -u)] Unrecovered after the ladder and the descendants build:$pending"
     fi
 
     step_exit_codes["dbt-run:retry-transient"]=$retry_rc
