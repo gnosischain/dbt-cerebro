@@ -23,15 +23,18 @@ SELECT
     trusts_given_count                              AS trusts_given,
     trusts_received_count                           AS trusts_received,
     trusts_mutual_count                             AS trusts_mutual,
-    -- Circles protocol version (1 = v1, 2 = v2 — validated 99.9% vs int_execution_circles_v2_avatars)
-    version                                         AS circles_version
+    -- Circles protocol version (1 = v1, 2 = v2), derived from avatar_type. Upstream dropped
+    -- the `version` field (envio_ga-indexer PR #1, 2026-09-30) and serves only v2 avatars
+    -- since; rows written after that carry version = 0 (column default). On all 175,373 ids
+    -- observed before the drop this mapping reproduces `version` exactly. The v1 set is closed.
+    toInt64(if(avatar_type IN ('Signup', 'OrganizationSignup', 'Migrating'), 1, 2)) AS circles_version
 FROM (
     {{ envio_latest(
         'envio_ga', 'avatar',
         ['avatar_type', 'invited_by', 'verification_badge', 'is_early_supporter',
          'is_base_group', 'profile_id', 'accepted_invite_timestamp', 'timestamp',
          'earned_from_invites', 'trusts_given_count', 'trusts_received_count',
-         'trusts_mutual_count', 'version'],
+         'trusts_mutual_count'],
         version='(_synced_block, ingested_at)'
     ) }}
 )
