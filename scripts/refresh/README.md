@@ -190,8 +190,10 @@ When any plain flush or microbatch slice fails, the runner copies the active `ta
 
 The cron orchestrator runs `classify_failed_nodes.py` against this directory and partitions failed unique_ids into:
 
-- **TRANSIENT** — CH codes 241/159/209/210 or text `MEMORY_LIMIT_EXCEEDED`. Retried with `--threads 1` after the rest of the batch graph completes.
-- **PERMANENT** — everything else. Surfaced in the cron summary; needs a human.
+- **PERMANENT** — only errors that fail identically on a re-run: SQL/schema codes (`PERMANENT_RE` in the script), dbt compilation/parsing errors, and a per-query OOM (241 / `MEMORY_LIMIT_EXCEEDED` **without** `(total)`, including a 341 mutation OOM — that model needs the microbatch path). Surfaced in the cron summary; needs a human.
+- **TRANSIENT** — everything else (retry by default since 2026-09-24): a `(total)` / OvercommitTracker 241, network and timeout errors, and a 341 *"some replicas are inactive … will finish asynchronously"*. Pinned in `tests/test_classify_failed_nodes.py`.
+
+The ladder (`scripts/run_dbt_observability.sh`) retries the transient **parents** with `--threads 1`, up to `RETRY_ATTEMPTS` (3) with a growing `RETRY_BACKOFF_SECONDS` (300 s) wait, then builds the descendants of the parents that recovered. Failures **inside that descendants build** are classified the same way and retried with their descendants, same attempts and backoff (since 2026-10-01: a 341 there on a `delete+insert` model used to leave its async DELETE with no INSERT behind it — a silent hole). A model is judged on its latest status across every run of the ladder.
 
 This is why the orchestrator's `dbt-run:<batch_id>` step always uses `|| true` in the wrapper — failures are routed to the classifier rather than killing the whole pipeline.
 

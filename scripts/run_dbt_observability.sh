@@ -340,8 +340,58 @@ print(' '.join(sorted(pending - ok)))
 PYSTILL
     }
 
+    # TRANSIENT= / PERMANENT= model names for the errors of the most recent `dbt run`,
+    # by the same rule as the main-run stash (classify_failed_nodes.classify_message).
+    # Fails CLOSED: unreadable results come back PERMANENT, so the step fails.
+    classify_last_run() {
+      python - "$PROJECT_DIR" <<'PYCLASS'
+import json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / 'scripts' / 'refresh'))
+from classify_failed_nodes import classify_message
+
+transient, permanent = set(), set()
+try:
+    data = json.loads((root / 'target' / 'run_results.json').read_text())
+    for r in data.get('results', []):
+        if r.get('status') == 'error':
+            name = r['unique_id'].split('.')[-1]
+            kind = classify_message(r.get('message') or '')
+            (transient if kind == 'transient' else permanent).add(name)
+except Exception:
+    permanent.add('run_results_unreadable')
+print('TRANSIENT=' + ' '.join(sorted(transient)))
+print('PERMANENT=' + ' '.join(sorted(permanent)))
+PYCLASS
+    }
+
+    # unique_ids whose LATEST status across every run of this block is success: the
+    # saved earlier runs (RETRY_RESULTS_FILES, oldest first), then the current
+    # target/run_results.json. With nothing saved this is exactly the last run.
+    succeeded_in_block() {
+      python - "$PROJECT_DIR" $RETRY_RESULTS_FILES <<'PYOK'
+import json, sys
+from pathlib import Path
+
+status = {}
+for p in sys.argv[2:] + [str(Path(sys.argv[1]) / 'target' / 'run_results.json')]:
+    try:
+        for r in json.loads(Path(p).read_text()).get('results', []):
+            status[r['unique_id']] = r.get('status')
+    except Exception:
+        pass
+print(' '.join(sorted(u for u, s in status.items() if s == 'success')))
+PYOK
+    }
+
     RETRY_ATTEMPTS="${RETRY_ATTEMPTS:-3}"
     RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-300}"
+    RETRY_RESULTS_DIR="${PROJECT_DIR}/target/retry_results"
+    rm -rf "$RETRY_RESULTS_DIR"
+    mkdir -p "$RETRY_RESULTS_DIR"
+    RETRY_RESULTS_FILES=""
 
     pending=""
     for uid in $TRANSIENT_IDS; do
@@ -401,6 +451,61 @@ PYSTILL
           esac
         done
       fi
+
+      # Failures INSIDE this build get the ladder too. 2026-10-01: two delete+insert
+      # models hit Code 341 ("some replicas are inactive ... will finish asynchronously")
+      # here and nothing retried them. The async DELETE landed with no INSERT behind
+      # it (mmm week 09-21 and mixpanel 09-30 vanished) while dbt-run:all still read
+      # PASS(recovered). A re-run recomputes their month and refills, so classify this
+      # build's failures and retry the transient ones, with their descendants, after a
+      # backoff. A permanent failure still fails the step.
+      desc_permanent=""
+      desc_attempt=1
+      while [ "$desc_rc" -ne 0 ] && [ "$desc_attempt" -le "$RETRY_ATTEMPTS" ]; do
+        desc_classes="$(classify_last_run)"
+        desc_transient="$(echo "$desc_classes" | sed -n 's/^TRANSIENT=//p')"
+        desc_permanent="$desc_permanent $(echo "$desc_classes" | sed -n 's/^PERMANENT=//p')"
+        if [ -z "$(echo "$desc_transient" | tr -d ' ')" ]; then
+          break
+        fi
+        # Keep this run's results: the recovered-batch accounting below needs every run
+        # of this block, not only the last one (the parents are not in the retry).
+        saved="${RETRY_RESULTS_DIR}/desc-$(printf '%02d' "$desc_attempt").json"
+        if cp "${PROJECT_DIR}/target/run_results.json" "$saved" 2>/dev/null; then
+          RETRY_RESULTS_FILES="$RETRY_RESULTS_FILES $saved"
+        fi
+        wait_s=$(( RETRY_BACKOFF_SECONDS * desc_attempt ))
+        echo "[$(date -u)] Descendants build: transient failures:$desc_transient; waiting ${wait_s}s before retry ${desc_attempt}/${RETRY_ATTEMPTS}"
+        sleep "$wait_s"
+        desc_retry_selector=""
+        for n in $desc_transient; do
+          desc_retry_selector="$desc_retry_selector ${n}+"
+        done
+        echo "[$(date -u)] Descendants retry ${desc_attempt}/${RETRY_ATTEMPTS}:$desc_retry_selector"
+        desc_rc=0
+        dbt run --select $desc_retry_selector --threads 1 \
+          --profiles-dir "$PROFILES_DIR" --project-dir "$PROJECT_DIR" || desc_rc=1
+        desc_attempt=$(( desc_attempt + 1 ))
+      done
+      if [ -n "$(echo "$desc_permanent" | tr -d ' ')" ]; then
+        echo "[$(date -u)] Descendants build: permanent failures:$desc_permanent"
+        desc_rc=1
+      fi
+
+      # A parent the ladder gave up on can be rebuilt by these retries as a child of
+      # another; judge it on its latest status across every run of the block.
+      if [ -n "$RETRY_RESULTS_FILES" ] && [ -n "$(echo "$pending" | tr -d ' ')" ]; then
+        ok_names=" "
+        for u in $(succeeded_in_block); do ok_names="$ok_names${u##*.} "; done
+        still=""
+        for n in $pending; do
+          case "$ok_names" in
+            *" $n "*) echo "[$(date -u)] Rescued by the descendants retry: $n" ;;
+            *) still="$still $n" ;;
+          esac
+        done
+        pending="$still"
+      fi
     fi
 
     # Fail only on what is genuinely left: a model no attempt could build, or a real
@@ -422,15 +527,11 @@ PYSTILL
       echo "[$(date -u)] Failed: dbt-run:retry-transient (exit $retry_rc)"
     fi
 
-    # Flip original batch exit codes for nodes that the retry recovered.
+    # Flip original batch exit codes for nodes that the retry recovered. Every run of
+    # this block counts, latest status wins (the descendants retries do not re-run the
+    # parents, so the last run_results.json alone would miss them).
     if [ -f "${PROJECT_DIR}/target/run_results.json" ]; then
-      RECOVERED="$(python -c "
-import json, sys
-data = json.load(open('${PROJECT_DIR}/target/run_results.json'))
-ok = [r['unique_id'] for r in data.get('results', [])
-      if r.get('status') == 'success']
-print(' '.join(ok))
-" 2>/dev/null || echo "")"
+      RECOVERED="$(succeeded_in_block 2>/dev/null || echo "")"
       if [ -n "$RECOVERED" ]; then
         # Remove recovered nodes from the per-batch failure stash so the
         # summary check sees only still-failing nodes.
