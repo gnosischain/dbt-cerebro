@@ -66,8 +66,8 @@ logs AS (
           
         
         
-        AND block_number > 48512098
-        AND block_timestamp >= toDateTime('2026-09-30 06:35:15')
+        AND block_number > 48529097
+        AND block_timestamp >= toDateTime('2026-10-01 06:37:25')
         
         
         
