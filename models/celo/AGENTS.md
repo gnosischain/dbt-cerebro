@@ -1,5 +1,21 @@
 # models/celo/ — scoped guide
 
+> **ARCHIVED 2026-11-03.** Every model in this tree, the `celo_execution` source and the
+> three `celo_*` seeds are disabled in `dbt_project.yml`, and the writer,
+> `cryo-indexer-celo`, is stopped (infrastructure-gnosis-analytics,
+> `google/deployments/gnosis-analytics/cryo-indexer-celo/locals.tf`). Nothing read these
+> models any more: the Gnosis Pay on Celo dashboard view was removed on 2026-08-10. dbt
+> does not drop disabled models, so the tables stay in the warehouse as they were at the
+> last run.
+>
+> To revive: restart the indexer and let it backfill the stopped period first (its stack
+> README). Then revert the commit that added this note; it also restores
+> `semantic/authoring/celo/`, the allowlist entries and the `celo` doc-coverage floor. A
+> stop longer than the incremental runner's slice limit gets the first run REFUSED, so
+> catch up the heavy models with `scripts/full_refresh/refresh.py` (root AGENTS.md,
+> "Refresh levers"). The rest of this guide describes the tree as it was and applies
+> again after that.
+
 Gnosis Pay card activity on Celo (card provisioning, payments, funding,
 balances, retention), built natively from decoded Celo execution logs.
 Read with root AGENTS.md.

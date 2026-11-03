@@ -2,7 +2,7 @@
 
 ![Cerebro dbt](img/header-cerebro-dbt.png)
 
-A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across execution-layer activity, consensus, P2P networking, cross-chain bridges, Gnosis Pay payments (on Gnosis and Celo), web analytics and attribution, protocol revenue, and environmental sustainability metrics.
+A comprehensive [dbt](https://www.getdbt.com/) project for transforming and analyzing Gnosis Chain blockchain data. This project converts raw on-chain data into actionable insights across execution-layer activity, consensus, P2P networking, cross-chain bridges, Gnosis Pay payments (on Gnosis, and on Celo until that tree was archived on 2026-11-03), web analytics and attribution, protocol revenue, and environmental sustainability metrics.
 
 ## Table of Contents
 
@@ -35,7 +35,7 @@ Cerebro dbt transforms Gnosis Chain data across fourteen modules (~1,209 catalog
 | **consensus** | Validator activity, block proposals, attestations, deposits/withdrawals, APY distributions | ~88 |
 | **mixpanel_ga** | Web/app analytics: Mixpanel and Google Analytics sessions, funnels, campaign touchpoints | ~59 |
 | **revenue** | Protocol revenue and fee streams | ~50 |
-| **celo** | Gnosis Pay on Celo: decoded contract events, transactions, spend analytics | ~48 |
+| **celo** | Gnosis Pay on Celo: decoded contract events, transactions, spend analytics. **Archived 2026-11-03**: disabled in `dbt_project.yml`, tables frozen (`models/celo/AGENTS.md`) | ~86, disabled |
 | **mta** | Multi-touch attribution: Gnosis App journey spine, conversion coverage, first/last/linear/time-decay credit (lives under `models/execution/gnosis_app/`) | ~27 |
 | **quarterly_data** | Quarterly reporting aggregates | ~27 |
 | **p2p** | Peer-to-peer network topology, client distributions, crawl analytics (Discv4/Discv5) | ~25 |
@@ -2110,7 +2110,7 @@ dbt-cerebro/
 │   │   └── {Protocol}/            # One folder per protocol
 │   ├── mixpanel_ga/               # Web analytics: Mixpanel + Google Analytics (~59 models)
 │   ├── revenue/                   # Protocol revenue and fees (~50 models)
-│   ├── celo/                      # Gnosis Pay on Celo (~48 models)
+│   ├── celo/                      # Gnosis Pay on Celo (archived 2026-11-03, disabled)
 │   ├── quarterly_data/            # Quarterly reporting aggregates (~27 models)
 │   ├── p2p/                       # P2P network (~25 models)
 │   ├── bridges/                   # Bridge flows (~17 models)
