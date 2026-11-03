@@ -12,6 +12,9 @@ concurrency:
   group: gnosis-dbt-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job is pinned to ubuntu-24.04: ubuntu-latest is 26.04, where
+# actions/setup-python has no 3.9 build (the last green run, 2026-10-01, was on
+# 24.04). Unpin when CI moves to the image's Python (python:3.11-slim).
 jobs:
   # Image gate: every policy gate, the agent-context checks, pytest AND the
   # semantic registry/graph/entity gates — all WITHOUT touching the warehouse.
@@ -24,7 +27,7 @@ jobs:
   # profiles.yml render for `dbt parse`; nothing connects.
   validate:
     name: Validate (image gate, no warehouse)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     env:
       CLICKHOUSE_URL: ${{ secrets.CLICKHOUSE_URL }}
@@ -81,7 +84,7 @@ jobs:
   build:
     name: Build & Push Docker Images
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -122,7 +125,7 @@ jobs:
   deploy-docs:
     name: Generate & Deploy dbt Docs
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # Provide the ClickHouse connection details as environment variables
     env:
