@@ -115,6 +115,16 @@ models:
       +meta:
         owner: analytics_team
     celo:
+      # ARCHIVED 2026-11-03. Every model under models/celo/ is disabled, together with
+      # the celo_execution source (sources: below) and the three celo_* seeds (seeds:
+      # below). The writer, cryo-indexer-celo, is stopped alongside
+      # (infrastructure-gnosis-analytics, cryo-indexer-celo/locals.tf). Nothing read
+      # these models any more: the Gnosis Pay on Celo dashboard view was removed on
+      # 2026-08-10. dbt does not drop disabled models, so their tables stay in the
+      # warehouse as they were at the last run. To revive: revert this change (it also
+      # restores semantic/authoring/celo/ and the allowlist entries), after the indexer
+      # has backfilled the stopped period; models/celo/AGENTS.md covers the rebuild.
+      +enabled: false
       +meta:
         owner: analytics_team
       # Celo decoded-contracts layer: same policy as the Gnosis `contracts`
@@ -196,6 +206,14 @@ models:
     # are not even scheduled. Flip this to true (and ELEMENTARY_ENABLED=1) to bring it back.
     +enabled: false
 
+sources:
+  gnosis_dbt:
+    # ARCHIVED 2026-11-03 with the models/celo tree (see models: celo: above). Disables
+    # every source declared under models/celo/, i.e. celo_execution and its freshness
+    # checks.
+    celo:
+      +enabled: false
+
 seeds:
   gnosis_dbt:
     # optional: apply to all seeds in this package
@@ -263,6 +281,7 @@ seeds:
     # downstream models can be ported 1:1. date_start = Celo L2 migration for
     # the stablecoins, XAUt0 = MiniPay Card launch (cashback token).
     celo_tokens_whitelist:
+      +enabled: false # ARCHIVED 2026-11-03 with models/celo (see models: celo:)
       +engine: MergeTree()
       +order_by: [address]
       +column_types:
@@ -287,6 +306,7 @@ seeds:
     # migration target here is a one-line change; do NOT hardcode an address.
     # Only status IN ('active','migrating') is in scope; 'planned' stays inert.
     celo_gpay_settlement_contracts:
+      +enabled: false # ARCHIVED 2026-11-03 with models/celo (see models: celo:)
       +engine: MergeTree()
       +order_by: [address]
       +column_types:
@@ -302,6 +322,7 @@ seeds:
     # daily USD prices. Aggregators verified against the official Chainlink
     # reference-data directory and live AnswerUpdated activity on celo.logs.
     celo_chainlink_feeds:
+      +enabled: false # ARCHIVED 2026-11-03 with models/celo (see models: celo:)
       +engine: MergeTree()
       +order_by: [aggregator_address]
       +column_types:
