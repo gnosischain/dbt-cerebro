@@ -3,9 +3,11 @@ models:
 
 - name: int_quarterly_esg_carbon_intensity_with_fallback
   description: >
-    Forward-fills Ember carbon intensity data for periods where values are missing (Jan 2026+).
-    Carries the last known carbon intensity per country for up to 12 months.
-    UNIONs real data from int_esg_carbon_intensity_ensemble with estimated rows.
+    Monthly carbon intensity per country for the quarterly ESG reports: the months Ember
+    has published, read from int_esg_carbon_intensity_ensemble. Until 2026-11 it
+    forward-filled each country's last known month for up to 11 months (flagged
+    is_estimated); the ESG chain now waits for Ember's publication instead, so the flag
+    was dropped. The name stays because the semantic layer reads this view.
   columns:
   - name: month_date
     description: Month start date for the carbon intensity measurement or estimate.
@@ -18,14 +20,11 @@ models:
     tests:
     - not_null
   - name: carbon_intensity_mean
-    description: Point estimate of carbon intensity in gCO2/kWh, seasonally adjusted.
+    description: Ember's monthly grid carbon intensity in gCO2e/kWh, as published.
     data_type: Float64
   - name: carbon_intensity_std
     description: Standard deviation of carbon intensity estimate.
     data_type: Float64
-  - name: is_estimated
-    description: True if the value is forward-filled from the last known Ember data rather than a real measurement.
-    data_type: Bool
   tests:
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns:
@@ -34,10 +33,11 @@ models:
 
 - name: int_quarterly_esg_carbon_footprint_with_fallback
   description: >
-    Extends fct_esg_carbon_footprint_uncertainty with estimated daily CO2 and energy values
-    for periods where Ember carbon intensity data is missing. Uses production fact table values
-    for historical dates and recomputes estimates from node distribution, client efficiency, and
-    forward-filled carbon intensity for the gap period.
+    Daily annualised CO2 and energy for the quarterly ESG reports, read from
+    fct_esg_carbon_footprint_uncertainty, which ends on the last day of the latest month
+    for which Ember has published the World carbon intensity. Until 2026-11 it extended the
+    fact table with estimates built from forward-filled carbon intensity (flagged
+    is_estimated); it now waits for Ember's publication, so the flag was dropped.
   columns:
   - name: date
     description: Observation date for the carbon footprint data point.
@@ -53,6 +53,3 @@ models:
   - name: annual_energy_Mwh_projected
     description: Annualised energy consumption in MWh, projected from the daily value (daily × 365 / 1000).
     data_type: Float64
-  - name: is_estimated
-    description: True if the value is computed using forward-filled carbon intensity rather than real Ember data.
-    data_type: Bool

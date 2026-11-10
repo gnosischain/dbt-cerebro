@@ -40,46 +40,77 @@ sources:
           - name: intermediate-region-code
             data_type: String
 
-      - name: ember_electricity_data
-        freshness: null
-        description: "Ember electricity statistics (daily)."
+      - name: ember_generation_monthly
+        description: >
+          Ember monthly electricity data ("generation" release, wide format): one row
+          per Area x month x Electricity source, metrics as columns. The click-runner
+          ember-ingestor reloads the whole file on the 8th and 21st into a
+          ReplacingMergeTree(ingested_at); read it with FINAL. Replaced
+          ember_electricity_data, whose long-format file Ember retired on 2026-11-02
+          (that table stays frozen at data to 2026-06).
+        # Freshness on the DATA date of the World series, which gates every ESG mart
+        # (a month is emitted only once Ember publishes World for it). Ember publishes
+        # World about two months after month end and we ingest on the 8th and 21st, so
+        # a healthy max(Date) is 65-110 days old (a late release plus our 13-day gap).
+        # An ingest-time check cannot see a frozen upstream: the old file froze at
+        # 2026-06 while every load stayed green (lesson frozen-upstream-behind-fresh-ingest).
+        loaded_at_field: "toDateTime(`Date`)"
+        freshness:
+          warn_after: {count: 120, period: day}
+          error_after: {count: 150, period: day}
+          filter: "`Area` = 'World' AND `Electricity source` = 'Total generation'"
         columns:
           - name: Area
             data_type: String
           - name: ISO 3 code
             data_type: String
+            description: "ISO 3166-1 alpha-3; empty for Ember's aggregate regions (World, EU, G20, ...)."
           - name: Date
             data_type: Date
+            description: "First day of the month."
           - name: Area type
-            data_type: String
+            data_type: LowCardinality(String)
+          - name: Electricity source
+            data_type: LowCardinality(String)
+          - name: Is aggregated source
+            data_type: Bool
+          - name: Generation (TWh)
+            data_type: Nullable(Float64)
+          - name: Generation YoY change (TWh)
+            data_type: Nullable(Float64)
+          - name: Generation YoY change (%)
+            data_type: Nullable(Float64)
+          - name: Share of generation (%)
+            data_type: Nullable(Float64)
+          - name: Share of generation YoY change (% points)
+            data_type: Nullable(Float64)
+          - name: Emissions (MtCO2e)
+            data_type: Nullable(Float64)
+          - name: Emissions YoY change (MtCO2e)
+            data_type: Nullable(Float64)
+          - name: Emissions YoY change (%)
+            data_type: Nullable(Float64)
+          - name: Share of emissions (%)
+            data_type: Nullable(Float64)
+          - name: Emissions intensity (gCO2e/kWh)
+            data_type: Nullable(Float64)
           - name: Continent
-            data_type: String
+            data_type: LowCardinality(String)
           - name: Ember region
-            data_type: String
-          - name: EU
-            data_type: Float64
-          - name: OECD
-            data_type: Float64
-          - name: G20
-            data_type: Float64
-          - name: G7
-            data_type: Float64
-          - name: ASEAN
-            data_type: Float64
-          - name: Category
-            data_type: String
-          - name: Subcategory
-            data_type: String
-          - name: Variable
-            data_type: String
-          - name: Unit
-            data_type: String
-          - name: Value
-            data_type: Float64
-          - name: YoY absolute change
-            data_type: Float64
-          - name: YoY % change
-            data_type: Float64
+            data_type: LowCardinality(String)
+          - name: EU member
+            data_type: Bool
+          - name: OECD member
+            data_type: Bool
+          - name: G20 member
+            data_type: Bool
+          - name: G7 member
+            data_type: Bool
+          - name: ASEAN member
+            data_type: Bool
+          - name: ingested_at
+            data_type: DateTime
+            description: "Load time; one value per load (now() is evaluated once per INSERT)."
 
       - name: gpay_wallets
         freshness: null

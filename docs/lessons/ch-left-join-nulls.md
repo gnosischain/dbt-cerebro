@@ -10,6 +10,7 @@ last_verified: 2026-07-17
 evidence:
   - ~19 models set pre_hook SET join_use_nulls = 1 with in-code rationale, e.g. models/execution/Circles/marts/fct_execution_circles_v2_inviters_ranking.sql:8,17; fct_execution_circles_v2_inviter_farm_quota.sql:8,20; int_execution_circles_v2_avatars.sql:10; int_execution_circles_v2_invite_funnel.sql:10; models/execution/gnosis_app/marts/fct_execution_gnosis_app_weekly_economically_active_users.sql:8
   - reset-to-default pair idiom where required: models/execution/pools/intermediate/int_execution_pools_swapr_v3_daily.sql:11-12 (pre/post SET join_use_nulls)
+  - '2026-11-09 instance: int_esg_dynamic_power_consumption had no join_use_nulls, so COALESCE(country, world, 450) returned 0.0 for every country without an Ember value for the month and labelled it country_specific. In 2026-06, 519 of 1,471 rows (20 countries incl. India, China, Japan, Canada, Brazil, Ireland; 9.9% of node-days) carried zero CO2; the undercount was 1.5% in Dec-Feb and 15.3% in Jun 2026. Fix in tree, pending deploy: pre_hook SET join_use_nulls = 1 with the post_hook reset, plus a dbt_utils.expression_is_true carbon_intensity_gco2_kwh > 0 test on the model'
 ---
 
 ## Symptom

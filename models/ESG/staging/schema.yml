@@ -51,132 +51,122 @@ models:
   meta:
     owner: analytics_team
     authoritative: false
-- name: stg_crawlers_data__ember_electricity_data
-  description: This view aggregates and standardizes ember electricity data across various geographic and economic classifications to support analysis of electricity consumption and related trends.
+- name: stg_crawlers_data__ember_generation_monthly
+  description: >-
+    Ember monthly electricity data ("generation" release): one row per area x month x
+    electricity source, metrics as columns, read with FINAL from the full-reload raw
+    table. iso3_code is empty for Ember's aggregate regions (World, EU, G20, ...).
+    The ESG chain reads electricity_source 'Total generation' and its
+    emissions_intensity_gco2e_kwh.
   columns:
 
-  - name: Area
-    description: Name of the geographic area or country for which data is reported.
+  - name: area
+    description: Country, economy or aggregate region name as published by Ember (e.g. 'Germany', 'World').
+    data_type: String
+    tests:
+    - not_null
+
+  - name: iso3_code
+    description: ISO 3166-1 alpha-3 code; empty for aggregate regions.
     data_type: String
 
-  - name: code
-    description: ''
-    data_type: ''
-
-  - name: Date
-    description: Reporting date of the data point, typically in YYYY-MM-DD format.
+  - name: month_date
+    description: First day of the month the values describe.
     data_type: Date
     tests:
-    - not_null:
-        config:
-          where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(Date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
-  - name: type
-    description: ''
-    data_type: String
+    - not_null
 
-  - name: Continent
-    description: Continent where the Area is located.
-    data_type: String
+  - name: area_type
+    description: "'Country or economy' or 'Region'."
+    data_type: LowCardinality(String)
 
-  - name: region
-    description: Specific regional grouping within the continent, e.g., Ember region.
-    data_type: ''
+  - name: electricity_source
+    description: Generation source ('Total generation', 'Coal', 'Solar', ..., 'Demand', 'Net imports').
+    data_type: LowCardinality(String)
+    tests:
+    - not_null
 
-  - name: EU
-    description: Boolean indicator (or equivalent) denoting EU membership.
-    data_type: UInt8
+  - name: is_aggregated_source
+    description: True when electricity_source aggregates other sources (e.g. 'Fossil', 'Total generation').
+    data_type: Bool
 
-  - name: OECD
-    description: Boolean indicator denoting OECD membership.
-    data_type: UInt8
+  - name: generation_twh
+    description: Generation in TWh.
+    data_type: Nullable(Float64)
 
-  - name: G20
-    description: Boolean indicator denoting G20 membership.
-    data_type: UInt8
+  - name: generation_yoy_change_twh
+    description: Year-on-year change in generation, TWh.
+    data_type: Nullable(Float64)
 
-  - name: G7
-    description: Boolean indicator denoting G7 membership.
-    data_type: UInt8
+  - name: generation_yoy_change_pct
+    description: Year-on-year change in generation, percent.
+    data_type: Nullable(Float64)
 
-  - name: ASEAN
-    description: Boolean indicator denoting ASEAN membership.
-    data_type: UInt8
+  - name: share_of_generation_pct
+    description: Share of the area's generation, percent.
+    data_type: Nullable(Float64)
 
-  - name: Category
-    description: Broad classification of the variable, e.g., consumption, production.
-    data_type: String
+  - name: share_of_generation_yoy_change_pp
+    description: Year-on-year change in the share of generation, percentage points.
+    data_type: Nullable(Float64)
 
-  - name: Subcategory
-    description: More specific classification within the Category, e.g., residential, industrial.
-    data_type: String
+  - name: emissions_mtco2e
+    description: Power-sector emissions, MtCO2e.
+    data_type: Nullable(Float64)
 
-  - name: Variable
-    description: Specific metric or indicator being reported, such as total electricity consumption.
-    data_type: String
+  - name: emissions_yoy_change_mtco2e
+    description: Year-on-year change in emissions, MtCO2e.
+    data_type: Nullable(Float64)
 
-  - name: Unit
-    description: Measurement unit for the Value, e.g., GWh, MWh.
-    data_type: String
+  - name: emissions_yoy_change_pct
+    description: Year-on-year change in emissions, percent.
+    data_type: Nullable(Float64)
 
-  - name: Value
-    description: Numerical value of the variable, representing the measurement in the specified Unit.
-    data_type: Float64
+  - name: share_of_emissions_pct
+    description: Share of the area's power-sector emissions, percent.
+    data_type: Nullable(Float64)
 
-  - name: change
-    description: ''
-    data_type: Int64
-
-  - name: date
-    description: The date of the data point in ISO format.
-    data_type: DateTime
-
-  - name: value
-    description: The measured value of electricity data (numeric).
-    data_type: Float64
-
-  - name: category
-    description: The category classification of the data.
-    data_type: String
-
-  - name: eu
-    description: Indicator if the region is part of the EU.
-    data_type: String
-
-  - name: unit
-    description: The unit of measurement for the value.
-    data_type: String
-
-  - name: asean
-    description: Indicator if the region is part of ASEAN.
-    data_type: String
-
-  - name: oecd
-    description: Indicator if the region is part of OECD.
-    data_type: String
-
-  - name: variable
-    description: The variable name associated with the data.
-    data_type: String
-
-  - name: subcategory
-    description: The subcategory classification.
-    data_type: String
-
-  - name: g20
-    description: Indicator if the region is part of G20.
-    data_type: String
-
-  - name: g7
-    description: Indicator if the region is part of G7.
-    data_type: String
-
-  - name: area
-    description: The area name associated with the data.
-    data_type: String
+  - name: emissions_intensity_gco2e_kwh
+    description: Emissions intensity in gCO2e per kWh. On 'Total generation' this is the grid carbon intensity of the area for the month.
+    data_type: Nullable(Float64)
 
   - name: continent
-    description: The continent where the region is located.
-    data_type: String
+    description: Continent; empty for aggregate regions.
+    data_type: LowCardinality(String)
+
+  - name: ember_region
+    description: Ember's regional grouping; empty for aggregate regions.
+    data_type: LowCardinality(String)
+
+  - name: is_eu_member
+    description: EU member.
+    data_type: Bool
+
+  - name: is_oecd_member
+    description: OECD member.
+    data_type: Bool
+
+  - name: is_g20_member
+    description: G20 member.
+    data_type: Bool
+
+  - name: is_g7_member
+    description: G7 member.
+    data_type: Bool
+
+  - name: is_asean_member
+    description: ASEAN member.
+    data_type: Bool
+
+  - name: ingested_at
+    description: Load time of the row's newest copy; one value per load.
+    data_type: DateTime
   meta:
     owner: analytics_team
     authoritative: false
+  tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+      - area
+      - month_date
+      - electricity_source

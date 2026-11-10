@@ -96,6 +96,15 @@ refresh/backfill.** New lesson? Use the `/incident` command (evidence required).
 
 ## Pipeline / sources
 
+- [frozen-upstream-behind-fresh-ingest](frozen-upstream-behind-fresh-ingest.md)
+  `observed` — Ember's file froze at 2026-06 while every full reload stayed green; the
+  load-time alert and `freshness: null` hid it for 4+ months and every ESG mart stopped
+  at 2026-06-30. Measure freshness on the data date. Fix in tree, pending deploy.
+- [adjustment-on-measured-series](adjustment-on-measured-series.md) `observed` — the
+  ESG ensemble multiplied Ember's monthly intensity, which already carries the season,
+  by continent "seasonal factors" (Europe x1.18 in winter): the season counted twice and
+  published CO2 ran +16.6% in Dec-Feb. Use the source value as published. Fix in tree,
+  pending deploy.
 - [old-token-burned-supply-overstatement](old-token-burned-supply-overstatement.md)
   `observed` — pre-2018-style tokens (mainnet GNO) never decrement totalSupply();
   transfers to 0x0 accumulate at the zero address (~3.15M GNO), so a raw totalSupply()

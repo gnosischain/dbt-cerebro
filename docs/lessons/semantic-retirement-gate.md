@@ -9,6 +9,7 @@ last_verified: 2026-07-17
 evidence:
   - scripts/semantic/build_registry.py:1461 ("missing_measure"), :1478 ("metric_missing_root_model"), :1160 ("approved_model_missing_measures"); --validate :1578, exit-1 over max-warnings :1684-1689
   - .github/workflows/build-and-release.yaml (~:157) — runs build_registry.py --validate --max-warnings 0; step comment: validation backlog zeroed, any new error OR warning fails the build
+  - '2026-11-10, local run: with int_esg_carbon_intensity_ensemble.seasonal_adjustment dropped and its measure still authored, build_registry.py --validate --max-warnings 0 exited 0 and target/semantic_validation_report.json did not mention it. The gate checks entity and relationship columns (entity_expr_unknown_column, relationship_key_unknown_column) but not measure expressions, so the metric would only have failed at query time'
 ---
 
 ## Symptom
@@ -39,4 +40,8 @@ metrics to the successor model or delete them explicitly.
 target/semantic_validation_report.json after a local registry build.
 
 ## Enforcement
-CI gate (strict, zero-warning) since the validation backlog was zeroed.
+CI gate (strict, zero-warning) since the validation backlog was zeroed. It covers
+model retire/rename only: a dropped COLUMN that a measure still reads passes the gate
+(measure expressions are not checked against model columns) and fails at query
+time. Before dropping a column, `grep -rn <column> semantic/` and remove its
+measures and metrics in the same change.
