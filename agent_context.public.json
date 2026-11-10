@@ -1,11 +1,30 @@
 {
   "counts": {
     "explicit_contracts": 41,
-    "high_risk": 313,
+    "high_risk": 310,
     "models": 1195
   },
-  "inputs_fingerprint": "6d91bd9bbc3f1d4bf006b437652a965696a4cd02f1daa7d545f7fdfdbdc355e2",
+  "inputs_fingerprint": "fd25ff32b2fb2ee939d484b7102a0120900fd8d37fc4eebd3b0d85ab56828426",
   "lessons": {
+    "adjustment-on-measured-series": {
+      "body": "## Symptom\nA published series swings across the year more than its source does, moves the wrong\nway for some members (here: countries whose grid is dirtier in summer), and its annual\ntotal sits a few percent away from a total computed from the source alone.\n\n## Root cause\nA factor table built for an input that hides an effect (an annual average) was applied\nto an input that already measures it. Ember computes each monthly intensity from that\nmonth's generation mix, so the month's season is already in the value; multiplying by\na seasonal factor counts it twice. Hand-set factor tables also rarely average 1 over a\ncycle, so they bias totals as well as shapes.\n\n## Forbidden action\nDon't multiply a measured series by a hand-set adjustment table unless the input is\ncoarser than the effect, and the factors are calibrated against the same source and\naverage 1 over the cycle. Don't add an \"adjustment\" before measuring the input's own\nvariation for the effect you are adjusting for.\n\n## Detection\nFor each member, compare the source's own profile (season mean / annual mean) with\nthe factor applied to it, and check that the factors average 1 over a full cycle. A\npublished series whose ratio to the source value is not 1 on average is biased.\n\n## Safe remediation\nUse the source value as published. Drop the adjustment column together with every\nsemantic measure and metric on it (`grep -rn <column> semantic/` first): the registry\ngate does not check measure expressions, so dropping the column alone stays green in\nCI and breaks the metric at query time (lesson semantic-retirement-gate). An API\ncolumn needs the same care: keep it at a neutral value until its consumers move.\n\n## Ground truth\nThe vendor's published value: for Ember, `Emissions intensity (gCO2e/kWh)` on\n`Electricity source = 'Total generation'` for the area and month.\n\n## Enforcement\nNone. `carbon_intensity_mean` equals `base_carbon_intensity` after the fix; no test\npins it, so that a future multi-source ensemble stays possible.",
+      "evidence": [
+        "models/ESG/intermediate/int_esg_carbon_intensity_ensemble.sql before 2026-11: carbon_intensity_mean = Ember monthly intensity x a continent x month CASE (Europe 1.18 Dec-Feb, 0.92 Jun-Aug, 1.08 Mar/Apr/Nov; Asia 1.12 / 1.08 / 1.05; North America 1.15 / 1.12 / 1.03; Oceania, South America and Africa similar; World 1.0)",
+        "Ember monthly values already carry the season. Cerebro query 2026-11-10 on crawlers_data.ember_electricity_data, 2023-2025, winter mean / annual mean and summer mean / annual mean: AUT 1.569 / 0.515, FIN 1.375 / 0.648, FRA 1.351 / 0.842, EST 1.222 / 0.785, NLD 1.191 / 0.814, DEU 1.09 / 0.904. ESP, USA and CAN are dirtier in summer (0.999 / 1.062, 1.017 / 1.071, 0.969 / 1.067), so the winter uplift pointed the wrong way for them",
+        "the factors are not mean-neutral over a year (annual mean: Europe 1.045, Asia 1.067, North America 1.0775, Oceania 1.042, South America 1.02, Africa 1.0075), so annual CO2 was also inflated by 1-8%",
+        "impact on published node CO2 (cerebro query 2026-11-10: sum of int_esg_dynamic_power_consumption.daily_co2_kg_mean against the same sum divided by each country's factor): +16.6% in Dec 2025, Jan 2026 and Feb 2026; +6.0% Mar; +6.9% Apr; +0.7% May; -3.7% Jun 2026",
+        "docs/model_review/revisit/ESG.md ESG-C07 (2026 audit) flagged only that the uncertainty band was not scaled by the factor; the factor itself was never questioned",
+        "fix in tree, pending deploy (branch fix/esg-ember-generation-monthly): carbon_intensity_mean is Ember's value as published; the seasonal_adjustment column is dropped together with its semantic measure and metric seasonal_adjustment_value (a sum of factors, approved, with synonyms such as energy consumption and network footprint)",
+        "2026-11-10, local run: with int_esg_carbon_intensity_ensemble.seasonal_adjustment dropped and its measure still authored, build_registry.py --validate --max-warnings 0 exited 0 and target/semantic_validation_report.json did not mention it. The gate checks entity and relationship columns (entity_expr_unknown_column, relationship_key_unknown_column) but not measure expressions, so the metric would only have failed at query time"
+      ],
+      "id": "adjustment-on-measured-series",
+      "last_verified": "2026-11-10",
+      "path": "docs/lessons/adjustment-on-measured-series.md",
+      "scope": "any model that multiplies a measured or vendor-published series by a hand-set factor table (seasonal, regional or \"correction\" multipliers); canonical instance: the ESG carbon intensity ensemble over Ember's monthly values",
+      "status": "observed",
+      "symptom": "a published metric swings harder across the year than its source, moves the wrong way for some members, and its annual total sits a few percent away from the source-based total",
+      "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+    },
     "append-over-populated-duplicates": {
       "body": "## Symptom\nEvery cohort/aggregate downstream of the model doubles at one date \u2014 the `start_month`\nof a scoped re-run.\n\n## Root cause\nThe `start_month \u2192 append` path is only correct into **empty** months (the staged\norchestrator guarantees non-overlap). Re-running scoped `--vars {start_month,end_month}`\nover months that already hold rows appends a second full copy. The table is\n`ReplacingMergeTree`, but marts read it **without `FINAL`** and aggregate with\n`sum()`/`countIf()` \u2014 both copies count.\n\n## Forbidden action\nNever use the scoped-append path as a \"reprocess\" \u2014 it is a backfill-into-empty tool.\n\n## Detection\nDuplicate-excess by month: `count() - uniqExact(<unique_key>)` grouped by month and\nstream; any nonzero excess = a doubled window. Downstream tell-tale: a single-step 2\u00d7\nin a weekly series.\n\n## Safe remediation\nReprocess with `reprocess_overwrite=true` **one `slice` at a time** (see\nwide-delete-insert-wipe for why never whole-window). Verify `dup_excess = 0` after.\n\n## Ground truth\nRecompute one stream's month directly from its upstream daily model and compare totals.\n\n## Enforcement\nDuplicate-key data-quality test (tests/data_quality/); the strategy expression fix in\nc7685d14 hardens the model itself.",
       "evidence": [
@@ -90,7 +109,8 @@
         "~19 models set pre_hook SET join_use_nulls = 1 with in-code rationale, e.g. models/execution/Circles/marts/fct_execution_circles_v2_inviters_ranking.sql:8,17; fct_execution_circles_v2_inviter_farm_quota.sql:8,20; int_execution_circles_v2_avatars.sql:10; int_execution_circles_v2_invite_funnel.sql:10; models/execution/gnosis_app/marts/fct_execution_gnosis_app_weekly_economically_active_users.sql:8",
         {
           "reset-to-default pair idiom where required": "models/execution/pools/intermediate/int_execution_pools_swapr_v3_daily.sql:11-12 (pre/post SET join_use_nulls)"
-        }
+        },
+        "2026-11-09 instance: int_esg_dynamic_power_consumption had no join_use_nulls, so COALESCE(country, world, 450) returned 0.0 for every country without an Ember value for the month and labelled it country_specific. In 2026-06, 519 of 1,471 rows (20 countries incl. India, China, Japan, Canada, Brazil, Ireland; 9.9% of node-days) carried zero CO2; the undercount was 1.5% in Dec-Feb and 15.3% in Jun 2026. Fix in tree, pending deploy: pre_hook SET join_use_nulls = 1 with the post_hook reset, plus a dbt_utils.expression_is_true carbon_intensity_gco2_kwh > 0 test on the model"
       ],
       "id": "ch-left-join-nulls",
       "last_verified": "2026-07-17",
@@ -143,7 +163,8 @@
         },
         {
           "still on monthly partitions despite wide history (flagged, pending)": "int_execution_state_size_full_diff_daily, int_crawlers_data_labels"
-        }
+        },
+        "2026-11-09 instance of the year-partition trap: int_esg_carbon_intensity_ensemble (insert_overwrite, toStartOfYear partitions, apply_monthly_incremental_filter) held only Dec 2024, Dec 2025 and Jun 2026 for 2024-2026, because each run REPLACEd the year partition with \"latest month onwards\". The daily ESG marts were unharmed only because they had already read those months; a downstream full refresh would have lost Jan-May 2026. Fix in tree, pending deploy: the model becomes a full-rebuild table (a few thousand rows), which also drops it from the toStartOfYear list above"
       ],
       "id": "ch-partition-cap",
       "last_verified": "2026-07-17",
@@ -391,7 +412,8 @@
         "2026-08-31 recurrence: during the Aug 26-30 server-saturation outage, the Aug-24 cron built the 2026-08-23 balances slice while diffs held only ~212 of the eventual 4,582 rows for that day; diffs self-healed, balances froze the hole \u2014 4,370 of 4,582 Aug-23 deltas unapplied (95%), 135 new negative pairs on Aug 24 and rising daily after; every other day Aug 1-30 reconciles delta-for-delta. Repaired same day via the model-documented reprocess_overwrite August window + downstream rebuild (plain runs for insert_overwrite, gap_window_refresh for append-if-window, reprocess_overwrite for fees weekly)",
         "gate added 2026-08-31 (pending deploy; flip status to enforced once live): tests/data_quality/dq_daily_balances_delta_reconciliation.sql \u2014 per-day countIf(balance(d) - balance(d-1) != net_delta(d)) joining diffs x balances over a 3-day window capped at the balances watermark; runs in the cron tag:data_quality_daily batch. Negative control: perturbing every delta by 1 fires on all ~5k diff rows/day; passes clean on repaired data. Would have caught both the 2026-07-15 and 2026-08-23 instances the morning after",
         "2026-09 census cutover (WL-054 Stage 2): the canonical cumulative instance is frozen and tests/data_quality/dq_daily_balances_delta_reconciliation.sql is disabled before it ever flipped this lesson to enforced \u2014 the census successor has no frontier-integration step (each day is an independent balanceOf read). Remaining live scope is the price-join layer: int_rpc_state_indexer_token_balances_priced_daily built before a day's prices land, recovered with refill_after_price_gap.sh --from-date (Phase 1 now covers the census priced model).",
-        "sibling instance same week (the USD layer): int_execution_tokens_balances_daily 2026-07-13/14 built before those days' prices landed -> 100% NULL balance_usd both days; repaired via scripts/maintenance/refill_after_price_gap.sh --from-date 2026-07-13"
+        "sibling instance same week (the USD layer): int_execution_tokens_balances_daily 2026-07-13/14 built before those days' prices landed -> 100% NULL balance_usd both days; repaired via scripts/maintenance/refill_after_price_gap.sh --from-date 2026-07-13",
+        "2026-11 ESG instance (join layer with a late-publishing source): int_esg_dynamic_power_consumption (delete+insert on date > max(date)) computed each day once, with whatever Ember had published for the month at that moment (the newest month arrives with few countries), and never revisited it, so late country values and Ember revisions never reached the marts. Fix in tree, pending deploy: the model and fct_esg_carbon_footprint_uncertainty become full-rebuild tables, and a month is emitted only once Ember publishes the World value for it"
       ],
       "id": "frontier-day-incomplete-inputs",
       "last_verified": "2026-09-16",
@@ -400,6 +422,22 @@
       "status": "remediated",
       "symptom": "a burst of negative real-holder balances (or 100% NULL joined values) all dated to ONE recent day; upstream models look complete when you inspect them later, because they self-healed and the cumulative layer did not",
       "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+    },
+    "frozen-upstream-behind-fresh-ingest": {
+      "body": "## Symptom\nA family of marts ends on the same date weeks or months ago, while the other inputs of\nthe same models are current. The ingest job is green, and the freshness alert on the\nraw table is quiet.\n\n## Root cause\nA full-reload ingestor re-inserts the vendor's whole file on every run. Its load\ntimestamp (`version`, `ingested_at`) therefore advances on every run, even when the\nfile's content has stopped changing. Freshness measured on the load time proves the\njob ran, not that new data arrived. With `freshness: null` on the dbt source, nothing\nlooked at the data date at all.\n\nThe ESG chain made it worse: it emits a month only when Ember's intensity for it\nexists, so a frozen file silently caps every ESG mart instead of failing anything.\n\n## Forbidden action\nDon't measure the freshness of a full-reload source on its load time alone, and don't\nset `freshness: null` on a source whose latest period gates a mart. Don't read a green\ningest job as fresh data.\n\n## Detection\n`max(<data date>)` of the series that gates the marts, against the vendor's normal\npublication lag. For Ember: `max(Date)` where `Area = 'World'` and\n`Electricity source = 'Total generation'`; healthy is 65-110 days old (World is\npublished about two months after month end, and we load on the 8th and 21st; a late release can add ~10 days).\n\n## Safe remediation\nPoint the dbt source freshness at the data date, filtered to the series that gates\nthe marts, with thresholds just above the vendor's normal lag. If the vendor moved or\nfroze the file, switch the ingestor to the live file and let the full-rebuild ESG\nmodels pick up every published month on the next run; no backfill is needed.\n\n## Ground truth\nThe vendor's own file: for Ember, the newest `Date` of the World row in\n`release_generation_monthly_global.csv`, against Ember's release notes.\n\n## Enforcement\nPending deploy: dbt source freshness on the data date of the World series\n(`ember_generation_monthly`, warn 120 d / error 150 d), and a data-date row for the\ninfra `crawlers-data-stale` rule (2880 h). Neither has fired in production yet.",
+      "evidence": [
+        "Ember long-format file (crawlers_data.ember_electricity_data) froze at data to 2026-06-01: the 2026-10-21 load reinserted 364,334 rows and added no key (378,066 rows FINAL before and after). Every api_esg_* mart stopped at 2026-06-30 while the node models were current to 2026-11-08 (morning check 2026-11-09)",
+        "nothing fired for 4+ months: the dbt source had freshness: null (models/probelab/probelab_sources.yml), and the infra rule crawlers-data-stale measured max(version), the load time, which advanced on every load (alerting stack alerts/click-runner.yaml, 480 h)",
+        "it surfaced only because Ember retired the URL on 2026-11-02 14:10 UTC (it now serves a two-column notice CSV) and the 2026-11-08 load failed with Code 47 on Area",
+        "fix in tree, pending deploy: source crawlers_data.ember_generation_monthly gets freshness on the DATA date of the World series (loaded_at_field toDateTime(Date), filter Area = World, warn 120 d / error 150 d); a data-date row for the infra alert is proposed alongside the click-runner change"
+      ],
+      "id": "frozen-upstream-behind-fresh-ingest",
+      "last_verified": "2026-11-10",
+      "path": "docs/lessons/frozen-upstream-behind-fresh-ingest.md",
+      "scope": "sources reloaded in full from a vendor file (crawlers_data.ember_*, any click-runner csv-mode table) and every model gated on their latest period (the ESG chain)",
+      "status": "observed",
+      "symptom": "downstream marts stop at a fixed date months ago while their other inputs are current; the ingest job is green and the freshness alert on the raw table is quiet",
+      "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
     },
     "global-frontier-carry-forward": {
       "body": "## Symptom\nA daily state series (reserves, balances) has holes for exactly the entities that trade\nor emit events infrequently. Density (`distinct_dates / span`) correlates with activity.\n\n## Root cause\nThe incremental branch keyed its window (`current_partition`, `prev_balances`,\n`calendar`) off a single **global** `max(date)`. The design assumes every entity emits\na row every day: an entity that skips a day falls off the global frontier, drops out of\nthe carry-forward, and the calendar never generates its missing dates \u2014 permanent gaps.\n\n## Forbidden action\nNever anchor carry-forward on a shared frontier date; never let a consuming mart read a\ncarry-forward model raw without its own spine (the UV3 branch builds its own daily\nspine \u2014 the Balancer branch that didn't is how gaps reached charts).\n\n## Detection\nPer-entity density: `uniqExact(date) / dateDiff('day', min(date), max(date))` per\nentity; investigate anything materially below 1.0 (see the sparse-series data-quality\ntest).\n\n## Safe remediation\n`dbt run --full-refresh -s <model>` (the non-incremental branch builds a per-entity\ndense calendar), then rebuild direct downstream tables; views auto-reflect.\n\n## Ground truth\nThe entity's own event dates: a reserve/balance row must exist for every calendar day\nfrom the entity's first event, regardless of activity.\n\n## Enforcement\nFixed in the model: the window anchors at the earliest per-(pool, token) frontier\n(`min(max(date)) GROUP BY pool_address, token_address`), safe under insert_overwrite\nbecause every touched partition is rebuilt with all pools present (commit 4cc8c608).\nSparse-series density test in tests/data_quality/.",
@@ -631,12 +669,13 @@
       "title": "The microbatch runner refuses a stage whose gap exceeds the slice cap with a stderr line and exit 0, so a model that is not being advanced looks green everywhere"
     },
     "semantic-retirement-gate": {
-      "body": "## Symptom\nA model rename/retire passes `dbt build` locally but fails CI at the semantic-registry\nstep: metrics defined on the old model orphan.\n\n## Root cause\nSemantic authoring is deliberately decoupled from model files \u2014 metrics in\n`semantic/authoring/` reference models by name. dbt has no knowledge of those\nreferences, so nothing in a dbt-only workflow flags the break. The CI gate is strict\n(`--max-warnings 0`; even a lone missing description fails).\n\n## Forbidden action\nDon't retire, rename, or delete a model based only on dbt-side usage (`dbt ls`,\n`grep ref(`); semantic authoring is a second reference surface, and the\nmetrics-dashboard SQL is a third.\n\n## Detection\nBefore retiring/renaming: `grep -r \"<model_name>\" semantic/` and run\n`python scripts/semantic/build_registry.py --target-dir target --validate\n--max-warnings 0`. Details land in `target/semantic_validation_report.json`.\n\n## Safe remediation\nMove/retire the semantic authoring block together with the model change; re-point\nmetrics to the successor model or delete them explicitly.\n\n## Ground truth\ntarget/semantic_validation_report.json after a local registry build.\n\n## Enforcement\nCI gate (strict, zero-warning) since the validation backlog was zeroed.",
+      "body": "## Symptom\nA model rename/retire passes `dbt build` locally but fails CI at the semantic-registry\nstep: metrics defined on the old model orphan.\n\n## Root cause\nSemantic authoring is deliberately decoupled from model files \u2014 metrics in\n`semantic/authoring/` reference models by name. dbt has no knowledge of those\nreferences, so nothing in a dbt-only workflow flags the break. The CI gate is strict\n(`--max-warnings 0`; even a lone missing description fails).\n\n## Forbidden action\nDon't retire, rename, or delete a model based only on dbt-side usage (`dbt ls`,\n`grep ref(`); semantic authoring is a second reference surface, and the\nmetrics-dashboard SQL is a third.\n\n## Detection\nBefore retiring/renaming: `grep -r \"<model_name>\" semantic/` and run\n`python scripts/semantic/build_registry.py --target-dir target --validate\n--max-warnings 0`. Details land in `target/semantic_validation_report.json`.\n\n## Safe remediation\nMove/retire the semantic authoring block together with the model change; re-point\nmetrics to the successor model or delete them explicitly.\n\n## Ground truth\ntarget/semantic_validation_report.json after a local registry build.\n\n## Enforcement\nCI gate (strict, zero-warning) since the validation backlog was zeroed. It covers\nmodel retire/rename only: a dropped COLUMN that a measure still reads passes the gate\n(measure expressions are not checked against model columns) and fails at query\ntime. Before dropping a column, `grep -rn <column> semantic/` and remove its\nmeasures and metrics in the same change.",
       "evidence": [
         "scripts/semantic/build_registry.py:1461 (\"missing_measure\"), :1478 (\"metric_missing_root_model\"), :1160 (\"approved_model_missing_measures\"); --validate :1578, exit-1 over max-warnings :1684-1689",
         {
           ".github/workflows/build-and-release.yaml (~:157) \u2014 runs build_registry.py --validate --max-warnings 0; step comment": "validation backlog zeroed, any new error OR warning fails the build"
-        }
+        },
+        "2026-11-10, local run: with int_esg_carbon_intensity_ensemble.seasonal_adjustment dropped and its measure still authored, build_registry.py --validate --max-warnings 0 exited 0 and target/semantic_validation_report.json did not mention it. The gate checks entity and relationship columns (entity_expr_unknown_column, relationship_key_unknown_column) but not measure expressions, so the metric would only have failed at query time"
       ],
       "id": "semantic-retirement-gate",
       "last_verified": "2026-07-17",
@@ -4979,9 +5018,26 @@
     },
     "api_esg_carbon_emissions_annualised_latest": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5035,9 +5091,26 @@
     },
     "api_esg_carbon_emissions_daily": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5091,9 +5164,26 @@
     },
     "api_esg_carbon_timeseries_bands": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5147,9 +5237,26 @@
     },
     "api_esg_cif_network_vs_countries_daily": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5203,9 +5310,26 @@
     },
     "api_esg_energy_consumption_annualised_latest": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5259,9 +5383,26 @@
     },
     "api_esg_energy_monthly": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5315,9 +5456,26 @@
     },
     "api_esg_estimated_nodes_daily": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5371,9 +5529,26 @@
     },
     "api_esg_info_annual_daily": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -5427,9 +5602,26 @@
     },
     "api_esg_info_category_daily": {
       "contract": {
-        "hazards": [],
+        "hazards": [
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          }
+        ],
         "profiles": [
-          "api_models"
+          "api_models",
+          "esg_models"
         ],
         "rules": [
           {
@@ -51123,34 +51315,23 @@
       "contract": {
         "hazards": [
           {
-            "id": "never-seeded-incremental",
-            "status": "remediated",
-            "title": "An incremental model created before its input existed stays empty forever"
-          },
-          {
-            "id": "ch-overcommit-victim",
-            "status": "remediated",
-            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
-          },
-          {
-            "id": "backfill-order-cumulative",
+            "id": "frozen-upstream-behind-fresh-ingest",
             "status": "observed",
-            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
           },
           {
-            "id": "duplicate-seed-drift",
-            "status": "remediated",
-            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
           },
           {
-            "id": "frontier-day-incomplete-inputs",
+            "id": "ch-left-join-nulls",
             "status": "remediated",
-            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "incremental_models",
-          "cumulative_self_referencing"
+          "esg_models"
         ],
         "rules": [
           {
@@ -51163,21 +51344,8 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "never-seeded-incremental",
-            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
-          },
-          {
-            "lesson": "backfill-order-cumulative",
-            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
-          },
-          {
-            "lesson": "frontier-day-incomplete-inputs",
-            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
           }
         ],
-        "semantics": "cumulative",
         "validation": [
           "make check-fast"
         ]
@@ -51202,14 +51370,14 @@
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": true,
-      "incremental_strategy": "delete+insert",
-      "materialized": "incremental",
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
       "name": "fct_esg_carbon_footprint_uncertainty",
       "owner": "analytics_team",
       "partition_by": "toStartOfMonth(date)",
       "path": "models/ESG/marts/fct_esg_carbon_footprint_uncertainty.sql",
-      "reads_this": true,
+      "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
@@ -51217,7 +51385,7 @@
         "esg",
         "production"
       ],
-      "unique_key": "date"
+      "unique_key": null
     },
     "fct_execution_account_counterparty_edges_daily": {
       "contract": {
@@ -65480,29 +65648,23 @@
       "contract": {
         "hazards": [
           {
-            "id": "never-seeded-incremental",
-            "status": "remediated",
-            "title": "An incremental model created before its input existed stays empty forever"
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
           },
           {
-            "id": "ch-overcommit-victim",
-            "status": "remediated",
-            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
           },
           {
-            "id": "staged-insert-overwrite-wipe",
-            "status": "enforced",
-            "title": "Staged/batched refreshes against insert_overwrite models wipe months via REPLACE PARTITION"
-          },
-          {
-            "id": "ch-partition-cap",
+            "id": "ch-left-join-nulls",
             "status": "remediated",
-            "title": ">100 partitions per INSERT fails (252) and Cloud blocks raising the cap (452)"
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "incremental_models",
-          "insert_overwrite_models"
+          "esg_models"
         ],
         "rules": [
           {
@@ -65515,10 +65677,6 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "never-seeded-incremental",
-            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
           }
         ],
         "validation": [
@@ -65545,12 +65703,12 @@
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": true,
-      "incremental_strategy": "insert_overwrite",
-      "materialized": "incremental",
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
       "name": "int_esg_carbon_intensity_ensemble",
       "owner": "analytics_team",
-      "partition_by": "toStartOfYear(month_date)",
+      "partition_by": null,
       "path": "models/ESG/intermediate/int_esg_carbon_intensity_ensemble.sql",
       "reads_this": false,
       "strategy_expression": false,
@@ -65566,34 +65724,23 @@
       "contract": {
         "hazards": [
           {
-            "id": "never-seeded-incremental",
-            "status": "remediated",
-            "title": "An incremental model created before its input existed stays empty forever"
-          },
-          {
-            "id": "ch-overcommit-victim",
-            "status": "remediated",
-            "title": "Code 241 with a \"(total)\" server-wide limit means your query is the victim, not the culprit"
-          },
-          {
-            "id": "backfill-order-cumulative",
+            "id": "frozen-upstream-behind-fresh-ingest",
             "status": "observed",
-            "title": "Backfill order matters \u2014 cumulative downstreams need history first"
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
           },
           {
-            "id": "duplicate-seed-drift",
-            "status": "remediated",
-            "title": "Duplicate seed rows in an append chain carry a constant error forward every day"
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
           },
           {
-            "id": "frontier-day-incomplete-inputs",
+            "id": "ch-left-join-nulls",
             "status": "remediated",
-            "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "incremental_models",
-          "cumulative_self_referencing"
+          "esg_models"
         ],
         "rules": [
           {
@@ -65606,21 +65753,8 @@
           },
           {
             "text": "Follow the required workflow in AGENTS.md; check docs/lessons/INDEX.md before diagnosing a data-quality symptom."
-          },
-          {
-            "lesson": "never-seeded-incremental",
-            "text": "After first build, verify the table is non-empty: a green daily run on an empty incremental stays empty forever (bootstrap can't reach history)."
-          },
-          {
-            "lesson": "backfill-order-cumulative",
-            "text": "Cumulative: backfill history FIRST, chronologically. Forward runs never repair a wrong initial condition; a duplicate seed row propagates forever."
-          },
-          {
-            "lesson": "frontier-day-incomplete-inputs",
-            "text": "A frontier day built before its inputs settled stays frozen forever (the incremental branch never revisits it) even after the upstream self-heals \u2014 repair with the model's reprocess window, not the daily runner."
           }
         ],
-        "semantics": "cumulative",
         "validation": [
           "make check-fast"
         ]
@@ -65645,14 +65779,14 @@
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
-      "high_risk": true,
-      "incremental_strategy": "delete+insert",
-      "materialized": "incremental",
+      "high_risk": false,
+      "incremental_strategy": null,
+      "materialized": "table",
       "name": "int_esg_dynamic_power_consumption",
       "owner": "analytics_team",
       "partition_by": "toStartOfMonth(date)",
       "path": "models/ESG/intermediate/int_esg_dynamic_power_consumption.sql",
-      "reads_this": true,
+      "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
       "tags": [
@@ -65660,7 +65794,7 @@
         "power_consumption",
         "production"
       ],
-      "unique_key": "(date, node_category, country_code)"
+      "unique_key": null
     },
     "int_esg_node_classification": {
       "contract": {
@@ -65679,10 +65813,26 @@
             "id": "frontier-day-incomplete-inputs",
             "status": "remediated",
             "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "cumulative_self_referencing"
+          "cumulative_self_referencing",
+          "esg_models"
         ],
         "rules": [
           {
@@ -65766,10 +65916,26 @@
             "id": "frontier-day-incomplete-inputs",
             "status": "remediated",
             "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "cumulative_self_referencing"
+          "cumulative_self_referencing",
+          "esg_models"
         ],
         "rules": [
           {
@@ -65812,7 +65978,7 @@
         "api_quarterly_data_carbon_emissions",
         "api_quarterly_data_energy_consumption"
       ],
-      "downstream_direct_count": 2,
+      "downstream_direct_count": 1,
       "downstream_transitive_count": 14,
       "explicit_contract": false,
       "full_refresh_stages": null,
@@ -65851,10 +66017,26 @@
             "id": "frontier-day-incomplete-inputs",
             "status": "remediated",
             "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
-          "cumulative_self_referencing"
+          "cumulative_self_referencing",
+          "esg_models"
         ],
         "rules": [
           {
@@ -65897,7 +66079,7 @@
         "api_quarterly_data_carbon_emissions",
         "api_quarterly_data_energy_consumption"
       ],
-      "downstream_direct_count": 2,
+      "downstream_direct_count": 1,
       "downstream_transitive_count": 14,
       "explicit_contract": false,
       "full_refresh_stages": null,
@@ -65946,11 +66128,27 @@
             "id": "frontier-day-incomplete-inputs",
             "status": "remediated",
             "title": "A cumulative chain that builds the frontier day before its inputs settle freezes the hole"
+          },
+          {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
           }
         ],
         "profiles": [
           "incremental_models",
-          "cumulative_self_referencing"
+          "cumulative_self_referencing",
+          "esg_models"
         ],
         "rules": [
           {
@@ -82572,12 +82770,28 @@
         ],
         "hazards": [
           {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
           }
         ],
         "profiles": [
+          "esg_models",
           "quarterly_snapshot_models"
         ],
         "rules": [
@@ -82633,12 +82847,28 @@
         ],
         "hazards": [
           {
+            "id": "frozen-upstream-behind-fresh-ingest",
+            "status": "observed",
+            "title": "A full-reload source froze upstream while every load stayed green; load-time freshness cannot see it"
+          },
+          {
+            "id": "adjustment-on-measured-series",
+            "status": "observed",
+            "title": "A hand-set adjustment multiplied onto a series that already measures the effect counts it twice"
+          },
+          {
+            "id": "ch-left-join-nulls",
+            "status": "remediated",
+            "title": "LEFT JOIN misses return defaults, not NULLs \u2014 set join_use_nulls in a pre_hook"
+          },
+          {
             "id": "stale-snapshot-caveat",
             "status": "observed",
             "title": "argMax \"latest/quarter-end\" marts silently serve the last ingested day when a source halts"
           }
         ],
         "profiles": [
+          "esg_models",
           "quarterly_snapshot_models"
         ],
         "rules": [
@@ -82659,13 +82889,10 @@
         ]
       },
       "description_present": true,
-      "downstream_api_count": 2,
-      "downstream_api_models": [
-        "api_quarterly_data_carbon_emissions",
-        "api_quarterly_data_energy_consumption"
-      ],
-      "downstream_direct_count": 1,
-      "downstream_transitive_count": 3,
+      "downstream_api_count": 0,
+      "downstream_api_models": [],
+      "downstream_direct_count": 0,
+      "downstream_transitive_count": 0,
       "explicit_contract": false,
       "full_refresh_stages": null,
       "has_meta_full_refresh": false,
@@ -87374,7 +87601,7 @@
       ],
       "unique_key": null
     },
-    "stg_crawlers_data__ember_electricity_data": {
+    "stg_crawlers_data__ember_generation_monthly": {
       "contract": {
         "hazards": [],
         "profiles": [],
@@ -87418,10 +87645,10 @@
       "high_risk": false,
       "incremental_strategy": null,
       "materialized": "view",
-      "name": "stg_crawlers_data__ember_electricity_data",
+      "name": "stg_crawlers_data__ember_generation_monthly",
       "owner": "analytics_team",
       "partition_by": null,
-      "path": "models/ESG/staging/stg_crawlers_data__ember_electricity_data.sql",
+      "path": "models/ESG/staging/stg_crawlers_data__ember_generation_monthly.sql",
       "reads_this": false,
       "strategy_expression": false,
       "strategy_scoped_append": null,
@@ -90691,7 +90918,7 @@
       "unique_key": null
     }
   },
-  "models_hash": "fdb9ca15a8fbc26258b84151d02126c693726f8af5462d4b3d675187b75b8563",
+  "models_hash": "ef4cc1efdd6f1debdcc0cbb48fcc642ba544a7935982b0fe8721db4d89c4ebf7",
   "project": "gnosis_dbt",
   "schema_version": 2
 }

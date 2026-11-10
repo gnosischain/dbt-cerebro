@@ -1,5 +1,10 @@
 
 
+-- Rebuilt in full on every run, like int_esg_dynamic_power_consumption: a day's
+-- values change when Ember publishes or revises a month, so no day is frozen.
+-- Ends on the last day of the latest month for which Ember has published the World
+-- carbon intensity (see the gate in int_esg_dynamic_power_consumption).
+
 WITH node_country_distribution AS (
     -- Get node distribution by country and category with their carbon intensities
     SELECT
@@ -16,9 +21,6 @@ WITH node_country_distribution AS (
         daily_co2_kg_mean,
         daily_co2_kg_std
     FROM `dbt`.`int_esg_dynamic_power_consumption`
-    
-        WHERE date > (SELECT MAX(date) FROM `dbt`.`fct_esg_carbon_footprint_uncertainty`)
-    
 ),
 
 -- Calculate network effective CIF from geographic distribution
@@ -72,9 +74,6 @@ daily_power_data AS (
         COUNT(DISTINCT country_code) AS countries_represented
         
     FROM node_country_distribution
-    
-        WHERE date > (SELECT MAX(date) FROM `dbt`.`fct_esg_carbon_footprint_uncertainty`)
-    
     GROUP BY date, node_category
 ),
 

@@ -1,5 +1,19 @@
 
 
+-- Daily power and CO2 per (date, node_category, country).
+-- Rebuilt in full on every run, like its node inputs. Until 2026-11 it was
+-- delete+insert on date > max(date): each day was computed once, with whatever Ember
+-- had published at that moment, and never revisited.
+-- Publication gate: a month is emitted only once Ember has published the World
+-- intensity for it (no carry-forward of an older month). A country whose own value for
+-- that month is not out yet uses the World value of the same month; the first rebuild
+-- after Ember publishes it switches those days to the country value. Ember publishes
+-- World about two months after month end, so this model and every ESG mart end on the
+-- last day of the latest World month.
+-- join_use_nulls = 1 because both LEFT JOINs below rely on NULL for "no match": with
+-- ClickHouse's default a missing country read 0.0, COALESCE never fell back, and those
+-- days carried zero emissions (lesson ch-left-join-nulls; 15% CO2 undercount in 2026-06).
+
 WITH node_distribution AS (
     SELECT
         date,
@@ -9,13 +23,10 @@ WITH node_distribution AS (
         region,
         sub_region,
         country_code_alpha3,
-        estimated_total_nodes,  
-        nodes_lower_95,           
-        nodes_upper_95          
+        estimated_total_nodes,
+        nodes_lower_95,
+        nodes_upper_95
     FROM `dbt`.`int_esg_node_geographic_distribution` n
-    
-        WHERE n.date > (SELECT MAX(date) FROM `dbt`.`int_esg_dynamic_power_consumption`)
-    
 ),
 
 -- Get client efficiency from upstream client distribution model
@@ -37,9 +48,6 @@ client_efficiency_by_category AS (
         groupArray((client_type, category_client_percentage, estimated_client_nodes)) AS client_breakdown
         
     FROM `dbt`.`int_esg_node_client_distribution` ncd
-    
-        WHERE ncd.date > (SELECT MAX(date) FROM `dbt`.`int_esg_dynamic_power_consumption`) - INTERVAL 1 DAY
-    
     GROUP BY date, node_category
 ),
 
@@ -127,41 +135,33 @@ final_power_calculations AS (
     FROM power_per_category p
 ),
 
--- Carbon intensity lookup with robust fallback
+-- Months Ember has published, keyed by the World intensity: the publication gate.
+world_carbon_intensity AS (
+    SELECT
+        month_date,
+        carbon_intensity_mean,
+        carbon_intensity_std
+    FROM `dbt`.`int_esg_carbon_intensity_ensemble`
+    WHERE country_code = 'WORLD'
+),
+
+-- Carbon intensity per (date, country): the country's own value for the month when
+-- Ember has published it, else the World value for the same month.
 carbon_intensity_lookup AS (
     SELECT DISTINCT
         p.date,
         p.country_code_alpha3,
-        
-        -- Robust fallback hierarchy
-        COALESCE(
-            ci_country.carbon_intensity_mean,
-            ci_world.carbon_intensity_mean,
-            450.0
-        ) AS carbon_intensity_gco2_kwh,
-        
-        COALESCE(
-            ci_country.carbon_intensity_std,
-            ci_world.carbon_intensity_std, 
-            45.0
-        ) AS carbon_intensity_std_gco2_kwh,
-        
-        CASE 
-            WHEN ci_country.carbon_intensity_mean IS NOT NULL THEN 'country_specific'
-            WHEN ci_world.carbon_intensity_mean IS NOT NULL THEN 'world_average'
-            ELSE 'conservative_default'
-        END AS carbon_intensity_source
-        
+        COALESCE(ci_country.carbon_intensity_mean, w.carbon_intensity_mean) AS carbon_intensity_gco2_kwh,
+        COALESCE(ci_country.carbon_intensity_std, w.carbon_intensity_std) AS carbon_intensity_std_gco2_kwh,
+        if(ci_country.carbon_intensity_mean IS NOT NULL, 'country_specific', 'world_average') AS carbon_intensity_source
     FROM final_power_calculations p
+    INNER JOIN world_carbon_intensity w
+        ON w.month_date = toStartOfMonth(p.date)
     LEFT JOIN `dbt`.`int_esg_carbon_intensity_ensemble` ci_country
         ON p.country_code_alpha3 = ci_country.country_code
         AND ci_country.month_date = toStartOfMonth(p.date)
         AND p.country_code_alpha3 IS NOT NULL
         AND p.country_code_alpha3 != ''
-    LEFT JOIN `dbt`.`int_esg_carbon_intensity_ensemble` ci_world
-        ON ci_world.country_code = 'WORLD'
-        AND ci_world.month_date = toStartOfMonth(p.date)
-    WHERE ci_country.month_date != DATE '1970-01-01' OR ci_world.month_date != DATE '1970-01-01' -- nu;;s ghet repl;ace by date...
 ),
 
 -- Final calculations with carbon emissions
