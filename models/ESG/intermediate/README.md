@@ -303,26 +303,35 @@ The `int_esg_carbon_intensity_ensemble` model transforms monthly carbon intensit
 **Challenge**: Monthly carbon intensity averages hide significant temporal variation that affects carbon footprint accuracy:
 
 - **Daily cycles**: Grid emissions vary throughout the day (renewables vs. fossil backup)
-- **Seasonal patterns**: Heating/cooling demand drives different generation mixes
-- **Geographic variation**: Climate zones and hemispheres have opposite seasonal patterns
 - **Grid composition**: High-renewable grids are more variable than fossil-heavy grids
 
-**Solution**: Generate uncertainty-enhanced monthly estimates that capture this hidden variation for realistic Monte Carlo simulations.
+Seasonal patterns (heating/cooling demand, solar and wind output, opposite seasons in
+each hemisphere) are not hidden: Ember's monthly value is computed from that month's
+generation mix, so it already carries the season. The model uses it as published.
+
+**Solution**: Generate uncertainty-enhanced monthly estimates that capture the
+within-month variation for realistic Monte Carlo simulations.
 
 ## Data Sources
 
 ### Primary Input
-- **Ember Global Electricity Data**: Monthly carbon intensity by country (gCO2/kWh)
-- **Coverage**: 200+ countries, 2000-present
-- **Quality**: Authoritative data from national statistics and energy agencies
+- **Ember monthly electricity data** ("generation" release, `release_generation_monthly_global.csv`),
+  loaded by the click-runner `ember-ingestor` into `crawlers_data.ember_generation_monthly`
+  on the 8th and 21st, read through `stg_crawlers_data__ember_generation_monthly`.
+- **Coverage** (2026-11-03 release): 88 countries plus World; World monthly from 2019-01.
+- **Publication lag**: World about two months after month end; countries from one month
+  (most of Europe, USA, Australia) to many months (Switzerland 5, Pakistan 8), and a few
+  have stopped monthly reporting (Ukraine since 2022-09).
+- Ember retired the previous long-format file (`ember_electricity_data`) on 2026-11-02;
+  that table is frozen at data to 2026-06.
 
 ### Key Fields Used
 ```sql
-"Date"           -- Monthly timestamp
-"ISO 3 code"     -- 3-letter country code (DEU, USA, etc.)
-"Continent"      -- Geographic continent classification
-"Value"          -- Carbon intensity in gCO2/kWh
-"Unit"           -- Data unit filter (gCO2/kWh only)
+month_date                      -- first day of the month
+iso3_code                       -- 3-letter country code (DEU, USA, ...); '' for regions
+area                            -- 'World' becomes country_code 'WORLD'
+emissions_intensity_gco2e_kwh   -- on electricity_source = 'Total generation'
+ingested_at                     -- newest load wins when two areas share an ISO3 code
 ```
 
 ## Model Architecture
@@ -336,8 +345,6 @@ Country/Continent Filtering
 Grid-Type Classification
         ↓
 Temporal Uncertainty Modeling
-        ↓
-Seasonal Adjustment (by Continent)
         ↓
 Confidence Intervals & Quality Metrics
         ↓
@@ -371,55 +378,24 @@ Additional 10% uncertainty accounts for:
 - Data collection methodology
 - Regional aggregation within countries
 
-### 3. Continental Seasonal Adjustments
+### 3. No seasonal adjustment (removed 2026-11)
 
-**Europe** (Heating-Dominant Northern):
-```
-Winter (Dec-Feb): +18% -- Peak heating demand
-Summer (Jun-Aug): -8%  -- Low demand + solar peak
-Shoulder seasons: +8%   -- Moderate adjustment
-```
-
-**Asia** (Mixed Climate Zones):
-```
-Winter: +12% -- Industrial + heating
-Summer: +8%  -- Cooling demand
-Spring/Fall: +5% -- Moderate seasons
-```
-
-**North America** (Balanced Heating/Cooling):
-```
-Winter: +15% -- Heating peak
-Summer: +12% -- Cooling peak
-Shoulder: +3% -- Balanced demand
-```
-
-**Oceania** (Southern Hemisphere):
-```
-Jun-Aug: +15%  -- Southern winter
-Dec-Feb: -5%   -- Southern summer (reversed)
-Shoulder: +5%  -- Moderate seasons
-```
-
-**South America** (Southern + Tropical):
-```
-Jun-Aug: +10% -- Milder southern winter
-Dec-Feb: -2%  -- Tropical + southern summer
-```
-
-**Africa** (Tropical + Mixed):
-```
-Jun-Aug: +5% -- Dry season effects
-Dec-Feb: -2% -- Wet season
-Minimal overall variation
-```
+Until 2026-11 the mean was multiplied by a continent x month factor (Europe x1.18 in
+Dec-Feb and x0.92 in Jun-Aug, North America x1.15 / x1.12, Asia x1.12 / x1.08, ...).
+That counted the season twice: Ember's monthly values already swing with it (2023-2025,
+winter vs annual mean: Austria 1.57, Finland 1.38, France 1.35, Germany 1.09), and for
+some countries the factor pointed the wrong way (Spain, the USA and Canada are dirtier
+in summer than in winter). The factors also averaged above 1 over a year (Europe 1.045,
+North America 1.078), so they inflated annual CO2. On the published node CO2 the bias
+was +16.6% in Dec 2025-Feb 2026, +6% to +7% in Mar-Apr and -3.7% in Jun 2026. See
+`docs/lessons/adjustment-on-measured-series.md`.
 
 ## Output Schema
 
 ### Core Metrics
 | Column | Type | Description | Use Case |
 |--------|------|-------------|----------|
-| `carbon_intensity_mean` | Float | Seasonally adjusted monthly mean | Point estimate for calculations |
+| `carbon_intensity_mean` | Float | Ember's monthly value as published | Point estimate for calculations |
 | `carbon_intensity_std` | Float | Combined uncertainty standard deviation | Monte Carlo sampling parameter |
 | `ci_lower_95` / `ci_upper_95` | Float | 95% confidence intervals | Uncertainty bounds |
 | `ci_lower_90` / `ci_upper_90` | Float | 90% confidence intervals | Conservative bounds |
@@ -435,8 +411,6 @@ Minimal overall variation
 ### Geographic & Quality
 | Column | Description |
 |--------|-------------|
-| `continent` | Source continent for seasonal adjustment |
-| `seasonal_adjustment` | Applied seasonal factor |
 | `confidence_score` | Data quality indicator (0-1) |
 | `sources_used` | Data provenance array |
 
@@ -449,16 +423,6 @@ Total_Std = √(Temporal_Uncertainty² + Measurement_Uncertainty²)
 Where:
 Temporal_Uncertainty = f(grid_composition) × base_carbon_intensity
 Measurement_Uncertainty = 0.10 × base_carbon_intensity
-```
-
-### Seasonal Adjustment
-```
-Adjusted_CI = Base_CI × Seasonal_Factor(continent, month)
-
-Where Seasonal_Factor varies by:
-- Continent (climate patterns)
-- Month (seasonal timing)
-- Hemisphere (Northern vs Southern)
 ```
 
 ### Confidence Intervals
@@ -483,20 +447,22 @@ sampled_ci = carbon_intensity_mean +
 
 ## Performance Optimizations
 
-### Partitioning Strategy
-```sql
-partition_by='toStartOfYear(month_date)'  -- Yearly partitions
-unique_key='(month_date, country_code)'   -- Monthly granularity
-```
+### Materialization
+A `table`, rebuilt in full on every run (a few thousand rows). Ember revises past
+months and publishes countries with different lags, so a full rebuild is the only
+way every month reflects the latest release.
 
-**Rationale**: Avoids ClickHouse partition limits while maintaining query performance.
+Until 2026-11 the model was `insert_overwrite` partitioned by YEAR with a monthly
+incremental filter. Each run replaced the whole year partition with "latest month
+onwards", which wiped the earlier months of the year (2024-2026 held one month each),
+the class in `docs/lessons/ch-partition-cap.md`.
 
-### Incremental Processing
-```sql
-{{ apply_monthly_incremental_filter('"Date"','month_date','true') }}
-```
-
-Only processes new/updated months, reducing computation time.
+### How the ESG chain uses it
+`int_esg_dynamic_power_consumption` emits a month only once the `WORLD` row exists for
+it (the publication gate: no carry-forward of an older month). A country without its own
+row for that month uses the World value, and the next rebuild after Ember publishes the
+country switches it to the country value. That model and `fct_esg_carbon_footprint_uncertainty`
+are tables rebuilt in full, so every ESG mart ends on the last day of the latest World month.
 
 ## Data Quality Checks
 
@@ -508,7 +474,7 @@ Only processes new/updated months, reducing computation time.
 ### Output Validation
 - Confidence intervals properly ordered (lower < mean < upper)
 - Reasonable uncertainty bounds (5-50% coefficient of variation)
-- Seasonal factors within expected ranges (0.85-1.25)
+- `carbon_intensity_mean` equals `base_carbon_intensity` (no adjustment)
 
 ## Usage Examples
 
@@ -575,11 +541,10 @@ ORDER BY avg_uncertainty DESC;
 ## Dependencies
 
 ### dbt Models
-- `stg_crawlers_data__ember_electricity_data`: Cleaned Ember data
-- `apply_monthly_incremental_filter`: Incremental processing macro
+- `stg_crawlers_data__ember_generation_monthly`: Ember monthly generation data (FINAL over the raw table)
 
 ### External Data
-- Ember Global Electricity Review (annual updates)
+- Ember monthly electricity data, generation release (monthly updates)
 - Future: ElectricityMaps API, WattTime API
 
 ## References
@@ -592,6 +557,6 @@ ORDER BY avg_uncertainty DESC;
 ---
 
 **Model Location**: `models/ESG/intermediate/int_esg_carbon_intensity_ensemble.sql`  
-**Materialization**: Incremental (monthly updates)  
-**Dependencies**: `stg_crawlers_data__ember_electricity_data`  
+**Materialization**: Table (rebuilt in full on every run)  
+**Dependencies**: `stg_crawlers_data__ember_generation_monthly`  
 **Output**: Monthly carbon intensity estimates with comprehensive uncertainty quantification

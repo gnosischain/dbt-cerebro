@@ -11,6 +11,7 @@ evidence:
   - docs/model_review/execution-state.md:56 and docs/model_review/crawlers_data.md:52,199 (both document the 252/452 pair and the toStartOfYear convention)
   - toStartOfYear in use: models/execution/prices/intermediate/int_execution_token_prices_daily.sql, models/revenue/intermediate/int_revenue_fees_monthly_per_user.sql, models/execution/lending/marts/fct_execution_lending_weekly.sql, models/execution/transactions/marts/fct_execution_transactions_by_sector_weekly.sql, fct_execution_transactions_by_project_monthly_top5.sql, models/ESG/intermediate/int_esg_carbon_intensity_ensemble.sql
   - still on monthly partitions despite wide history (flagged, pending): int_execution_state_size_full_diff_daily, int_crawlers_data_labels
+  - '2026-11-09 instance of the year-partition trap: int_esg_carbon_intensity_ensemble (insert_overwrite, toStartOfYear partitions, apply_monthly_incremental_filter) held only Dec 2024, Dec 2025 and Jun 2026 for 2024-2026, because each run REPLACEd the year partition with "latest month onwards". The daily ESG marts were unharmed only because they had already read those months; a downstream full refresh would have lost Jan-May 2026. Fix in tree, pending deploy: the model becomes a full-rebuild table (a few thousand rows), which also drops it from the toStartOfYear list above'
 ---
 
 ## Symptom

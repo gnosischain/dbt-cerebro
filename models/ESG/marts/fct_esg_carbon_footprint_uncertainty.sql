@@ -1,12 +1,15 @@
-{{ 
+{{
     config(
-        materialized='incremental',
-        incremental_strategy='delete+insert',
-        unique_key='date',
+        materialized='table',
         partition_by='toStartOfMonth(date)',
         tags=['production','esg','carbon_emissions']
     )
 }}
+
+-- Rebuilt in full on every run, like int_esg_dynamic_power_consumption: a day's
+-- values change when Ember publishes or revises a month, so no day is frozen.
+-- Ends on the last day of the latest month for which Ember has published the World
+-- carbon intensity (see the gate in int_esg_dynamic_power_consumption).
 
 WITH node_country_distribution AS (
     -- Get node distribution by country and category with their carbon intensities
@@ -24,9 +27,6 @@ WITH node_country_distribution AS (
         daily_co2_kg_mean,
         daily_co2_kg_std
     FROM {{ ref('int_esg_dynamic_power_consumption') }}
-    {% if is_incremental() %}
-        WHERE date > (SELECT MAX(date) FROM {{ this }})
-    {% endif %}
 ),
 
 -- Calculate network effective CIF from geographic distribution
@@ -80,9 +80,6 @@ daily_power_data AS (
         COUNT(DISTINCT country_code) AS countries_represented
         
     FROM node_country_distribution
-    {% if is_incremental() %}
-        WHERE date > (SELECT MAX(date) FROM {{ this }})
-    {% endif %}
     GROUP BY date, node_category
 ),
 

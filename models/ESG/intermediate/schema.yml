@@ -2,7 +2,14 @@ version: 2
 models:
 
 - name: int_esg_carbon_intensity_ensemble
-  description: The `int_esg_carbon_intensity_ensemble` model aggregates and enhances uncertainty estimates for country-level electricity carbon intensity data, supporting ESG and sustainability analysis.
+  description: >-
+    Monthly grid carbon intensity per country (ISO3) plus the World average
+    (country_code 'WORLD'), from Ember's monthly generation data (Electricity source
+    'Total generation', Emissions intensity gCO2e/kWh), with uncertainty bands. One row
+    per (month_date, country_code). A table rebuilt in full on every run, so Ember's
+    revisions and late-published countries always land. carbon_intensity_mean is
+    Ember's monthly value as published: it already carries the season, so no seasonal
+    factor is applied on top (removed 2026-11, lesson adjustment-on-measured-series).
   columns:
 
   - name: month_date
@@ -17,10 +24,6 @@ models:
     description: The measured carbon intensity in grams of CO2 equivalent per kilowatt-hour.
     data_type: Float64
 
-  - name: continent
-    description: The continent to which the country belongs, used for seasonal adjustment factors.
-    data_type: String
-
   - name: source
     description: The data source identifier, here indicating Ember electricity data.
     data_type: String
@@ -30,7 +33,7 @@ models:
     data_type: Float64
 
   - name: carbon_intensity_mean
-    description: Estimated average carbon intensity in gCO2/kWh, seasonal adjusted.
+    description: Ember's monthly grid carbon intensity for the country in gCO2e/kWh, as published (no seasonal factor; equal to base_carbon_intensity).
     data_type: Float64
 
   - name: carbon_intensity_std
@@ -73,10 +76,6 @@ models:
     description: Standard deviation due to measurement uncertainty.
     data_type: Float64
 
-  - name: seasonal_adjustment
-    description: Seasonal adjustment factor applied to the base estimate.
-    data_type: Float64
-
   - name: sources_used
     description: Array of sources contributing to the data.
     data_type: String
@@ -100,14 +99,20 @@ models:
       severity: warn
       tags:
       - elementary
+  # Whole table: a few thousand rows, rebuilt in full every run, and a month_date
+  # lookback window would select nothing (month starts lag Ember's release by ~2 months).
   - dbt_utils.unique_combination_of_columns:
       combination_of_columns:
       - month_date
       - country_code
-      config:
-        where: "{% if var('test_full_refresh', false) %}1=1{% else %}toDate(month_date) >= today() - {{ var('test_lookback_days', 7) }}{% endif %}"
 - name: int_esg_dynamic_power_consumption
-  description: The int_esg_dynamic_power_consumption model calculates estimated power consumption metrics for different node categories across geographic regions, incorporating empirical data, client efficiency, and PUE factors to support ESG and power usage analysis.
+  description: >-
+    Daily power and CO2 per (date, node_category, country): estimated nodes x CCRI
+    power per node x client efficiency x PUE x the country's grid carbon intensity for
+    the month. A month is emitted only once Ember has published the World intensity
+    for it; a country without its own value for that month uses the World value. A
+    table rebuilt in full on every run, so days switch to the country value once
+    Ember publishes it.
   columns:
 
   - name: date
@@ -190,7 +195,7 @@ models:
     data_type: Float64
 
   - name: carbon_intensity_gco2_kwh
-    description: Estimated grams of CO2 equivalent per kWh, with fallback hierarchy.
+    description: Grid carbon intensity (gCO2e/kWh) for the country and month, else the World value for the month. Always > 0.
     data_type: Float64
 
   - name: carbon_intensity_std_gco2_kwh
@@ -198,8 +203,11 @@ models:
     data_type: Float64
 
   - name: carbon_intensity_source
-    description: Source attribution for carbon intensity data.
+    description: "'country_specific' when Ember has published the country's own value for the month, else 'world_average'."
     data_type: String
+    tests:
+    - accepted_values:
+        values: ['country_specific', 'world_average']
 
   - name: daily_co2_kg_mean
     description: Estimated daily CO2 emissions in kilograms.
@@ -228,6 +236,10 @@ models:
       severity: warn
       tags:
       - elementary
+  # Regression guard for the LEFT JOIN default bug (lesson ch-left-join-nulls): without
+  # join_use_nulls a country missing from Ember read 0.0 and its days carried no CO2.
+  - dbt_utils.expression_is_true:
+      expression: "carbon_intensity_gco2_kwh > 0"
 - name: int_esg_node_classification
   description: The `int_esg_node_classification` model aggregates and classifies peer nodes based on their observed attributes and operational archetypes, supporting ESG and network analysis initiatives.
   columns:
